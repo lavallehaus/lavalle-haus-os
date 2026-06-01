@@ -1,43 +1,43 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ── SUPABASE ──────────────────────────────────────────────────────────────────
+// ── SUPABASE via JS Client ────────────────────────────────────────────────────
 const SUPABASE_URL = "https://kweovcjyuxwnbtikcgow.supabase.co";
-const SUPABASE_KEY = "sb_publishable_ALSLKLuvjP-0NzG6um2Fyw_HoHmqmE8";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3ZW92Y2p5dXh3bmJ0aWtjZ293Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjg0NTYsImV4cCI6MjA5NTkwNDQ1Nn0.ka0XsK_8ybEAoqTuAZEKTW4n0Gy2r_6RWekXb_ED_xM";
 
-async function sbFetch(path, options = {}) {
-const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-headers: {
-"apikey": SUPABASE_KEY,
-"Authorization": `Bearer ${SUPABASE_KEY}`,
-"Content-Type": "application/json",
-"Prefer": options.prefer || "return=representation",
-...options.headers,
-},
-...options,
-});
-if (!res.ok) return null;
-const text = await res.text();
-return text ? JSON.parse(text) : null;
+// Lazy-load Supabase JS client
+let _sb = null;
+async function getSB() {
+if (_sb) return _sb;
+const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+_sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+return _sb;
 }
 
 async function dbGet(table) {
-return await sbFetch(`${table}?order=id`);
+try {
+const sb = await getSB();
+const { data, error } = await sb.from(table).select("*").order("id");
+if (error) { console.warn("dbGet error:", error.message); return null; }
+return data;
+} catch(e) { console.warn("dbGet failed:", e); return null; }
 }
 
 async function dbUpsert(table, row) {
-return await sbFetch(table, {
-method: "POST",
-prefer: "resolution=merge-duplicates,return=representation",
-headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-body: JSON.stringify(row),
-});
+try {
+const sb = await getSB();
+const { data, error } = await sb.from(table).upsert(row, { onConflict: "id" });
+if (error) { console.warn("dbUpsert error:", error.message); return null; }
+return data;
+} catch(e) { console.warn("dbUpsert failed:", e); return null; }
 }
 
 async function dbInsert(table, row) {
-return await sbFetch(table, {
-method: "POST",
-body: JSON.stringify(row),
-});
+try {
+const sb = await getSB();
+const { data, error } = await sb.from(table).insert(row);
+if (error) { console.warn("dbInsert error:", error.message); return null; }
+return data;
+} catch(e) { console.warn("dbInsert failed:", e); return null; }
 }
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
