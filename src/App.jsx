@@ -1,53 +1,45 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ── JSONBIN DATABASE ─────────────────────────────────────────────────────────
-const BIN_ID = "6a1ddc11f5f4af5e29a98828";
-const BIN_KEY = "$2a$10$x5athd/h30hd.smPNzviJOXs0M3WP14q6mHvQsKbIvLlnZMY7zFEG";
-const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-
-let _cache = null;
-
-async function binGet() {
+// ── DATABASE via Vercel API ───────────────────────────────────────────────────
+async function dbLoad() {
 try {
-const res = await fetch(BIN_URL, { headers: { "X-Master-Key": BIN_KEY } });
+const res = await fetch("/api/data");
 const data = await res.json();
-_cache = data.record;
-return _cache;
-} catch(e) { return _cache || { products: [], materials: [], weekly: [] }; }
+console.log("Loaded from DB:", data);
+return data;
+} catch(e) {
+console.warn("dbLoad failed:", e);
+return null;
+}
 }
 
-async function binSet(record) {
+async function dbSave(record) {
 try {
-_cache = record;
-await fetch(BIN_URL, {
-method: "PUT",
-headers: { "X-Master-Key": BIN_KEY, "Content-Type": "application/json" },
+await fetch("/api/data", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
 body: JSON.stringify(record),
 });
-} catch(e) { console.warn("binSet failed:", e); }
+console.log("Saved to DB");
+} catch(e) {
+console.warn("dbSave failed:", e);
+}
 }
 
-async function dbGet(table) {
-const record = await binGet();
-return record[table] || [];
-}
-
+// Legacy stubs for compatibility
+async function dbGet(table) { const d = await dbLoad(); return d ? d[table] || [] : []; }
 async function dbUpsert(table, row) {
-const record = await binGet();
-const arr = record[table] || [];
+const d = await dbLoad() || { products: [], materials: [], weekly: [] };
+const arr = d[table] || [];
 const idx = arr.findIndex(r => r.id === row.id);
-if (idx >= 0) arr[idx] = { ...arr[idx], ...row };
-else arr.push(row);
-record[table] = arr;
-await binSet(record);
+if (idx >= 0) arr[idx] = { ...arr[idx], ...row }; else arr.push(row);
+d[table] = arr;
+await dbSave(d);
 }
-
 async function dbInsert(table, row) {
-const record = await binGet();
-const arr = record[table] || [];
-arr.unshift(row);
-record[table] = arr;
-await binSet(record);
+const d = await dbLoad() || { products: [], materials: [], weekly: [] };
+d[table] = [row, ...(d[table] || [])];
+await dbSave(d);
 }
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
