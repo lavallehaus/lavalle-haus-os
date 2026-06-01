@@ -1,31 +1,53 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ── SUPABASE ─────────────────────────────────────────────────────────────────
-const sb = createClient(
-"https://kweovcjyuxwnbtikcgow.supabase.co",
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3ZW92Y2p5dXh3bmJ0aWtjZ293Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjg0NTYsImV4cCI6MjA5NTkwNDQ1Nn0.ka0XsK_8ybEAoqTuAZEKTW4n0Gy2r_6RWekXb_ED_xM"
-);
+// ── JSONBIN DATABASE ─────────────────────────────────────────────────────────
+const BIN_ID = "6a1ddc11f5f4af5e29a98828";
+const BIN_KEY = "$2a$10$x5athd/h30hd.smPNzviJOXs0M3WP14q6mHvQsKbIvLlnZMY7zFEG";
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+let _cache = null;
+
+async function binGet() {
+try {
+const res = await fetch(BIN_URL, { headers: { "X-Master-Key": BIN_KEY } });
+const data = await res.json();
+_cache = data.record;
+return _cache;
+} catch(e) { return _cache || { products: [], materials: [], weekly: [] }; }
+}
+
+async function binSet(record) {
+try {
+_cache = record;
+await fetch(BIN_URL, {
+method: "PUT",
+headers: { "X-Master-Key": BIN_KEY, "Content-Type": "application/json" },
+body: JSON.stringify(record),
+});
+} catch(e) { console.warn("binSet failed:", e); }
+}
 
 async function dbGet(table) {
-try {
-const { data, error } = await sb.from(table).select("*").order("id");
-if (error) { console.warn("dbGet error:", error.message); return null; }
-return data;
-} catch(e) { console.warn("dbGet failed:", e); return null; }
+const record = await binGet();
+return record[table] || [];
 }
 
 async function dbUpsert(table, row) {
-try {
-const { error } = await sb.from(table).upsert(row, { onConflict: "id" });
-if (error) console.warn("dbUpsert error:", error.message);
-} catch(e) { console.warn("dbUpsert failed:", e); }
+const record = await binGet();
+const arr = record[table] || [];
+const idx = arr.findIndex(r => r.id === row.id);
+if (idx >= 0) arr[idx] = { ...arr[idx], ...row };
+else arr.push(row);
+record[table] = arr;
+await binSet(record);
 }
 
 async function dbInsert(table, row) {
-try {
-const { error } = await sb.from(table).insert(row);
-if (error) console.warn("dbInsert error:", error.message);
-} catch(e) { console.warn("dbInsert failed:", e); }
+const record = await binGet();
+const arr = record[table] || [];
+arr.unshift(row);
+record[table] = arr;
+await binSet(record);
 }
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
