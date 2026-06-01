@@ -1,21 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-// ── SUPABASE via JS Client ────────────────────────────────────────────────────
-const SUPABASE_URL = "https://kweovcjyuxwnbtikcgow.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3ZW92Y2p5dXh3bmJ0aWtjZ293Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjg0NTYsImV4cCI6MjA5NTkwNDQ1Nn0.ka0XsK_8ybEAoqTuAZEKTW4n0Gy2r_6RWekXb_ED_xM";
-
-// Lazy-load Supabase JS client
-let _sb = null;
-async function getSB() {
-if (_sb) return _sb;
-const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-_sb = createClient(SUPABASE_URL, SUPABASE_ANON);
-return _sb;
-}
+// ── SUPABASE ─────────────────────────────────────────────────────────────────
+const sb = createClient(
+"https://kweovcjyuxwnbtikcgow.supabase.co",
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3ZW92Y2p5dXh3bmJ0aWtjZ293Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjg0NTYsImV4cCI6MjA5NTkwNDQ1Nn0.ka0XsK_8ybEAoqTuAZEKTW4n0Gy2r_6RWekXb_ED_xM"
+);
 
 async function dbGet(table) {
 try {
-const sb = await getSB();
 const { data, error } = await sb.from(table).select("*").order("id");
 if (error) { console.warn("dbGet error:", error.message); return null; }
 return data;
@@ -24,20 +17,16 @@ return data;
 
 async function dbUpsert(table, row) {
 try {
-const sb = await getSB();
-const { data, error } = await sb.from(table).upsert(row, { onConflict: "id" });
-if (error) { console.warn("dbUpsert error:", error.message); return null; }
-return data;
-} catch(e) { console.warn("dbUpsert failed:", e); return null; }
+const { error } = await sb.from(table).upsert(row, { onConflict: "id" });
+if (error) console.warn("dbUpsert error:", error.message);
+} catch(e) { console.warn("dbUpsert failed:", e); }
 }
 
 async function dbInsert(table, row) {
 try {
-const sb = await getSB();
-const { data, error } = await sb.from(table).insert(row);
-if (error) { console.warn("dbInsert error:", error.message); return null; }
-return data;
-} catch(e) { console.warn("dbInsert failed:", e); return null; }
+const { error } = await sb.from(table).insert(row);
+if (error) console.warn("dbInsert error:", error.message);
+} catch(e) { console.warn("dbInsert failed:", e); }
 }
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
