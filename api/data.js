@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     await fetch(`${url}/set/lavalle_data`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify([body])
+      body: JSON.stringify(body)
     });
     res.json({ ok: true });
   }
