@@ -26,22 +26,6 @@ console.warn("dbSave failed:", e);
 }
 }
 
-// Legacy stubs for compatibility
-async function dbGet(table) { const d = await dbLoad(); return d ? d[table] || [] : []; }
-async function dbUpsert(table, row) {
-const d = await dbLoad() || { products: [], materials: [], weekly: [] };
-const arr = d[table] || [];
-const idx = arr.findIndex(r => r.id === row.id);
-if (idx >= 0) arr[idx] = { ...arr[idx], ...row }; else arr.push(row);
-d[table] = arr;
-await dbSave(d);
-}
-async function dbInsert(table, row) {
-const d = await dbLoad() || { products: [], materials: [], weekly: [] };
-d[table] = [row, ...(d[table] || [])];
-await dbSave(d);
-}
-
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
@@ -53,8 +37,8 @@ const INITIAL_PRODUCTS = [
 { id: 1, name: "SeaShell Vessel Candle", sku: "RH-SeaShell-9633", asin: "B0GR8452CL", available: 0, inbound: 200, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "200 units incoming — launch campaigns on arrival" },
 { id: 2, name: "Beeswax Candle Sand 16oz", sku: "RH-Sandwax-AC-16c", asin: "B0GR1NWNG8", available: 30, inbound: 0, unitsSold30: 8, price: 26, channels: ["Amazon"], status: "ok", notes: "Main revenue driver. Phrase Match & H10 campaigns performing." },
 { id: 3, name: "Beeswax Candle Sand 32oz", sku: "RH-Sandwax-AC-32c", asin: "B0GR1KQ253", available: 30, inbound: 0, unitsSold30: 1, price: 46, channels: ["Amazon"], status: "slow", notes: "129 weeks supply. Very slow mover — pause ads, evaluate." },
-{ id: 4, name: "Small Apple Vanilla Candle",sku: "RH-CANDLE-SM-AP", asin: "B0FVGM15JB", available: 55, inbound: 0, unitsSold30: 16, price: 18.99, channels: ["Amazon"], status: "ok", notes: "Best seller by units. Keep campaigns healthy." },
-{ id: 5, name: "Large Apple Vanilla Candle",sku: "RH-CANDLE-LG-AP", asin: "B0FVGM15J7", available: 34, inbound: 0, unitsSold30: 8, price: 59, channels: ["Amazon"], status: "ok", notes: "Good velocity. Monitor stock — 18 weeks supply." },
+{ id: 4, name: "Small Apple Vanilla Candle", sku: "RH-CANDLE-SM-AP", asin: "B0FVGM15JB", available: 55, inbound: 0, unitsSold30: 16, price: 18.99, channels: ["Amazon"], status: "ok", notes: "Best seller by units. Keep campaigns healthy." },
+{ id: 5, name: "Large Apple Vanilla Candle", sku: "RH-CANDLE-LG-AP", asin: "B0FVGM15J7", available: 34, inbound: 0, unitsSold30: 8, price: 59, channels: ["Amazon"], status: "ok", notes: "Good velocity. Monitor stock — 18 weeks supply." },
 { id: 6, name: "Bath Salts Unscented", sku: "LH-BATH-SALT-UN", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "Upcoming Amazon launch. ASIN TBD." },
 // ── SHOPIFY ONLY ──
 { id: 7, name: "Dough Bowl Vessel Candle", sku: "LH-VESSEL-DOUGH", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Shopify only. Add stock levels and pricing." },
@@ -110,7 +94,6 @@ const ROADMAP = [
 { month: "Sep–Oct 2026", items: ["Launch body scrub on Amazon", "Cross-sell scrub + candle bundles", "Launch body oil, body lotion", "Begin Q4 holiday inventory planning"] },
 ];
 
-// Profit Matrix — pre-filled where known, blanks for accountant
 const INITIAL_PROFIT = [
 { id: 1, name: "Beeswax Candle Sand 16oz", price: 26.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.15, fbaStorage: 0.50, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
 { id: 2, name: "Beeswax Candle Sand 32oz", price: 46.00, referralPct: 15, evComPct: 3, fbaFulfillment: 5.20, fbaStorage: 0.80, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
@@ -122,7 +105,6 @@ const INITIAL_PROFIT = [
 { id: 9, name: "Sugar Scrub 32oz Pouch (UPCOMING)", price: 89.60, referralPct: 15, evComPct: 3, fbaFulfillment: 6.20, fbaStorage: 1.10, shipping: null, cogs: null, adSpend: null, accountantNote: "Spain shipping cost TBD" },
 ];
 
-// Price Per Oz — your products + key competitors
 const PRICE_PER_OZ = [
 { id: 1, category: "Candles", name: "Beeswax Candle Sand 16oz", asin: "B0GR1NWNG8", price: 26.00, oz: 16, yours: true },
 { id: 2, category: "Candles", name: "Beeswax Candle Sand 32oz", asin: "B0GR1KQ253", price: 46.00, oz: 32, yours: true },
@@ -200,15 +182,34 @@ style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRa
 
 // ── TAB: INVENTORY ────────────────────────────────────────────────────────────
 
-function InventoryTab({ products, setProducts }) {
+function InventoryTab({ products, setProducts, dbState, setDbState }) {
 const [editing, setEditing] = useState(null);
 const [draft, setDraft] = useState({});
 
-function startEdit(p) { setEditing(p.id); setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, channels: p.channels || ["Amazon"] }); }
+function startEdit(p) {
+setEditing(p.id);
+setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, channels: p.channels || ["Amazon"] });
+}
+
 function saveEdit(id) {
-setProducts(prev => prev.map(p => p.id !== id ? p : { ...p, available: +draft.available || 0, inbound: +draft.inbound || 0, unitsSold30: +draft.unitsSold30 || 0, notes: draft.notes, channels: draft.channels }));
+setProducts(prev => {
+const updated = prev.map(p => p.id !== id ? p : {
+...p,
+available: +draft.available || 0,
+inbound: +draft.inbound || 0,
+unitsSold30: +draft.unitsSold30 || 0,
+notes: draft.notes,
+channels: draft.channels,
+});
+// Persist to DB
+const full = { ...dbState, products: updated };
+setDbState(full);
+dbSave(full);
+return updated;
+});
 setEditing(null);
 }
+
 function toggleChannel(ch) {
 setDraft(d => {
 const has = d.channels.includes(ch);
@@ -500,7 +501,7 @@ Your Sugar Scrub 8oz Tin at $38 = <strong style={{ color: "#1a1714" }}>$4.75/oz<
 const ppoz = pricePerOz(r);
 const color = r.yours ? "#8c7d6b" : "#a09488";
 return (
-<div key={r.id} style={{ background: r.yours ? "#edeae4" : "#edeae4", border: `1px solid ${r.yours ? "#c8c2b8" : "#e5e1da"}`, borderLeft: `3px solid ${r.yours ? "#8c7d6b" : "#d4cfc7"}`, borderRadius: 1, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+<div key={r.id} style={{ background: "#edeae4", border: `1px solid ${r.yours ? "#c8c2b8" : "#e5e1da"}`, borderLeft: `3px solid ${r.yours ? "#8c7d6b" : "#d4cfc7"}`, borderRadius: 1, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
 <div>
 <div style={{ fontSize: 13, color: r.yours ? "#1a1714" : "#9c8d7b", fontFamily: "'IM Fell English', Georgia, serif" }}>
 {r.name} {r.yours && <span style={{ fontSize: 10, color: "#8c7d6b", fontFamily: "monospace" }}>YOU</span>}
@@ -535,14 +536,19 @@ return (
 
 const BLANK_WEEK = { date: "", units: "", revenue: "", adSpend: "", adSales: "", organicSales: "", sessions: "", notes: "" };
 
-function WeeklyTab() {
-const [weeks, setWeeks] = useState([]);
+function WeeklyTab({ weeks, setWeeks, dbState, setDbState }) {
 const [adding, setAdding] = useState(false);
 const [draft, setDraft] = useState(BLANK_WEEK);
 
 function saveWeek() {
 if (!draft.date) return;
-setWeeks(prev => [{ ...draft, id: Date.now() }, ...prev]);
+setWeeks(prev => {
+const updated = [{ ...draft, id: Date.now() }, ...prev];
+const full = { ...dbState, weekly: updated };
+setDbState(full);
+dbSave(full);
+return updated;
+});
 setDraft(BLANK_WEEK);
 setAdding(false);
 }
@@ -676,20 +682,24 @@ return (
 
 // ── TAB: MATERIALS ────────────────────────────────────────────────────────────
 
-function MaterialsTab() {
-const [materials, setMaterials] = useState(MATERIALS);
+function MaterialsTab({ materials, setMaterials, dbState, setDbState }) {
 const [editId, setEditId] = useState(null);
 const [draft, setDraft] = useState({});
 
-const WEEKLY_BUDGET = 250;
 const urgentItems = materials.filter(m => m.status === "out" || m.status === "reorder");
 const allocatedTotal = urgentItems.reduce((s, m) => s + (parseFloat(m.estCost) || 0), 0);
 const remaining = WEEKLY_BUDGET - allocatedTotal;
 
 function toggleStatus(id) {
-setMaterials(p => p.map(m => m.id !== id ? m : {
+setMaterials(prev => {
+const updated = prev.map(m => m.id !== id ? m : {
 ...m, status: m.status === "ok" ? "reorder" : m.status === "reorder" ? "out" : "ok"
-}));
+});
+const full = { ...dbState, materials: updated };
+setDbState(full);
+dbSave(full);
+return updated;
+});
 }
 
 function startEdit(m) {
@@ -698,12 +708,18 @@ setDraft({ buyLink: m.buyLink || "", estCost: m.estCost || "", note: m.note || "
 }
 
 function saveEdit(id) {
-setMaterials(p => p.map(m => m.id !== id ? m : {
+setMaterials(prev => {
+const updated = prev.map(m => m.id !== id ? m : {
 ...m,
 buyLink: draft.buyLink,
 estCost: draft.estCost === "" ? null : parseFloat(draft.estCost),
 note: draft.note,
-}));
+});
+const full = { ...dbState, materials: updated };
+setDbState(full);
+dbSave(full);
+return updated;
+});
 setEditId(null);
 }
 
@@ -713,7 +729,6 @@ return (
 <div>
 <SectionTitle>Raw Materials · Reorder Status</SectionTitle>
 
-{/* Budget tracker */}
 <Card style={{ marginBottom: 20, borderLeft: "2px solid #a07848" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
 <div>
@@ -735,15 +750,13 @@ Enter estimated cost per item to track against your $250 weekly budget
 ))}
 </div>
 </div>
-{/* Budget bar */}
 <div style={{ marginTop: 14, height: 3, background: "#e5e1da" }}>
 <div style={{ width: `${Math.min((allocatedTotal / WEEKLY_BUDGET) * 100, 100)}%`, height: "100%", background: remaining < 0 ? "#9b5e5e" : "#a07848", transition: "width 0.4s" }} />
 </div>
 </Card>
 
-{/* How to use note */}
 <div style={{ fontSize: 11, color: "#b0a89a", fontFamily: "monospace", marginBottom: 16, letterSpacing: 0.5 }}>
-Click <strong style={{ color: "#9c8d7b" }}>Edit</strong> on any item to add a purchase link and estimated cost. Material names with links become clickable. Tap status badge to cycle: OK → REORDER → OUT.
+Click <strong style={{ color: "#9c8d7b" }}>Edit</strong> on any item to add a purchase link and estimated cost. Tap status badge to cycle: OK → REORDER → OUT.
 </div>
 
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -760,32 +773,19 @@ return (
 <div style={{ fontSize: 13, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", marginBottom: 4 }}>{m.name}</div>
 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
 <div style={{ flex: 2, minWidth: 200 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Purchase URL (Amazon, supplier, etc.)</div>
-<input
-value={draft.buyLink}
-onChange={e => setDraft(d => ({ ...d, buyLink: e.target.value }))}
-placeholder="https://amazon.com/dp/... or supplier URL"
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }}
-/>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Purchase URL</div>
+<input value={draft.buyLink} onChange={e => setDraft(d => ({ ...d, buyLink: e.target.value }))} placeholder="https://amazon.com/dp/..."
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
 </div>
 <div style={{ minWidth: 100 }}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Est. Cost ($)</div>
-<input
-value={draft.estCost}
-onChange={e => setDraft(d => ({ ...d, estCost: e.target.value }))}
-placeholder="0.00"
-type="number"
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }}
-/>
+<input value={draft.estCost} onChange={e => setDraft(d => ({ ...d, estCost: e.target.value }))} placeholder="0.00" type="number"
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
 </div>
 <div style={{ flex: 2, minWidth: 160 }}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Notes</div>
-<input
-value={draft.note}
-onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
-placeholder="Supplier name, qty needed, etc."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }}
-/>
+<input value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} placeholder="Supplier name, qty needed..."
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
 </div>
 </div>
 <div style={{ display: "flex", gap: 8 }}>
@@ -803,9 +803,6 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 <span style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{m.name}</span>
 )}
 {hasLink && <span style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "monospace", letterSpacing: 1 }}>↗ LINK ADDED</span>}
-{!hasLink && (m.status === "out" || m.status === "reorder") && (
-<span style={{ fontSize: 9, color: "#b0a89a", fontFamily: "monospace", letterSpacing: 1 }}>— add buy link</span>
-)}
 </div>
 {m.note && <div style={{ fontSize: 11, color: "#9c8d7b", fontStyle: "italic" }}>{m.note}</div>}
 </div>
@@ -828,10 +825,16 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 })}
 </div>
 
-{/* Add new material */}
 <button onClick={() => {
 const newId = Math.max(...materials.map(m => m.id)) + 1;
-setMaterials(p => [...p, { id: newId, name: "New Material", status: "reorder", note: "", buyLink: "", estCost: null, priority: 4 }]);
+const newMaterial = { id: newId, name: "New Material", status: "reorder", note: "", buyLink: "", estCost: null, priority: 4 };
+setMaterials(prev => {
+const updated = [...prev, newMaterial];
+const full = { ...dbState, materials: updated };
+setDbState(full);
+dbSave(full);
+return updated;
+});
 setEditId(newId);
 setDraft({ buyLink: "", estCost: "", note: "" });
 }} style={{ marginTop: 14, width: "100%", background: "transparent", border: "1px dashed #c8c2b8", color: "#a09488", padding: "10px 0", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 2 }}>
@@ -943,7 +946,7 @@ return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, maxHeight: 420, overflowY: "auto" }}>
 {history.map((m, i) => (
 <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-<div style={{ maxWidth: "82%", background: m.role === "user" ? "#d4cfc7" : "#eae8e3", border: `1px solid ${m.role === "user" ? "#c8c2b8" : "#c8c2b8"}`, borderRadius: 1, padding: "10px 14px", fontSize: 13, color: m.role === "user" ? "#1a1714" : "#3a4a3a", lineHeight: 1.65, fontFamily: m.role === "user" ? "'IM Fell English', Georgia, serif" : "monospace", whiteSpace: "pre-wrap" }}>
+<div style={{ maxWidth: "82%", background: m.role === "user" ? "#d4cfc7" : "#eae8e3", border: `1px solid #c8c2b8`, borderRadius: 1, padding: "10px 14px", fontSize: 13, color: m.role === "user" ? "#1a1714" : "#3a4a3a", lineHeight: 1.65, fontFamily: m.role === "user" ? "'IM Fell English', Georgia, serif" : "monospace", whiteSpace: "pre-wrap" }}>
 {m.content}
 </div>
 </div>
@@ -963,13 +966,35 @@ style={{ flex: 1, background: "#edeae4", border: "1px solid #4a3f2a", borderRadi
 
 export default function App() {
 const [tab, setTab] = useState("inventory");
+const [products, setProducts] = useState(INITIAL_PRODUCTS);
+const [materials, setMaterials] = useState(MATERIALS);
+const [weeks, setWeeks] = useState([]);
+const [campaigns] = useState(INITIAL_CAMPAIGNS);
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [] });
+const [loaded, setLoaded] = useState(false);
+
 useEffect(() => {
 const link = document.createElement("link");
 link.rel = "stylesheet"; link.href = FONT_LINK;
 document.head.appendChild(link);
 }, []);
-const [products, setProducts] = useState(INITIAL_PRODUCTS);
-const [campaigns] = useState(INITIAL_CAMPAIGNS);
+
+// ── LOAD FROM DB ON STARTUP ──
+useEffect(() => {
+dbLoad().then(d => {
+if (d) {
+if (d.products && d.products.length > 0) setProducts(d.products);
+if (d.materials && d.materials.length > 0) setMaterials(d.materials);
+if (d.weekly && d.weekly.length > 0) setWeeks(d.weekly);
+setDbState({
+products: d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS,
+materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
+weekly: d.weekly || [],
+});
+}
+setLoaded(true);
+});
+}, []);
 
 const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
 const pauseCount = campaigns.filter(c => c.status === "pause").length;
@@ -985,6 +1010,14 @@ const tabs = [
 { id: "roadmap", label: "Roadmap" },
 { id: "ai", label: "✦ AI" },
 ];
+
+if (!loaded) {
+return (
+<div style={{ minHeight: "100vh", background: "#f7f4ef", display: "flex", alignItems: "center", justifyContent: "center" }}>
+<div style={{ fontFamily: "monospace", fontSize: 12, color: "#a09488", letterSpacing: 3 }}>LOADING...</div>
+</div>
+);
+}
 
 return (
 <div style={{ minHeight: "100vh", background: "#f7f4ef", color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>
@@ -1017,13 +1050,13 @@ return (
 </div>
 
 <div style={{ padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
-{tab === "inventory" && <InventoryTab products={products} setProducts={setProducts} />}
+{tab === "inventory" && <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />}
 {tab === "ads" && <AdsTab campaigns={campaigns} />}
-{tab === "weekly" && <WeeklyTab />}
+{tab === "weekly" && <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />}
 {tab === "profit" && <ProfitTab />}
 {tab === "priceoz" && <PriceOzTab />}
 {tab === "checklist" && <ChecklistTab />}
-{tab === "materials" && <MaterialsTab />}
+{tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />}
 {tab === "roadmap" && <RoadmapTab />}
 {tab === "ai" && <AITab products={products} campaigns={campaigns} />}
 </div>
