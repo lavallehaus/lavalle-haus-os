@@ -962,6 +962,305 @@ style={{ flex: 1, background: "#edeae4", border: "1px solid #4a3f2a", borderRadi
 );
 }
 
+// ── TAB: KEYWORDS ─────────────────────────────────────────────────────────────
+
+const INITIAL_KEYWORDS = [
+{ id: 1, product: "Beeswax Candle Sand 16oz", keyword: "beeswax candle sand", matchType: "phrase", spend: 11.86, clicks: 24, orders: 1, acos: 45, status: "keep", notes: "Main converting keyword. Watch ACOS." },
+{ id: 2, product: "Beeswax Candle Sand 16oz", keyword: "sand wax candle", matchType: "exact", spend: 10.40, clicks: 18, orders: 1, acos: 40, status: "keep", notes: "High intent. Keep bidding." },
+{ id: 3, product: "Beeswax Candle Sand 16oz", keyword: "candle wax sand art", matchType: "broad", spend: 62.97, clicks: 89, orders: 0, acos: null, status: "pause", notes: "PAUSE — $63 spent, zero orders." },
+{ id: 4, product: "Small Apple Vanilla Candle", keyword: "apple vanilla candle", matchType: "phrase", spend: 8.20, clicks: 31, orders: 2, acos: 22, status: "keep", notes: "Best performing keyword. ACOS 22%." },
+{ id: 5, product: "Small Apple Vanilla Candle", keyword: "spiced apple candle", matchType: "exact", spend: 4.10, clicks: 12, orders: 1, acos: 29, status: "keep", notes: "Profitable. Monitor." },
+];
+
+const KW_STATUS = {
+keep: { color: "#5a7a5a", label: "KEEP" },
+pause: { color: "#9b5e5e", label: "PAUSE" },
+test: { color: "#7a7a9a", label: "TEST" },
+watch: { color: "#a07848", label: "WATCH" },
+};
+
+const MATCH_COLORS = {
+exact: "#5a7a5a",
+phrase: "#a07848",
+broad: "#9b5e5e",
+};
+
+function KeywordsTab({ products }) {
+const [keywords, setKeywords] = useState(INITIAL_KEYWORDS);
+const [filter, setFilter] = useState("all");
+const [adding, setAdding] = useState(false);
+const [editId, setEditId] = useState(null);
+const [draft, setDraft] = useState({});
+const [aiProduct, setAiProduct] = useState("");
+const [aiResults, setAiResults] = useState([]);
+const [aiLoading, setAiLoading] = useState(false);
+
+const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];
+const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
+
+const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
+
+function saveNew() {
+if (!draft.keyword) return;
+setKeywords(prev => [{ ...draft, id: Date.now(), spend: +draft.spend || 0, clicks: +draft.clicks || 0, orders: +draft.orders || 0, acos: draft.acos ? +draft.acos : null }, ...prev]);
+setDraft(BLANK);
+setAdding(false);
+}
+
+function saveEdit(id) {
+setKeywords(prev => prev.map(k => k.id !== id ? k : { ...k, ...draft, spend: +draft.spend || 0, clicks: +draft.clicks || 0, orders: +draft.orders || 0, acos: draft.acos ? +draft.acos : null }));
+setEditId(null);
+}
+
+function startEdit(k) {
+setEditId(k.id);
+setDraft({ ...k });
+}
+
+async function generateKeywords() {
+if (!aiProduct) return;
+setAiLoading(true);
+setAiResults([]);
+try {
+const res = await fetch("https://api.anthropic.com/v1/messages", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+model: "claude-sonnet-4-20250514",
+max_tokens: 1000,
+system: `You are an Amazon PPC keyword research expert. Generate high-converting keywords for Amazon ads. Return ONLY a JSON array, no markdown, no explanation. Each item: { "keyword": string, "matchType": "exact"|"phrase"|"broad", "intent": "high"|"medium"|"low", "notes": string }`,
+messages: [{ role: "user", content: `Generate 12 Amazon PPC keywords for this product: "${aiProduct}". Focus on buyer intent keywords. Mix of exact, phrase, and broad match. Include long-tail keywords that convert well.` }],
+}),
+});
+const data = await res.json();
+const text = data.content?.[0]?.text || "[]";
+const clean = text.replace(/```json|```/g, "").trim();
+const parsed = JSON.parse(clean);
+setAiResults(parsed);
+} catch (e) {
+setAiResults([{ keyword: "Error generating keywords", matchType: "exact", intent: "high", notes: "Try again" }]);
+}
+setAiLoading(false);
+}
+
+function addAiKeyword(kw) {
+setKeywords(prev => [{
+id: Date.now(),
+product: aiProduct,
+keyword: kw.keyword,
+matchType: kw.matchType,
+spend: 0, clicks: 0, orders: 0, acos: null,
+status: "test",
+notes: kw.notes,
+}, ...prev]);
+}
+
+const totalSpend = keywords.reduce((s, k) => s + (k.spend || 0), 0);
+const totalOrders = keywords.reduce((s, k) => s + (k.orders || 0), 0);
+const pauseCount = keywords.filter(k => k.status === "pause").length;
+
+return (
+<div>
+<SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
+
+{/* Summary */}
+<div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+{[
+{ label: "Keywords", value: keywords.length, color: "#8c7d6b" },
+{ label: "Total Spend", value: `$${totalSpend.toFixed(2)}`, color: "#a07848" },
+{ label: "Total Orders", value: totalOrders, color: "#5a7a5a" },
+{ label: "Pause Now", value: pauseCount, color: pauseCount > 0 ? "#9b5e5e" : "#5a7a5a" },
+].map(s => (
+<Card key={s.label} style={{ flex: 1, minWidth: 100, textAlign: "center", padding: "12px 10px" }}>
+<div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 1, textTransform: "uppercase", marginTop: 3 }}>{s.label}</div>
+</Card>
+))}
+</div>
+
+{/* Filter */}
+<div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+{["all", "keep", "pause", "test", "watch"].map(f => (
+<button key={f} onClick={() => setFilter(f)} style={{ background: filter === f ? "#1a1714" : "#e5e1da", color: filter === f ? "#f7f4ef" : "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, textTransform: "uppercase" }}>
+{f}
+</button>
+))}
+<button onClick={() => { setAdding(true); setDraft(BLANK); }} style={{ marginLeft: "auto", background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "4px 16px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>
++ ADD KEYWORD
+</button>
+</div>
+
+{/* Add form */}
+{adding && (
+<Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}>
+<div style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "monospace", marginBottom: 12 }}>NEW KEYWORD</div>
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+<div style={{ flex: 2, minWidth: 160 }}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Product</div>
+<select value={draft.product} onChange={e => setDraft(d => ({ ...d, product: e.target.value }))}
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
+{productNames.map(p => <option key={p}>{p}</option>)}
+</select>
+</div>
+<div style={{ flex: 3, minWidth: 180 }}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
+<input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))} placeholder="beeswax candle sand"
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }} />
+</div>
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
+<select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
+style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
+{["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
+</select>
+</div>
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
+<select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
+style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
+{["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
+</select>
+</div>
+</div>
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+{[["spend", "Spend $"], ["clicks", "Clicks"], ["orders", "Orders"], ["acos", "ACOS %"]].map(([f, l]) => (
+<div key={f}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
+<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))} placeholder="0"
+style={{ width: 70, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", textAlign: "center" }} />
+</div>
+))}
+</div>
+<input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace", marginBottom: 10 }} />
+<div style={{ display: "flex", gap: 8 }}>
+<button onClick={saveNew} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "6px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
+<button onClick={() => setAdding(false)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", padding: "6px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+</div>
+</Card>
+)}
+
+{/* Keyword list */}
+<div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 32 }}>
+{filtered.map(k => {
+const { color, label } = KW_STATUS[k.status] || KW_STATUS.test;
+const isEditing = editId === k.id;
+return (
+<Card key={k.id} style={{ borderLeft: `3px solid ${color}` }}>
+{isEditing ? (
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+<div style={{ flex: 3, minWidth: 180 }}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
+<input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))}
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }} />
+</div>
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
+<select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
+style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
+{["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
+</select>
+</div>
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
+<select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
+style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
+{["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
+</select>
+</div>
+{[["spend", "Spend"], ["clicks", "Clicks"], ["orders", "Orders"], ["acos", "ACOS%"]].map(([f, l]) => (
+<div key={f}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
+<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
+style={{ width: 60, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 6px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", textAlign: "center" }} />
+</div>
+))}
+</div>
+<input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
+style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace" }} />
+<div style={{ display: "flex", gap: 8 }}>
+<button onClick={() => saveEdit(k.id)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "5px 18px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Save</button>
+<button onClick={() => setEditId(null)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", padding: "5px 14px", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+</div>
+</div>
+) : (
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+<div style={{ flex: 1 }}>
+<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+<span style={{ fontFamily: "monospace", fontSize: 13, color: "#1a1714", fontWeight: 700 }}>{k.keyword}</span>
+<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: MATCH_COLORS[k.matchType] + "22", color: MATCH_COLORS[k.matchType], border: `1px solid ${MATCH_COLORS[k.matchType]}44`, letterSpacing: 1 }}>{k.matchType.toUpperCase()}</span>
+<Tag color={color} label={label} />
+</div>
+<div style={{ fontSize: 10, color: "#a09488", fontFamily: "monospace", marginBottom: 4 }}>{k.product}</div>
+{k.notes && <div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{k.notes}</div>}
+</div>
+<div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+{[
+["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
+["Clicks", k.clicks || "—", "#1a1714"],
+["Orders", k.orders || "—", "#5a7a5a"],
+["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
+].map(([l, v, c]) => (
+<div key={l} style={{ textAlign: "center" }}>
+<div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
+</div>
+))}
+<button onClick={() => startEdit(k)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>Edit</button>
+</div>
+</div>
+)}
+</Card>
+);
+})}
+</div>
+
+{/* AI Keyword Research */}
+<div style={{ borderTop: "1px solid #d4cfc7", paddingTop: 24 }}>
+<SectionTitle>AI Keyword Research · Generate New Keywords</SectionTitle>
+<Card style={{ borderLeft: "3px solid #8b8bff", marginBottom: 16 }}>
+<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "monospace", marginBottom: 6 }}>HOW TO USE</div>
+<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
+Select a product and click Generate — AI will suggest 12 high-intent keywords based on your product type and category. Click any keyword to add it to your tracker.
+</div>
+</Card>
+<div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+<select value={aiProduct} onChange={e => setAiProduct(e.target.value)}
+style={{ flex: 1, minWidth: 200, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "8px 12px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }}>
+<option value="">Select a product...</option>
+{productNames.map(p => <option key={p}>{p}</option>)}
+</select>
+<button onClick={generateKeywords} disabled={!aiProduct || aiLoading}
+style={{ background: aiLoading || !aiProduct ? "#d4cfc7" : "#8c7d6b", color: aiLoading || !aiProduct ? "#a09488" : "#0a0a06", border: "none", padding: "8px 24px", cursor: !aiProduct || aiLoading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>
+{aiLoading ? "Generating..." : "Generate Keywords"}
+</button>
+</div>
+{aiResults.length > 0 && (
+<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+<div style={{ fontSize: 9, color: "#a09488", fontFamily: "monospace", letterSpacing: 2, marginBottom: 4 }}>CLICK TO ADD TO TRACKER</div>
+{aiResults.map((kw, i) => (
+<div key={i} onClick={() => addAiKeyword(kw)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#edeae4", border: "1px solid #d4cfc7", borderLeft: `3px solid ${MATCH_COLORS[kw.matchType] || "#8c7d6b"}`, padding: "10px 14px", cursor: "pointer", gap: 12 }}
+onMouseEnter={e => e.currentTarget.style.background = "#e5e1da"}
+onMouseLeave={e => e.currentTarget.style.background = "#edeae4"}>
+<div>
+<div style={{ fontSize: 13, color: "#1a1714", fontFamily: "monospace", marginBottom: 2 }}>{kw.keyword}</div>
+<div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{kw.notes}</div>
+</div>
+<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: MATCH_COLORS[kw.matchType] + "22", color: MATCH_COLORS[kw.matchType], border: `1px solid ${MATCH_COLORS[kw.matchType]}44`, letterSpacing: 1 }}>{kw.matchType?.toUpperCase()}</span>
+<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: kw.intent === "high" ? "#5a7a5a22" : "#a0784822", color: kw.intent === "high" ? "#5a7a5a" : "#a07848", border: `1px solid ${kw.intent === "high" ? "#5a7a5a44" : "#a0784844"}`, letterSpacing: 1 }}>{kw.intent?.toUpperCase()} INTENT</span>
+<span style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "monospace" }}>+ ADD</span>
+</div>
+</div>
+))}
+</div>
+)}
+</div>
+</div>
+);
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1002,6 +1301,7 @@ const pauseCount = campaigns.filter(c => c.status === "pause").length;
 const tabs = [
 { id: "inventory", label: "Inventory", alert: criticalCount || null },
 { id: "ads", label: "Ads", alert: pauseCount ? `${pauseCount}!` : null },
+{ id: "keywords", label: "Keywords" },
 { id: "weekly", label: "Weekly" },
 { id: "profit", label: "Profit" },
 { id: "priceoz", label: "Price/Oz" },
@@ -1052,6 +1352,7 @@ return (
 <div style={{ padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
 {tab === "inventory" && <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />}
 {tab === "ads" && <AdsTab campaigns={campaigns} />}
+{tab === "keywords" && <KeywordsTab products={products} />}
 {tab === "weekly" && <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />}
 {tab === "profit" && <ProfitTab />}
 {tab === "priceoz" && <PriceOzTab />}
