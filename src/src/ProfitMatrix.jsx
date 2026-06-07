@@ -231,7 +231,9 @@ function normalize(list) {
       fbaFee:p.fbaFee??0, storage:p.storage??0, inbound:p.inbound??0, leadWeeks:p.leadWeeks??3,
       dates: (p.dates && typeof p.dates==="object") ? { ...p.dates } : { amazon:p.date||"", shopify:p.date||"", b2b:p.date||"" } };
   });
-}/* ---- PRIMITIVES --------------------------------------------------------- */
+}
+
+/* ---- PRIMITIVES --------------------------------------------------------- */
 const Dot = ({ level }) => <span style={{ display:"inline-block", width:9, height:9, borderRadius:9, background: level==="green"?c.green:level==="yellow"?c.yellow:c.red, marginRight:7, verticalAlign:"middle" }} />;
 function Delta({ now, prev }) {
   if (prev === 0 && now === 0) return <span style={{ color:c.sub, fontSize:12 }}>—</span>;
@@ -440,6 +442,7 @@ function ProductForm({ draft, setDraft, onSave, onCancel, onDelete }) {
   const toggleCh = (ch) => up("channels", draft.channels.includes(ch) ? draft.channels.filter((x) => x !== ch) : [...draft.channels, ch]);
   const inp = { fontFamily:sans, fontSize:13.5, padding:"6px 8px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink, width:"100%", boxSizing:"border-box" };
   const lbl = (t) => <span style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>{t}</span>;
+  // function (not nested component) so inputs keep focus across re-renders
   const field = (label, f, type = "number", placeholder) => (
     <label style={{ display:"flex", flexDirection:"column", gap:3 }}>{lbl(label)}
       <input type={type} placeholder={placeholder} value={draft[f] ?? (type === "number" ? 0 : "")} onChange={(e) => up(f, e.target.value)} style={inp} /></label>
@@ -714,7 +717,9 @@ export default function ProfitMatrix({ data, onSave }) {
 
   const rows = useMemo(() => eprods.filter((p)=>channel==="all"||p.channels.includes(channel))
     .map((p)=>{ const m=metrics(p,channel,period); const sc=scoreOf(m); return { p,m,sc,d:decide(m,sc),status:effStatus(p.id,m,channel) }; })
-    .sort((a,b)=>b.m.netAfterAds-a.m.netAfterAds), [eprods, channel, period, keep]);const opexAmt = useMemo(()=>opexTotal(opex, channel, period), [opex, channel, period]);
+    .sort((a,b)=>b.m.netAfterAds-a.m.netAfterAds), [eprods, channel, period, keep]);
+
+  const opexAmt = useMemo(()=>opexTotal(opex, channel, period), [opex, channel, period]);
   const opexWeekly = useMemo(()=>opexTotal(opex, channel, "current"), [opex, channel]);
 
   const ex = useMemo(() => {
@@ -1095,4 +1100,52 @@ export default function ProfitMatrix({ data, onSave }) {
       <div style={S.sec}>Cross-Channel Comparison<div style={faintEs}>Comparación entre canales</div></div>
       <div style={{ ...S.panel, padding:0, overflowX:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth:640 }}>
-          <thead><tr><th style={{ ...S.th, ...S.thL }}>Product<div style={faintEs}>Producto</div></th><th style={S.th}>Shopify Profit<div style={faintEs}>Ganancia Shopify</div></th><th style={S.th}>Amazon Profit<div style={faintEs}>Ganancia Amazon</div></th><th style={S.th}>B2B P
+          <thead><tr><th style={{ ...S.th, ...S.thL }}>Product<div style={faintEs}>Producto</div></th><th style={S.th}>Shopify Profit<div style={faintEs}>Ganancia Shopify</div></th><th style={S.th}>Amazon Profit<div style={faintEs}>Ganancia Amazon</div></th><th style={S.th}>B2B Profit<div style={faintEs}>Ganancia B2B</div></th><th style={{ ...S.th, ...S.thL }}>Best Channel<div style={faintEs}>Mejor canal</div></th><th style={{ ...S.th, ...S.thL }}>Weakest Channel<div style={faintEs}>Canal más débil</div></th></tr></thead>
+          <tbody>
+            {eprods.map((p)=>{
+              const sh=metrics(p,"shopify",period).netAfterAds, am=metrics(p,"amazon",period).netAfterAds, bb=metrics(p,"b2b",period).netAfterAds;
+              const vals=[{n:"Shopify",v:sh,on:p.channels.includes("shopify")},{n:"Amazon",v:am,on:p.channels.includes("amazon")},{n:"B2B",v:bb,on:p.channels.includes("b2b")}].filter(x=>x.on);
+              const best=vals.length?vals.reduce((a,b)=>b.v>a.v?b:a):{n:"—"};
+              const weak=vals.length?vals.reduce((a,b)=>b.v<a.v?b:a):{n:"—"};
+              const cell=(v,on)=><td style={{ ...S.td, color:!on?c.sub:v>=0?c.ink:c.red }}>{on?money(v):"—"}</td>;
+              const isOpen=crossOpen===p.id; const w=crossWhy(p,period);
+              return (<Fragment key={p.id}>
+                <tr onClick={()=>setCrossOpen(isOpen?null:p.id)} style={{ cursor:"pointer", background:isOpen?c.bg:"transparent" }}>
+                  <td style={{ ...S.td, ...S.tdL }}>{p.name} <span style={{ fontFamily:sans, fontSize:10.5, color:c.clay, whiteSpace:"nowrap" }}>{isOpen?"▴":"▾"} why · por qué</span></td>
+                  {cell(sh,p.channels.includes("shopify"))}{cell(am,p.channels.includes("amazon"))}{cell(bb,p.channels.includes("b2b"))}
+                  <td style={{ ...S.td, ...S.tdL }}>{vals.length?<Tag text={best.n} color={c.sage} />:"—"}</td>
+                  <td style={{ ...S.td, ...S.tdL }}>{vals.length>1 ? <Tag text={weak.n} color={c.red} /> : <span style={{ color:c.sub, fontStyle:"italic", fontSize:12 }}>only channel · único canal</span>}</td>
+                </tr>
+                {isOpen && <tr><td colSpan={6} style={{ background:c.bg, padding:"4px 16px 14px", borderBottom:`1px solid ${c.line}` }}>
+                  <div style={{ fontSize:13, lineHeight:1.55, color:c.ink }}><b style={{ fontFamily:serif }}>{p.name}</b> — {w.en}</div>
+                  <div style={{ ...faintEs, fontSize:11.5 }}>{p.name} — {w.es}</div>
+                </td></tr>}
+              </Fragment>);
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop:26, fontSize:12, color:c.sub, fontStyle:"italic", lineHeight:1.6 }}>
+        Inventory is now channel-routed (Amazon FBA / Shopify on-hand / Atlas consignment), so Inventory Value changes with the channel toggle. Tap any dashboard tile to audit and edit its line items; the manual adjustment field reconciles to bank/payout actuals. Save audit writes products + expenses + adjustments back via onSave. Seeded figures are placeholders from the marketing ledger — verify against your books.
+      </div>
+    </div>
+  );
+}
+
+function Callout({ level, label, labelEs, name, sub, status, onClick }) {
+  const sb = status ? { keep:{ t:"Keep", col:c.green }, maybe:{ t:"Maybe", col:c.gold }, cut:{ t:"Cut", col:c.red } }[status] : null;
+  return (<div onClick={onClick} style={{ background:c.panel, border:`1px solid ${status?sb.col:c.line}`, borderRadius:4, padding:18, cursor:onClick?"pointer":"default" }}>
+    <div style={{ fontFamily:sans, fontSize:11, letterSpacing:1.3, textTransform:"uppercase", color:c.sub }}><Dot level={level} />{label}{onClick&&<span style={{ float:"right", fontSize:10, color:c.sub, letterSpacing:0.5 }}>▾ review</span>}</div>
+    {labelEs&&<div style={faintEs}>{labelEs}</div>}
+    <div style={{ fontSize:16, marginTop:5 }}>{name||"—"}</div>
+    {sub&&<div style={{ fontSize:12.5, color:c.sub }}>{sub}</div>}
+    {sb&&<div style={{ marginTop:7 }}><span style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:sb.col, border:`1px solid ${sb.col}`, borderRadius:2, padding:"1px 7px" }}>Marked: {sb.t}</span></div>}
+  </div>);
+}
+function D({ k, v, sub, level }) {
+  return (<div>
+    <div style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>{level&&<Dot level={level} />}{k}</div>
+    <div style={{ fontSize:15, marginTop:2 }}>{v}</div>{sub&&<div style={{ fontSize:11, color:c.sub }}>{sub}</div>}
+  </div>);
+}
