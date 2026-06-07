@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ProfitMatrix from "./ProfitMatrix.jsx";
+import CogsBuilder from "./CogsBuilder.jsx";
 
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
@@ -196,8 +197,8 @@ function saveEdit(id) {
 setProducts(prev => {
 const updated = prev.map(p => p.id !== id ? p : {
 ...p,
-available: +draft.available || 0,
-inbound: +draft.inbound || 0,unitsSold30: +draft.unitsSold30 || 0,
+available: +draft.available || 0,inbound: +draft.inbound || 0,
+unitsSold30: +draft.unitsSold30 || 0,
 notes: draft.notes,
 channels: draft.channels,
 });
@@ -395,8 +396,8 @@ return (
 <div>
 <SectionTitle>Profit Matrix · For Accountant Review</SectionTitle>
 <Card style={{ borderLeft: "3px solid #f5a623", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#a07848", fontFamily: "monospace", marginBottom: 6 }}>ACCOUNTANT NOTE</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1a1714" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
+<div style={{ fontSize: 12, color: "#a07848", fontFamily: "monospace", marginBottom: 6 }}>ACCOUNTANT NOTE</div><div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
+Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1a1714" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
 </div>
 </Card>
 
@@ -594,8 +595,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 
 {weeks.length === 0 && !adding && (
 <Card style={{ textAlign: "center", padding: "32px 20px" }}>
-<div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div>
-</Card>)}
+<div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div></Card>
+)}
 
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 {weeks.map((w, i) => {
@@ -793,8 +794,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 </div>
 ) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>{hasLink ? (
+<div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>
+{hasLink ? (
 <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", textDecoration: "underline", textDecorationColor: "#c8c2b8", textUnderlineOffset: 3 }}>{m.name}</a>
 ) : (
 <span style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{m.name}</span>
@@ -992,8 +993,9 @@ const [aiProduct, setAiProduct] = useState("");
 const [aiResults, setAiResults] = useState([]);
 const [aiLoading, setAiLoading] = useState(false);
 
-const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];
-const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
+const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
+
+const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
 
 function saveNew() {
 if (!draft.keyword) return;
@@ -1190,8 +1192,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 <div style={{ fontSize: 10, color: "#a09488", fontFamily: "monospace", marginBottom: 4 }}>{k.product}</div>
 {k.notes && <div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{k.notes}</div>}
 </div>
-<div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-{[["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
+<div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>{[
+["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
 ["Clicks", k.clicks || "—", "#1a1714"],
 ["Orders", k.orders || "—", "#5a7a5a"],
 ["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
@@ -1290,7 +1292,7 @@ const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {} });
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {} });
 const [loaded, setLoaded] = useState(false);
 
 useEffect(() => {
@@ -1311,6 +1313,7 @@ products: d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS,
 materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
 weekly: d.weekly || [],
 profitMatrix: d.profitMatrix || {},
+cogs: d.cogs || {},
 });
 }
 setLoaded(true);
@@ -1322,7 +1325,10 @@ const pauseCount = campaigns.filter(c => c.status === "pause").length;
 
 // ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
-{ id: "profit", label: "Profit", labelEs: "Ganancia" },
+{ id: "profit", label: "Sales", labelEs: "Ventas", subs: [
+{ id: "matrix", label: "Profit Matrix" },
+{ id: "cogs", label: "COGS" },
+] },
 { id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
 { id: "ppc", label: "Amazon PPC" },
 { id: "keywords", label: "Keyword Library" },
@@ -1376,21 +1382,24 @@ dbSave(next);
 );
 
 function renderBody() {
-if (tab === "profit") return profitNode;
+if (tab === "profit") {
+if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
+return profitNode;
+}
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") return <AITab products={products} campaigns={campaigns} />;
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
 if (activeSub === "keywords") return <KeywordsTab products={products} />;
-if (activeSub === "meta") return <ComingSoon title="Shopify / Meta Ads" titleEs="Anuncios Shopify / Meta" lines={["Spend · ROAS · MER · CPA · CTR · CPC · Revenue", "Campaigns: Prospecting · Retargeting · Creator Ads · Catalog Ads"]} />;
-if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
+if (activeSub === "meta") return <ComingSoon title="Shopify / Meta Ads" titleEs="Anuncios Shopify / Meta" lines={["Spend · ROAS · MER · CPA · CTR · CPC · Revenue", "Campaigns: Prospecting · Retargeting · Creator Ads · Catalog Ads"]} />;if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
 if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
 if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
-if (activeSub === "inbound") return <ComingSoon title="Inbound Shipments" titleEs="Envíos entrantes" lines={["Item · Category · Quantity · Supplier · ETA · Status", "All incoming Products, Packaging & Raw Materials in one place"]} />;if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
+if (activeSub === "inbound") return <ComingSoon title="Inbound Shipments" titleEs="Envíos entrantes" lines={["Item · Category · Quantity · Supplier · ETA · Status", "All incoming Products, Packaging & Raw Materials in one place"]} />;
+if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
 }
 if (tab === "growth") {
 if (activeSub === "competitors") return <ComingSoon title="Competitor Intelligence" titleEs="Inteligencia de competidores" lines={["OSEA · Nécessaire · Josie Maran · Salt & Stone · Diptyque", "New launches · Promotions · Pricing · Packaging updates"]} />;
