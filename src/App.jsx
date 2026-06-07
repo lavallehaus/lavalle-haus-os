@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ProfitMatrix from "./ProfitMatrix.jsx";
- 
+
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
 try {
@@ -13,7 +13,7 @@ console.warn("dbLoad failed:", e);
 return null;
 }
 }
- 
+
 async function dbSave(record) {
 try {
 await fetch("/api/data", {
@@ -26,13 +26,13 @@ console.log("Saved to DB");
 console.warn("dbSave failed:", e);
 }
 }
- 
+
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
- 
+
 // ── DATA ─────────────────────────────────────────────────────────────────────
- 
+
 const CHANNELS = ["Amazon", "Shopify", "Amazon + Shopify", "Coming Soon"];
- 
+
 const INITIAL_PRODUCTS = [
 // ── AMAZON ──
 { id: 1, name: "SeaShell Vessel Candle", sku: "RH-SeaShell-9633", asin: "B0GR8452CL", available: 0, inbound: 200, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "200 units incoming — launch campaigns on arrival" },
@@ -48,7 +48,7 @@ const INITIAL_PRODUCTS = [
 { id: 9, name: "Lavender Body Oil", sku: "LH-OIL-LAV", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify first. Plan Amazon launch — update channel when live." },
 { id: 10, name: "Moroccan Soap", sku: "LH-SOAP-MOR", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify only for now." },
 ];
- 
+
 const INITIAL_CAMPAIGNS = [
 { id: 1, name: "Sand Wax – Phrase Match Discovery", budget: 3, spend7d: 11.86, sales7d: 26, purchases: 1, roas: 2.19, status: "keep", recommendation: "Keep running — ROAS 2.19 is profitable. Watch weekly." },
 { id: 2, name: "Sand Wax – H10 High Search Volume", budget: 5, spend7d: 10.40, sales7d: 26, purchases: 1, roas: 2.50, status: "keep", recommendation: "Best performer. ROAS 2.50. Increase budget to $8/day." },
@@ -56,7 +56,7 @@ const INITIAL_CAMPAIGNS = [
 { id: 4, name: "Sand Wax – Exact Match High Intent", budget: 5, spend7d: 0, sales7d: 0, purchases: 0, roas: 0, status: "monitor", recommendation: "No data yet. Give 2 more weeks before evaluating." },
 { id: 5, name: "Sand Wax – Product Targeting", budget: 5, spend7d: 2.88, sales7d: 0, purchases: 0, roas: 0, status: "watch", recommendation: "Low spend, no sales yet. Set $3 spend limit before pausing." },
 ];
- 
+
 const MATERIALS = [
 { id: 1, name: "Cling wrap", status: "out", note: "OUT — order immediately", buyLink: "", estCost: null, priority: 1 },
 { id: 2, name: "Paraffin 1301/1407", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 2 },
@@ -70,9 +70,9 @@ const MATERIALS = [
 { id: 10, name: "Cinnamon sticks", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
 { id: 11, name: "Apple Honey fragrance", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
 ];
- 
+
 const WEEKLY_BUDGET = 250;
- 
+
 const CHECKLIST_ITEMS = [
 { id: 1, category: "Inventory", task: "Check FBA stock levels for each SKU", detail: "Flag anything under 6 weeks of supply" },
 { id: 2, category: "Inventory", task: "Review inbound shipments", detail: "Confirm seashell vessels ETA and update tracker" },
@@ -87,14 +87,14 @@ const CHECKLIST_ITEMS = [
 { id: 11, category: "Growth", task: "Check storefront performance", detail: "Any visits? Update seasonal imagery if needed." },
 { id: 12, category: "Growth", task: "Scrub + body care launch prep", detail: "Track manufacturing progress. Target Amazon launch in 3-4 months." },
 ];
- 
+
 const ROADMAP = [
 { month: "June 2026", items: ["Pause Broad Match campaign", "Ship 200 SeaShell Vessels to FBA", "Launch SeaShell + Sand Wax bundle campaign", "Take over operations from agency"] },
 { month: "July 2026", items: ["Optimize campaigns based on first 30 days of data", "Build negative keyword list from wasted spend", "Add more scent variants to Sand Wax if velocity improves", "Set up Make/Zapier for automated inventory sync"] },
 { month: "August 2026", items: ["Review body scrub manufacturing status", "Begin keyword research for scrub launch", "Build out Amazon storefront with full brand story", "Test Sponsored Brand video ads"] },
 { month: "Sep–Oct 2026", items: ["Launch body scrub on Amazon", "Cross-sell scrub + candle bundles", "Launch body oil, body lotion", "Begin Q4 holiday inventory planning"] },
 ];
- 
+
 const INITIAL_PROFIT = [
 { id: 1, name: "Beeswax Candle Sand 16oz", price: 26.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.15, fbaStorage: 0.50, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
 { id: 2, name: "Beeswax Candle Sand 32oz", price: 46.00, referralPct: 15, evComPct: 3, fbaFulfillment: 5.20, fbaStorage: 0.80, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
@@ -105,7 +105,7 @@ const INITIAL_PROFIT = [
 { id: 8, name: "Sugar Scrub 16oz Pouch (UPCOMING)", price: 49.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.72, fbaStorage: 0.72, shipping: null, cogs: null, adSpend: null, accountantNote: "Spain shipping cost TBD" },
 { id: 9, name: "Sugar Scrub 32oz Pouch (UPCOMING)", price: 89.60, referralPct: 15, evComPct: 3, fbaFulfillment: 6.20, fbaStorage: 1.10, shipping: null, cogs: null, adSpend: null, accountantNote: "Spain shipping cost TBD" },
 ];
- 
+
 const PRICE_PER_OZ = [
 { id: 1, category: "Candles", name: "Beeswax Candle Sand 16oz", asin: "B0GR1NWNG8", price: 26.00, oz: 16, yours: true },
 { id: 2, category: "Candles", name: "Beeswax Candle Sand 32oz", asin: "B0GR1KQ253", price: 46.00, oz: 32, yours: true },
@@ -119,14 +119,14 @@ const PRICE_PER_OZ = [
 { id: 10, category: "Body Scrub (Competitor)", name: "Competitor C (16oz)", asin: "B07JH3FLHM", price: 28.95, oz: 16, yours: false },
 { id: 11, category: "Body Scrub (Competitor)", name: "Competitor D (16oz)", asin: "B07M5PKHWX", price: 28.95, oz: 16, yours: false },
 ];
- 
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
- 
+
 function weeksOfSupply(available, sold30) {
 if (sold30 === 0) return available > 0 ? 99 : 0;
 return Math.round((available / sold30) * 4.3);
 }
- 
+
 function stockStatus(p) {
 if (p.status === "inbound") return "inbound";
 const w = weeksOfSupply(p.available, p.unitsSold30);
@@ -135,7 +135,7 @@ if (w < 6) return "low";
 if (w > 50 && p.unitsSold30 < 3) return "slow";
 return "ok";
 }
- 
+
 const STATUS_STYLE = {
 out: { color: "#9b5e5e", bg: "#9b5e5e14", label: "OUT OF STOCK" },
 inbound: { color: "#a07848", bg: "#a0784814", label: "INBOUND" },
@@ -143,33 +143,33 @@ low: { color: "#a07848", bg: "#a0784814", label: "LOW STOCK" },
 slow: { color: "#7a7a9a", bg: "#7a7a9a14", label: "SLOW MOVER" },
 ok: { color: "#5a7a5a", bg: "#5a7a5a14", label: "HEALTHY" },
 };
- 
+
 const CAMP_STYLE = {
 pause: { color: "#9b5e5e", label: "PAUSE" },
 keep: { color: "#5a7a5a", label: "KEEP" },
 watch: { color: "#a07848", label: "WATCH" },
 monitor: { color: "#7a7a9a", label: "MONITOR" },
 };
- 
+
 function fmt(n, prefix = "$") {
 if (n === null || n === undefined || n === "") return "—";
 return `${prefix}${parseFloat(n).toFixed(2)}`;
 }
- 
+
 // ── COMPONENTS ───────────────────────────────────────────────────────────────
- 
+
 function Tag({ color, label }) {
 return <span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 1, padding: "2px 8px", borderRadius: 1, background: color + "22", color, border: `1px solid ${color}44` }}>{label}</span>;
 }
- 
+
 function Card({ children, style = {} }) {
 return <div style={{ background: "#edeae4", border: "1px solid #3a3020", borderRadius: 1, padding: "18px 20px", ...style }}>{children}</div>;
 }
- 
+
 function SectionTitle({ children }) {
 return <div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", marginBottom: 20, fontFamily: "monospace", fontWeight: 400 }}>{children}</div>;
 }
- 
+
 function NumInput({ value, onChange, prefix = "$", placeholder = "Enter" }) {
 return (
 <input
@@ -180,25 +180,24 @@ style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRa
 />
 );
 }
- 
+
 // ── TAB: INVENTORY ────────────────────────────────────────────────────────────
- 
+
 function InventoryTab({ products, setProducts, dbState, setDbState }) {
 const [editing, setEditing] = useState(null);
 const [draft, setDraft] = useState({});
- 
+
 function startEdit(p) {
 setEditing(p.id);
 setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, channels: p.channels || ["Amazon"] });
 }
- 
+
 function saveEdit(id) {
 setProducts(prev => {
 const updated = prev.map(p => p.id !== id ? p : {
 ...p,
 available: +draft.available || 0,
-inbound: +draft.inbound || 0,
-unitsSold30: +draft.unitsSold30 || 0,
+inbound: +draft.inbound || 0,unitsSold30: +draft.unitsSold30 || 0,
 notes: draft.notes,
 channels: draft.channels,
 });
@@ -210,7 +209,7 @@ return updated;
 });
 setEditing(null);
 }
- 
+
 function toggleChannel(ch) {
 setDraft(d => {
 const has = d.channels.includes(ch);
@@ -218,16 +217,17 @@ const next = has ? d.channels.filter(c => c !== ch) : [...d.channels, ch];
 return { ...d, channels: next.length ? next : [ch] };
 });
 }
- 
+
 const sorted = [...products].sort((a, b) => {
 const order = { out: 0, low: 1, inbound: 2, slow: 3, ok: 4 };
 return (order[stockStatus(a)] ?? 5) - (order[stockStatus(b)] ?? 5);
 });
- 
+
 return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 <SectionTitle>Amazon FBA Inventory</SectionTitle>
-{sorted.map(p => {const st = stockStatus(p);
+{sorted.map(p => {
+const st = stockStatus(p);
 const { color, bg, label } = STATUS_STYLE[st];
 const weeks = weeksOfSupply(p.available, p.unitsSold30);
 const isEditing = editing === p.id;
@@ -396,8 +396,7 @@ return (
 <SectionTitle>Profit Matrix · For Accountant Review</SectionTitle>
 <Card style={{ borderLeft: "3px solid #f5a623", marginBottom: 20 }}>
 <div style={{ fontSize: 12, color: "#a07848", fontFamily: "monospace", marginBottom: 6 }}>ACCOUNTANT NOTE</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1a1714" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
+<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1a1714" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
 </div>
 </Card>
 
@@ -456,7 +455,8 @@ return (
 style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace" }} />
 <button onClick={() => setEditing(null)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Done</button>
 </div>
-) : (<button onClick={() => setEditing(r.id)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>
+) : (
+<button onClick={() => setEditing(r.id)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>
 {r.cogs ? "Edit" : "Fill In"}
 </button>
 )}
@@ -595,8 +595,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 {weeks.length === 0 && !adding && (
 <Card style={{ textAlign: "center", padding: "32px 20px" }}>
 <div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div>
-</Card>
-)}
+</Card>)}
 
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 {weeks.map((w, i) => {
@@ -685,7 +684,8 @@ function MaterialsTab({ materials, setMaterials, dbState, setDbState }) {
 const [editId, setEditId] = useState(null);
 const [draft, setDraft] = useState({});
 
-const urgentItems = materials.filter(m => m.status === "out" || m.status === "reorder");const allocatedTotal = urgentItems.reduce((s, m) => s + (parseFloat(m.estCost) || 0), 0);
+const urgentItems = materials.filter(m => m.status === "out" || m.status === "reorder");
+const allocatedTotal = urgentItems.reduce((s, m) => s + (parseFloat(m.estCost) || 0), 0);
 const remaining = WEEKLY_BUDGET - allocatedTotal;
 
 function toggleStatus(id) {
@@ -794,8 +794,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 ) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>
-{hasLink ? (
+<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>{hasLink ? (
 <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", textDecoration: "underline", textDecorationColor: "#c8c2b8", textUnderlineOffset: 3 }}>{m.name}</a>
 ) : (
 <span style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{m.name}</span>
@@ -914,7 +913,8 @@ const res = await fetch("https://api.anthropic.com/v1/messages", {
 method: "POST",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify({
-model: "claude-sonnet-4-20250514",max_tokens: 1000,
+model: "claude-sonnet-4-20250514",
+max_tokens: 1000,
 system: sys,
 messages: [...history, userMsg].map(m => ({ role: m.role, content: m.content })),
 }),
@@ -993,9 +993,7 @@ const [aiResults, setAiResults] = useState([]);
 const [aiLoading, setAiLoading] = useState(false);
 
 const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];
-const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
-
-const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
+const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
 
 function saveNew() {
 if (!draft.keyword) return;
@@ -1143,7 +1141,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 const { color, label } = KW_STATUS[k.status] || KW_STATUS.test;
 const isEditing = editId === k.id;
 return (
-<Card key={k.id} style={{ borderLeft: `3px solid ${color}` }}>{isEditing ? (
+<Card key={k.id} style={{ borderLeft: `3px solid ${color}` }}>
+{isEditing ? (
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
 <div style={{ flex: 3, minWidth: 180 }}>
@@ -1192,8 +1191,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 {k.notes && <div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{k.notes}</div>}
 </div>
 <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-{[
-["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
+{[["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
 ["Clicks", k.clicks || "—", "#1a1714"],
 ["Orders", k.orders || "—", "#5a7a5a"],
 ["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
@@ -1257,10 +1255,37 @@ onMouseLeave={e => e.currentTarget.style.background = "#edeae4"}>
 );
 }
 
+// ── PHASE-1 PLACEHOLDER ───────────────────────────────────────────────────────
+// Sections that have a permanent home now and get built out in a later phase.
+function ComingSoon({ title, titleEs, lines }) {
+return (
+<div>
+<SectionTitle>{title}</SectionTitle>
+{titleEs && <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: -14, marginBottom: 18, fontFamily: "'IM Fell English', Georgia, serif" }}>{titleEs}</div>}
+<Card style={{ borderLeft: "3px solid #a89060" }}>
+<div style={{ fontSize: 9, color: "#a07848", fontFamily: "monospace", letterSpacing: 2, marginBottom: 8 }}>SCAFFOLDED · NEXT PHASE</div>
+<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
+This section now has its permanent home. We'll build it out in an upcoming phase so no data lives in two places.
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 3, fontFamily: "'IM Fell English', Georgia, serif" }}>Esta sección ya tiene su hogar permanente. La construiremos en una fase próxima para que ningún dato viva en dos lugares.</div>
+</div>
+{lines && (
+<div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+<div style={{ fontSize: 9, color: "#a09488", fontFamily: "monospace", letterSpacing: 2 }}>WILL TRACK</div>
+{lines.map((l, i) => (
+<div key={i} style={{ fontSize: 12, color: "#8c7d6b", fontFamily: "monospace", paddingLeft: 12, borderLeft: "1px solid #d4cfc7" }}>{l}</div>
+))}
+</div>
+)}
+</Card>
+</div>
+);
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-const [tab, setTab] = useState("inventory");
+const [tab, setTab] = useState("profit");
+const [sub, setSub] = useState({});
 const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
@@ -1295,18 +1320,41 @@ setLoaded(true);
 const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
 const pauseCount = campaigns.filter(c => c.status === "pause").length;
 
-const tabs = [
-{ id: "inventory", label: "Inventory", alert: criticalCount || null },
-{ id: "ads", label: "Ads", alert: pauseCount ? `${pauseCount}!` : null },
-{ id: "keywords", label: "Keywords" },
-{ id: "weekly", label: "Weekly" },
-{ id: "profit", label: "Profit" },
-{ id: "priceoz", label: "Price/Oz" },
-{ id: "checklist", label: "Bi-Weekly" },
-{ id: "materials", label: "Materials" },
-{ id: "roadmap", label: "Roadmap" },
-{ id: "ai", label: "✦ AI" },
+// ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
+const NAV = [
+{ id: "profit", label: "Profit", labelEs: "Ganancia" },
+{ id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
+{ id: "ppc", label: "Amazon PPC" },
+{ id: "keywords", label: "Keyword Library" },
+{ id: "meta", label: "Shopify / Meta" },
+{ id: "b2b", label: "B2B Ads" },
+] },
+{ id: "inventory", label: "Inventory", labelEs: "Inventario", alert: criticalCount || null, subs: [
+{ id: "fba", label: "FBA Inventory" },
+{ id: "products", label: "Products" },
+{ id: "packaging", label: "Packaging" },
+{ id: "raw", label: "Raw Materials" },
+{ id: "inbound", label: "Inbound" },
+{ id: "reorder", label: "Reorder List" },
+] },
+{ id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
+{ id: "competitors", label: "Competitor Intel" },
+{ id: "creators", label: "Influencer / Creator" },
+{ id: "retail", label: "Retail Expansion" },
+{ id: "weeklynums", label: "Weekly Numbers" },
+{ id: "checklist", label: "Ops Checklist" },
+] },
+{ id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
+{ id: "materials", label: "Materials", labelEs: "Materiales", subs: [
+{ id: "suppliers", label: "Supplier Database" },
+{ id: "priceoz", label: "Price / Oz" },
+] },
+{ id: "ai", label: "✦ AI", labelEs: "Asesor AI" },
 ];
+
+const activeNav = NAV.find(n => n.id === tab) || NAV[0];
+const activeSub = activeNav.subs ? (sub[tab] || activeNav.subs[0].id) : null;
+const setSubFor = (id) => setSub(s => ({ ...s, [tab]: id }));
 
 if (!loaded) {
 return (
@@ -1314,6 +1362,48 @@ return (
 <div style={{ fontFamily: "monospace", fontSize: 12, color: "#a09488", letterSpacing: 3 }}>LOADING...</div>
 </div>
 );
+}
+
+const profitNode = (
+<ProfitMatrix
+data={dbState.profitMatrix || {}}
+onSave={(pm) => {
+const next = { ...dbState, profitMatrix: { products: pm.products, opex: pm.opex, keep: pm.keep, assignees: pm.assignees, profitAdjustments: pm.adjustments, profitManual: pm.manual } };
+setDbState(next);
+dbSave(next);
+}}
+/>
+);
+
+function renderBody() {
+if (tab === "profit") return profitNode;
+if (tab === "roadmap") return <RoadmapTab />;
+if (tab === "ai") return <AITab products={products} campaigns={campaigns} />;
+if (tab === "ads") {
+if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
+if (activeSub === "keywords") return <KeywordsTab products={products} />;
+if (activeSub === "meta") return <ComingSoon title="Shopify / Meta Ads" titleEs="Anuncios Shopify / Meta" lines={["Spend · ROAS · MER · CPA · CTR · CPC · Revenue", "Campaigns: Prospecting · Retargeting · Creator Ads · Catalog Ads"]} />;
+if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
+}
+if (tab === "inventory") {
+if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />;
+if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
+if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
+if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
+if (activeSub === "inbound") return <ComingSoon title="Inbound Shipments" titleEs="Envíos entrantes" lines={["Item · Category · Quantity · Supplier · ETA · Status", "All incoming Products, Packaging & Raw Materials in one place"]} />;if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
+}
+if (tab === "growth") {
+if (activeSub === "competitors") return <ComingSoon title="Competitor Intelligence" titleEs="Inteligencia de competidores" lines={["OSEA · Nécessaire · Josie Maran · Salt & Stone · Diptyque", "New launches · Promotions · Pricing · Packaging updates"]} />;
+if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Program" titleEs="Programa de creadores" lines={["Creator · Deliverables · Cost · Status · Revenue generated", "Cost per sale · Cost per post · ROAS"]} />;
+if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
+if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
+if (activeSub === "checklist") return <ChecklistTab />;
+}
+if (tab === "materials") {
+if (activeSub === "priceoz") return <PriceOzTab />;
+if (activeSub === "suppliers") return <ComingSoon title="Supplier Database" titleEs="Base de proveedores" lines={["Supplier · Contact · MOQ · Lead time · Cost"]} />;
+}
+return null;
 }
 
 return (
@@ -1337,35 +1427,29 @@ return (
 </div>
 </div>
 
+{/* TOP NAV — 7 permanent homes */}
 <div style={{ background: "#ede9e3", borderBottom: "1px solid #3a3020", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto" }}>
-{tabs.map(t => (
-<button key={t.id} onClick={() => setTab(t.id)} style={{ background: "none", border: "none", borderBottom: tab === t.id ? "2px solid #a89060" : "2px solid transparent", color: tab === t.id ? "#1a1714" : "#a09488", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "monospace", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
-{t.label}
-{t.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{t.alert}</span>}
+{NAV.map(n => (
+<button key={n.id} onClick={() => setTab(n.id)} style={{ background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #a89060" : "2px solid transparent", color: tab === n.id ? "#1a1714" : "#a09488", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "monospace", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+{n.label}
+{n.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{n.alert}</span>}
 </button>
 ))}
 </div>
 
-<div style={{ padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
-{tab === "inventory" && <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />}
-{tab === "ads" && <AdsTab campaigns={campaigns} />}
-{tab === "keywords" && <KeywordsTab products={products} />}
-{tab === "weekly" && <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />}
-{tab === "profit" && (
-<ProfitMatrix
-data={dbState.profitMatrix || {}}
-onSave={(pm) => {
-const next = { ...dbState, profitMatrix: { products: pm.products, opex: pm.opex, keep: pm.keep, assignees: pm.assignees, profitAdjustments: pm.adjustments, profitManual: pm.manual } };
-setDbState(next);
-dbSave(next);
-}}
-/>
+{/* SUB NAV — appears for tabs that have sections */}
+{activeNav.subs && (
+<div style={{ background: "#f2efe9", borderBottom: "1px solid #d4cfc7", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto" }}>
+{activeNav.subs.map(s => (
+<button key={s.id} onClick={() => setSubFor(s.id)} style={{ background: "none", border: "none", borderBottom: activeSub === s.id ? "2px solid #a89060" : "2px solid transparent", color: activeSub === s.id ? "#1a1714" : "#a09488", padding: "9px 13px", cursor: "pointer", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: "monospace", marginBottom: -1, whiteSpace: "nowrap" }}>
+{s.label}
+</button>
+))}
+</div>
 )}
-{tab === "priceoz" && <PriceOzTab />}
-{tab === "checklist" && <ChecklistTab />}
-{tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />}
-{tab === "roadmap" && <RoadmapTab />}
-{tab === "ai" && <AITab products={products} campaigns={campaigns} />}
+
+<div style={tab === "profit" ? {} : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
+{renderBody()}
 </div>
 </div>
 );
