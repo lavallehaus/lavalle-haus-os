@@ -1,1366 +1,1151 @@
-import { useState, useEffect, useCallback } from "react";
-
-// ── DATABASE via Vercel API ───────────────────────────────────────────────────
-async function dbLoad() {
-try {
-const res = await fetch("/api/data");
-const data = await res.json();
-console.log("Loaded from DB:", data);
-return data;
-} catch(e) {
-console.warn("dbLoad failed:", e);
-return null;
-}
-}
-
-async function dbSave(record) {
-try {
-await fetch("/api/data", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify(record),
-});
-console.log("Saved to DB");
-} catch(e) {
-console.warn("dbSave failed:", e);
-}
-}
-
-const FONT_LINK = "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap";
-
-// ── DATA ─────────────────────────────────────────────────────────────────────
-
-const CHANNELS = ["Amazon", "Shopify", "Amazon + Shopify", "Coming Soon"];
-
-const INITIAL_PRODUCTS = [
-// ── AMAZON ──
-{ id: 1, name: "SeaShell Vessel Candle", sku: "RH-SeaShell-9633", asin: "B0GR8452CL", available: 0, inbound: 200, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "200 units incoming — launch campaigns on arrival" },
-{ id: 2, name: "Beeswax Candle Sand 16oz", sku: "RH-Sandwax-AC-16c", asin: "B0GR1NWNG8", available: 30, inbound: 0, unitsSold30: 8, price: 26, channels: ["Amazon"], status: "ok", notes: "Main revenue driver. Phrase Match & H10 campaigns performing." },
-{ id: 3, name: "Beeswax Candle Sand 32oz", sku: "RH-Sandwax-AC-32c", asin: "B0GR1KQ253", available: 30, inbound: 0, unitsSold30: 1, price: 46, channels: ["Amazon"], status: "slow", notes: "129 weeks supply. Very slow mover — pause ads, evaluate." },
-{ id: 4, name: "Small Apple Vanilla Candle", sku: "RH-CANDLE-SM-AP", asin: "B0FVGM15JB", available: 55, inbound: 0, unitsSold30: 16, price: 18.99, channels: ["Amazon"], status: "ok", notes: "Best seller by units. Keep campaigns healthy." },
-{ id: 5, name: "Large Apple Vanilla Candle", sku: "RH-CANDLE-LG-AP", asin: "B0FVGM15J7", available: 34, inbound: 0, unitsSold30: 8, price: 59, channels: ["Amazon"], status: "ok", notes: "Good velocity. Monitor stock — 18 weeks supply." },
-{ id: 6, name: "Bath Salts Unscented", sku: "LH-BATH-SALT-UN", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "Upcoming Amazon launch. ASIN TBD." },
-// ── SHOPIFY ONLY ──
-{ id: 7, name: "Dough Bowl Vessel Candle", sku: "LH-VESSEL-DOUGH", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Shopify only. Add stock levels and pricing." },
-{ id: 8, name: "Sugar Scrub", sku: "LH-SCRUB-SUGAR", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 38, channels: ["Shopify"], status: "ok", notes: "Shopify only. Manufacturing in Spain. Amazon launch in 3-4 months." },
-// ── COMING SOON ──
-{ id: 9, name: "Lavender Body Oil", sku: "LH-OIL-LAV", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify first. Plan Amazon launch — update channel when live." },
-{ id: 10, name: "Moroccan Soap", sku: "LH-SOAP-MOR", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify only for now." },
-];
-
-const INITIAL_CAMPAIGNS = [
-{ id: 1, name: "Sand Wax – Phrase Match Discovery", budget: 3, spend7d: 11.86, sales7d: 26, purchases: 1, roas: 2.19, status: "keep", recommendation: "Keep running — ROAS 2.19 is profitable. Watch weekly." },
-{ id: 2, name: "Sand Wax – H10 High Search Volume", budget: 5, spend7d: 10.40, sales7d: 26, purchases: 1, roas: 2.50, status: "keep", recommendation: "Best performer. ROAS 2.50. Increase budget to $8/day." },
-{ id: 3, name: "Sand Wax – Broad Match Expansion", budget: 5, spend7d: 62.97, sales7d: 0, purchases: 0, roas: 0, status: "pause", recommendation: "PAUSE NOW. $63 spent, zero sales. Bleeding money." },
-{ id: 4, name: "Sand Wax – Exact Match High Intent", budget: 5, spend7d: 0, sales7d: 0, purchases: 0, roas: 0, status: "monitor", recommendation: "No data yet. Give 2 more weeks before evaluating." },
-{ id: 5, name: "Sand Wax – Product Targeting", budget: 5, spend7d: 2.88, sales7d: 0, purchases: 0, roas: 0, status: "watch", recommendation: "Low spend, no sales yet. Set $3 spend limit before pausing." },
-];
-
-const MATERIALS = [
-{ id: 1, name: "Cling wrap", status: "out", note: "OUT — order immediately", buyLink: "", estCost: null, priority: 1 },
-{ id: 2, name: "Paraffin 1301/1407", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 2 },
-{ id: 3, name: "Wicks", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 2 },
-{ id: 4, name: "Mesh bags SS", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 3 },
-{ id: 5, name: "Spiced Apple EO scents", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 2 },
-{ id: 6, name: "EO Balsam Fir", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 3 },
-{ id: 7, name: "Jojoba", status: "reorder", note: "Flagged for reorder", buyLink: "", estCost: null, priority: 3 },
-{ id: 8, name: "Sticker rolls", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
-{ id: 9, name: "Parchment paper", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
-{ id: 10, name: "Cinnamon sticks", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
-{ id: 11, name: "Apple Honey fragrance", status: "ok", note: "", buyLink: "", estCost: null, priority: 4 },
-];
-
-const WEEKLY_BUDGET = 250;
-
-const CHECKLIST_ITEMS = [
-{ id: 1, category: "Inventory", task: "Check FBA stock levels for each SKU", detail: "Flag anything under 6 weeks of supply" },
-{ id: 2, category: "Inventory", task: "Review inbound shipments", detail: "Confirm seashell vessels ETA and update tracker" },
-{ id: 3, category: "Inventory", task: "Update raw materials reorder list", detail: "Check with partner on what needs ordering" },
-{ id: 4, category: "Ads", task: "Check TACOS for each campaign", detail: "Target under 30%. Pause anything over 100% with no sales." },
-{ id: 5, category: "Ads", task: "Review clicks but no sales targets", detail: "Cut any keyword that spent $3+ with zero purchases" },
-{ id: 6, category: "Ads", task: "Check ROAS on active campaigns", detail: "Target above 2.5. Increase budget on anything above 3.0." },
-{ id: 7, category: "Ads", task: "Review organic vs paid sales split", detail: "Goal: grow organic % month over month" },
-{ id: 8, category: "Sales", task: "Compare units sold vs prior 2 weeks", detail: "Flag any SKU down more than 20%" },
-{ id: 9, category: "Sales", task: "Check Shopify sales", detail: "Currently $600-1k/mo. Note any spikes tied to promotions." },
-{ id: 10, category: "Growth", task: "Review Brand Analytics search terms", detail: "Look for new keywords customers are finding you with" },
-{ id: 11, category: "Growth", task: "Check storefront performance", detail: "Any visits? Update seasonal imagery if needed." },
-{ id: 12, category: "Growth", task: "Scrub + body care launch prep", detail: "Track manufacturing progress. Target Amazon launch in 3-4 months." },
-];
-
-const ROADMAP = [
-{ month: "June 2026", items: ["Pause Broad Match campaign", "Ship 200 SeaShell Vessels to FBA", "Launch SeaShell + Sand Wax bundle campaign", "Take over operations from agency"] },
-{ month: "July 2026", items: ["Optimize campaigns based on first 30 days of data", "Build negative keyword list from wasted spend", "Add more scent variants to Sand Wax if velocity improves", "Set up Make/Zapier for automated inventory sync"] },
-{ month: "August 2026", items: ["Review body scrub manufacturing status", "Begin keyword research for scrub launch", "Build out Amazon storefront with full brand story", "Test Sponsored Brand video ads"] },
-{ month: "Sep–Oct 2026", items: ["Launch body scrub on Amazon", "Cross-sell scrub + candle bundles", "Launch body oil, body lotion", "Begin Q4 holiday inventory planning"] },
-];
-
-const INITIAL_PROFIT = [
-{ id: 1, name: "Beeswax Candle Sand 16oz", price: 26.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.15, fbaStorage: 0.50, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
-{ id: 2, name: "Beeswax Candle Sand 32oz", price: 46.00, referralPct: 15, evComPct: 3, fbaFulfillment: 5.20, fbaStorage: 0.80, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
-{ id: 3, name: "Small Apple Vanilla Candle", price: 18.99, referralPct: 15, evComPct: 3, fbaFulfillment: 3.50, fbaStorage: 0.30, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
-{ id: 4, name: "Large Apple Vanilla Candle", price: 59.00, referralPct: 15, evComPct: 3, fbaFulfillment: 6.50, fbaStorage: 1.00, shipping: null, cogs: null, adSpend: null, accountantNote: "" },
-{ id: 6, name: "SeaShell Vessel Candle", price: null, referralPct: 15, evComPct: 3, fbaFulfillment: null, fbaStorage: null, shipping: null, cogs: null, adSpend: null, accountantNote: "Price TBD — set before launch" },
-{ id: 7, name: "Sugar Scrub 8oz Tin (UPCOMING)", price: 38.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.15, fbaStorage: 0.50, shipping: null, cogs: 15.00, adSpend: null, accountantNote: "COGS $15/unit first run. Spain shipping cost TBD — add per-unit freight cost." },
-{ id: 8, name: "Sugar Scrub 16oz Pouch (UPCOMING)", price: 49.00, referralPct: 15, evComPct: 3, fbaFulfillment: 4.72, fbaStorage: 0.72, shipping: null, cogs: null, adSpend: null, accountantNote: "Spain shipping cost TBD" },
-{ id: 9, name: "Sugar Scrub 32oz Pouch (UPCOMING)", price: 89.60, referralPct: 15, evComPct: 3, fbaFulfillment: 6.20, fbaStorage: 1.10, shipping: null, cogs: null, adSpend: null, accountantNote: "Spain shipping cost TBD" },
-];
-
-const PRICE_PER_OZ = [
-{ id: 1, category: "Candles", name: "Beeswax Candle Sand 16oz", asin: "B0GR1NWNG8", price: 26.00, oz: 16, yours: true },
-{ id: 2, category: "Candles", name: "Beeswax Candle Sand 32oz", asin: "B0GR1KQ253", price: 46.00, oz: 32, yours: true },
-{ id: 3, category: "Candles", name: "Small Apple Vanilla", asin: "B0FVGM15JB", price: 18.99, oz: null, yours: true },
-{ id: 4, category: "Candles", name: "Large Apple Vanilla", asin: "B0FVGM15J7", price: 59.00, oz: null, yours: true },
-{ id: 5, category: "Body Scrub (Upcoming)", name: "Sugar Scrub 8oz Tin", asin: "—", price: 38.00, oz: 8, yours: true },
-{ id: 6, category: "Body Scrub (Upcoming)", name: "Sugar Scrub 16oz Pouch", asin: "—", price: 49.00, oz: 16, yours: true },
-{ id: 7, category: "Body Scrub (Upcoming)", name: "Sugar Scrub 32oz Pouch", asin: "—", price: 89.60, oz: 32, yours: true },
-{ id: 8, category: "Body Scrub (Competitor)", name: "Competitor A (16oz)", asin: "B00HSIPHD2", price: 37.95, oz: 16, yours: false },
-{ id: 9, category: "Body Scrub (Competitor)", name: "Competitor B (8oz)", asin: "B07H52SVM7", price: 40.00, oz: 8.8, yours: false },
-{ id: 10, category: "Body Scrub (Competitor)", name: "Competitor C (16oz)", asin: "B07JH3FLHM", price: 28.95, oz: 16, yours: false },
-{ id: 11, category: "Body Scrub (Competitor)", name: "Competitor D (16oz)", asin: "B07M5PKHWX", price: 28.95, oz: 16, yours: false },
-];
-
-// ── HELPERS ──────────────────────────────────────────────────────────────────
-
-function weeksOfSupply(available, sold30) {
-if (sold30 === 0) return available > 0 ? 99 : 0;
-return Math.round((available / sold30) * 4.3);
-}
-
-function stockStatus(p) {
-if (p.status === "inbound") return "inbound";
-const w = weeksOfSupply(p.available, p.unitsSold30);
-if (p.available === 0) return "out";
-if (w < 6) return "low";
-if (w > 50 && p.unitsSold30 < 3) return "slow";
-return "ok";
-}
-
-const STATUS_STYLE = {
-out: { color: "#9b5e5e", bg: "#9b5e5e14", label: "OUT OF STOCK" },
-inbound: { color: "#a07848", bg: "#a0784814", label: "INBOUND" },
-low: { color: "#a07848", bg: "#a0784814", label: "LOW STOCK" },
-slow: { color: "#7a7a9a", bg: "#7a7a9a14", label: "SLOW MOVER" },
-ok: { color: "#5a7a5a", bg: "#5a7a5a14", label: "HEALTHY" },
+import { useState, useMemo, Fragment } from "react";
+ 
+/* ============================================================================
+   LAVALLE HAUS OS — PROFIT MATRIX  (channel P&L edition)
+   Weekly founder operating system & decision cockpit.
+ 
+       <ProfitMatrix data={data} onSave={(payload) => persist(payload)} />
+ 
+   data   = { products:[...], opex:[...], profitAdjustments:{...} }
+   onSave = called with { products, opex, adjustments }. Wire it to POST your
+            full Redis object back to api/data.js.
+ 
+   CHANNEL MODEL (per your operations):
+   - Amazon  : FBA inventory pool, Amazon referral + FBA fees, Amazon PPC.
+   - Shopify : own on-hand inventory, Shopify processing + shipping, Meta/PPC,
+               plus UGC/influencer marketing (gifting + agencies) as OPEX.
+   - B2B     : Atlas CONSIGNMENT inventory (still your asset until sold),
+               3% Atlas commission per sale, $1,700/quarter placement fee (OPEX).
+ 
+   Headline tiles are CLICKABLE -> line-by-line attribution + editable cells for
+   the bi-monthly audit, with a manual reconciliation field per metric.
+   ========================================================================== */
+ 
+const c = {
+  bg:"#f7f4ef", panel:"#fffdf9", ink:"#2b2620", sub:"#6f6657",
+  line:"#e4ddd0", lineSoft:"#efe9de", sage:"#6b7257", clay:"#a8643c", gold:"#b08d57",
+  green:"#5c7a52", yellow:"#b78b2e", red:"#a8483a",
 };
-
-const CAMP_STYLE = {
-pause: { color: "#9b5e5e", label: "PAUSE" },
-keep: { color: "#5a7a5a", label: "KEEP" },
-watch: { color: "#a07848", label: "WATCH" },
-monitor: { color: "#7a7a9a", label: "MONITOR" },
-};
-
-function fmt(n, prefix = "$") {
-if (n === null || n === undefined || n === "") return "—";
-return `${prefix}${parseFloat(n).toFixed(2)}`;
-}
-
-// ── COMPONENTS ───────────────────────────────────────────────────────────────
-
-function Tag({ color, label }) {
-return <span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 1, padding: "2px 8px", borderRadius: 1, background: color + "22", color, border: `1px solid ${color}44` }}>{label}</span>;
-}
-
-function Card({ children, style = {} }) {
-return <div style={{ background: "#edeae4", border: "1px solid #3a3020", borderRadius: 1, padding: "18px 20px", ...style }}>{children}</div>;
-}
-
-function SectionTitle({ children }) {
-return <div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", marginBottom: 20, fontFamily: "monospace", fontWeight: 400 }}>{children}</div>;
-}
-
-function NumInput({ value, onChange, prefix = "$", placeholder = "Enter" }) {
-return (
-<input
-value={value === null || value === undefined ? "" : value}
-onChange={e => onChange(e.target.value === "" ? null : e.target.value)}
-placeholder={placeholder}
-style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "3px 6px", color: "#1a1714", fontSize: 12, textAlign: "center", fontFamily: "monospace" }}
-/>
-);
-}
-
-// ── TAB: INVENTORY ────────────────────────────────────────────────────────────
-
-function InventoryTab({ products, setProducts, dbState, setDbState }) {
-const [editing, setEditing] = useState(null);
-const [draft, setDraft] = useState({});
-
-function startEdit(p) {
-setEditing(p.id);
-setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, channels: p.channels || ["Amazon"] });
-}
-
-function saveEdit(id) {
-setProducts(prev => {
-const updated = prev.map(p => p.id !== id ? p : {
-...p,
-available: +draft.available || 0,
-inbound: +draft.inbound || 0,
-unitsSold30: +draft.unitsSold30 || 0,
-notes: draft.notes,
-channels: draft.channels,
-});
-// Persist to DB
-const full = { ...dbState, products: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-setEditing(null);
-}
-
-function toggleChannel(ch) {
-setDraft(d => {
-const has = d.channels.includes(ch);
-const next = has ? d.channels.filter(c => c !== ch) : [...d.channels, ch];
-return { ...d, channels: next.length ? next : [ch] };
-});
-}
-
-const sorted = [...products].sort((a, b) => {
-const order = { out: 0, low: 1, inbound: 2, slow: 3, ok: 4 };
-return (order[stockStatus(a)] ?? 5) - (order[stockStatus(b)] ?? 5);
-});
-
-return (
-<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-<SectionTitle>Amazon FBA Inventory</SectionTitle>
-{sorted.map(p => {
-const st = stockStatus(p);
-const { color, bg, label } = STATUS_STYLE[st];
-const weeks = weeksOfSupply(p.available, p.unitsSold30);
-const isEditing = editing === p.id;
-return (
-<Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1, minWidth: 200 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "'IM Fell English', Georgia, serif", fontSize: 15, color: "#1a1714" }}>{p.name}</span>
-<Tag color={color} label={label} />
-</div>
-<div style={{ fontSize: 11, color: "#a09488", fontFamily: "monospace", marginBottom: 6 }}>{p.sku}{p.asin ? ` · ${p.asin}` : ""}</div>
-<div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-{(p.channels || ["Amazon"]).map(ch => (
-<span key={ch} style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 1.5, padding: "2px 8px", background: ch === "Amazon" ? "#a0784814" : ch === "Shopify" ? "#5a7a5a14" : "#7a7a9a14", color: ch === "Amazon" ? "#a07848" : ch === "Shopify" ? "#5a7a5a" : "#7a7a9a", border: `1px solid ${ch === "Amazon" ? "#a0784830" : ch === "Shopify" ? "#5a7a5a30" : "#7a7a9a30"}` }}>
-{ch.toUpperCase()}
-</span>
-))}
-</div>
-{p.notes && <div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
-<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-<div style={{ flex: 1, height: 4, background: "#e5e1da", borderRadius: 1 }}>
-<div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
-</div>
-<span style={{ fontSize: 12, color, fontFamily: "monospace", minWidth: 40 }}>{weeks === 0 ? "—" : weeks > 99 ? "99+w" : `${weeks}w`}</span>
-</div>
-</div>
-<div>
-{isEditing ? (
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-<div style={{ display: "flex", gap: 8 }}>
-{[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
-<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: 56, background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "4px 6px", color: "#1a1714", fontSize: 13, textAlign: "center", fontFamily: "monospace" }} />
-</div>
-))}
-</div>
-<textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} rows={2}
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace", resize: "none" }} />
-<div style={{ marginBottom: 4 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 6 }}>Sold On</div>
-<div style={{ display: "flex", gap: 8 }}>
-{["Amazon", "Shopify"].map(ch => (
-<div key={ch} onClick={() => toggleChannel(ch)} style={{ cursor: "pointer", padding: "4px 12px", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, border: `1px solid ${draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#c8c2b8"}`, color: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#a09488", background: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a0784814" : "#5a7a5a14") : "transparent" }}>
-{ch}
-</div>
-))}
-</div>
-</div>
-<div style={{ display: "flex", gap: 6 }}>
-<button onClick={() => saveEdit(p.id)} style={{ flex: 1, background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
-<button onClick={() => setEditing(null)} style={{ flex: 1, background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12 }}>Cancel</button>
-</div>
-</div>
-) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30]].map(([l, v]) => (
-<div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
-<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
-</div>
-))}
-<button onClick={() => startEdit(p)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>Edit</button>
-</div>
-)}
-</div>
-</div>
-</Card>
-);
-})}
-</div>
-);
-}
-
-// ── TAB: ADS ─────────────────────────────────────────────────────────────────
-
-function AdsTab({ campaigns }) {
-const totalSpend = campaigns.reduce((s, c) => s + c.spend7d, 0);
-const totalSales = campaigns.reduce((s, c) => s + c.sales7d, 0);
-const overallTacos = totalSales > 0 ? ((totalSpend / totalSales) * 100).toFixed(0) : "—";
-
-return (
-<div>
-<SectionTitle>Campaign Performance · Last 7 Days</SectionTitle>
-<div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-{[
-{ label: "Total Ad Spend", value: `$${totalSpend.toFixed(2)}`, color: "#a07848" },
-{ label: "Total Ad Sales", value: `$${totalSales.toFixed(2)}`, color: "#5a7a5a" },
-{ label: "Overall TACOS", value: `${overallTacos}%`, color: overallTacos > 30 ? "#9b5e5e" : "#5a7a5a" },
-].map(s => (
-<Card key={s.label} style={{ flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
-<div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-<div style={{ fontSize: 10, color: "#a09488", letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>{s.label}</div>
-</Card>
-))}
-</div>
-<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-{campaigns.map(c => {
-const { color, label } = CAMP_STYLE[c.status];
-return (
-<Card key={c.id} style={{ borderLeft: `3px solid ${color}` }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "monospace", fontSize: 13, color: "#1a1714" }}>{c.name}</span>
-<Tag color={color} label={label} />
-</div>
-<div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic" }}>{c.recommendation}</div>
-</div>
-<div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-{[["Budget", `$${c.budget}/d`], ["Spend 7d", `$${c.spend7d}`], ["Sales 7d", `$${c.sales7d}`], ["ROAS", c.roas || "—"]].map(([l, v]) => (
-<div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 15, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
-<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
-</div>
-))}
-</div>
-</div>
-</Card>
-);
-})}
-</div>
-<Card style={{ marginTop: 16, borderLeft: "3px solid #8b8bff" }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "monospace", marginBottom: 8 }}>IMMEDIATE ACTION</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Pause "Broad Match Expansion" today — $62.97 spent this week with zero purchases. Reallocate that $5/day to H10 High Search Volume (ROAS 2.50).
-</div>
-</Card>
-</div>
-);
-}
-
-// ── TAB: PROFIT MATRIX ────────────────────────────────────────────────────────
-
-function ProfitTab() {
-const [rows, setRows] = useState(INITIAL_PROFIT);
-const [editing, setEditing] = useState(null);
-
-function update(id, field, val) {
-setRows(prev => prev.map(r => r.id !== id ? r : { ...r, [field]: val }));
-}
-
-function calcProfit(r) {
-if (!r.price || !r.cogs) return null;
-const price = parseFloat(r.price);
-const referral = price * (r.referralPct / 100);
-const evCom = price * (r.evComPct / 100);
-const fba = parseFloat(r.fbaFulfillment || 0);
-const storage = parseFloat(r.fbaStorage || 0);
-const ship = parseFloat(r.shipping || 0);
-const cogs = parseFloat(r.cogs || 0);
-const ads = parseFloat(r.adSpend || 0);
-const totalFees = referral + evCom + fba + storage + ship;
-const profit = price - totalFees - cogs - ads;
-const margin = ((profit / price) * 100).toFixed(1);
-return { profit: profit.toFixed(2), margin, totalFees: totalFees.toFixed(2) };
-}
-
-const upcoming = rows.filter(r => r.name.includes("UPCOMING"));
-const current = rows.filter(r => !r.name.includes("UPCOMING"));
-
-return (
-<div>
-<SectionTitle>Profit Matrix · For Accountant Review</SectionTitle>
-<Card style={{ borderLeft: "3px solid #f5a623", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#a07848", fontFamily: "monospace", marginBottom: 6 }}>ACCOUNTANT NOTE</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1a1714" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
-</div>
-</Card>
-
-{[{ label: "Current Products", data: current }, { label: "Upcoming Products", data: upcoming }].map(section => (
-<div key={section.label} style={{ marginBottom: 24 }}>
-<div style={{ fontSize: 11, color: "#9c8d7b", letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 12 }}>{section.label}</div>
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-{section.data.map(r => {
-const calc = calcProfit(r);
-const isEditing = editing === r.id;
-return (
-<Card key={r.id} style={{ borderLeft: `3px solid ${calc ? (parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#a07848") : "#c8c2b8"}` }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1, minWidth: 160 }}>
-<div style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", marginBottom: 4 }}>{r.name.replace(" (UPCOMING)", "")}</div>
-{r.accountantNote && <div style={{ fontSize: 11, color: "#a07848", fontStyle: "italic", marginBottom: 6 }}>{r.accountantNote}</div>}
-<div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
-{[
-["List Price", fmt(r.price)],
-["Amazon Fees", calc ? fmt(calc.totalFees) : "—"],
-["COGS", fmt(r.cogs)],
-["Shipping", fmt(r.shipping)],
-["Ad Spend", fmt(r.adSpend)],
-].map(([l, v]) => (
-<div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: v === "—" ? "#c8c2b8" : "#1a1714", fontFamily: "monospace" }}>{v}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
-</div>
-))}
-{calc && (
-<>
-<div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: parseFloat(calc.profit) > 0 ? "#5a7a5a" : "#9b5e5e", fontFamily: "monospace", fontWeight: 700 }}>{fmt(calc.profit)}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>Est. Profit</div>
-</div>
-<div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#a07848", fontFamily: "monospace", fontWeight: 700 }}>{calc.margin}%</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>Margin</div>
-</div>
-</>
-)}
-</div>
-</div>
-<div>
-{isEditing ? (
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-{[["price", "List Price"], ["cogs", "COGS/unit"], ["shipping", "Ship/unit"], ["adSpend", "Ad/unit"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
-<NumInput value={r[f]} onChange={val => update(r.id, f, val)} />
-</div>
-))}
-</div>
-<input value={r.accountantNote} onChange={e => update(r.id, "accountantNote", e.target.value)} placeholder="Notes..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace" }} />
-<button onClick={() => setEditing(null)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Done</button>
-</div>
-) : (
-<button onClick={() => setEditing(r.id)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>
-{r.cogs ? "Edit" : "Fill In"}
-</button>
-)}
-</div>
-</div>
-</Card>
-);
-})}
-</div>
-</div>
-))}
-</div>
-);
-}
-
-// ── TAB: PRICE PER OZ ────────────────────────────────────────────────────────
-
-function PriceOzTab() {
-const [rows, setRows] = useState(PRICE_PER_OZ);
-const categories = [...new Set(rows.map(r => r.category))];
-
-function pricePerOz(r) {
-if (!r.oz || !r.price) return null;
-return (r.price / r.oz).toFixed(2);
-}
-
-return (
-<div>
-<SectionTitle>Price Per Oz · Positioning Analysis</SectionTitle>
-<Card style={{ borderLeft: "3px solid #8b8bff", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "monospace", marginBottom: 6 }}>WHY THIS MATTERS</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Your Sugar Scrub 8oz Tin at $38 = <strong style={{ color: "#1a1714" }}>$4.75/oz</strong> — premium positioning vs competitors at $1.81–$2.37/oz. This is defensible if your branding and ingredients story is strong. The 32oz pouch at $89.60 = $2.80/oz is more competitive.
-</div>
-</Card>
-{categories.map(cat => (
-<div key={cat} style={{ marginBottom: 20 }}>
-<div style={{ fontSize: 11, color: "#9c8d7b", letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 10 }}>{cat}</div>
-<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-{rows.filter(r => r.category === cat).sort((a, b) => (pricePerOz(b) || 0) - (pricePerOz(a) || 0)).map(r => {
-const ppoz = pricePerOz(r);
-const color = r.yours ? "#8c7d6b" : "#a09488";
-return (
-<div key={r.id} style={{ background: "#edeae4", border: `1px solid ${r.yours ? "#c8c2b8" : "#e5e1da"}`, borderLeft: `3px solid ${r.yours ? "#8c7d6b" : "#d4cfc7"}`, borderRadius: 1, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-<div>
-<div style={{ fontSize: 13, color: r.yours ? "#1a1714" : "#9c8d7b", fontFamily: "'IM Fell English', Georgia, serif" }}>
-{r.name} {r.yours && <span style={{ fontSize: 10, color: "#8c7d6b", fontFamily: "monospace" }}>YOU</span>}
-</div>
-<div style={{ fontSize: 10, color: "#a09488", fontFamily: "monospace", marginTop: 2 }}>{r.asin}</div>
-</div>
-<div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-<div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#1a1714", fontFamily: "monospace" }}>{fmt(r.price)}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>Price</div>
-</div>
-<div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#5a5550", fontFamily: "monospace" }}>{r.oz ? `${r.oz}oz` : "—"}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>Size</div>
-</div>
-<div style={{ textAlign: "center", minWidth: 60 }}>
-<div style={{ fontSize: 16, fontWeight: 700, color: ppoz ? color : "#c8c2b8", fontFamily: "monospace" }}>{ppoz ? `$${ppoz}` : "—"}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>/oz</div>
-</div>
-</div>
-</div>
-);
-})}
-</div>
-</div>
-))}
-</div>
-);
-}
-
-// ── TAB: WEEKLY SNAPSHOT ──────────────────────────────────────────────────────
-
-const BLANK_WEEK = { date: "", units: "", revenue: "", adSpend: "", adSales: "", organicSales: "", sessions: "", notes: "" };
-
-function WeeklyTab({ weeks, setWeeks, dbState, setDbState }) {
-const [adding, setAdding] = useState(false);
-const [draft, setDraft] = useState(BLANK_WEEK);
-
-function saveWeek() {
-if (!draft.date) return;
-setWeeks(prev => {
-const updated = [{ ...draft, id: Date.now() }, ...prev];
-const full = { ...dbState, weekly: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-setDraft(BLANK_WEEK);
-setAdding(false);
-}
-
-function tacos(w) {
-if (!w.adSpend || !w.revenue) return null;
-return ((parseFloat(w.adSpend) / parseFloat(w.revenue)) * 100).toFixed(0);
-}
-
-return (
-<div>
-<SectionTitle>Weekly Numbers · Enter Each Monday</SectionTitle>
-<Card style={{ borderLeft: "3px solid #a89060", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#8c7d6b", fontFamily: "monospace", marginBottom: 6 }}>HOW TO USE</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Every Monday, pull your weekly numbers from Amazon Seller Central → Reports → Business Reports. Takes 5 minutes. Paste in below to track trends over time.
-</div>
-</Card>
-
-{adding ? (
-<Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}>
-<div style={{ fontSize: 12, color: "#5a7a5a", fontFamily: "monospace", marginBottom: 12 }}>NEW WEEK ENTRY</div>
-<div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-{[["date","Week of (date)","text"], ["units","Units Sold","number"], ["revenue","Total Revenue $","number"], ["adSpend","Ad Spend $","number"], ["adSales","Ad Sales $","number"], ["organicSales","Organic Sales $","number"], ["sessions","Sessions","number"]].map(([f, l, t]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
-<input type={t} value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: t === "text" ? 110 : 80, background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "4px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }} />
-</div>
-))}
-</div>
-<input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes (promotions, stockouts, anything unusual)..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 10px", color: "#8c7d6b", fontSize: 12, fontFamily: "monospace", marginBottom: 10 }} />
-<div style={{ display: "flex", gap: 8 }}>
-<button onClick={saveWeek} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "7px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save Week</button>
-<button onClick={() => setAdding(false)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "7px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
-</div>
-</Card>
-) : (
-<button onClick={() => setAdding(true)} style={{ background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "monospace", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
-+ ADD THIS WEEK'S NUMBERS
-</button>
-)}
-
-{weeks.length === 0 && !adding && (
-<Card style={{ textAlign: "center", padding: "32px 20px" }}>
-<div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div>
-</Card>
-)}
-
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-{weeks.map((w, i) => {
-const t = tacos(w);
-const prevWeek = weeks[i + 1];
-const revChange = prevWeek && w.revenue && prevWeek.revenue
-? (((parseFloat(w.revenue) - parseFloat(prevWeek.revenue)) / parseFloat(prevWeek.revenue)) * 100).toFixed(0)
-: null;
-return (
-<Card key={w.id} style={{ borderLeft: `3px solid ${i === 0 ? "#8c7d6b" : "#d4cfc7"}` }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-<div>
-<div style={{ fontSize: 13, color: "#1a1714", fontFamily: "monospace", marginBottom: 4 }}>Week of {w.date}</div>
-{w.notes && <div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{w.notes}</div>}
-</div>
-<div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-{[
-["Revenue", w.revenue ? `$${w.revenue}` : "—", revChange ? (revChange > 0 ? "#5a7a5a" : "#9b5e5e") : "#1a1714"],
-["Units", w.units || "—", "#1a1714"],
-["Ad Spend", w.adSpend ? `$${w.adSpend}` : "—", "#a07848"],
-["TACOS", t ? `${t}%` : "—", t ? (t < 30 ? "#5a7a5a" : t < 60 ? "#a07848" : "#9b5e5e") : "#1a1714"],
-["Sessions", w.sessions || "—", "#7a7a9a"],
-].map(([l, v, c]) => (
-<div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 15, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
-{l === "Revenue" && revChange && <div style={{ fontSize: 9, color: parseFloat(revChange) > 0 ? "#5a7a5a" : "#9b5e5e" }}>{revChange > 0 ? "+" : ""}{revChange}% vs prior</div>}
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
-</div>
-))}
-</div>
-</div>
-</Card>
-);
-})}
-</div>
-</div>
-);
-}
-
-// ── TAB: CHECKLIST ────────────────────────────────────────────────────────────
-
-function ChecklistTab() {
-const [checked, setChecked] = useState({});
-const [lastRun, setLastRun] = useState(null);
-const categories = [...new Set(CHECKLIST_ITEMS.map(i => i.category))];
-const allDone = CHECKLIST_ITEMS.every(i => checked[i.id]);
-
-function toggle(id) { setChecked(p => ({ ...p, [id]: !p[id] })); }
-function reset() { setChecked({}); setLastRun(new Date().toLocaleDateString()); }
-
-return (
-<div>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-<SectionTitle>Bi-Weekly Review Checklist</SectionTitle>
-<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-{lastRun && <span style={{ fontSize: 11, color: "#a09488", fontFamily: "monospace" }}>Last: {lastRun}</span>}
-<button onClick={reset} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 12px", cursor: "pointer", fontSize: 11 }}>Reset</button>
-</div>
-</div>
-{allDone && <Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}><div style={{ color: "#5a7a5a", fontFamily: "monospace", fontSize: 13 }}>All done! Come back in 2 weeks.</div></Card>}
-{categories.map(cat => (
-<div key={cat} style={{ marginBottom: 20 }}>
-<div style={{ fontSize: 11, color: "#9c8d7b", letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 10, paddingLeft: 4 }}>{cat}</div>
-<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-{CHECKLIST_ITEMS.filter(i => i.category === cat).map(item => (
-<div key={item.id} onClick={() => toggle(item.id)} style={{ display: "flex", gap: 12, alignItems: "flex-start", background: checked[item.id] ? "#eae8e3" : "#edeae4", border: `1px solid ${checked[item.id] ? "#30d15840" : "#d4cfc7"}`, borderRadius: 1, padding: "12px 14px", cursor: "pointer" }}>
-<div style={{ width: 18, height: 18, borderRadius: 1, border: `1px solid ${checked[item.id] ? "#1a1714" : "#c8c2b8"}`, background: checked[item.id] ? "#1a1714" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-{checked[item.id] && <span style={{ color: "#f7f4ef", fontSize: 11, fontWeight: 400 }}>✓</span>}
-</div>
-<div>
-<div style={{ fontSize: 13, color: checked[item.id] ? "#a09488" : "#1a1714", textDecoration: checked[item.id] ? "line-through" : "none", fontFamily: "'IM Fell English', Georgia, serif" }}>{item.task}</div>
-<div style={{ fontSize: 11, color: "#a09488", marginTop: 3 }}>{item.detail}</div>
-</div>
-</div>
-))}
-</div>
-</div>
-))}
-</div>
-);
-}
-
-// ── TAB: MATERIALS ────────────────────────────────────────────────────────────
-
-function MaterialsTab({ materials, setMaterials, dbState, setDbState }) {
-const [editId, setEditId] = useState(null);
-const [draft, setDraft] = useState({});
-
-const urgentItems = materials.filter(m => m.status === "out" || m.status === "reorder");
-const allocatedTotal = urgentItems.reduce((s, m) => s + (parseFloat(m.estCost) || 0), 0);
-const remaining = WEEKLY_BUDGET - allocatedTotal;
-
-function toggleStatus(id) {
-setMaterials(prev => {
-const updated = prev.map(m => m.id !== id ? m : {
-...m, status: m.status === "ok" ? "reorder" : m.status === "reorder" ? "out" : "ok"
-});
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-}
-
-function startEdit(m) {
-setEditId(m.id);
-setDraft({ buyLink: m.buyLink || "", estCost: m.estCost || "", note: m.note || "" });
-}
-
-function saveEdit(id) {
-setMaterials(prev => {
-const updated = prev.map(m => m.id !== id ? m : {
-...m,
-buyLink: draft.buyLink,
-estCost: draft.estCost === "" ? null : parseFloat(draft.estCost),
-note: draft.note,
-});
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-setEditId(null);
-}
-
-const sorted = [...materials].sort((a, b) => (a.priority || 9) - (b.priority || 9));
-
-return (
-<div>
-<SectionTitle>Raw Materials · Reorder Status</SectionTitle>
-
-<Card style={{ marginBottom: 20, borderLeft: "2px solid #a07848" }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-<div>
-<div style={{ fontSize: 9, letterSpacing: 3, color: "#a09488", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Weekly Materials Budget</div>
-<div style={{ fontSize: 11, color: "#9c8d7b", fontFamily: "monospace" }}>
-Enter estimated cost per item to track against your $250 weekly budget
-</div>
-</div>
-<div style={{ display: "flex", gap: 20 }}>
-{[
-{ label: "Budget", value: `$${WEEKLY_BUDGET}`, color: "#9c8d7b" },
-{ label: "Allocated", value: `$${allocatedTotal.toFixed(2)}`, color: "#a07848" },
-{ label: "Remaining", value: `$${remaining.toFixed(2)}`, color: remaining < 0 ? "#9b5e5e" : "#5a7a5a" },
-].map(s => (
-<div key={s.label} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 18, fontWeight: 400, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-<div style={{ fontSize: 9, color: "#b0a89a", letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</div>
-</div>
-))}
-</div>
-</div>
-<div style={{ marginTop: 14, height: 3, background: "#e5e1da" }}>
-<div style={{ width: `${Math.min((allocatedTotal / WEEKLY_BUDGET) * 100, 100)}%`, height: "100%", background: remaining < 0 ? "#9b5e5e" : "#a07848", transition: "width 0.4s" }} />
-</div>
-</Card>
-
-<div style={{ fontSize: 11, color: "#b0a89a", fontFamily: "monospace", marginBottom: 16, letterSpacing: 0.5 }}>
-Click <strong style={{ color: "#9c8d7b" }}>Edit</strong> on any item to add a purchase link and estimated cost. Tap status badge to cycle: OK → REORDER → OUT.
-</div>
-
-<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-{sorted.map(m => {
-const color = m.status === "out" ? "#9b5e5e" : m.status === "reorder" ? "#a07848" : "#5a7a5a";
-const label = m.status === "out" ? "OUT" : m.status === "reorder" ? "REORDER" : "OK";
-const isEditing = editId === m.id;
-const hasLink = m.buyLink && m.buyLink.trim() !== "";
-
-return (
-<div key={m.id} style={{ background: "#f0ede8", border: "1px solid #ddd8d0", borderLeft: `2px solid ${color}`, padding: "14px 16px" }}>
-{isEditing ? (
-<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-<div style={{ fontSize: 13, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", marginBottom: 4 }}>{m.name}</div>
-<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-<div style={{ flex: 2, minWidth: 200 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Purchase URL</div>
-<input value={draft.buyLink} onChange={e => setDraft(d => ({ ...d, buyLink: e.target.value }))} placeholder="https://amazon.com/dp/..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
-</div>
-<div style={{ minWidth: 100 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Est. Cost ($)</div>
-<input value={draft.estCost} onChange={e => setDraft(d => ({ ...d, estCost: e.target.value }))} placeholder="0.00" type="number"
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
-</div>
-<div style={{ flex: 2, minWidth: 160 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 4 }}>Notes</div>
-<input value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} placeholder="Supplier name, qty needed..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padding: "6px 10px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", outline: "none" }} />
-</div>
-</div>
-<div style={{ display: "flex", gap: 8 }}>
-<button onClick={() => saveEdit(m.id)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "6px 18px", cursor: "pointer", fontSize: 11, fontFamily: "monospace", letterSpacing: 1 }}>SAVE</button>
-<button onClick={() => setEditId(null)} style={{ background: "transparent", color: "#a09488", border: "1px solid #c8c2b8", padding: "6px 14px", cursor: "pointer", fontSize: 11, fontFamily: "monospace", letterSpacing: 1 }}>CANCEL</button>
-</div>
-</div>
-) : (
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>
-{hasLink ? (
-<a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif", textDecoration: "underline", textDecorationColor: "#c8c2b8", textUnderlineOffset: 3 }}>{m.name}</a>
-) : (
-<span style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{m.name}</span>
-)}
-{hasLink && <span style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "monospace", letterSpacing: 1 }}>↗ LINK ADDED</span>}
-</div>
-{m.note && <div style={{ fontSize: 11, color: "#9c8d7b", fontStyle: "italic" }}>{m.note}</div>}
-</div>
-<div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-{m.estCost && (
-<div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#a07848", fontFamily: "monospace" }}>${parseFloat(m.estCost).toFixed(2)}</div>
-<div style={{ fontSize: 9, color: "#b0a89a", textTransform: "uppercase", letterSpacing: 1 }}>Est.</div>
-</div>
-)}
-<div onClick={() => toggleStatus(m.id)} style={{ cursor: "pointer" }}>
-<Tag color={color} label={label} />
-</div>
-<button onClick={() => startEdit(m)} style={{ background: "transparent", color: "#a09488", border: "1px solid #c8c2b8", padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>EDIT</button>
-</div>
-</div>
-)}
-</div>
-);
-})}
-</div>
-
-<button onClick={() => {
-const newId = Math.max(...materials.map(m => m.id)) + 1;
-const newMaterial = { id: newId, name: "New Material", status: "reorder", note: "", buyLink: "", estCost: null, priority: 4 };
-setMaterials(prev => {
-const updated = [...prev, newMaterial];
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-setEditId(newId);
-setDraft({ buyLink: "", estCost: "", note: "" });
-}} style={{ marginTop: 14, width: "100%", background: "transparent", border: "1px dashed #c8c2b8", color: "#a09488", padding: "10px 0", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 2 }}>
-+ ADD MATERIAL
-</button>
-</div>
-);
-}
-
-// ── TAB: ROADMAP ──────────────────────────────────────────────────────────────
-
-function RoadmapTab() {
-return (
-<div>
-<SectionTitle>Lavalle Haus Growth Roadmap</SectionTitle>
-<div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-{ROADMAP.map((r, i) => (
-<Card key={i} style={{ borderLeft: `3px solid ${i === 0 ? "#a07848" : "#c8c2b8"}` }}>
-<div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-<div style={{ minWidth: 80 }}>
-<div style={{ fontSize: 11, fontFamily: "monospace", color: i === 0 ? "#a07848" : "#9c8d7b", letterSpacing: 1 }}>{r.month}</div>
-{i === 0 && <div style={{ fontSize: 9, color: "#a07848", fontFamily: "monospace", marginTop: 2 }}>NOW</div>}
-</div>
-<div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-{r.items.map((item, j) => (
-<div key={j} style={{ fontSize: 13, color: i === 0 ? "#1a1714" : "#9c8d7b", paddingLeft: 12, borderLeft: `1px solid ${i === 0 ? "#c8c2b8" : "#e5e1da"}`, fontFamily: "'IM Fell English', Georgia, serif" }}>{item}</div>
-))}
-</div>
-</div>
-</Card>
-))}
-</div>
-</div>
-);
-}
-
-// ── TAB: AI ADVISOR ───────────────────────────────────────────────────────────
-
-function AITab({ products, campaigns }) {
-const [q, setQ] = useState("");
-const [history, setHistory] = useState([]);
-const [loading, setLoading] = useState(false);
-
-const suggestions = [
-"What should I do with my ad spend this week?",
-"Which products are at risk of stocking out?",
-"When should I launch seashell vessel campaigns?",
-"How do I reduce TACOS below 30%?",
-"How should I price my scrub vs competitors?",
+const serif = "'IM Fell English', Georgia, 'Times New Roman', serif";
+const sans  = "'IM Fell English', Georgia, serif";
+const faintEs = { fontFamily:sans, fontSize:10.5, fontStyle:"italic", color:"rgba(111,102,87,0.6)", marginTop:1, lineHeight:1.3, fontWeight:400, letterSpacing:0, textTransform:"none" };
+ 
+const FEES = { amazonReferralPct:0.15, shopifyProcessingPct:0.029, shopifyProcessingFlat:0.3, returnsPct:0.02 };
+const B2B = { atlasCommissionPct:0.03, atlasPlacementPerQuarter:1700 };
+const ATLAS_WEEKLY = +(B2B.atlasPlacementPerQuarter / 13).toFixed(2); // $130.77/wk
+ 
+/* ---- SEED PRODUCTS (real SKUs; channel-split inventory) ----------------- */
+const SEED_PRODUCTS = [
+  { id:1, name:"SeaShell Vessel Candle", sku:"RH-SeaShell-9633", asin:"B0GR8452CL",
+    channels:["amazon","shopify","b2b"], retail:48, wholesale:24, cogs:8.5, packaging:2.0, freight:1.5,
+    shipShopify:5.0, fbaFee:5.5, storage:0.4, ad:{amazon:6,shopify:4},
+    units:{amazon:2,shopify:3,b2b:1}, prev:{amazon:1,shopify:2,b2b:0},
+    inv:{amazon:30,shopify:8,b2b:5}, inbound:200, leadWeeks:4, reorderLink:"https://refilleryhaus.myshopify.com" },
+  { id:2, name:"Beeswax Candle Sand 16oz", sku:"RH-Sandwax-AC-16c", asin:"B0GR1NWNG8",
+    channels:["amazon","shopify"], retail:22, wholesale:11, cogs:3.7, packaging:1.0, freight:0.8,
+    shipShopify:4.0, fbaFee:4.2, storage:0.25, ad:{amazon:3,shopify:2},
+    units:{amazon:4,shopify:2,b2b:0}, prev:{amazon:5,shopify:2,b2b:0},
+    inv:{amazon:40,shopify:20,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"" },
+  { id:3, name:"Beeswax Candle Sand 32oz", sku:"RH-Sandwax-AC-32c", asin:"B0GR1KQ253",
+    channels:["amazon"], retail:34, wholesale:17, cogs:6.1, packaging:1.2, freight:1.2,
+    shipShopify:6.0, fbaFee:5.8, storage:0.4, ad:{amazon:4,shopify:0},
+    units:{amazon:3,shopify:0,b2b:0}, prev:{amazon:2,shopify:0,b2b:0},
+    inv:{amazon:30,shopify:0,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"" },
+  { id:4, name:"Small Apple Vanilla Candle", sku:"RH-CANDLE-SM-AP", asin:"B0FVGM15JB",
+    channels:["amazon","shopify","b2b"], retail:18, wholesale:9, cogs:2.9, packaging:0.9, freight:0.7,
+    shipShopify:4.0, fbaFee:3.9, storage:0.2, ad:{amazon:4,shopify:2},
+    units:{amazon:3,shopify:1,b2b:0}, prev:{amazon:4,shopify:1,b2b:0},
+    inv:{amazon:15,shopify:10,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"" },
+  { id:5, name:"Large Apple Vanilla Candle", sku:"RH-CANDLE-LG-AP", asin:"B0FVGM15J7",
+    channels:["amazon","shopify"], retail:32, wholesale:16, cogs:5.8, packaging:1.1, freight:1.1,
+    shipShopify:5.5, fbaFee:5.5, storage:0.35, ad:{amazon:7,shopify:3},
+    units:{amazon:1,shopify:1,b2b:0}, prev:{amazon:2,shopify:1,b2b:0},
+    inv:{amazon:10,shopify:8,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"" },
+  { id:8, name:"Vanilla Cashmere Sugar Scrub", sku:"LH-SCRUB-VC", asin:"TBD",
+    channels:["shopify","b2b"], retail:24, wholesale:12, cogs:4.2, packaging:1.2, freight:0.6,
+    shipShopify:4.0, fbaFee:0, storage:0, ad:{amazon:0,shopify:3},
+    units:{amazon:0,shopify:4,b2b:1}, prev:{amazon:0,shopify:2,b2b:0},
+    inv:{amazon:0,shopify:40,b2b:10}, inbound:0, leadWeeks:4, reorderLink:"" },
+  { id:7, name:"Dough Bowl Vessel Candle", sku:"RH-DoughBowl", asin:"TBD",
+    channels:["shopify","b2b"], retail:58, wholesale:29, cogs:10.0, packaging:2.5, freight:2.0,
+    shipShopify:7.0, fbaFee:0, storage:0, ad:{amazon:0,shopify:5},
+    units:{amazon:0,shopify:2,b2b:0}, prev:{amazon:0,shopify:1,b2b:0},
+    inv:{amazon:0,shopify:18,b2b:4}, inbound:0, leadWeeks:4, reorderLink:"" },
 ];
-
-async function ask(question) {
-if (!question.trim()) return;
-const userMsg = { role: "user", content: question };
-setHistory(h => [...h, userMsg]);
-setQ("");
-setLoading(true);
-
-const invCtx = products.map(p => {
-const w = weeksOfSupply(p.available, p.unitsSold30);
-return `${p.name}: ${p.available} on hand, ${p.inbound} inbound, ${p.unitsSold30} sold/30d, ${w > 99 ? "99+" : w}w supply`;
-}).join("\n");
-
-const adCtx = campaigns.map(c =>
-`${c.name}: $${c.spend7d} spent, $${c.sales7d} sales, ROAS ${c.roas || 0}, status: ${c.status}`
-).join("\n");
-
-const sys = `You are the AI business advisor for Lavalle Haus, a botanical candle brand.
-BRAND: Clean eco-friendly botanical candles. Amazon FBA + Shopify. ~$880/mo Amazon revenue.
-SITUATION: Just took over from agency. Budget constrained. $30/day ad budget.
-UPCOMING: 200 SeaShell Vessels inbound. Body scrub (Spain manufacturing, $15 COGS first run) launching in 3-4 months. Also body oil, body lotion, body wash coming.
-INVENTORY:\n${invCtx}
-CAMPAIGNS:\n${adCtx}
-KEY ISSUES: Broad Match campaign burning $63/week with zero sales. Sand Wax 32oz barely moving. Sugar scrub priced at $38 (8oz tin) = $4.75/oz — premium vs market.
-Be direct, specific, actionable. No fluff.`;
-
-try {
-const res = await fetch("https://api.anthropic.com/v1/messages", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({
-model: "claude-sonnet-4-20250514",
-max_tokens: 1000,
-system: sys,
-messages: [...history, userMsg].map(m => ({ role: m.role, content: m.content })),
-}),
-});
-const data = await res.json();
-setHistory(h => [...h, { role: "assistant", content: data.content?.[0]?.text || "No response." }]);
-} catch {
-setHistory(h => [...h, { role: "assistant", content: "Connection error. Try again." }]);
-}
-setLoading(false);
-}
-
-return (
-<div style={{ display: "flex", flexDirection: "column" }}>
-<SectionTitle>AI Business Advisor · Knows Your Business</SectionTitle>
-{history.length === 0 && (
-<div style={{ marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#a09488", marginBottom: 10 }}>Suggested questions:</div>
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-{suggestions.map(s => (
-<button key={s} onClick={() => ask(s)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#8c7d6b", borderRadius: 1, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: "'IM Fell English', Georgia, serif" }}>{s}</button>
-))}
-</div>
-</div>
-)}
-<div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, maxHeight: 420, overflowY: "auto" }}>
-{history.map((m, i) => (
-<div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-<div style={{ maxWidth: "82%", background: m.role === "user" ? "#d4cfc7" : "#eae8e3", border: `1px solid #c8c2b8`, borderRadius: 1, padding: "10px 14px", fontSize: 13, color: m.role === "user" ? "#1a1714" : "#3a4a3a", lineHeight: 1.65, fontFamily: m.role === "user" ? "'IM Fell English', Georgia, serif" : "monospace", whiteSpace: "pre-wrap" }}>
-{m.content}
-</div>
-</div>
-))}
-{loading && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ background: "#eae8e3", border: "1px solid #2a4a2a", borderRadius: 1, padding: "10px 14px", fontSize: 13, color: "#7a9a7a", fontFamily: "monospace" }}>Thinking...</div></div>}
-</div>
-<div style={{ display: "flex", gap: 10 }}>
-<input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && ask(q)} placeholder="Ask anything about your business..."
-style={{ flex: 1, background: "#edeae4", border: "1px solid #4a3f2a", borderRadius: 1, padding: "10px 14px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif", outline: "none" }} />
-<button onClick={() => ask(q)} disabled={loading} style={{ background: loading ? "#d4cfc7" : "#8c7d6b", color: loading ? "#a09488" : "#0a0a06", border: "none", borderRadius: 1, padding: "10px 20px", cursor: loading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700 }}>Ask</button>
-</div>
-</div>
-);
-}
-
-// ── TAB: KEYWORDS ─────────────────────────────────────────────────────────────
-
-const INITIAL_KEYWORDS = [
-{ id: 1, product: "Beeswax Candle Sand 16oz", keyword: "beeswax candle sand", matchType: "phrase", spend: 11.86, clicks: 24, orders: 1, acos: 45, status: "keep", notes: "Main converting keyword. Watch ACOS." },
-{ id: 2, product: "Beeswax Candle Sand 16oz", keyword: "sand wax candle", matchType: "exact", spend: 10.40, clicks: 18, orders: 1, acos: 40, status: "keep", notes: "High intent. Keep bidding." },
-{ id: 3, product: "Beeswax Candle Sand 16oz", keyword: "candle wax sand art", matchType: "broad", spend: 62.97, clicks: 89, orders: 0, acos: null, status: "pause", notes: "PAUSE — $63 spent, zero orders." },
-{ id: 4, product: "Small Apple Vanilla Candle", keyword: "apple vanilla candle", matchType: "phrase", spend: 8.20, clicks: 31, orders: 2, acos: 22, status: "keep", notes: "Best performing keyword. ACOS 22%." },
-{ id: 5, product: "Small Apple Vanilla Candle", keyword: "spiced apple candle", matchType: "exact", spend: 4.10, clicks: 12, orders: 1, acos: 29, status: "keep", notes: "Profitable. Monitor." },
+ 
+/* ---- SEED CHANNEL MARKETING / OPERATING EXPENSES (weekly, editable) -----
+   Derived loosely from the marketing ledger. These are NON per-unit costs —
+   product PPC lives in each product's ad/unit. EDIT THESE to your actuals.   */
+const SEED_OPEX = [
+  { id:"o1", label:"UGC / influencer product gifting", category:"UGC", channel:"shopify", weekly:25 },
+  { id:"o2", label:"Influencer agencies (Memmermedia, Courtney Social)", category:"Influencer", channel:"shopify", weekly:150 },
+  { id:"o3", label:"Content / video production (Giggster, studio)", category:"Content", channel:"shopify", weekly:75 },
+  { id:"o4", label:"Amazon promotions / FBA gifting", category:"Promo", channel:"amazon", weekly:20 },
+  { id:"o5", label:"Atlas placement fee ($1,700 / quarter)", category:"Placement", channel:"b2b", weekly:ATLAS_WEEKLY },
 ];
-
-const KW_STATUS = {
-keep: { color: "#5a7a5a", label: "KEEP" },
-pause: { color: "#9b5e5e", label: "PAUSE" },
-test: { color: "#7a7a9a", label: "TEST" },
-watch: { color: "#a07848", label: "WATCH" },
-};
-
-const MATCH_COLORS = {
-exact: "#5a7a5a",
-phrase: "#a07848",
-broad: "#9b5e5e",
-};
-
-function KeywordsTab({ products }) {
-const [keywords, setKeywords] = useState(INITIAL_KEYWORDS);
-const [filter, setFilter] = useState("all");
-const [adding, setAdding] = useState(false);
-const [editId, setEditId] = useState(null);
-const [draft, setDraft] = useState({});
-const [aiProduct, setAiProduct] = useState("");
-const [aiResults, setAiResults] = useState([]);
-const [aiLoading, setAiLoading] = useState(false);
-
-const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];
-const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
-
-const BLANK = { product: productNames[0] || "", keyword: "", matchType: "exact", spend: "", clicks: "", orders: "", acos: "", status: "test", notes: "" };
-
-function saveNew() {
-if (!draft.keyword) return;
-setKeywords(prev => [{ ...draft, id: Date.now(), spend: +draft.spend || 0, clicks: +draft.clicks || 0, orders: +draft.orders || 0, acos: draft.acos ? +draft.acos : null }, ...prev]);
-setDraft(BLANK);
-setAdding(false);
-}
-
-function saveEdit(id) {
-setKeywords(prev => prev.map(k => k.id !== id ? k : { ...k, ...draft, spend: +draft.spend || 0, clicks: +draft.clicks || 0, orders: +draft.orders || 0, acos: draft.acos ? +draft.acos : null }));
-setEditId(null);
-}
-
-function startEdit(k) {
-setEditId(k.id);
-setDraft({ ...k });
-}
-
-async function generateKeywords() {
-if (!aiProduct) return;
-setAiLoading(true);
-setAiResults([]);
-try {
-const res = await fetch("https://api.anthropic.com/v1/messages", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({
-model: "claude-sonnet-4-20250514",
-max_tokens: 1000,
-system: `You are an Amazon PPC keyword research expert. Generate high-converting keywords for Amazon ads. Return ONLY a JSON array, no markdown, no explanation. Each item: { "keyword": string, "matchType": "exact"|"phrase"|"broad", "intent": "high"|"medium"|"low", "notes": string }`,
-messages: [{ role: "user", content: `Generate 12 Amazon PPC keywords for this product: "${aiProduct}". Focus on buyer intent keywords. Mix of exact, phrase, and broad match. Include long-tail keywords that convert well.` }],
-}),
-});
-const data = await res.json();
-const text = data.content?.[0]?.text || "[]";
-const clean = text.replace(/```json|```/g, "").trim();
-const parsed = JSON.parse(clean);
-setAiResults(parsed);
-} catch (e) {
-setAiResults([{ keyword: "Error generating keywords", matchType: "exact", intent: "high", notes: "Try again" }]);
-}
-setAiLoading(false);
-}
-
-function addAiKeyword(kw) {
-setKeywords(prev => [{
-id: Date.now(),
-product: aiProduct,
-keyword: kw.keyword,
-matchType: kw.matchType,
-spend: 0, clicks: 0, orders: 0, acos: null,
-status: "test",
-notes: kw.notes,
-}, ...prev]);
-}
-
-const totalSpend = keywords.reduce((s, k) => s + (k.spend || 0), 0);
-const totalOrders = keywords.reduce((s, k) => s + (k.orders || 0), 0);
-const pauseCount = keywords.filter(k => k.status === "pause").length;
-
-return (
-<div>
-<SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
-
-{/* Summary */}
-<div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-{[
-{ label: "Keywords", value: keywords.length, color: "#8c7d6b" },
-{ label: "Total Spend", value: `$${totalSpend.toFixed(2)}`, color: "#a07848" },
-{ label: "Total Orders", value: totalOrders, color: "#5a7a5a" },
-{ label: "Pause Now", value: pauseCount, color: pauseCount > 0 ? "#9b5e5e" : "#5a7a5a" },
-].map(s => (
-<Card key={s.label} style={{ flex: 1, minWidth: 100, textAlign: "center", padding: "12px 10px" }}>
-<div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 1, textTransform: "uppercase", marginTop: 3 }}>{s.label}</div>
-</Card>
-))}
-</div>
-
-{/* Filter */}
-<div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-{["all", "keep", "pause", "test", "watch"].map(f => (
-<button key={f} onClick={() => setFilter(f)} style={{ background: filter === f ? "#1a1714" : "#e5e1da", color: filter === f ? "#f7f4ef" : "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, textTransform: "uppercase" }}>
-{f}
-</button>
-))}
-<button onClick={() => { setAdding(true); setDraft(BLANK); }} style={{ marginLeft: "auto", background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "4px 16px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>
-+ ADD KEYWORD
-</button>
-</div>
-
-{/* Add form */}
-{adding && (
-<Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}>
-<div style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "monospace", marginBottom: 12 }}>NEW KEYWORD</div>
-<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-<div style={{ flex: 2, minWidth: 160 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Product</div>
-<select value={draft.product} onChange={e => setDraft(d => ({ ...d, product: e.target.value }))}
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
-{productNames.map(p => <option key={p}>{p}</option>)}
-</select>
-</div>
-<div style={{ flex: 3, minWidth: 180 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
-<input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))} placeholder="beeswax candle sand"
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }} />
-</div>
-<div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
-<select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
-style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
-{["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
-</select>
-</div>
-<div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
-<select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
-style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
-{["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
-</select>
-</div>
-</div>
-<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-{[["spend", "Spend $"], ["clicks", "Clicks"], ["orders", "Orders"], ["acos", "ACOS %"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
-<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))} placeholder="0"
-style={{ width: 70, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", textAlign: "center" }} />
-</div>
-))}
-</div>
-<input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace", marginBottom: 10 }} />
-<div style={{ display: "flex", gap: 8 }}>
-<button onClick={saveNew} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "6px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
-<button onClick={() => setAdding(false)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", padding: "6px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
-</div>
-</Card>
-)}
-
-{/* Keyword list */}
-<div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 32 }}>
-{filtered.map(k => {
-const { color, label } = KW_STATUS[k.status] || KW_STATUS.test;
-const isEditing = editId === k.id;
-return (
-<Card key={k.id} style={{ borderLeft: `3px solid ${color}` }}>
-{isEditing ? (
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-<div style={{ flex: 3, minWidth: 180 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
-<input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))}
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }} />
-</div>
-<div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
-<select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
-style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
-{["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
-</select>
-</div>
-<div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
-<select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
-style={{ background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#1a1714", fontSize: 12, fontFamily: "monospace" }}>
-{["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
-</select>
-</div>
-{[["spend", "Spend"], ["clicks", "Clicks"], ["orders", "Orders"], ["acos", "ACOS%"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
-<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: 60, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 6px", color: "#1a1714", fontSize: 12, fontFamily: "monospace", textAlign: "center" }} />
-</div>
-))}
-</div>
-<input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padding: "5px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace" }} />
-<div style={{ display: "flex", gap: 8 }}>
-<button onClick={() => saveEdit(k.id)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "5px 18px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Save</button>
-<button onClick={() => setEditId(null)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", padding: "5px 14px", cursor: "pointer", fontSize: 11 }}>Cancel</button>
-</div>
-</div>
-) : (
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "monospace", fontSize: 13, color: "#1a1714", fontWeight: 700 }}>{k.keyword}</span>
-<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: MATCH_COLORS[k.matchType] + "22", color: MATCH_COLORS[k.matchType], border: `1px solid ${MATCH_COLORS[k.matchType]}44`, letterSpacing: 1 }}>{k.matchType.toUpperCase()}</span>
-<Tag color={color} label={label} />
-</div>
-<div style={{ fontSize: 10, color: "#a09488", fontFamily: "monospace", marginBottom: 4 }}>{k.product}</div>
-{k.notes && <div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{k.notes}</div>}
-</div>
-<div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-{[
-["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
-["Clicks", k.clicks || "—", "#1a1714"],
-["Orders", k.orders || "—", "#5a7a5a"],
-["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
-].map(([l, v, c]) => (
-<div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
-</div>
-))}
-<button onClick={() => startEdit(k)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>Edit</button>
-</div>
-</div>
-)}
-</Card>
-);
-})}
-</div>
-
-{/* AI Keyword Research */}
-<div style={{ borderTop: "1px solid #d4cfc7", paddingTop: 24 }}>
-<SectionTitle>AI Keyword Research · Generate New Keywords</SectionTitle>
-<Card style={{ borderLeft: "3px solid #8b8bff", marginBottom: 16 }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "monospace", marginBottom: 6 }}>HOW TO USE</div>
-<div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
-Select a product and click Generate — AI will suggest 12 high-intent keywords based on your product type and category. Click any keyword to add it to your tracker.
-</div>
-</Card>
-<div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-<select value={aiProduct} onChange={e => setAiProduct(e.target.value)}
-style={{ flex: 1, minWidth: 200, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "8px 12px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }}>
-<option value="">Select a product...</option>
-{productNames.map(p => <option key={p}>{p}</option>)}
-</select>
-<button onClick={generateKeywords} disabled={!aiProduct || aiLoading}
-style={{ background: aiLoading || !aiProduct ? "#d4cfc7" : "#8c7d6b", color: aiLoading || !aiProduct ? "#a09488" : "#0a0a06", border: "none", padding: "8px 24px", cursor: !aiProduct || aiLoading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>
-{aiLoading ? "Generating..." : "Generate Keywords"}
-</button>
-</div>
-{aiResults.length > 0 && (
-<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-<div style={{ fontSize: 9, color: "#a09488", fontFamily: "monospace", letterSpacing: 2, marginBottom: 4 }}>CLICK TO ADD TO TRACKER</div>
-{aiResults.map((kw, i) => (
-<div key={i} onClick={() => addAiKeyword(kw)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#edeae4", border: "1px solid #d4cfc7", borderLeft: `3px solid ${MATCH_COLORS[kw.matchType] || "#8c7d6b"}`, padding: "10px 14px", cursor: "pointer", gap: 12 }}
-onMouseEnter={e => e.currentTarget.style.background = "#e5e1da"}
-onMouseLeave={e => e.currentTarget.style.background = "#edeae4"}>
-<div>
-<div style={{ fontSize: 13, color: "#1a1714", fontFamily: "monospace", marginBottom: 2 }}>{kw.keyword}</div>
-<div style={{ fontSize: 11, color: "#8c7d6b", fontStyle: "italic" }}>{kw.notes}</div>
-</div>
-<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: MATCH_COLORS[kw.matchType] + "22", color: MATCH_COLORS[kw.matchType], border: `1px solid ${MATCH_COLORS[kw.matchType]}44`, letterSpacing: 1 }}>{kw.matchType?.toUpperCase()}</span>
-<span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: kw.intent === "high" ? "#5a7a5a22" : "#a0784822", color: kw.intent === "high" ? "#5a7a5a" : "#a07848", border: `1px solid ${kw.intent === "high" ? "#5a7a5a44" : "#a0784844"}`, letterSpacing: 1 }}>{kw.intent?.toUpperCase()} INTENT</span>
-<span style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "monospace" }}>+ ADD</span>
-</div>
-</div>
-))}
-</div>
-)}
-</div>
-</div>
-);
-}
-
-// ── MAIN ──────────────────────────────────────────────────────────────────────
-
-export default function App() {
-const [tab, setTab] = useState("inventory");
-const [products, setProducts] = useState(INITIAL_PRODUCTS);
-const [materials, setMaterials] = useState(MATERIALS);
-const [weeks, setWeeks] = useState([]);
-const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [] });
-const [loaded, setLoaded] = useState(false);
-
-useEffect(() => {
-const link = document.createElement("link");
-link.rel = "stylesheet"; link.href = FONT_LINK;
-document.head.appendChild(link);
-}, []);
-
-// ── LOAD FROM DB ON STARTUP ──
-useEffect(() => {
-dbLoad().then(d => {
-if (d) {
-if (d.products && d.products.length > 0) setProducts(d.products);
-if (d.materials && d.materials.length > 0) setMaterials(d.materials);
-if (d.weekly && d.weekly.length > 0) setWeeks(d.weekly);
-setDbState({
-products: d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS,
-materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
-weekly: d.weekly || [],
-});
-}
-setLoaded(true);
-});
-}, []);
-
-const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
-const pauseCount = campaigns.filter(c => c.status === "pause").length;
-
-const tabs = [
-{ id: "inventory", label: "Inventory", alert: criticalCount || null },
-{ id: "ads", label: "Ads", alert: pauseCount ? `${pauseCount}!` : null },
-{ id: "keywords", label: "Keywords" },
-{ id: "weekly", label: "Weekly" },
-{ id: "profit", label: "Profit" },
-{ id: "priceoz", label: "Price/Oz" },
-{ id: "checklist", label: "Bi-Weekly" },
-{ id: "materials", label: "Materials" },
-{ id: "roadmap", label: "Roadmap" },
-{ id: "ai", label: "✦ AI" },
+const OPEX_CATS = ["UGC","Influencer","Content","Promo","Placement","Other"];
+const OPEX_CAT_ES = { UGC:"Contenido de creadores", Influencer:"Influencers", Content:"Contenido", Promo:"Promoción", Placement:"Colocación", Other:"Otro" };
+const TEAM = [
+  { name:"Kiabeth", email:"kiabethmgmt@gmail.com" },
+  { name:"Tommy", email:"tommylavalleesp@gmail.com" },
+  { name:"Kiaredza", email:"kiaredza@gmail.com" },
 ];
-
-if (!loaded) {
-return (
-<div style={{ minHeight: "100vh", background: "#f7f4ef", display: "flex", alignItems: "center", justifyContent: "center" }}>
-<div style={{ fontFamily: "monospace", fontSize: 12, color: "#a09488", letterSpacing: 3 }}>LOADING...</div>
-</div>
-);
+ 
+const CHANNELS = [
+  { id:"shopify", label:"Shopify" }, { id:"amazon", label:"Amazon" },
+  { id:"b2b", label:"B2B / Wholesale" }, { id:"all", label:"All Channels" },
+];
+const PERIODS = [
+  { id:"current", label:"This Week", mult:1 }, { id:"previous", label:"Last Week", mult:1 },
+  { id:"last4", label:"Last 4 Weeks", mult:4 }, { id:"qtd", label:"Quarter to Date", mult:13 },
+  { id:"ytd", label:"Year to Date", mult:52 },
+];
+const periodMult = (per) => (per === "previous" ? 1 : (PERIODS.find((x) => x.id === per)?.mult ?? 1));
+ 
+/* ---- MATH --------------------------------------------------------------- */
+const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? 0 : Number(v));
+const money = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const money2 = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toFixed(2);
+const pct = (n) => (n * 100).toFixed(1) + "%";
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+ 
+const unitCost = (p) => num(p.cogs) + num(p.packaging) + num(p.freight);
+ 
+function unitEconomics(p, ch) {
+  const landed = unitCost(p);
+  if (ch === "amazon") {
+    const price = num(p.retail);
+    const fees = price * FEES.amazonReferralPct + num(p.fbaFee) + num(p.storage);
+    const returns = price * FEES.returnsPct;
+    return { price, landed, fees, ship:0, returns, commission:0, cm: price - landed - fees - returns, ad: num(p.ad?.amazon) };
+  }
+  if (ch === "shopify") {
+    const price = num(p.retail);
+    const fees = price * FEES.shopifyProcessingPct + FEES.shopifyProcessingFlat;
+    const returns = price * FEES.returnsPct;
+    return { price, landed, fees, ship: num(p.shipShopify), returns, commission:0, cm: price - landed - fees - num(p.shipShopify) - returns, ad: num(p.ad?.shopify) };
+  }
+  // b2b — Atlas takes 3% commission per sale
+  const price = num(p.wholesale);
+  const commission = price * B2B.atlasCommissionPct;
+  return { price, landed, fees:commission, ship:0, returns:0, commission, cm: price - landed - commission, ad:0 };
 }
-
-return (
-<div style={{ minHeight: "100vh", background: "#f7f4ef", color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>
-<div style={{ background: "#ede9e3", borderBottom: "1px solid #3a3020", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-<div>
-<div style={{ fontSize: 10, letterSpacing: 5, color: "#9c8d7b", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 3 }}>Lavalle Haus</div>
-<div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
-</div>
-<div style={{ display: "flex", gap: 8 }}>
-{[
-{ label: "SKUs", value: products.length, color: "#8c7d6b" },
-{ label: "Alerts", value: criticalCount + pauseCount, color: criticalCount + pauseCount > 0 ? "#9b5e5e" : "#5a7a5a" },
-{ label: "Campaigns", value: campaigns.length, color: "#7a7a9a" },
-].map(s => (
-<div key={s.label} style={{ textAlign: "center", padding: "7px 12px", background: "#edeae4", borderRadius: 1, border: "1px solid #3a3020" }}>
-<div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
-</div>
-))}
-</div>
-</div>
-
-<div style={{ background: "#ede9e3", borderBottom: "1px solid #3a3020", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto" }}>
-{tabs.map(t => (
-<button key={t.id} onClick={() => setTab(t.id)} style={{ background: "none", border: "none", borderBottom: tab === t.id ? "2px solid #a89060" : "2px solid transparent", color: tab === t.id ? "#1a1714" : "#a09488", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "monospace", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
-{t.label}
-{t.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{t.alert}</span>}
-</button>
-))}
-</div>
-
-<div style={{ padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
-{tab === "inventory" && <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />}
-{tab === "ads" && <AdsTab campaigns={campaigns} />}
-{tab === "keywords" && <KeywordsTab products={products} />}
-{tab === "weekly" && <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />}
-{tab === "profit" && <ProfitTab />}
-{tab === "priceoz" && <PriceOzTab />}
-{tab === "checklist" && <ChecklistTab />}
-{tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />}
-{tab === "roadmap" && <RoadmapTab />}
-{tab === "ai" && <AITab products={products} campaigns={campaigns} />}
-</div>
-</div>
+ 
+const unitsFor = (p, ch, per) => {
+  const src = per === "previous" ? p.prev : p.units;
+  const m = periodMult(per);
+  if (ch === "all") return ["amazon","shopify","b2b"].reduce((s, k) => s + num(src?.[k]), 0) * m;
+  return num(src?.[ch]) * m;
+};
+const invFor = (p, ch) => {
+  const i = p.inv || {};
+  if (ch === "all") return num(i.amazon) + num(i.shopify) + num(i.b2b);
+  return num(i[ch]);
+};
+ 
+function metrics(p, ch, per) {
+  const chans = ch === "all" ? ["amazon","shopify","b2b"] : [ch];
+  let revenue=0, gross=0, net=0, adSpend=0, units=0, cmW=0, commission=0;
+  chans.forEach((k) => {
+    if (!p.channels.includes(k)) return;
+    const u = unitsFor(p, k, per), e = unitEconomics(p, k);
+    revenue += e.price*u; gross += (e.price-e.landed)*u; net += e.cm*u;
+    adSpend += e.ad*u; units += u; cmW += e.cm*u; commission += e.commission*u;
+  });
+  const netAfterAds = net - adSpend;
+  const profitPerUnit = units ? netAfterAds/units : 0;
+  const cmPerUnit = units ? cmW/units : 0;
+  const avgPrice = units ? revenue/units : 0;
+  const cmPct = avgPrice ? cmPerUnit/avgPrice : 0;
+  const netMargin = revenue ? netAfterAds/revenue : 0;
+  const grossMargin = revenue ? gross/revenue : 0;
+  const breakevenRoas = cmPerUnit > 0 ? avgPrice/cmPerUnit : Infinity;
+  const adPerUnit = units ? adSpend/units : 0;
+  const roas = adPerUnit > 0 ? avgPrice/adPerUnit : null;
+  const inv = invFor(p, ch);
+  const velocity = unitsFor(p, ch, "current") || 0.0001;
+  const weeksRemaining = inv / velocity;
+  const invValue = inv * unitCost(p);
+  const stockout = new Date(Date.now() + weeksRemaining*7*86400000);
+  const reorderPoint = Math.ceil(velocity * (num(p.leadWeeks)+2));
+  const reorderQty = Math.max(reorderPoint, Math.ceil(velocity*8));
+  const cashForReorder = reorderQty * unitCost(p);
+  return { revenue, gross, net, netAfterAds, adSpend, units, commission, profitPerUnit, cmPerUnit,
+    cmPct, netMargin, grossMargin, breakevenRoas, roas, maxCPA:cmPerUnit, velocity,
+    inv, weeksRemaining, invValue, stockout, reorderPoint, reorderQty, cashForReorder };
+}
+ 
+const opexTotal = (opex, ch, per) =>
+  opex.filter((o) => ch === "all" || o.channel === ch).reduce((s, o) => s + num(o.weekly), 0) * periodMult(per);
+ 
+function scoreOf(m) {
+  const marginScore = clamp(m.netMargin/0.35, 0, 1);
+  const cmScore = clamp(m.cmPct/0.55, 0, 1);
+  const velocityScore = m.weeksRemaining<2?0.35:m.weeksRemaining<=10?1:m.weeksRemaining<=16?0.7:0.4;
+  const roasScore = m.roas==null?0.6:m.breakevenRoas===Infinity?0:clamp(m.roas/(m.breakevenRoas*1.8),0,1);
+  const profitScore = clamp(m.netAfterAds/30,-1,1)*0.5+0.5;
+  return Math.round(clamp(marginScore*0.28+cmScore*0.22+velocityScore*0.18+roasScore*0.2+profitScore*0.12,0,1)*100);
+}
+function decide(m, sc) {
+  if (m.units === 0) return { tag:"Watch", color:c.sub, why:"No sales this period — not enough signal to act." };
+  if (m.netAfterAds <= 0 && m.weeksRemaining > 12) return { tag:"Eliminate", color:c.red, why:`Losing ${money2(Math.abs(m.profitPerUnit))}/unit after ads with ${m.weeksRemaining.toFixed(0)}+ weeks of stock tied up. Stop reordering.` };
+  if (m.netAfterAds <= 0) return { tag:"Fix", color:c.red, why:`Unprofitable after ads (${money2(m.profitPerUnit)}/unit). Cut ad spend or raise price — break-even ROAS is ${m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"}.` };
+  if (m.roas != null && m.roas < m.breakevenRoas) return { tag:"Fix", color:c.yellow, why:`ROAS ${m.roas.toFixed(1)}x below break-even ${m.breakevenRoas.toFixed(1)}x — ads erode the margin.` };
+  if (sc >= 72 && m.weeksRemaining > 3) return { tag:"Scale", color:c.green, why:`${pct(m.netMargin)} net margin${m.roas?`, ${m.roas.toFixed(1)}x ROAS`:""}, healthy stock. Push more spend & inventory.` };
+  if (m.netMargin >= 0.2) return { tag:"Maintain", color:c.sage, why:`Solid ${pct(m.netMargin)} net margin. Keep steady, protect the stock.` };
+  return { tag:"Watch", color:c.gold, why:`Thin ${pct(m.netMargin)} net margin. Small cost or price moves swing this either way.` };
+}
+ 
+function crossWhy(p, period) {
+  const vals = [
+    { id:"shopify", n:"Shopify" }, { id:"amazon", n:"Amazon" }, { id:"b2b", n:"B2B" },
+  ].filter(x=>p.channels.includes(x.id)).map(x=>{ const m=metrics(p,x.id,period); return { ...x, v:m.netAfterAds, u:m.units, pu:m.profitPerUnit }; });
+  if (vals.length<=1) { const only=vals[0];
+    return { en:`sold only on ${only?only.n:"no channel"} — there's no cross-channel comparison until it's listed elsewhere.`,
+      es:`se vende solo en ${only?only.n:"ningún canal"} — no hay comparación entre canales hasta listarlo en otro lugar.` };
+  }
+  const best=vals.reduce((a,b)=>b.v>a.v?b:a), weak=vals.reduce((a,b)=>b.v<a.v?b:a);
+  let drvEn, drvEs;
+  if (best.u > weak.u*1.4) { drvEn=`${best.n} simply sells more units (${best.u.toFixed(0)} vs ${weak.u.toFixed(0)}/wk)`; drvEs=`${best.n} vende más unidades (${best.u.toFixed(0)} vs ${weak.u.toFixed(0)}/sem)`; }
+  else if (best.pu > weak.pu*1.1) { drvEn=`${best.n} keeps more per unit (${money2(best.pu)} vs ${money2(weak.pu)})`; drvEs=`${best.n} retiene más por unidad (${money2(best.pu)} vs ${money2(weak.pu)})`; }
+  else { drvEn=`${best.n} wins on the mix of volume and per-unit profit`; drvEs=`${best.n} gana por la mezcla de volumen y ganancia por unidad`; }
+  const fee = (id)=> id==="b2b" ? { en:"B2B is wholesale (~half retail) minus the 3% Atlas commission", es:"B2B es mayoreo (~mitad del precio) menos la comisión Atlas del 3%" }
+    : id==="amazon" ? { en:"Amazon carries FBA + a 15% referral fee", es:"Amazon carga FBA + 15% de comisión de referencia" }
+    : { en:"Shopify carries shipping on every order", es:"Shopify carga el envío en cada pedido" };
+  const wf=fee(weak.id);
+  return { en:`best on ${best.n} (${money(best.v)}/wk), weakest ${weak.n} (${money(weak.v)}/wk) — ${drvEn}; ${wf.en}.`,
+    es:`mejor en ${best.n} (${money(best.v)}/sem), más débil ${weak.n} (${money(weak.v)}/sem) — ${drvEs}; ${wf.es}.` };
+}
+ 
+function normalize(list) {
+  return (list && list.length ? list : SEED_PRODUCTS).map((p) => {
+    const channels = p.channels || ["amazon","shopify"];
+    const inv = p.inv && typeof p.inv === "object" ? { ...p.inv }
+      : (() => { const o = { amazon:0, shopify:0, b2b:0 }; o[channels[0]] = num(p.inventory ?? p.inventoryOnHand ?? 0); return o; })();
+    return { ...p, channels, inv,
+      ad: p.ad && typeof p.ad === "object" ? { ...p.ad } : { amazon:p.adSpend||0, shopify:p.adSpend||0 },
+      units: p.units && typeof p.units === "object" ? { ...p.units } : { amazon:p.unitsSold||0, shopify:0, b2b:0 },
+      prev: p.prev ? { ...p.prev } : { amazon:0, shopify:0, b2b:0 },
+      retail:p.retail??p.price??0, wholesale:p.wholesale??(p.retail??p.price??0)/2,
+      packaging:p.packaging??0, freight:p.freight??0, shipShopify:p.shipShopify??p.shipping??0,
+      fbaFee:p.fbaFee??0, storage:p.storage??0, inbound:p.inbound??0, leadWeeks:p.leadWeeks??3,
+      dates: (p.dates && typeof p.dates==="object") ? { ...p.dates } : { amazon:p.date||"", shopify:p.date||"", b2b:p.date||"" } };
+  });
+}
+ 
+/* ---- PRIMITIVES --------------------------------------------------------- */
+const Dot = ({ level }) => <span style={{ display:"inline-block", width:9, height:9, borderRadius:9, background: level==="green"?c.green:level==="yellow"?c.yellow:c.red, marginRight:7, verticalAlign:"middle" }} />;
+function Delta({ now, prev }) {
+  if (prev === 0 && now === 0) return <span style={{ color:c.sub, fontSize:12 }}>—</span>;
+  const d = prev === 0 ? 1 : (now-prev)/Math.abs(prev); const up = now >= prev;
+  return <span style={{ fontSize:12, color: up?c.green:c.red }}>{up?"▲":"▼"} {Math.abs(d*100).toFixed(0)}% wow</span>;
+}
+const Tag = ({ text, color }) => <span style={{ fontFamily:sans, fontSize:11.5, letterSpacing:0.4, textTransform:"uppercase", color, border:`1px solid ${color}`, borderRadius:2, padding:"2px 8px", whiteSpace:"nowrap" }}>{text}</span>;
+const Edit = ({ value, onChange, disabled, w=74 }) => <input type="number" value={value} disabled={disabled} onChange={(e)=>onChange(e.target.value)} style={{ width:w, fontFamily:sans, fontSize:13, textAlign:"right", padding:"4px 6px", border:`1px solid ${disabled?c.lineSoft:c.line}`, borderRadius:2, background:disabled?c.bg:c.panel, color:disabled?c.sub:c.ink }} />;
+ 
+/* ---- AUDIT DRAWERS ------------------------------------------------------ */
+const CFG = {
+  revenue: { title:"Revenue", cols:["units","price"], line:(e,u)=>e.price*u },
+  gross:   { title:"Gross Profit", cols:["units","price","cogs","packaging","freight"], line:(e,u)=>(e.price-e.landed)*u },
+  net:     { title:"Net Profit (before ads & marketing)", cols:["units","price","cogs","feesRO","shipRO"], line:(e,u)=>e.cm*u },
+  netAfterAds: { title:"Net Profit After Ads & Marketing", cols:["units","netRO","ad"], line:(e,u)=>e.cm*u-e.ad*u, opexSign:-1 },
+  marketing: { title:"Weekly Marketing", cols:["units","ad"], line:(e,u)=>e.ad*u, opexSign:+1 },
+};
+const COL = { units:"Units/wk", price:"Price", cogs:"COGS", packaging:"Pkg", freight:"Freight", feesRO:"Fees", shipRO:"Ship", netRO:"Net/unit", ad:"Ad/unit" };
+ 
+function AuditDrawer({ metric, channel, products, setField, reassignChannel, opexAmt, adj, setAdj, onSave, onReset, dirty, manualEntries, manualSum, onManualAdd, onManualEdit, onManualDel, onNewProduct }) {
+  const cfg = CFG[metric];
+  const lines = [];
+  products.forEach((p) => {
+    const chans = channel==="all" ? p.channels : (p.channels.includes(channel)?[channel]:[]);
+    chans.forEach((ch) => { const e = unitEconomics(p, ch); const u = num(p.units?.[ch]); lines.push({ p, ch, e, u, val: cfg.line(e,u) }); });
+  });
+  const lineSum = lines.reduce((s,l)=>s+l.val,0);
+  const opexPart = cfg.opexSign ? cfg.opexSign*opexAmt : 0;
+  const total = lineSum + opexPart + num(manualSum) + num(adj);
+ 
+  const th = { fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub, padding:"7px 8px", textAlign:"right", borderBottom:`1px solid ${c.line}`, whiteSpace:"nowrap" };
+  const td = { fontSize:13, padding:"7px 8px", textAlign:"right", borderBottom:`1px solid ${c.lineSoft}`, whiteSpace:"nowrap" };
+  const cell = (l, col) => {
+    const { p, ch, e } = l;
+    switch (col) {
+      case "units": return <Edit value={p.units?.[ch]??0} onChange={(v)=>setField(p.id,"units",v,ch)} w={60} />;
+      case "price": return <Edit value={ch==="b2b"?p.wholesale:p.retail} onChange={(v)=>setField(p.id, ch==="b2b"?"wholesale":"retail", v)} />;
+      case "cogs": return <Edit value={p.cogs} onChange={(v)=>setField(p.id,"cogs",v)} w={60} />;
+      case "packaging": return <Edit value={p.packaging} onChange={(v)=>setField(p.id,"packaging",v)} w={54} />;
+      case "freight": return <Edit value={p.freight} onChange={(v)=>setField(p.id,"freight",v)} w={54} />;
+      case "ad": return <Edit value={p.ad?.[ch]??0} onChange={(v)=>setField(p.id,"ad",v,ch)} w={60} />;
+      case "feesRO": return <span style={{ color:c.sub }}>{money2(e.fees)}</span>;
+      case "shipRO": return <span style={{ color:c.sub }}>{money2(e.ship)}</span>;
+      case "netRO": return <span style={{ color:c.sub }}>{money2(e.cm)}</span>;
+      default: return null;
+    }
+  };
+  return (
+    <div style={{ background:c.panel, border:`1px solid ${c.gold}`, borderRadius:4, padding:18, marginTop:12 }}>
+      <DrawerHead title={cfg.title} channel={channel} total={total} />
+      <div style={{ overflowX:"auto", marginTop:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:560 }}>
+          <thead><tr>
+            <th style={{ ...th, textAlign:"left" }}>Sale date<div style={faintEs}>Fecha de venta</div></th><th style={{ ...th, textAlign:"left" }}>Product</th><th style={th}>Channel</th>
+            {cfg.cols.map((col)=><th key={col} style={th}>{COL[col]}</th>)}
+            <th style={th}>=</th>
+          </tr></thead>
+          <tbody>
+            {lines.map((l)=>(
+              <tr key={l.p.id+"-"+l.ch}>
+                <td style={{ ...td, textAlign:"left" }}><input type="date" value={l.p.dates?.[l.ch]||""} onChange={(ev)=>setField(l.p.id,"dates",ev.target.value,l.ch)} style={{ fontFamily:sans, fontSize:12.5, padding:"4px 6px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink }} /></td>
+                <td style={{ ...td, textAlign:"left" }}>{l.p.name}</td>
+                <td style={{ ...td, textAlign:"left", color:c.sub }}>{l.ch==="b2b"?"B2B":l.ch[0].toUpperCase()+l.ch.slice(1)}</td>
+                {cfg.cols.map((col)=><td key={col} style={td}>{cell(l,col)}</td>)}
+                <td style={{ ...td, color:l.val>=0?c.ink:c.red }}>{money(l.val)}</td>
+              </tr>
+            ))}
+            {cfg.opexSign && (
+              <tr><td colSpan={cfg.cols.length+3} style={{ ...td, textAlign:"left", fontStyle:"italic", color:c.sub }}>
+                {cfg.opexSign>0?"+":"−"} Channel marketing / OPEX (UGC, influencer, Atlas — edit below)</td>
+                <td style={{ ...td, color:c.sub }}>{money(opexPart)}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <ManualEntries channel={channel} entries={manualEntries||[]} products={products} onAdd={onManualAdd} onEdit={onManualEdit} onDel={onManualDel} onNewProduct={onNewProduct} />
+      <DrawerFoot adj={adj} setAdj={setAdj} onSave={onSave} onReset={onReset} dirty={dirty} />
+    </div>
+  );
+}
+ 
+function InventoryDrawer({ channel, products, setField, reassignChannel, adj, setAdj, onSave, onReset, dirty, manualEntries, manualSum, onManualAdd, onManualEdit, onManualDel, onNewProduct }) {
+  const chans = channel==="all" ? ["amazon","shopify","b2b"] : [channel];
+  const lines = [];
+  products.forEach((p) => chans.forEach((ch) => {
+    if (!p.channels.includes(ch)) return;
+    const qty = num(p.inv?.[ch]); const val = qty*unitCost(p);
+    if (channel!=="all" || qty>0) lines.push({ p, ch, qty, val });
+  }));
+  const total = lines.reduce((s,l)=>s+l.val,0) + num(manualSum) + num(adj);
+  const poolName = { amazon:"Amazon FBA stock", shopify:"Shopify on-hand", b2b:"Atlas consignment", all:"all stock pools" }[channel];
+  const th = { fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub, padding:"7px 8px", textAlign:"right", borderBottom:`1px solid ${c.line}`, whiteSpace:"nowrap" };
+  const td = { fontSize:13, padding:"7px 8px", textAlign:"right", borderBottom:`1px solid ${c.lineSoft}`, whiteSpace:"nowrap" };
+  return (
+    <div style={{ background:c.panel, border:`1px solid ${c.gold}`, borderRadius:4, padding:18, marginTop:12 }}>
+      <DrawerHead title={`Inventory Value — ${poolName}`} channel={channel} total={total} note="Inventory is routed by channel: FBA / Shopify on-hand / Atlas consignment. Value = on-hand units × landed cost." />
+      <div style={{ overflowX:"auto", marginTop:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:520 }}>
+          <thead><tr>
+            <th style={{ ...th, textAlign:"left" }}>Product</th><th style={th}>Pool</th>
+            <th style={th}>On-hand</th><th style={th}>Landed/unit</th><th style={th}>= Value</th>
+          </tr></thead>
+          <tbody>
+            {lines.map((l)=>(
+              <tr key={l.p.id+"-"+l.ch}>
+                <td style={{ ...td, textAlign:"left" }}>{l.p.name}{l.ch==="amazon"&&num(l.p.inbound)?<span style={{ color:c.clay, fontSize:11 }}> +{num(l.p.inbound)} inbound</span>:null}</td>
+                <td style={{ ...td, textAlign:"left", color:c.sub, textTransform:"capitalize" }}>{l.ch==="b2b"?"Atlas":l.ch}</td>
+                <td style={td}><Edit value={l.p.inv?.[l.ch]??0} onChange={(v)=>setField(l.p.id,"inv",v,l.ch)} w={62} /></td>
+                <td style={{ ...td, color:c.sub }}>{money2(unitCost(l.p))}</td>
+                <td style={td}>{money(l.val)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ManualEntries channel={channel} entries={manualEntries||[]} products={products} onAdd={onManualAdd} onEdit={onManualEdit} onDel={onManualDel} onNewProduct={onNewProduct} />
+      <DrawerFoot adj={adj} setAdj={setAdj} onSave={onSave} onReset={onReset} dirty={dirty} adjLabel="Manual adjustment (shrinkage, in-transit)" />
+    </div>
+  );
+}
+ 
+const DrawerHead = ({ title, channel, total, note }) => (
+  <div>
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", flexWrap:"wrap", gap:8 }}>
+      <div style={{ fontSize:18 }}>{title}</div>
+      <div style={{ textAlign:"right" }}>
+        <div style={{ fontSize:11, fontFamily:sans, letterSpacing:0.6, textTransform:"uppercase", color:c.sub }}>Weekly total · {CHANNELS.find(x=>x.id===channel)?.label}</div>
+        <div style={{ fontSize:22 }}>{money(total)}</div>
+      </div>
+    </div>
+    <div style={{ fontSize:12, color:c.sub, fontStyle:"italic", marginTop:2 }}>{note || "Weekly per-line detail. Edit any value to audit; it recomputes across the tab."}</div>
+  </div>
 );
+const DrawerFoot = ({ adj, setAdj, onSave, onReset, dirty, adjLabel }) => (
+  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12, marginTop:14, paddingTop:12, borderTop:`1px solid ${c.line}` }}>
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <span style={{ fontFamily:sans, fontSize:11, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>{adjLabel || "Manual audit adjustment (±)"}</span>
+      <Edit value={adj} onChange={setAdj} w={90} />
+    </div>
+    <div style={{ display:"flex", gap:8 }}>
+      <button onClick={onReset} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"7px 16px", borderRadius:2, border:`1px solid ${c.line}`, background:"transparent", color:c.sub }}>Reset</button>
+      <button onClick={onSave} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"7px 18px", borderRadius:2, border:`1px solid ${c.ink}`, background:dirty?c.ink:c.sub, color:c.bg }}>{dirty?"Save audit":"Saved"}</button>
+    </div>
+  </div>
+);
+ 
+const manualLineValue = (e) => num(e.price) * num(e.qty == null || e.qty === "" ? 1 : e.qty);
+ 
+function ManualEntries({ channel, entries, products, onAdd, onEdit, onDel, onNewProduct }) {
+  const include = (e) => channel === "all" || e.channel === "all" || e.channel === channel;
+  const shown = entries.filter(include);
+  const base = { fontFamily:sans, fontSize:13, padding:"5px 8px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink };
+  const sel = { ...base, fontSize:12.5 };
+  const cap = { fontFamily:sans, fontSize:9.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub, marginBottom:3 };
+  const priceFor = (p, ch) => (p ? (ch === "b2b" ? num(p.wholesale) : num(p.retail)) : 0);
+  const fld = (label, node) => <label style={{ display:"flex", flexDirection:"column" }}><span style={cap}>{label}</span>{node}</label>;
+  return (
+    <div style={{ marginTop:14, paddingTop:12, borderTop:`1px solid ${c.lineSoft}` }}>
+      <div style={{ fontFamily:sans, fontSize:11, letterSpacing:0.6, textTransform:"uppercase", color:c.sub, marginBottom:10 }}>Manual entries — extra sales lines or a custom one-off</div>
+      {shown.map((e) => {
+        const pid = e.productId ?? "custom";
+        const prod = products.find((p) => String(p.id) === String(pid));
+        const isCustom = pid === "custom";
+        const val = manualLineValue(e);
+        return (
+          <div key={e.id} style={{ display:"flex", gap:8, alignItems:"flex-end", marginBottom:8, flexWrap:"wrap" }}>
+            {fld("Product", (
+              <div style={{ display:"flex", flexDirection:"column", gap:4, minWidth:185 }}>
+                <select value={pid} style={sel}
+                  onChange={(ev)=>{ const v=ev.target.value;
+                    if (v==="__new") { onNewProduct && onNewProduct(); return; }
+                    if (v==="custom" || v==="") onEdit(e.id,{ productId:v });
+                    else { const p=products.find((x)=>String(x.id)===v); onEdit(e.id,{ productId:v, price:priceFor(p,e.channel), qty:num(e.qty)||1 }); } }}>
+                  <option value="">Select product…</option>
+                  <option value="custom">Custom line</option>
+                  {products.map((p)=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                  <option value="__new">+ New product…</option>
+                </select>
+                {isCustom && <input value={e.label||""} placeholder="Description" onChange={(ev)=>onEdit(e.id,{ label:ev.target.value })} style={{ ...base, minWidth:185 }} />}
+              </div>
+            ))}
+            {fld("Channel", (
+              <select value={e.channel} style={sel}
+                onChange={(ev)=>{ const ch=ev.target.value; const patch={ channel:ch }; if (!isCustom && pid!=="" && prod) patch.price=priceFor(prod,ch); onEdit(e.id,patch); }}>
+                {CHANNELS.map((x)=><option key={x.id} value={x.id}>{x.id==="all"?"All":x.label}</option>)}
+              </select>
+            ))}
+            {fld("Sale date · fecha", <input type="date" value={e.date||""} onChange={(ev)=>onEdit(e.id,{ date:ev.target.value })} style={{ ...base, width:140 }} />)}
+            {fld("Units/wk", <input type="number" value={e.qty??1} onChange={(ev)=>onEdit(e.id,{ qty:ev.target.value })} style={{ ...base, width:72, textAlign:"right" }} />)}
+            {fld("Price", <input type="number" value={e.price??0} onChange={(ev)=>onEdit(e.id,{ price:ev.target.value })} style={{ ...base, width:80, textAlign:"right" }} />)}
+            {fld("=", <span style={{ fontSize:13.5, minWidth:62, textAlign:"right", display:"inline-block", color:val>=0?c.ink:c.red, padding:"5px 0" }}>{money(val)}</span>)}
+            <button onClick={()=>onDel(e.id)} style={{ cursor:"pointer", border:"none", background:"transparent", color:c.sub, fontSize:16, padding:"0 0 5px" }}>×</button>
+          </div>
+        );
+      })}
+      <button onClick={onAdd} style={{ fontFamily:sans, fontSize:12.5, cursor:"pointer", padding:"5px 12px", borderRadius:2, border:`1px solid ${c.line}`, background:"transparent", color:c.clay }}>+ Add manual entry</button>
+    </div>
+  );
+}
+ 
+/* ---- ADD / EDIT PRODUCT FORM -------------------------------------------- */
+function ProductForm({ draft, setDraft, onSave, onCancel, onDelete }) {
+  const isNew = draft.id === "new";
+  const up = (f, v) => setDraft({ ...draft, [f]: v });
+  const upCh = (g, ch, v) => setDraft({ ...draft, [g]: { ...draft[g], [ch]: v } });
+  const toggleCh = (ch) => up("channels", draft.channels.includes(ch) ? draft.channels.filter((x) => x !== ch) : [...draft.channels, ch]);
+  const inp = { fontFamily:sans, fontSize:13.5, padding:"6px 8px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink, width:"100%", boxSizing:"border-box" };
+  const lbl = (t) => <span style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>{t}</span>;
+  // function (not nested component) so inputs keep focus across re-renders
+  const field = (label, f, type = "number", placeholder) => (
+    <label style={{ display:"flex", flexDirection:"column", gap:3 }}>{lbl(label)}
+      <input type={type} placeholder={placeholder} value={draft[f] ?? (type === "number" ? 0 : "")} onChange={(e) => up(f, e.target.value)} style={inp} /></label>
+  );
+  const chField = (label, g, ch) => (
+    <label style={{ display:"flex", flexDirection:"column", gap:3 }}>{lbl(label)}
+      <input type="number" value={draft[g]?.[ch] ?? 0} onChange={(e) => upCh(g, ch, e.target.value)} style={inp} /></label>
+  );
+  const grid = { display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px,1fr))", gap:12 };
+  const pool = { amazon:"FBA", shopify:"on-hand", b2b:"Atlas" };
+  return (
+    <div style={{ background:c.panel, border:`1px solid ${c.gold}`, borderRadius:4, padding:18, marginBottom:14 }}>
+      <div style={{ fontSize:18, marginBottom:12 }}>{isNew ? "Add product" : "Edit product"}</div>
+      <div style={grid}>
+        {field("Product name","name","text","e.g. Bath Salts Unscented")}
+        {field("SKU","sku","text","LH-BATH-SALT-UN")}
+        {field("ASIN","asin","text","TBD")}
+        {field("Reorder link","reorderLink","text","https://…")}
+        <label style={{ display:"flex", flexDirection:"column", gap:3 }}>{lbl("Sale date")}
+          <input type="date" value={draft.dates?.[(draft.channels&&draft.channels[0])||"amazon"]||""} onChange={(e)=>up("dates", Object.fromEntries((draft.channels&&draft.channels.length?draft.channels:["amazon","shopify","b2b"]).map((ch)=>[ch,e.target.value])))} style={inp} /></label>
+      </div>
+      <div style={{ marginTop:14 }}>{lbl("Channels")}</div>
+      <div style={{ display:"flex", gap:8, marginTop:6, flexWrap:"wrap" }}>
+        {["shopify","amazon","b2b"].map((ch) => { const on = draft.channels.includes(ch);
+          return <button key={ch} onClick={() => toggleCh(ch)} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"6px 16px", borderRadius:2, border:`1px solid ${on?c.ink:c.line}`, background:on?c.ink:"transparent", color:on?c.bg:c.ink }}>{ch==="b2b"?"B2B":ch[0].toUpperCase()+ch.slice(1)}</button>; })}
+      </div>
+      <div style={{ marginTop:16, marginBottom:6 }}>{lbl("Pricing & landed cost")}</div>
+      <div style={grid}>
+        {field("Retail price","retail")}{field("Wholesale price","wholesale")}{field("COGS","cogs")}{field("Packaging","packaging")}{field("Freight","freight")}
+      </div>
+      <div style={{ marginTop:16, marginBottom:6 }}>{lbl("Channel fees & logistics")}</div>
+      <div style={grid}>
+        {field("Shopify ship/unit","shipShopify")}{field("Amazon FBA fee","fbaFee")}{field("Amazon storage","storage")}{field("Lead time (weeks)","leadWeeks")}{field("FBA inbound units","inbound")}
+      </div>
+      {draft.channels.length > 0 && <div style={{ marginTop:16, marginBottom:6 }}>{lbl("Weekly units, ad spend & inventory by channel")}</div>}
+      {draft.channels.map((ch) => (
+        <div key={ch} style={{ border:`1px solid ${c.lineSoft}`, borderRadius:3, padding:12, marginBottom:8 }}>
+          <div style={{ fontSize:13, textTransform:"capitalize", marginBottom:8 }}>{ch==="b2b"?"B2B / Atlas":ch}</div>
+          <div style={grid}>
+            {chField("Units this wk","units",ch)}
+            {chField("Units last wk","prev",ch)}
+            {ch !== "b2b" && chField("Ad spend / unit","ad",ch)}
+            {chField(`Inventory (${pool[ch]})`,"inv",ch)}
+          </div>
+        </div>
+      ))}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:14, paddingTop:12, borderTop:`1px solid ${c.line}` }}>
+        <div>{!isNew && <button onClick={onDelete} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"7px 14px", borderRadius:2, border:`1px solid ${c.red}`, background:"transparent", color:c.red }}>Delete</button>}</div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={onCancel} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"7px 16px", borderRadius:2, border:`1px solid ${c.line}`, background:"transparent", color:c.sub }}>Cancel</button>
+          <button onClick={onSave} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"7px 20px", borderRadius:2, border:`1px solid ${c.ink}`, background:c.ink, color:c.bg }}>{isNew?"Add product":"Save"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+/* ---- KEEP-OR-CUT SCORECARD (the Bezos test) ----------------------------- */
+function KeepScorecard({ product:p, period, defaultChannel, keepData, onField, onClose }) {
+  const chans = p.channels;
+  const [scCh, setScCh] = useState(chans.includes(defaultChannel) ? defaultChannel : chans[0]);
+  const ch = chans.includes(scCh) ? scCh : chans[0];
+  const chLabel = (x) => x==="amazon" ? "Amazon FBA" : x==="b2b" ? "B2B / Atlas" : "Shopify";
+  const m = metrics(p, ch, period);
+  const kd = { margin:40, profit:50, cap:"", ansMargin:null, ansVol:null, ansRoas:null, override:"auto", ...((keepData||{})[ch]||{}) };
+  const set = (f,v) => onField(ch, f, v);
+  const e = unitEconomics(p, ch);
+  const tMargin = num(kd.margin)/100;
+  const targetProfit = num(kd.profit);
+  const targetLanded = e.price*(1-tMargin) - e.fees - e.ship - e.returns;
+  const targetCOGS = targetLanded - num(p.packaging) - num(p.freight);
+  const reqUnits = m.profitPerUnit > 0 ? Math.ceil(targetProfit/m.profitPerUnit) : Infinity;
+  const reqRevenue = reqUnits === Infinity ? Infinity : reqUnits*e.price;
+  const capSet = kd.cap !== "" && kd.cap != null;
+  const capExceeded = capSet && reqRevenue !== Infinity && reqRevenue > num(kd.cap);
+  const hasAds = m.roas != null;
+  const marginMet = m.netMargin >= tMargin;
+  const profitMet = m.netAfterAds >= targetProfit;
+  const roasMet = !hasAds || m.roas >= m.breakevenRoas;
+  const conds = [{ field:"ansMargin", met:marginMet }, { field:"ansVol", met:profitMet }, ...(hasAds?[{ field:"ansRoas", met:roasMet }]:[])];
+  const eff = conds.map((cd)=>kd[cd.field] ?? (cd.met ? "yes" : null));
+  const verdict = (kd.override && kd.override !== "auto") ? kd.override
+    : eff.some(v=>v==null) ? "undecided" : eff.includes("no") ? "cut" : eff.includes("maybe") ? "maybe" : "keep";
+  const vMeta = { keep:{t:"Keep — clears the bar",col:c.green}, maybe:{t:"Maybe — conditional",col:c.gold}, cut:{t:"Cut — fails the bar",col:c.red}, undecided:{t:"Undecided — answer the open questions",col:c.sub} }[verdict];
+  const inp = { fontFamily:sans, fontSize:13, padding:"5px 8px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink, width:84, textAlign:"right" };
+  const cap = { fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub };
+  const ynm = (field) => (
+    <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+      {["yes","maybe","no"].map((opt)=>{ const on=kd[field]===opt; const col=opt==="yes"?c.green:opt==="maybe"?c.gold:c.red;
+        return <button key={opt} onClick={()=>set(field, on?null:opt)} style={{ fontFamily:sans, fontSize:12, cursor:"pointer", padding:"4px 13px", borderRadius:2, textTransform:"capitalize", border:`1px solid ${on?col:c.line}`, background:on?col:"transparent", color:on?"#fff":c.sub }}>{opt}</button>; })}
+    </div>
+  );
+  const cond = (n, title, met, body, bodyEs, field) => (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, padding:"12px 0", borderBottom:`1px solid ${c.lineSoft}`, flexWrap:"wrap" }}>
+      <div style={{ flex:1, minWidth:250 }}>
+        <div style={{ fontSize:14 }}>{n} · {title}{met && <span style={{ fontFamily:sans, fontSize:10, letterSpacing:0.4, textTransform:"uppercase", color:c.green, border:`1px solid ${c.green}`, borderRadius:2, padding:"1px 6px", marginLeft:8 }}>Clears now</span>}</div>
+        <div style={{ fontSize:12.5, color:c.sub, marginTop:2, lineHeight:1.45 }}>{body}</div>
+        <div style={{ fontSize:11, color:"rgba(111,102,87,0.65)", fontStyle:"italic", marginTop:3, lineHeight:1.4 }}>{bodyEs}</div>
+      </div>
+      {ynm(field)}
+    </div>
+  );
+  return (
+    <div style={{ background:c.panel, border:`1px solid ${c.gold}`, borderRadius:4, padding:18, marginTop:12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", flexWrap:"wrap", gap:8 }}>
+        <div><div style={{ fontSize:18 }}>Keep-or-cut standard — {p.name}</div>
+          <div style={{ fontSize:12.5, color:c.sub, fontStyle:"italic" }}>The bar: what has to be true for this to earn its place on each channel? Answer each, then set the call.</div>
+          <div style={faintEs}>El estándar: ¿qué debe ser cierto para que gane su lugar en cada canal? Responde cada uno y fija la decisión.</div>
+          {(p.dates?.[ch]) && <div style={{ fontSize:11.5, color:c.sub, marginTop:3 }}>Sale date · <i>fecha de venta</i> ({chLabel(ch)}): {p.dates[ch]}</div>}</div>
+        <button onClick={onClose} style={{ cursor:"pointer", border:"none", background:"transparent", color:c.sub, fontSize:18 }}>×</button>
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", marginTop:14 }}>
+        <span style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub, marginRight:4 }}>Set bar for · <i>fijar para</i></span>
+        {chans.map((x)=>{ const on=x===ch; return <button key={x} onClick={()=>setScCh(x)} style={{ fontFamily:sans, fontSize:12.5, cursor:"pointer", padding:"5px 13px", borderRadius:2, border:`1px solid ${on?c.gold:c.line}`, background:on?c.gold:"transparent", color:on?"#fff":c.sub }}>{chLabel(x)}</button>; })}
+      </div>
+      <div style={{ display:"flex", gap:18, flexWrap:"wrap", marginTop:12, marginBottom:4 }}>
+        <label style={{ display:"flex", flexDirection:"column", gap:3 }}><span style={cap}>Target net margin %</span><input type="number" value={kd.margin} onChange={(ev)=>set("margin",ev.target.value)} style={inp} /></label>
+        <label style={{ display:"flex", flexDirection:"column", gap:3 }}><span style={cap}>Target weekly profit $</span><input type="number" value={kd.profit} onChange={(ev)=>set("profit",ev.target.value)} style={inp} /></label>
+        <label style={{ display:"flex", flexDirection:"column", gap:3 }}><span style={cap}>Weekly revenue cap $</span><input type="number" value={kd.cap} onChange={(ev)=>set("cap",ev.target.value)} placeholder="none" style={inp} /></label>
+      </div>
+ 
+      <div style={{ marginTop:10, marginBottom:6 }}><span style={cap}>Per channel — weekly</span><div style={faintEs}>Por canal — semanal</div></div>
+      <div style={{ overflowX:"auto", border:`1px solid ${c.lineSoft}`, borderRadius:3 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:440 }}>
+          <thead><tr>
+            {["Channel/Canal","Units/wk · Unid.","Profit/unit · Gan./u","Weekly · Semanal","Margin · Margen"].map((h,i)=>(
+              <th key={i} style={{ fontFamily:sans, fontSize:10, letterSpacing:0.4, textTransform:"uppercase", color:c.sub, textAlign:i===0?"left":"right", padding:"6px 8px", borderBottom:`1px solid ${c.line}`, whiteSpace:"nowrap" }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {p.channels.map((ch2)=>{ const mm=metrics(p,ch2,"current"); const lbl=ch2==="amazon"?"Amazon FBA":ch2==="b2b"?"B2B / Atlas":"Shopify"; const selRow=ch2===ch;
+              const tdc={ fontSize:13, padding:"6px 8px", textAlign:"right", borderBottom:`1px solid ${c.lineSoft}`, whiteSpace:"nowrap", background:selRow?"rgba(176,141,87,0.10)":"transparent" };
+              return (<tr key={ch2} onClick={()=>setScCh(ch2)} style={{ cursor:"pointer" }}>
+                <td style={{ ...tdc, textAlign:"left" }}>{lbl}</td>
+                <td style={tdc}>{mm.units.toFixed(0)}</td>
+                <td style={{ ...tdc, color:mm.profitPerUnit>=0?c.ink:c.red }}>{money2(mm.profitPerUnit)}</td>
+                <td style={{ ...tdc, color:mm.netAfterAds>=0?c.ink:c.red }}>{money(mm.netAfterAds)}</td>
+                <td style={tdc}>{pct(mm.netMargin)}</td>
+              </tr>); })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize:11.5, color:c.sub, fontStyle:"italic", marginTop:6 }}>The bar below is set for <b style={{ color:c.ink }}>{chLabel(ch)}</b> only — tap another channel row above to set its own targets. A product can be Keep on one channel and Cut on another.</div>
+      <div style={faintEs}>El estándar de abajo es solo para <b>{chLabel(ch)}</b> — toca otra fila de canal arriba para fijar sus propios objetivos. Un producto puede ser Conservar en un canal y Cortar en otro.</div>
+ 
+      {cond(1, `Hit ${num(kd.margin)}% net margin`, marginMet,
+        marginMet
+          ? `Already at ${pct(m.netMargin)} — above the ${num(kd.margin)}% bar at ${money2(num(p.cogs))} COGS. Mark Maybe/No only if it won't hold at scale.`
+          : (targetCOGS >= 0
+            ? `Now ${pct(m.netMargin)} at ${money2(num(p.cogs))} COGS. To reach ${num(kd.margin)}% at a ${money2(e.price)} price, COGS must drop to ≤ ${money2(targetCOGS)}. Can we get COGS there?`
+            : `At a ${money2(e.price)} price you can't reach ${num(kd.margin)}% on COGS alone — it needs a price increase. Can we raise price or cut cost enough?`),
+        marginMet
+          ? `Ya en ${pct(m.netMargin)} — por encima del objetivo de ${num(kd.margin)}% con COGS de ${money2(num(p.cogs))}. Marca Quizá/No solo si no se sostiene al escalar.`
+          : (targetCOGS >= 0
+            ? `Ahora ${pct(m.netMargin)} con COGS de ${money2(num(p.cogs))}. Para llegar a ${num(kd.margin)}% a un precio de ${money2(e.price)}, el COGS debe bajar a ≤ ${money2(targetCOGS)}. ¿Podemos lograrlo?`
+            : `A un precio de ${money2(e.price)} no se alcanza ${num(kd.margin)}% solo con COGS — requiere subir el precio. ¿Podemos subir el precio o bajar el costo lo suficiente?`),
+        "ansMargin")}
+      {cond(2, `Clear ${money(targetProfit)}/week in profit`, profitMet,
+        profitMet
+          ? `Already clearing ${money(m.netAfterAds)}/wk — above the ${money(targetProfit)} bar at ${m.units.toFixed(0)} units. Mark Maybe/No only if it can't hold.`
+          : (m.profitPerUnit > 0
+            ? `At ${money2(m.profitPerUnit)} profit/unit you'd need ~${reqUnits} units/wk (now ${m.units.toFixed(0)}). Revenue at that volume ≈ ${money(reqRevenue)}.${capExceeded?` That exceeds your ${money(num(kd.cap))} cap — volume alone won't get there.`:""} Can we reach that volume?`
+            : `Loses ${money2(Math.abs(m.profitPerUnit))}/unit today — more volume means bigger losses, not profit. Margin has to be fixed first. Can we?`),
+        profitMet
+          ? `Ya genera ${money(m.netAfterAds)}/sem — por encima del objetivo de ${money(targetProfit)} con ${m.units.toFixed(0)} unidades. Marca Quizá/No solo si no se sostiene.`
+          : (m.profitPerUnit > 0
+            ? `A ${money2(m.profitPerUnit)} de ganancia/unidad necesitarías ~${reqUnits} unidades/sem (ahora ${m.units.toFixed(0)}). Ingreso a ese volumen ≈ ${money(reqRevenue)}.${capExceeded?` Eso supera tu tope de ${money(num(kd.cap))} — el volumen por sí solo no alcanza.`:""} ¿Podemos alcanzar ese volumen?`
+            : `Pierde ${money2(Math.abs(m.profitPerUnit))}/unidad hoy — más volumen significa más pérdidas, no ganancia. Primero hay que arreglar el margen. ¿Podemos?`),
+        "ansVol")}
+      {hasAds && cond(3, `Hold ROAS above break-even at scale`, roasMet,
+        roasMet
+          ? `Already ${m.roas.toFixed(1)}x vs ${m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"} break-even — clears it. Mark Maybe/No only if ads can't hold as spend grows.`
+          : `Break-even ROAS is ${m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"}; you're at ${m.roas.toFixed(1)}x — below it. Can ads get above break-even?`,
+        roasMet
+          ? `Ya en ${m.roas.toFixed(1)}x vs equilibrio de ${m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"} — lo cumple. Marca Quizá/No solo si los anuncios no se sostienen al aumentar el gasto.`
+          : `El ROAS de equilibrio es ${m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"}; estás en ${m.roas.toFixed(1)}x — por debajo. ¿Pueden los anuncios superar el punto de equilibrio?`,
+        "ansRoas")}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12, marginTop:14, paddingTop:12, borderTop:`1px solid ${c.line}` }}>
+        <div><span style={cap}>Verdict</span><div style={{ fontSize:16, color:vMeta.col }}>{vMeta.t}</div></div>
+        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+          <span style={cap}>Override the call</span>
+          <div style={{ display:"flex", gap:6 }}>
+            {[["auto","Auto"],["keep","Keep"],["maybe","Maybe"],["cut","Cut"]].map(([v,t])=>{ const on=(kd.override||"auto")===v;
+              return <button key={v} onClick={()=>set("override",v)} style={{ fontFamily:sans, fontSize:12, cursor:"pointer", padding:"4px 13px", borderRadius:2, border:`1px solid ${on?c.ink:c.line}`, background:on?c.ink:"transparent", color:on?c.bg:c.sub }}>{t}</button>; })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+/* ============================================================================
+   MAIN
+   ========================================================================== */
+export default function ProfitMatrix({ data, onSave }) {
+  const [eprods, setEprods] = useState(() => normalize(data && data.products));
+  const [opex, setOpex] = useState(() => (data && data.opex && data.opex.length ? data.opex : SEED_OPEX).map((o)=>({ ...o })));
+  const [adj, setAdjState] = useState(() => ({ revenue:0, gross:0, net:0, netAfterAds:0, marketing:0, inventory:0, ...(data && data.profitAdjustments) }));
+  const [manual, setManual] = useState(() => ({ revenue:[], gross:[], net:[], netAfterAds:[], marketing:[], inventory:[], ...(data && data.profitManual) }));
+  const [assignees, setAssignees] = useState(() => ({ ...(data && data.assignees) }));
+  const setAssignee = (key, patch) => { setAssignees((a)=>({ ...a, [key]:{ ...(a[key]||{}), ...patch } })); setDirty(true); };
+  const [channel, setChannel] = useState("all");
+  const [period, setPeriod] = useState("current");
+  const [open, setOpen] = useState(null);
+  const [auditMetric, setAuditMetric] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [quickName, setQuickName] = useState("");
+  const [keep, setKeep] = useState(() => ({ ...(data && data.keep) }));
+  const [keepProduct, setKeepProduct] = useState(null);
+  const [crossOpen, setCrossOpen] = useState(null);
+ 
+  const KD_DEFAULT = { margin:40, profit:50, cap:"", ansMargin:null, ansVol:null, ansRoas:null, override:"auto" };
+  const kdOf = (pid, ch) => ({ ...KD_DEFAULT, ...((keep[pid]||{})[ch]||{}) });
+  const effStatus = (pid, m, ch) => {
+    if (!ch || ch === "all") return null;
+    const kd = kdOf(pid, ch);
+    if (kd.override && kd.override !== "auto") return kd.override;
+    const tM = num(kd.margin)/100;
+    const eff = [
+      kd.ansMargin ?? (m.netMargin >= tM ? "yes" : null),
+      kd.ansVol ?? (m.netAfterAds >= num(kd.profit) ? "yes" : null),
+      ...(m.roas!=null ? [ kd.ansRoas ?? (m.roas >= m.breakevenRoas ? "yes" : null) ] : []),
+    ];
+    if (eff.some(v=>v==null)) return null;
+    if (eff.includes("no")) return "cut";
+    if (eff.includes("maybe")) return "maybe";
+    return "keep";
+  };
+  const setKeepField = (pid, ch, f, v) => { setKeep((k)=>{ const prod={ ...(k[pid]||{}) }; const cur={ ...KD_DEFAULT, ...(prod[ch]||{}) }; prod[ch]={ ...cur, [f]:v }; return { ...k, [pid]:prod }; }); setDirty(true); };
+ 
+  const setField = (id, field, value, ch) => { setEprods((prev)=>prev.map((p)=>p.id!==id?p:(ch?{...p,[field]:{...p[field],[ch]:value}}:{...p,[field]:value}))); setDirty(true); };
+  const reassignChannel = (id, fromCh, toCh) => {
+    if (fromCh === toCh) return;
+    setEprods((prev)=>prev.map((p)=>{
+      if (p.id !== id || p.channels.includes(toCh)) return p;
+      const move = (o) => { const n = { ...(o||{}) }; n[toCh] = n[fromCh]; n[fromCh] = 0; return n; };
+      return { ...p, channels: p.channels.map((ch)=>ch===fromCh?toCh:ch), units:move(p.units), prev:move(p.prev), ad:move(p.ad), inv:move(p.inv) };
+    }));
+    setDirty(true);
+  };
+  const setAdj = (metric, value) => { setAdjState((a)=>({ ...a, [metric]:value })); setDirty(true); };
+  const editOpex = (id, field, value) => { setOpex((prev)=>prev.map((o)=>o.id!==id?o:{...o,[field]:value})); setDirty(true); };
+  const addOpex = () => { setOpex((prev)=>[...prev, { id:"o"+Date.now(), label:"New expense", category:"Other", channel:"shopify", weekly:0, date:"" }]); setDirty(true); };
+  const delOpex = (id) => { setOpex((prev)=>prev.filter((o)=>o.id!==id)); setDirty(true); };
+  const save = () => { onSave?.({ products:eprods, opex, adjustments:adj, manual, keep, assignees }); setDirty(false); };
+  const reset = () => { setEprods(normalize(data&&data.products)); setOpex((data&&data.opex&&data.opex.length?data.opex:SEED_OPEX).map((o)=>({...o}))); setAdjState({ revenue:0,gross:0,net:0,netAfterAds:0,marketing:0,inventory:0 }); setManual({ revenue:[],gross:[],net:[],netAfterAds:[],marketing:[],inventory:[] }); setKeep({ ...(data&&data.keep) }); setAssignees({ ...(data&&data.assignees) }); setDirty(false); };
+  const addManual = (metric) => { const ch = channel==="all"?"all":channel; setManual((m)=>({ ...m, [metric]:[...(m[metric]||[]), { id:"m"+Date.now(), productId:"", channel:ch, price:0, qty:1, label:"", amount:0, date:"" }] })); setDirty(true); };
+  const editManual = (metric,id,patch) => { setManual((m)=>({ ...m, [metric]:(m[metric]||[]).map((e)=>e.id===id?{...e,...patch}:e) })); setDirty(true); };
+  const delManual = (metric,id) => { setManual((m)=>({ ...m, [metric]:(m[metric]||[]).filter((e)=>e.id!==id) })); setDirty(true); };
+  const incl = (entryCh, ch) => ch==="all" || entryCh==="all" || entryCh===ch;
+  const manualSum = (metric, ch) => (manual[metric]||[]).filter((e)=>incl(e.channel,ch)).reduce((s,e)=>s+manualLineValue(e),0);
+ 
+  const blankProduct = () => ({ id:"new", name:"", sku:"", asin:"", channels:["shopify"], retail:0, wholesale:0, cogs:0, packaging:0, freight:0, shipShopify:0, fbaFee:0, storage:0, ad:{amazon:0,shopify:0}, units:{amazon:0,shopify:0,b2b:0}, prev:{amazon:0,shopify:0,b2b:0}, inv:{amazon:0,shopify:0,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"", dates:{amazon:"",shopify:"",b2b:""} });
+  const openAdd = () => setDraft(blankProduct());
+  const openEdit = (p) => setDraft({ ...p, ad:{...p.ad}, units:{...p.units}, prev:{...p.prev}, inv:{...(p.inv||{})} });
+  const saveProduct = () => {
+    const isNew = draft.id === "new";
+    const clean = { ...draft, name: (draft.name||"").trim() || "Untitled product" };
+    if (isNew) { const id = eprods.reduce((mx,p)=>Math.max(mx, Number(p.id)||0), 0) + 1; setEprods((prev)=>[...prev, { ...clean, id }]); }
+    else setEprods((prev)=>prev.map((p)=>p.id===draft.id?clean:p));
+    setDirty(true); setDraft(null);
+  };
+  const deleteProduct = () => { setEprods((prev)=>prev.filter((p)=>p.id!==draft.id)); setDirty(true); setDraft(null); };
+  const quickAdd = () => {
+    const name = (quickName||"").trim(); if (!name) return;
+    const id = eprods.reduce((mx,p)=>Math.max(mx, Number(p.id)||0),0)+1;
+    const ch = channel === "all" ? "shopify" : channel;
+    const np = { ...blankProduct(), id, name, channels:[ch] };
+    setEprods((prev)=>[...prev, np]); setDirty(true); setQuickName(""); setDraft({ ...np });
+  };
+ 
+  const rows = useMemo(() => eprods.filter((p)=>channel==="all"||p.channels.includes(channel))
+    .map((p)=>{ const m=metrics(p,channel,period); const sc=scoreOf(m); return { p,m,sc,d:decide(m,sc),status:effStatus(p.id,m,channel) }; })
+    .sort((a,b)=>b.m.netAfterAds-a.m.netAfterAds), [eprods, channel, period, keep]);
+ 
+  const opexAmt = useMemo(()=>opexTotal(opex, channel, period), [opex, channel, period]);
+  const opexWeekly = useMemo(()=>opexTotal(opex, channel, "current"), [opex, channel]);
+ 
+  const ex = useMemo(() => {
+    const sum = (f) => rows.reduce((s,r)=>s+f(r),0);
+    const revenue=sum(r=>r.m.revenue), gross=sum(r=>r.m.gross), net=sum(r=>r.m.net),
+      productAd=sum(r=>r.m.adSpend), commission=sum(r=>r.m.commission), invValue=sum(r=>r.m.invValue);
+    const marketing = productAd + opexAmt;
+    const netAfterAds = net - marketing;
+    const active=[...rows].filter(r=>r.m.units>0);
+    const used=new Set();
+    const take=(pool)=>{ const r=pool.find(x=>x&&!used.has(x.p.id)); if(r)used.add(r.p.id); return r; };
+    const bestPool=[...active].filter(r=>r.status!=="cut").sort((a,b)=>b.m.netAfterAds-a.m.netAfterAds);
+    const best=take(bestPool.length?bestPool:[...active].sort((a,b)=>b.m.netAfterAds-a.m.netAfterAds));
+    const cuts=active.filter(r=>r.status==="cut");
+    const notKeep=active.filter(r=>r.status!=="keep");
+    const worstPool=[...(cuts.length?cuts:(notKeep.length?notKeep:active))].sort((a,b)=>a.m.netAfterAds-b.m.netAfterAds);
+    const worst=take(worstPool);
+    const oppPool=[...rows].filter(r=>r.m.netAfterAds>0&&r.sc>=60&&r.status!=="cut").sort((a,b)=>(b.sc-b.m.adSpend)-(a.sc-a.m.adSpend));
+    const opp=take(oppPool);
+    const riskPool=[...rows].sort((a,b)=>{ const ra=a.m.netAfterAds>0?a.m.weeksRemaining:-100+a.m.netAfterAds; const rb=b.m.netAfterAds>0?b.m.weeksRemaining:-100+b.m.netAfterAds; return ra-rb; });
+    const worstAlsoRisk = !!(worst && riskPool[0] && worst.p.id===riskPool[0].p.id);
+    const risk=take(riskPool);
+    return { revenue, gross, net, productAd, opex:opexAmt, marketing, commission, netAfterAds, invValue, best, worst, opp, risk, worstAlsoRisk };
+  }, [rows, opexAmt]);
+ 
+  const wow = useMemo(() => {
+    const f=(per)=>{ const r=eprods.filter(p=>channel==="all"||p.channels.includes(channel)).reduce((s,p)=>s+metrics(p,channel,per).netAfterAds,0); return r-opexTotal(opex,channel,per); };
+    return { cur:f("current"), prv:f("previous") };
+  }, [eprods, opex, channel]);
+ 
+  const series = useMemo(() => {
+    const rev = (per)=> eprods.filter(p=>channel==="all"||p.channels.includes(channel)).reduce((s,p)=>s+metrics(p,channel,per).revenue,0);
+    const wk = { current:1, previous:1, last4:4, qtd:13, ytd:52 };
+    const order = [
+      { id:"ytd", label:"Year", labelEs:"Año" },
+      { id:"qtd", label:"Quarter", labelEs:"Trim." },
+      { id:"last4", label:"4 Weeks", labelEs:"4 sem" },
+      { id:"previous", label:"Last Wk", labelEs:"Sem. pas." },
+      { id:"current", label:"This Wk", labelEs:"Esta sem." },
+    ];
+    const pts = order.map(o=>{ const total=rev(o.id); return { ...o, total, rate: total/wk[o.id] }; });
+    const cur=rev("current"), prev=rev("previous");
+    const wowPct = prev>0 ? (cur-prev)/prev : (cur>0?1:0);
+    return { pts, cur, prev, wowPct };
+  }, [eprods, channel]);
+ 
+  const recs = useMemo(() => {
+    const out=[];
+    const chLab = channel==="all"?"each channel":channel==="b2b"?"B2B":channel==="amazon"?"Amazon":"Shopify";
+    const chLabEs = channel==="all"?"cada canal":channel==="b2b"?"B2B":channel==="amazon"?"Amazon":"Shopify";
+    rows.forEach(({p,m,sc,d})=>{
+      if(d.tag==="Scale"){
+        const newAd = m.adSpend>0?money(m.adSpend*1.2):"a small test budget";
+        out.push({ k:"scale", pid:p.id, icon:"↑", color:c.green, title:`Scale ${p.name}`,
+          action:`Raise ${chLab} ad spend ~20%${m.adSpend>0?` (≈ ${newAd}/wk)`:""} and pre-buy ~${m.reorderQty} more units so growth doesn't cause a stockout.`,
+          actionEs:`Sube el gasto en anuncios de ${chLabEs} ~20%${m.adSpend>0?` (≈ ${newAd}/sem)`:""} y compra por adelantado ~${m.reorderQty} unidades más para que el crecimiento no cause un quiebre de stock.`,
+          achieves:`Captures more of your most profitable volume while margin (${pct(m.netMargin)}) and ROAS (${m.roas?m.roas.toFixed(1)+"x":"n/a"}) are strong.`,
+          achievesEs:`Captura más del volumen más rentable mientras el margen (${pct(m.netMargin)}) y el ROAS (${m.roas?m.roas.toFixed(1)+"x":"n/d"}) están fuertes.` });
+      }
+      if(d.tag==="Eliminate") out.push({ k:"kill", pid:p.id, icon:"✕", color:c.red, title:`Stop reordering ${p.name}`,
+        action:`Stop placing new orders for ${p.name}, set its ads to $0, and sell through the ${money(m.invValue)} already in stock.`,
+        actionEs:`Deja de hacer pedidos nuevos de ${p.name}, pon sus anuncios en $0 y vende el inventario de ${money(m.invValue)} que ya tienes.`,
+        achieves:`Frees up cash from a unit losing ${money2(Math.abs(m.profitPerUnit))} each instead of sinking more into it.`,
+        achievesEs:`Libera efectivo de una unidad que pierde ${money2(Math.abs(m.profitPerUnit))} cada una en vez de seguir invirtiendo.` });
+      if(d.tag==="Fix"){
+        const roasIssue = m.roas!=null && m.roas<m.breakevenRoas;
+        out.push({ k:"fix", pid:p.id, icon:"!", color:c.yellow, title:`Fix ${p.name}`,
+          action: roasIssue
+            ? `Cut ${chLab} ad spend (now ${money(m.adSpend)}/wk) until ROAS clears ${m.breakevenRoas===Infinity?"break-even":m.breakevenRoas.toFixed(1)+"x"} — or raise price. Don't add inventory yet.`
+            : `Raise price or lower COGS on ${p.name} until each unit profits (it's at ${pct(m.netMargin)} net margin now). Hold ad spend flat until then.`,
+          actionEs: roasIssue
+            ? `Reduce el gasto en anuncios de ${chLabEs} (ahora ${money(m.adSpend)}/sem) hasta que el ROAS supere ${m.breakevenRoas===Infinity?"el equilibrio":m.breakevenRoas.toFixed(1)+"x"} — o sube el precio. No agregues inventario aún.`
+            : `Sube el precio o baja el COGS de ${p.name} hasta que cada unidad gane (está en ${pct(m.netMargin)} de margen). Mantén el gasto en anuncios igual mientras tanto.`,
+          achieves: roasIssue ? `Stops ads from eating the margin before you put more money behind it.` : `Makes each unit profitable first, so scaling later adds profit instead of losses.`,
+          achievesEs: roasIssue ? `Evita que los anuncios se coman el margen antes de invertir más.` : `Hace que cada unidad sea rentable primero, para que escalar luego sume ganancia en vez de pérdidas.` });
+      }
+      if(m.netAfterAds>0&&m.weeksRemaining<num(p.leadWeeks)+1) out.push({ k:"reorder", pid:p.id, icon:"⟳", color:c.clay, title:`Reorder ${p.name}`,
+        action:`Place a reorder of ~${m.reorderQty} units of ${p.name} now (≈ ${money(m.cashForReorder)}) — only ~${m.weeksRemaining.toFixed(1)} wks of ${chLab} stock left against a ${num(p.leadWeeks)}-wk lead time.`,
+        actionEs:`Haz un pedido de ~${m.reorderQty} unidades de ${p.name} ahora (≈ ${money(m.cashForReorder)}) — quedan solo ~${m.weeksRemaining.toFixed(1)} sem de stock de ${chLabEs} contra ${num(p.leadWeeks)} sem de espera.`,
+        achieves:`Prevents a stockout that would lose sales${channel==="amazon"||channel==="all"?" and hurt Amazon ranking":""}.`,
+        achievesEs:`Evita un quiebre de stock que perdería ventas${channel==="amazon"||channel==="all"?" y dañaría el posicionamiento en Amazon":""}.` });
+    });
+    const rank={reorder:0,kill:1,fix:2,scale:3};
+    out.forEach((o)=>{ o.key=o.k+":"+o.pid; });
+    return out.sort((a,b)=>rank[a.k]-rank[b.k]).slice(0,8);
+  }, [rows, channel]);
+ 
+  const ledger = useMemo(() => {
+    const sales = [];
+    eprods.forEach((p)=>{
+      (p.channels||[]).forEach((ch)=>{
+        if (!(channel==="all"||ch===channel)) return;
+        const mm = metrics(p, ch, period);
+        if (mm.revenue<=0) return;
+        sales.push({ pid:p.id, ch, name:p.name, date:p.dates?.[ch]||"", amount:mm.revenue });
+      });
+    });
+    sales.sort((a,b)=>{ if(!a.date&&!b.date)return 0; if(!a.date)return 1; if(!b.date)return -1; return a.date<b.date?-1:1; });
+    return { sales, revenue: sales.reduce((s,x)=>s+x.amount,0) };
+  }, [eprods, channel, period]);
+ 
+  const S = {
+    wrap:{ fontFamily:serif, color:c.ink, background:c.bg, padding:"26px 22px 60px", maxWidth:1180, margin:"0 auto" },
+    h1:{ fontFamily:serif, fontSize:30, fontWeight:400, letterSpacing:0.3, margin:0 },
+    sub:{ color:c.sub, fontSize:14.5, marginTop:4, fontStyle:"italic" },
+    label:{ fontFamily:sans, fontSize:11, letterSpacing:1.3, textTransform:"uppercase", color:c.sub },
+    panel:{ background:c.panel, border:`1px solid ${c.line}`, borderRadius:4, padding:18 },
+    sec:{ fontSize:19, fontWeight:400, margin:"34px 0 14px", letterSpacing:0.3, borderBottom:`1px solid ${c.line}`, paddingBottom:8 },
+    th:{ fontFamily:sans, fontSize:10.5, letterSpacing:0.6, textTransform:"uppercase", color:c.sub, textAlign:"right", padding:"9px 10px", borderBottom:`1px solid ${c.line}`, whiteSpace:"nowrap" },
+    thL:{ textAlign:"left" },
+    td:{ fontSize:13.5, padding:"11px 10px", borderBottom:`1px solid ${c.lineSoft}`, textAlign:"right", whiteSpace:"nowrap" },
+    tdL:{ textAlign:"left" },
+  };
+  const tBtn=(a)=>({ fontFamily:sans, fontSize:13.5, letterSpacing:0.3, cursor:"pointer", padding:"8px 16px", borderRadius:2, border:`1px solid ${a?c.ink:c.line}`, background:a?c.ink:"transparent", color:a?c.bg:c.ink });
+  const pBtn=(a)=>({ fontFamily:sans, fontSize:12, cursor:"pointer", padding:"5px 11px", borderRadius:2, border:"none", background:"transparent", color:a?c.ink:c.sub, borderBottom:`2px solid ${a?c.gold:"transparent"}` });
+  const sel={ fontFamily:sans, fontSize:12.5, padding:"4px 6px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink };
+ 
+  const marginLevel = ex.revenue ? (ex.netAfterAds/ex.revenue>=0.2?"green":ex.netAfterAds/ex.revenue>=0.08?"yellow":"red") : "red";
+  const tacos = ex.revenue ? ex.marketing/ex.revenue : 0;
+  const tacosLevel = tacos<=0.15?"green":tacos<=0.28?"yellow":"red";
+ 
+  const KPI = ({ k, label, labelEs, value, level, note, big }) => {
+    const active = auditMetric===k, clickable=!!k;
+    return (
+      <div onClick={clickable?()=>setAuditMetric(active?null:k):undefined}
+        style={{ ...S.panel, padding:"14px 16px", cursor:clickable?"pointer":"default", borderColor:active?c.gold:c.line }}>
+        <div style={S.label}>{level&&<Dot level={level} />}{label}
+          {clickable&&<span style={{ float:"right", fontSize:10, color:active?c.gold:c.sub, letterSpacing:0.5 }}>{active?"▲ audit":"▾ audit"}</span>}</div>
+        {labelEs&&<div style={faintEs}>{labelEs}</div>}
+        <div style={{ fontSize:big?26:22, marginTop:6, lineHeight:1.1 }}>{value}</div>
+        {note&&<div style={{ fontSize:12, color:c.sub, marginTop:4 }}>{note}</div>}
+      </div>
+    );
+  };
+  const dv = { revenue:ex.revenue+num(adj.revenue)+manualSum("revenue",channel), gross:ex.gross+num(adj.gross)+manualSum("gross",channel), net:ex.net+num(adj.net)+manualSum("net",channel),
+    netAfterAds:ex.netAfterAds+num(adj.netAfterAds)+manualSum("netAfterAds",channel), marketing:ex.marketing+num(adj.marketing)+manualSum("marketing",channel), inventory:ex.invValue+num(adj.inventory)+manualSum("inventory",channel) };
+ 
+  const drawer = () => {
+    if (!auditMetric) return null;
+    const common = { channel, products:eprods, setField, reassignChannel, adj:adj[auditMetric], setAdj:(v)=>setAdj(auditMetric,v), onSave:save, onReset:reset, dirty,
+      manualEntries: manual[auditMetric]||[], manualSum: manualSum(auditMetric, channel),
+      onManualAdd: ()=>addManual(auditMetric), onManualEdit:(id,patch)=>editManual(auditMetric,id,patch), onManualDel:(id)=>delManual(auditMetric,id), onNewProduct: openAdd };
+    if (auditMetric==="inventory") return <InventoryDrawer {...common} />;
+    return <AuditDrawer metric={auditMetric} opexAmt={opexWeekly} {...common} />;
+  };
+ 
+  return (
+    <div style={S.wrap}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:12 }}>
+        <div><h1 style={S.h1}>Profit Matrix</h1><div style={faintEs}>Matriz de ganancia</div><div style={S.sub}>What made money, what leaked cash, and what to do this week.</div><div style={faintEs}>Qué generó dinero, dónde se fugó efectivo y qué hacer esta semana.</div></div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{PERIODS.map(pr=><button key={pr.id} style={pBtn(period===pr.id)} onClick={()=>setPeriod(pr.id)}>{pr.label}</button>)}</div>
+      </div>
+      <div style={{ display:"flex", gap:8, marginTop:18, flexWrap:"wrap" }}>{CHANNELS.map(ch=><button key={ch.id} style={tBtn(channel===ch.id)} onClick={()=>setChannel(ch.id)}>{ch.label}</button>)}</div>
+ 
+      <div style={{ display:"flex", gap:8, marginTop:14, alignItems:"center", flexWrap:"wrap" }}>
+        <input value={quickName} onChange={(e)=>setQuickName(e.target.value)} onKeyDown={(e)=>{ if(e.key==="Enter") quickAdd(); }}
+          placeholder="Add a product to the analysis…"
+          style={{ fontFamily:sans, fontSize:13.5, padding:"8px 12px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink, flex:1, minWidth:200, maxWidth:360 }} />
+        <button onClick={quickAdd} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"8px 18px", borderRadius:2, border:`1px solid ${c.ink}`, background:c.ink, color:c.bg }}>Add</button>
+        <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>creates it on the {channel==="all"?"Shopify":CHANNELS.find(x=>x.id===channel)?.label} tab — fill in details next</span>
+      </div>
+ 
+      <div style={S.sec}>Sales Pace by Period <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— weekly run-rate, oldest window to newest</span><div style={faintEs}>Ritmo de ventas por período — promedio semanal, de la ventana más amplia a la más reciente</div></div>
+      {(() => {
+        const pts = series.pts; const W=600, H=190, padL=14, padR=14, padT=26, padB=34;
+        const innerW=W-padL-padR, innerH=H-padT-padB;
+        const max=Math.max(...pts.map(p=>p.rate),1);
+        const slot=innerW/pts.length, bw=Math.min(64, slot*0.5);
+        const xOf=(i)=>padL+(i+0.5)*slot; const yOf=(r)=>padT+innerH-(r/max)*innerH;
+        const wp=series.wowPct;
+        const trendEn = wp>0.03?`up ${pct(Math.abs(wp))} from last week`:wp<-0.03?`down ${pct(Math.abs(wp))} from last week`:"about flat vs last week";
+        const trendEs = wp>0.03?`subió ${pct(Math.abs(wp))} vs la semana pasada`:wp<-0.03?`bajó ${pct(Math.abs(wp))} vs la semana pasada`:"casi sin cambio vs la semana pasada";
+        const word = wp>0.03?"growing":wp<-0.03?"declining":"steady";
+        const wordEs = wp>0.03?"creciendo":wp<-0.03?"cayendo":"estable";
+        return (
+        <div style={{ ...S.panel }}>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth:760, display:"block", margin:"0 auto" }}>
+            <line x1={padL} y1={padT+innerH} x2={W-padR} y2={padT+innerH} stroke={c.line} strokeWidth="1" />
+            <polyline fill="none" stroke={c.clay} strokeWidth="1.5" strokeDasharray="3 3" points={pts.map((p,i)=>`${xOf(i)},${yOf(p.rate)}`).join(" ")} />
+            {pts.map((p,i)=>{ const isNow=p.id==="current"; const bh=(p.rate/max)*innerH; const y=padT+innerH-bh;
+              return (<g key={p.id}>
+                <rect x={xOf(i)-bw/2} y={y} width={bw} height={Math.max(bh,1)} rx="2" fill={isNow?c.gold:c.sage} opacity={isNow?1:0.8} />
+                <text x={xOf(i)} y={y-7} textAnchor="middle" fontFamily={sans} fontSize="11" fill={c.ink}>{money(p.rate)}</text>
+                <text x={xOf(i)} y={padT+innerH+15} textAnchor="middle" fontFamily={sans} fontSize="10.5" fill={c.sub}>{p.label}</text>
+                <text x={xOf(i)} y={padT+innerH+28} textAnchor="middle" fontFamily={sans} fontSize="9" fontStyle="italic" fill="rgba(111,102,87,0.6)">{p.labelEs}</text>
+              </g>);
+            })}
+          </svg>
+          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>Sales are <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{word}</b>: this week's pace is {money(series.cur)}/wk, {trendEn} ({money(series.prev)}/wk). The 4-week, quarter and year bars reflect that weekly pace projected across each window.</div>
+          <div style={{ ...faintEs, fontSize:11.5 }}>Las ventas están <b>{wordEs}</b>: el ritmo de esta semana es {money(series.cur)}/sem, {trendEs} ({money(series.prev)}/sem). Las barras de 4 semanas, trimestre y año reflejan ese ritmo semanal proyectado en cada ventana.</div>
+        </div>);
+      })()}
+ 
+      <div style={S.sec}>Executive Dashboard <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— tap any tile to audit its line items</span><div style={faintEs}>Panel ejecutivo — toca cualquier tarjeta para auditar sus partidas</div></div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(165px, 1fr))", gap:12 }}>
+        <KPI k="revenue" label="Revenue" labelEs="Ingreso" value={money(dv.revenue)} big />
+        <KPI k="gross" label="Gross Profit" labelEs="Ganancia bruta" value={money(dv.gross)} note={ex.revenue?pct(dv.gross/ex.revenue)+" margin":""} />
+        <KPI k="net" label="Net Profit" labelEs="Ganancia neta" value={money(dv.net)} note="before ads & marketing" />
+        <KPI k="netAfterAds" label="Net After Ads" labelEs="Neto tras anuncios" level={marginLevel} value={money(dv.netAfterAds)} note={<Delta now={wow.cur} prev={wow.prv} />} big />
+        <KPI k="marketing" label="Weekly Marketing" labelEs="Marketing semanal" level={tacosLevel} value={money(dv.marketing)} note={"TACOS "+pct(tacos)} />
+        <KPI k="inventory" label="Inventory Value" labelEs="Valor de inventario" value={money(dv.inventory)} note={channel==="all"?"all stock pools":channel==="b2b"?"Atlas consignment":channel==="amazon"?"FBA stock":"Shopify on-hand"} />
+      </div>
+ 
+      {drawer()}
+ 
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:12, marginTop:12 }}>
+        <Callout level="green" label="Best Product" labelEs="Mejor producto" name={ex.best?.p.name} sub={ex.best&&`${money(ex.best.m.netAfterAds)} profit · ${pct(ex.best.m.netMargin)} margin`} status={ex.best?effStatus(ex.best.p.id,ex.best.m,channel):null} onClick={ex.best?()=>setKeepProduct(ex.best.p.id):undefined} />
+        <Callout level="red" label={ex.worstAlsoRisk?"Worst · Biggest Risk":"Worst Product"} labelEs={ex.worstAlsoRisk?"Peor · Mayor riesgo":"Peor producto"} name={ex.worst?.p.name} sub={ex.worst&&(()=>{ const t=num(kdOf(ex.worst.p.id,channel==='all'?ex.worst.p.channels[0]:channel).profit); const u=ex.worst.m.profitPerUnit>0?Math.ceil(t/ex.worst.m.profitPerUnit):null; const base=`${money(ex.worst.m.netAfterAds)} profit · ${u?`~${u} units/wk clears ${money(t)}`:"loses money/unit — fix margin first"}`; return ex.worstAlsoRisk?`${base} · ${ex.worst.m.weeksRemaining.toFixed(1)} wks stock`:base; })()} status={ex.worst?effStatus(ex.worst.p.id,ex.worst.m,channel):null} onClick={ex.worst?()=>setKeepProduct(ex.worst.p.id):undefined} />
+        <Callout level="yellow" label="Biggest Opportunity" labelEs="Mayor oportunidad" name={ex.opp?.p.name} sub={ex.opp&&`score ${ex.opp.sc}/100 · room to scale`} status={ex.opp?effStatus(ex.opp.p.id,ex.opp.m,channel):null} onClick={ex.opp?()=>setKeepProduct(ex.opp.p.id):undefined} />
+        <Callout level="red" label={ex.worstAlsoRisk?"Next at Risk":"Biggest Risk"} labelEs={ex.worstAlsoRisk?"Siguiente en riesgo":"Mayor riesgo"} name={ex.risk?.p.name} sub={ex.risk&&(ex.risk.m.netAfterAds<=0?"losing money on hand":`~${ex.risk.m.weeksRemaining.toFixed(1)} wks of stock`)} status={ex.risk?effStatus(ex.risk.p.id,ex.risk.m,channel):null} onClick={ex.risk?()=>setKeepProduct(ex.risk.p.id):undefined} />
+      </div>
+      {keepProduct!=null && (()=>{ const kp=eprods.find((x)=>x.id===keepProduct); if(!kp) return null; return <KeepScorecard product={kp} period={period} defaultChannel={channel} keepData={keep[kp.id]||{}} onField={(ch,f,v)=>setKeepField(kp.id,ch,f,v)} onClose={()=>setKeepProduct(null)} />; })()}
+ 
+      <div style={S.sec}>This Week's Actions<div style={faintEs}>Acciones de esta semana</div></div>
+      <div style={S.panel}>
+        {recs.length===0&&<div style={{ color:c.sub }}>No urgent actions for the selected channel.<div style={faintEs}>No hay acciones urgentes para el canal seleccionado.</div></div>}
+        {recs.map((r,i)=>{
+          const as = assignees[r.key]||{};
+          const subj = `Lavalle Haus — ${r.title}`;
+          const body = `${r.action}\n\nWhy this matters: ${r.achieves}\n\n— Lavalle Haus OS`;
+          const mailto = as.email ? `mailto:${as.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}` : null;
+          const ain = { fontFamily:sans, fontSize:12.5, padding:"4px 7px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink };
+          return (
+          <div key={r.key||i} style={{ display:"flex", gap:12, alignItems:"flex-start", padding:"13px 0", borderBottom:i<recs.length-1?`1px solid ${c.lineSoft}`:"none" }}>
+            <span style={{ color:r.color, fontFamily:sans, fontWeight:700, width:18, textAlign:"center", flexShrink:0, paddingTop:2 }}>{r.icon}</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14.5, lineHeight:1.45 }}>{r.action}</div>
+              <div style={{ ...faintEs, fontSize:11.5 }}>{r.actionEs}</div>
+              <div style={{ fontSize:12.5, color:c.sage, marginTop:5, fontStyle:"italic" }}>Achieves: {r.achieves}</div>
+              <div style={{ ...faintEs, fontSize:11 }}>Logra: {r.achievesEs}</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", marginTop:9 }}>
+                <span style={{ fontFamily:sans, fontSize:9.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>Assign · <i>asignar</i></span>
+                <select value={as.custom?"custom":(as.email||"")} onChange={(ev)=>{ const v=ev.target.value; if(v===""){ setAssignee(r.key,{ name:"", email:"", custom:false }); } else if(v==="custom"){ setAssignee(r.key,{ custom:true }); } else { const t=TEAM.find((t)=>t.email===v); setAssignee(r.key,{ name:t?t.name:"", email:v, custom:false }); } }} style={{ ...ain, width:175 }}>
+                  <option value="">Unassigned · sin asignar</option>
+                  {TEAM.map((t)=><option key={t.email} value={t.email}>{t.name}</option>)}
+                  <option value="custom">+ Add manually · agregar</option>
+                </select>
+                {as.custom && <input value={as.name||""} placeholder="Name · nombre" onChange={(ev)=>setAssignee(r.key,{ name:ev.target.value })} style={{ ...ain, width:120 }} />}
+                {as.custom && <input value={as.email||""} type="email" placeholder="email@…" onChange={(ev)=>setAssignee(r.key,{ email:ev.target.value })} style={{ ...ain, width:160 }} />}
+                <a href={mailto||undefined} onClick={(ev)=>{ if(!mailto){ ev.preventDefault(); } }}
+                  style={{ fontFamily:sans, fontSize:12, textDecoration:"none", padding:"5px 12px", borderRadius:2, border:`1px solid ${mailto?c.ink:c.line}`, background:mailto?c.ink:"transparent", color:mailto?c.bg:c.sub, cursor:mailto?"pointer":"not-allowed", whiteSpace:"nowrap" }}>✉ Send · enviar</a>
+              </div>
+            </div>
+          </div>);
+        })}
+        <div style={{ fontSize:11.5, color:c.sub, fontStyle:"italic", marginTop:12, lineHeight:1.6 }}>Add a name + email, then tap Send to open a pre-filled email assigning that task. <span style={faintEs}>Agrega nombre + correo y toca Enviar para abrir un correo prellenado asignando esa tarea.</span></div>
+      </div>
+ 
+      {/* PRODUCT MATRIX */}
+      <div style={{ ...S.sec, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>Product Profit Matrix<div style={faintEs}>Matriz de ganancia por producto</div></span>
+        <button onClick={openAdd} style={{ fontFamily:sans, fontSize:12.5, cursor:"pointer", padding:"6px 14px", borderRadius:2, border:`1px solid ${c.ink}`, background:c.ink, color:c.bg }}>+ Add product</button>
+      </div>
+      {draft && <ProductForm draft={draft} setDraft={setDraft} onSave={saveProduct} onCancel={()=>setDraft(null)} onDelete={deleteProduct} />}
+      <div style={{ ...S.panel, padding:0, overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:920 }}>
+          <thead><tr>
+            <th style={{ ...S.th, ...S.thL }}>Product<div style={faintEs}>Producto</div></th><th style={S.th}>Units<div style={faintEs}>Unidades</div></th><th style={S.th}>Revenue<div style={faintEs}>Ingreso</div></th>
+            <th style={S.th}>CM / Unit<div style={faintEs}>MC / unidad</div></th><th style={S.th}>Net Margin<div style={faintEs}>Margen neto</div></th><th style={S.th}>Profit / Unit<div style={faintEs}>Ganancia / unidad</div></th>
+            <th style={S.th}>Wk Profit<div style={faintEs}>Ganancia sem.</div></th><th style={S.th}>B/E ROAS<div style={faintEs}>ROAS equil.</div></th><th style={S.th}>ROAS</th>
+            <th style={S.th}>Score<div style={faintEs}>Puntaje</div></th><th style={{ ...S.th, ...S.thL }}>Decision<div style={faintEs}>Decisión</div></th>
+          </tr></thead>
+          <tbody>
+            {rows.map(({p,m,sc,d,status})=>(
+              <Fragment key={p.id}>
+                <tr style={{ cursor:"pointer", background:open===p.id?c.bg:"transparent" }} onClick={()=>setOpen(open===p.id?null:p.id)}>
+                  <td style={{ ...S.td, ...S.tdL }}>
+                    <div style={{ fontSize:14 }}>{p.name}</div>
+                    <div style={{ fontSize:11, color:c.sub, fontFamily:sans }}>{p.sku}{p.reorderLink?" · ":""}{p.reorderLink&&<a href={p.reorderLink} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} style={{ color:c.clay }}>reorder ↗</a>} · <a onClick={(e)=>{e.stopPropagation();openEdit(p);}} style={{ color:c.clay, cursor:"pointer" }}>edit</a></div>
+                  </td>
+                  <td style={S.td}>{m.units.toFixed(0)}</td>
+                  <td style={S.td}>{money(m.revenue)}</td>
+                  <td style={S.td}>{money2(m.cmPerUnit)}<span style={{ color:c.sub, fontSize:11 }}> {pct(m.cmPct)}</span></td>
+                  <td style={{ ...S.td, color:m.netMargin>=0.2?c.green:m.netMargin>0?c.ink:c.red }}>{pct(m.netMargin)}</td>
+                  <td style={{ ...S.td, color:m.profitPerUnit>=0?c.ink:c.red }}>{money2(m.profitPerUnit)}</td>
+                  <td style={{ ...S.td, color:m.netAfterAds>=0?c.ink:c.red }}>{money(m.netAfterAds)}</td>
+                  <td style={S.td}>{m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"}</td>
+                  <td style={{ ...S.td, color:m.roas==null?c.sub:m.roas>=m.breakevenRoas?c.green:c.red }}>{m.roas==null?"—":m.roas.toFixed(1)+"x"}</td>
+                  <td style={S.td}><span style={{ fontFamily:sans, fontSize:13 }}>{sc}</span>
+                    <span style={{ display:"inline-block", width:38, height:4, background:c.lineSoft, borderRadius:4, marginLeft:6, verticalAlign:"middle", position:"relative" }}>
+                      <span style={{ position:"absolute", left:0, top:0, height:4, borderRadius:4, width:sc+"%", background:sc>=70?c.green:sc>=45?c.gold:c.red }} /></span></td>
+                  <td style={{ ...S.td, ...S.tdL }}><Tag text={d.tag} color={d.color} />{status&&<span style={{ marginLeft:6, fontFamily:sans, fontSize:10.5, letterSpacing:0.4, textTransform:"uppercase", color:status==="keep"?c.green:status==="maybe"?c.gold:c.red }}>· {status}</span>}</td>
+                </tr>
+                {open===p.id&&(
+                  <tr><td colSpan={11} style={{ background:c.bg, padding:"14px 16px", borderBottom:`1px solid ${c.line}` }}>
+                    <div style={{ fontSize:13.5, fontStyle:"italic", marginBottom:10 }}>{d.why}</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:10, fontSize:12.5 }}>
+                      <D k="Retail / Wholesale" v={`${money2(num(p.retail))} / ${money2(num(p.wholesale))}`} />
+                      <D k="Landed unit cost" v={money2(unitCost(p))} sub="COGS + pkg + freight" />
+                      <D k="Gross margin" v={pct(m.grossMargin)} />
+                      <D k="Max CPA (break-even)" v={money2(m.maxCPA)} />
+                      {channel==="b2b"&&<D k="Atlas commission (3%)" v={money2(num(p.wholesale)*B2B.atlasCommissionPct)+"/unit"} />}
+                      <D k={`${channel==="all"?"Total":channel==="b2b"?"Atlas":channel} stock`} v={`${m.inv}${channel==="amazon"&&num(p.inbound)?` (+${num(p.inbound)} inbound)`:""}`} />
+                      <D k="Weeks remaining" v={m.weeksRemaining.toFixed(1)} level={m.weeksRemaining<num(p.leadWeeks)+1?"red":m.weeksRemaining<8?"yellow":"green"} />
+                      <D k="Est. stockout" v={m.velocity>0.001?m.stockout.toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—"} />
+                      <D k="Reorder point" v={`${m.reorderPoint} units`} />
+                      <D k="Cash to reorder" v={money(m.cashForReorder)} sub={`~${m.reorderQty} units`} />
+                      <D k="Inventory value" v={money(m.invValue)} />
+                    </div>
+                  </td></tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+ 
+      {/* PROFIT LEDGER (sales + all expenses + net profit, one table) */}
+      {(() => {
+        const totalRevenue = ex.revenue;
+        const productCosts = ex.revenue - ex.net;
+        const adSpend = ex.productAd;
+        const mktTotal = ex.opex;
+        const net = ex.netAfterAds;
+        const chName = (ch)=> ch==="b2b"?"B2B":ch[0].toUpperCase()+ch.slice(1);
+        const dInp = { fontFamily:sans, fontSize:12.5, padding:"4px 6px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink };
+        const grpTd = { ...S.td, ...S.tdL, fontFamily:sans, fontSize:11, letterSpacing:0.8, textTransform:"uppercase", color:c.sub, background:c.bg, paddingTop:12, paddingBottom:8 };
+        const lblTd = { ...S.td, ...S.tdL, fontFamily:sans };
+        return (<>
+          <div style={S.sec}>Profit Ledger <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— sales, every expense &amp; net profit in one table</span><div style={faintEs}>Libro de ganancias — ventas, cada gasto y la ganancia neta en una tabla</div></div>
+          <div style={{ ...S.panel, padding:0, overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:700 }}>
+              <thead><tr>
+                <th style={{ ...S.th, ...S.thL }}>Date<div style={faintEs}>Fecha</div></th>
+                <th style={{ ...S.th, ...S.thL }}>Entry<div style={faintEs}>Entrada</div></th>
+                <th style={{ ...S.th, ...S.thL }}>Type<div style={faintEs}>Tipo</div></th>
+                <th style={{ ...S.th, ...S.thL }}>Channel<div style={faintEs}>Canal</div></th>
+                <th style={S.th}>Amount<div style={faintEs}>Monto</div></th>
+                <th style={S.th}></th>
+              </tr></thead>
+              <tbody>
+                <tr><td colSpan={6} style={grpTd}>Sales · Ventas</td></tr>
+                {ledger.sales.length===0 && <tr><td colSpan={6} style={{ ...S.td, ...S.tdL, color:c.sub }}>No sales for this channel/period.</td></tr>}
+                {ledger.sales.map((x,i)=>(
+                  <tr key={"s"+i}>
+                    <td style={{ ...S.td, ...S.tdL }}><input type="date" value={x.date} onChange={(e)=>setField(x.pid,"dates",e.target.value,x.ch)} style={dInp} /></td>
+                    <td style={{ ...S.td, ...S.tdL }}>{x.name}</td>
+                    <td style={{ ...S.td, ...S.tdL }}><Tag text="Sale · venta" color={c.sage} /></td>
+                    <td style={{ ...S.td, ...S.tdL, color:c.sub }}>{chName(x.ch)}</td>
+                    <td style={{ ...S.td, color:c.ink }}>+{money(x.amount)}</td>
+                    <td style={S.td}></td>
+                  </tr>
+                ))}
+                <tr><td colSpan={4} style={lblTd}>Total revenue · <i>ingreso total</i></td><td style={{ ...S.td, fontFamily:sans }}>{money(totalRevenue)}</td><td style={S.td}></td></tr>
+ 
+                <tr><td colSpan={6} style={grpTd}>Costs &amp; Expenses · Costos y gastos</td></tr>
+                <tr><td style={{ ...S.td, ...S.tdL, color:c.sub }}>—</td><td style={{ ...S.td, ...S.tdL }}>Product costs — COGS, fees, shipping, returns<div style={faintEs}>Costos de producto — COGS, tarifas, envío, devoluciones</div></td><td style={{ ...S.td, ...S.tdL }}><Tag text="Cost · costo" color={c.clay} /></td><td style={{ ...S.td, ...S.tdL, color:c.sub }}>—</td><td style={{ ...S.td, color:c.red }}>−{money(productCosts)}</td><td style={S.td}></td></tr>
+                <tr><td style={{ ...S.td, ...S.tdL, color:c.sub }}>—</td><td style={{ ...S.td, ...S.tdL }}>Per-product ad spend (Amazon PPC / Meta)<div style={faintEs}>Gasto en anuncios por producto</div></td><td style={{ ...S.td, ...S.tdL }}><Tag text="Cost · costo" color={c.clay} /></td><td style={{ ...S.td, ...S.tdL, color:c.sub }}>—</td><td style={{ ...S.td, color:c.red }}>−{money(adSpend)}</td><td style={S.td}></td></tr>
+                {opex.map((o)=>(
+                  <tr key={o.id}>
+                    <td style={{ ...S.td, ...S.tdL }}><input type="date" value={o.date||""} onChange={(e)=>editOpex(o.id,"date",e.target.value)} style={dInp} /></td>
+                    <td style={{ ...S.td, ...S.tdL, whiteSpace:"normal", minWidth:230 }}>
+                      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                        <input value={o.label} onChange={(e)=>editOpex(o.id,"label",e.target.value)} style={{ ...sel, width:"100%", boxSizing:"border-box" }} />
+                        <select value={o.category} onChange={(e)=>editOpex(o.id,"category",e.target.value)} style={{ ...sel, width:"100%", boxSizing:"border-box" }}>{OPEX_CATS.map(x=><option key={x} value={x}>{`${x} · ${OPEX_CAT_ES[x]}`}</option>)}</select>
+                      </div>
+                    </td>
+                    <td style={{ ...S.td, ...S.tdL }}><Tag text="Expense · gasto" color={c.clay} /></td>
+                    <td style={{ ...S.td, ...S.tdL }}><select value={o.channel} onChange={(e)=>editOpex(o.id,"channel",e.target.value)} style={sel} disabled={o.locked}>{CHANNELS.filter(x=>x.id!=="all").map(x=><option key={x.id} value={x.id}>{x.label}{x.id==="b2b"?" · Mayoreo":""}</option>)}</select></td>
+                    <td style={{ ...S.td, color:c.red }}><span style={{ display:"inline-flex", alignItems:"center", justifyContent:"flex-end", gap:2 }}>−<Edit value={o.weekly} onChange={(v)=>editOpex(o.id,"weekly",v)} disabled={o.locked} w={72} /></span></td>
+                    <td style={S.td}>{!o.locked&&<button onClick={()=>delOpex(o.id)} style={{ cursor:"pointer", border:"none", background:"transparent", color:c.sub, fontSize:16 }}>×</button>}</td>
+                  </tr>
+                ))}
+                <tr><td colSpan={6} style={{ ...S.td, ...S.tdL }}><button onClick={addOpex} style={{ fontFamily:sans, fontSize:12.5, cursor:"pointer", padding:"5px 12px", borderRadius:2, border:`1px solid ${c.line}`, background:"transparent", color:c.clay }}>+ Add expense · agregar gasto</button></td></tr>
+                <tr><td colSpan={4} style={lblTd}>Total costs &amp; expenses · <i>costos y gastos totales</i></td><td style={{ ...S.td, fontFamily:sans, color:c.red }}>−{money(productCosts+adSpend+mktTotal)}</td><td style={S.td}></td></tr>
+ 
+                <tr><td colSpan={4} style={{ ...S.td, ...S.tdL, fontFamily:sans, fontSize:15, borderTop:`2px solid ${c.ink}` }}>Net Profit · <i>ganancia neta</i></td><td style={{ ...S.td, fontFamily:sans, fontSize:15, borderTop:`2px solid ${c.ink}`, color:net>=0?c.green:c.red }}>{net>=0?money(net):"−"+money(Math.abs(net))}</td><td style={{ ...S.td, borderTop:`2px solid ${c.ink}` }}></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize:12, color:c.sub, fontStyle:"italic", marginTop:8, lineHeight:1.6 }}>
+            Net Profit = revenue − product costs (COGS, fees, shipping) − ad spend − marketing/channel expenses, matching the Net After Ads tile. Atlas B2B adds {money(B2B.atlasPlacementPerQuarter)}/quarter placement plus {pct(B2B.atlasCommissionPct)} commission per B2B sale. Edit sales in the matrix above; edit expenses inline here. <span style={faintEs}>Ganancia neta = ingreso − costos de producto − anuncios − gastos de marketing/canal.</span>
+          </div>
+        </>);
+      })()}
+ 
+      {/* CROSS-CHANNEL */}
+      <div style={S.sec}>Cross-Channel Comparison<div style={faintEs}>Comparación entre canales</div></div>
+      <div style={{ ...S.panel, padding:0, overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:640 }}>
+          <thead><tr><th style={{ ...S.th, ...S.thL }}>Product<div style={faintEs}>Producto</div></th><th style={S.th}>Shopify Profit<div style={faintEs}>Ganancia Shopify</div></th><th style={S.th}>Amazon Profit<div style={faintEs}>Ganancia Amazon</div></th><th style={S.th}>B2B Profit<div style={faintEs}>Ganancia B2B</div></th><th style={{ ...S.th, ...S.thL }}>Best Channel<div style={faintEs}>Mejor canal</div></th><th style={{ ...S.th, ...S.thL }}>Weakest Channel<div style={faintEs}>Canal más débil</div></th></tr></thead>
+          <tbody>
+            {eprods.map((p)=>{
+              const sh=metrics(p,"shopify",period).netAfterAds, am=metrics(p,"amazon",period).netAfterAds, bb=metrics(p,"b2b",period).netAfterAds;
+              const vals=[{n:"Shopify",v:sh,on:p.channels.includes("shopify")},{n:"Amazon",v:am,on:p.channels.includes("amazon")},{n:"B2B",v:bb,on:p.channels.includes("b2b")}].filter(x=>x.on);
+              const best=vals.length?vals.reduce((a,b)=>b.v>a.v?b:a):{n:"—"};
+              const weak=vals.length?vals.reduce((a,b)=>b.v<a.v?b:a):{n:"—"};
+              const cell=(v,on)=><td style={{ ...S.td, color:!on?c.sub:v>=0?c.ink:c.red }}>{on?money(v):"—"}</td>;
+              const isOpen=crossOpen===p.id; const w=crossWhy(p,period);
+              return (<Fragment key={p.id}>
+                <tr onClick={()=>setCrossOpen(isOpen?null:p.id)} style={{ cursor:"pointer", background:isOpen?c.bg:"transparent" }}>
+                  <td style={{ ...S.td, ...S.tdL }}>{p.name} <span style={{ fontFamily:sans, fontSize:10.5, color:c.clay, whiteSpace:"nowrap" }}>{isOpen?"▴":"▾"} why · por qué</span></td>
+                  {cell(sh,p.channels.includes("shopify"))}{cell(am,p.channels.includes("amazon"))}{cell(bb,p.channels.includes("b2b"))}
+                  <td style={{ ...S.td, ...S.tdL }}>{vals.length?<Tag text={best.n} color={c.sage} />:"—"}</td>
+                  <td style={{ ...S.td, ...S.tdL }}>{vals.length>1 ? <Tag text={weak.n} color={c.red} /> : <span style={{ color:c.sub, fontStyle:"italic", fontSize:12 }}>only channel · único canal</span>}</td>
+                </tr>
+                {isOpen && <tr><td colSpan={6} style={{ background:c.bg, padding:"4px 16px 14px", borderBottom:`1px solid ${c.line}` }}>
+                  <div style={{ fontSize:13, lineHeight:1.55, color:c.ink }}><b style={{ fontFamily:serif }}>{p.name}</b> — {w.en}</div>
+                  <div style={{ ...faintEs, fontSize:11.5 }}>{p.name} — {w.es}</div>
+                </td></tr>}
+              </Fragment>);
+            })}
+          </tbody>
+        </table>
+      </div>
+ 
+      <div style={{ marginTop:26, fontSize:12, color:c.sub, fontStyle:"italic", lineHeight:1.6 }}>
+        Inventory is now channel-routed (Amazon FBA / Shopify on-hand / Atlas consignment), so Inventory Value changes with the channel toggle. Tap any dashboard tile to audit and edit its line items; the manual adjustment field reconciles to bank/payout actuals. Save audit writes products + expenses + adjustments back via onSave. Seeded figures are placeholders from the marketing ledger — verify against your books.
+      </div>
+    </div>
+  );
+}
+ 
+function Callout({ level, label, labelEs, name, sub, status, onClick }) {
+  const sb = status ? { keep:{ t:"Keep", col:c.green }, maybe:{ t:"Maybe", col:c.gold }, cut:{ t:"Cut", col:c.red } }[status] : null;
+  return (<div onClick={onClick} style={{ background:c.panel, border:`1px solid ${status?sb.col:c.line}`, borderRadius:4, padding:18, cursor:onClick?"pointer":"default" }}>
+    <div style={{ fontFamily:sans, fontSize:11, letterSpacing:1.3, textTransform:"uppercase", color:c.sub }}><Dot level={level} />{label}{onClick&&<span style={{ float:"right", fontSize:10, color:c.sub, letterSpacing:0.5 }}>▾ review</span>}</div>
+    {labelEs&&<div style={faintEs}>{labelEs}</div>}
+    <div style={{ fontSize:16, marginTop:5 }}>{name||"—"}</div>
+    {sub&&<div style={{ fontSize:12.5, color:c.sub }}>{sub}</div>}
+    {sb&&<div style={{ marginTop:7 }}><span style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:sb.col, border:`1px solid ${sb.col}`, borderRadius:2, padding:"1px 7px" }}>Marked: {sb.t}</span></div>}
+  </div>);
+}
+function D({ k, v, sub, level }) {
+  return (<div>
+    <div style={{ fontFamily:sans, fontSize:10.5, letterSpacing:0.5, textTransform:"uppercase", color:c.sub }}>{level&&<Dot level={level} />}{k}</div>
+    <div style={{ fontSize:15, marginTop:2 }}>{v}</div>{sub&&<div style={{ fontSize:11, color:c.sub }}>{sub}</div>}
+  </div>);
 }
