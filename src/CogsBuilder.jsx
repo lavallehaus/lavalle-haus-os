@@ -163,7 +163,7 @@ function channelEconomics(p, landed) {
   const shCogs = landed + num(sh.outboundShip);
   const shFee  = retail * num(sh.processingPct) / 100 + num(sh.processingFixed);
   const shNet  = retail - shCogs - shFee;
-  const whole  = num(b2.wholesalePrice);
+  const whole  = num(b2.wholesalePrice) > 0 ? num(b2.wholesalePrice) : retail * 0.5;
   const b2Cogs = landed + num(b2.freightPerUnit);
   const b2Fee  = whole * num(b2.commissionPct) / 100;
   const b2Net  = whole - b2Cogs - b2Fee;
@@ -256,8 +256,7 @@ function Section({ title, titleEs, section, isLabor, product, rate, editLine, ad
                 <tr key={l.id}>
                   <td style={{ ...S.td, ...S.tdL, whiteSpace: "normal", minWidth: 190 }}>
                     <input value={l.name || ""} placeholder="English name" onChange={(e) => editLine(section, l.id, { name: e.target.value })}
-                      style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} />
-                    <input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
+                      style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} /><input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
                       style={{ width: "100%", boxSizing: "border-box", marginTop: 4, fontFamily: sans, fontSize: 11.5, fontStyle: "italic", padding: "4px 7px", border: `1px solid ${c.lineSoft}`, borderRadius: 2, background: c.panel, color: "rgba(111,102,87,0.85)" }} />
                   </td>
                   {isLabor
@@ -266,7 +265,8 @@ function Section({ title, titleEs, section, isLabor, product, rate, editLine, ad
                        <td style={S.td}><UomSelect value={l.uom} onChange={(v) => editLine(section, l.id, { uom: v })} /></td>
                        <td style={S.td}><Inp value={l.unitCost} onChange={(v) => editLine(section, l.id, { unitCost: v })} w={70} /></td></>}
                   <td style={S.td}><BasisSelect value={l.basis} onChange={(v) => editLine(section, l.id, { basis: v })} yield_={y} /></td>
-                  <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td><td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
+                  <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td>
+                  <td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
                 </tr>
               );
             })}
@@ -317,7 +317,7 @@ export default function CogsBuilder({ data, onSave }) {
   const shTgtAcos = econ.retail > 0 ? shMaxAd / econ.retail : 0;
   const azTgtRoas = azMaxAd > 0 ? econ.retail / azMaxAd : 0;
   const shTgtRoas = shMaxAd > 0 ? econ.retail / shMaxAd : 0;
-  const b2bPrice = num(cset.b2b.wholesalePrice);
+  const b2bPrice = num(cset.b2b.wholesalePrice) > 0 ? num(cset.b2b.wholesalePrice) : econ.retail * 0.5;
   const bestCh = (() => {
     const cands = [];
     if (econ.retail > 0) cands.push(["az", chEcon.az.net], ["sh", chEcon.sh.net]);
@@ -331,6 +331,11 @@ export default function CogsBuilder({ data, onSave }) {
   const b2bLtvContrib = b2bContribFirst + (b2bOrders - 1) * b2bContribReorder;
   const b2bBeRoasFirst = b2bContribFirst > 0 ? b2bPrice / b2bContribFirst : 0;
   const b2bBeRoasLtv = b2bLtvContrib > 0 ? b2bPrice / b2bLtvContrib : 0;
+  const cuFt = num(product.cuFt);
+  const daysInv = Math.max(num(product.daysInInventory != null ? product.daysInInventory : 60), 0);
+  const carryRate = num(product.carryRatePct != null ? product.carryRatePct : 25) / 100;
+  const carryCost = econ.total * carryRate * (daysInv / 365);
+  const turns = daysInv > 0 ? 365 / daysInv : 0;
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
   const marginColor = econ.margin >= 0.5 ? c.green : econ.margin >= 0.3 ? c.yellow : c.red;
 
@@ -380,8 +385,7 @@ export default function CogsBuilder({ data, onSave }) {
       {/* TRUE COST ROLL-UP (the Bezos lens) */}
       <div style={S.sec}>True Landed Cost Per Unit<div style={faintEs}>Costo real en destino por unidad</div></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
-        {[
-          { l: "Materials", le: "Materiales", v: econ.materials },
+        {[{ l: "Materials", le: "Materiales", v: econ.materials },
           { l: "Packaging", le: "Empaque", v: econ.packaging },
           { l: "Inbound", le: "Entrada", v: econ.shipping },
           { l: "Labor", le: "Mano de obra", v: econ.labor, note: `${econ.totalHours.toFixed(2)} hrs/unit @ ${money2(rate)}/hr` },
@@ -405,7 +409,8 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${c.line}` }}>
           <div style={S.cap}>Working backwards — max COGS the price can carry · COGS máximo que soporta el precio</div>
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8 }}>{[0.5, 0.6, 0.7].map((m) => { const maxc = econ.retail * (1 - m); const ok = econ.total <= maxc;
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8 }}>
+            {[0.5, 0.6, 0.7].map((m) => { const maxc = econ.retail * (1 - m); const ok = econ.total <= maxc;
               return (
                 <div key={m} style={{ fontSize: 13 }}>
                   <span style={{ color: c.sub }}>{Math.round(m * 100)}% margin → </span>
@@ -486,7 +491,7 @@ export default function CogsBuilder({ data, onSave }) {
             {bestCh === "b2b" && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>keeps most · retiene más</span>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px,1fr))", gap: 10, marginTop: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Wholesale $/u</span><Inp value={cset.b2b.wholesalePrice} onChange={(v) => setChan("b2b", { wholesalePrice: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Wholesale $/u (auto 50%)</span><Inp value={num(cset.b2b.wholesalePrice) > 0 ? cset.b2b.wholesalePrice : (econ.retail > 0 ? Number((econ.retail * 0.5).toFixed(2)) : "")} onChange={(v) => setChan("b2b", { wholesalePrice: v })} w="100%" /></label>
             <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Commission %</span><Inp value={cset.b2b.commissionPct} onChange={(v) => setChan("b2b", { commissionPct: v })} w="100%" /></label>
             <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Freight $/u</span><Inp value={cset.b2b.freightPerUnit} onChange={(v) => setChan("b2b", { freightPerUnit: v })} w="100%" /></label>
           </div>
@@ -508,9 +513,7 @@ export default function CogsBuilder({ data, onSave }) {
               <div style={faintEs}>Ingresa un precio de mayoreo para ver la economía B2B — normalmente cerca de la mitad del precio de venta.</div>
             </div>
           )}
-        </div>
-
-      </div>
+        </div></div>
       <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 10 }}>
         Same product, same landed cost — the gap between the margins is pure channel economics: Amazon's referral + FBA, Shopify's processing + shipping, and B2B's lower wholesale price. Margin waterfall, inventory carrying cost, and the launch simulator come next.
         <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los márgenes es pura economía de canal: comisión + FBA de Amazon, procesamiento + envío de Shopify, y el precio de mayoreo más bajo de B2B. Cascada de márgenes, costo de mantener inventario y el simulador de lanzamiento vienen después.</div>
@@ -544,7 +547,8 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
       </div>
 
-      {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}<div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
+      {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}
+      <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
@@ -615,6 +619,55 @@ export default function CogsBuilder({ data, onSave }) {
           <div style={{ fontSize: 12, color: c.sub, fontStyle: "italic" }}>
             Set a wholesale price in the B2B card above to model Faire ad headroom.
             <div style={faintEs}>Ingresa un precio de mayoreo en la tarjeta B2B de arriba para modelar el margen de anuncios de Faire.</div>
+          </div>
+        )}
+      </div>
+
+      {/* INVENTORY ECONOMICS (Phase 3) — carrying cost & profit per cubic foot */}
+      <div style={S.sec}>Inventory Economics — carrying cost &amp; profit per cubic foot<div style={faintEs}>Economía de inventario — costo de mantener y ganancia por pie cúbico</div></div>
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Cubic ft / unit · pie³ por unidad</span><Inp value={product.cuFt != null ? product.cuFt : ""} onChange={(v) => setProd(product.id, { cuFt: v })} w={90} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Days in inventory · días en stock</span><Inp value={product.daysInInventory != null ? product.daysInInventory : 60} onChange={(v) => setProd(product.id, { daysInInventory: v })} w={90} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Carrying rate %/yr · tasa anual</span><Inp value={product.carryRatePct != null ? product.carryRatePct : 25} onChange={(v) => setProd(product.id, { carryRatePct: v })} w={90} /></label>
+          <div style={{ flex: 1, minWidth: 200, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+            Carrying rate covers capital tied up, storage, insurance, and obsolescence — 20–30%/yr is typical. Days in stock = how long the average unit sits before selling.
+            <div style={faintEs}>La tasa anual cubre el capital inmovilizado, almacenamiento, seguro y obsolescencia — 20–30%/año es típico. Días en stock = cuánto tarda en venderse la unidad promedio.</div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 14, marginTop: 14 }}>
+          <div style={{ ...S.panel, padding: "14px 16px" }}>
+            <div style={S.cap}>Carrying cost / unit · costo de mantener/u</div>
+            <div style={{ fontSize: 24, marginTop: 4 }}>{money2(carryCost)}</div>
+            <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>{money2(econ.total)} held {daysInv} days @ {Math.round(carryRate * 100)}%/yr</div>
+          </div>
+          <div style={{ ...S.panel, padding: "14px 16px" }}>
+            <div style={S.cap}>Inventory turns / yr · rotaciones</div><div style={{ fontSize: 24, marginTop: 4 }}>{turns > 0 ? turns.toFixed(1) + "×" : "—"}</div>
+            <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>higher = cash recycles faster · más alto = el efectivo rota más rápido</div>
+          </div>
+        </div>
+        {cuFt > 0 ? (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${c.line}` }}>
+            <div style={S.cap}>Profit per cubic foot, by channel · ganancia por pie³, por canal</div>
+            <div style={faintEs}>How much each cubic foot of warehouse / FBA space earns per unit sold — rank SKUs by this to decide what deserves the space.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 14, marginTop: 10 }}>
+              {[
+                { l: "Amazon (FBA)", net: chEcon.az.net, show: econ.retail > 0 },
+                { l: "Shopify (D2C)", net: chEcon.sh.net, show: econ.retail > 0 },
+                { l: "B2B / Wholesale", net: chEcon.b2b.net, show: b2bPrice > 0 },
+              ].map((x) => (
+                <div key={x.l}>
+                  <div style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</div>
+                  <div style={{ fontSize: 22, marginTop: 2, color: x.show ? mColor(x.net / Math.max(econ.total, 1)) : c.sub }}>{x.show ? money2(x.net / cuFt) + "/ft³" : "—"}</div>
+                  <div style={{ fontSize: 11.5, color: c.sub }}>{x.show ? `net after carrying: ${money2(x.net - carryCost)}/unit` : "set a price"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
+            Enter cubic feet per unit to see profit per cubic foot — the metric for deciding which SKUs deserve warehouse and FBA space.
+            <div style={faintEs}>Ingresa pies cúbicos por unidad para ver la ganancia por pie cúbico — la métrica para decidir qué SKUs merecen espacio en bodega y FBA.</div>
           </div>
         )}
       </div>
