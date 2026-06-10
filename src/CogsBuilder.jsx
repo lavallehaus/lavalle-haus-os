@@ -137,8 +137,7 @@ const UomSelect = ({ value, onChange }) => (
   <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} style={{ ...selStyle, width: 72 }}>
     {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
   </select>
-);
-const BasisSelect = ({ value, onChange, yield_ }) => (
+);const BasisSelect = ({ value, onChange, yield_ }) => (
   <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} title="how this cost is allocated" style={{ ...selStyle, width: 128 }}>
     <option value="unit">per unit</option>
     <option value="batch">{`per batch (÷${yield_})`}</option>
@@ -147,23 +146,31 @@ const BasisSelect = ({ value, onChange, yield_ }) => (
 
 /* ---- CHANNEL ECONOMICS (Phase 2: true landed cost → per-channel) -------- */
 const CHAN_DEFAULTS = {
-  amazon:  { referralPct: 15, fbaFee: 0, storagePerUnit: 0 },shopify: { processingPct: 2.9, processingFixed: 0.3, outboundShip: 0 },
+  amazon:  { referralPct: 15, fbaFee: 0, storagePerUnit: 0 },
+  shopify: { processingPct: 2.9, processingFixed: 0.3, outboundShip: 0 },
+  b2b:     { wholesalePrice: 0, commissionPct: 0, freightPerUnit: 0 },
 };
 const chan = (p) => ({
   amazon:  { ...CHAN_DEFAULTS.amazon,  ...((p.channels || {}).amazon  || {}) },
   shopify: { ...CHAN_DEFAULTS.shopify, ...((p.channels || {}).shopify || {}) },
+  b2b:     { ...CHAN_DEFAULTS.b2b,     ...((p.channels || {}).b2b     || {}) },
 });
 function channelEconomics(p, landed) {
-  const cset = chan(p), retail = num(p.retail), az = cset.amazon, sh = cset.shopify;
+  const cset = chan(p), retail = num(p.retail), az = cset.amazon, sh = cset.shopify, b2 = cset.b2b;
   const azCogs = landed + num(az.fbaFee) + num(az.storagePerUnit);
   const azFee  = retail * num(az.referralPct) / 100;
   const azNet  = retail - azCogs - azFee;
   const shCogs = landed + num(sh.outboundShip);
   const shFee  = retail * num(sh.processingPct) / 100 + num(sh.processingFixed);
   const shNet  = retail - shCogs - shFee;
+  const whole  = num(b2.wholesalePrice);
+  const b2Cogs = landed + num(b2.freightPerUnit);
+  const b2Fee  = whole * num(b2.commissionPct) / 100;
+  const b2Net  = whole - b2Cogs - b2Fee;
   return {
     az: { cogs: azCogs, fee: azFee, allIn: azCogs + azFee, net: azNet, margin: retail > 0 ? azNet / retail : 0, beRoas: azNet > 0 ? retail / azNet : 0 },
     sh: { cogs: shCogs, fee: shFee, allIn: shCogs + shFee, net: shNet, margin: retail > 0 ? shNet / retail : 0, beRoas: shNet > 0 ? retail / shNet : 0 },
+    b2b: { price: whole, cogs: b2Cogs, fee: b2Fee, allIn: b2Cogs + b2Fee, net: b2Net, margin: whole > 0 ? b2Net / whole : 0 },
   };
 }
 const roasFmt = (r) => (r && isFinite(r) && r > 0 ? r.toFixed(2) + "×" : "—");
@@ -279,14 +286,20 @@ export default function CogsBuilder({ data, onSave }) {
 
   if (!product) return null;
   const cset = chan(product);
-  const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);
-  const tf = tgtPct / 100;
+  const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);const tf = tgtPct / 100;
   const azMaxAd = chEcon.az.net - tf * econ.retail;
   const shMaxAd = chEcon.sh.net - tf * econ.retail;
   const azTgtAcos = econ.retail > 0 ? azMaxAd / econ.retail : 0;
   const shTgtAcos = econ.retail > 0 ? shMaxAd / econ.retail : 0;
   const azTgtRoas = azMaxAd > 0 ? econ.retail / azMaxAd : 0;
   const shTgtRoas = shMaxAd > 0 ? econ.retail / shMaxAd : 0;
+  const b2bPrice = num(cset.b2b.wholesalePrice);
+  const bestCh = (() => {
+    const cands = [];
+    if (econ.retail > 0) cands.push(["az", chEcon.az.net], ["sh", chEcon.sh.net]);
+    if (b2bPrice > 0) cands.push(["b2b", chEcon.b2b.net]);
+    return cands.length ? cands.reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null;
+  })();
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
   const marginColor = econ.margin >= 0.5 ? c.green : econ.margin >= 0.3 ? c.yellow : c.red;
 
@@ -296,7 +309,8 @@ export default function CogsBuilder({ data, onSave }) {
         <div>
           <h1 style={S.h1}>COGS Builder</h1><div style={faintEs}>Constructor de costos</div>
           <div style={S.sub}>Every ingredient, box, and minute of labor — the true cost of one unit.</div>
-          <div style={faintEs}>Cada ingrediente, caja y minuto de mano de obra — el costo real de una unidad.</div></div>
+          <div style={faintEs}>Cada ingrediente, caja y minuto de mano de obra — el costo real de una unidad.</div>
+        </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Labor rate $/hr · tarifa/hora</span><Inp value={rate} onChange={(v) => { setRate(v); touch(); }} w={84} /></label>
           <button onClick={save} style={{ fontFamily: sans, fontSize: 13, cursor: "pointer", padding: "9px 20px", borderRadius: 2, border: `1px solid ${c.ink}`, background: dirty ? c.ink : c.sub, color: c.bg }}>{dirty ? "Save · guardar" : "Saved · guardado"}</button>
@@ -383,19 +397,19 @@ export default function CogsBuilder({ data, onSave }) {
         )}
       </div>
 
-      {/* CHANNEL ECONOMICS (Phase 2) — built on top of true landed cost */}
-      <div style={S.sec}>Channel Economics — Amazon vs Shopify<div style={faintEs}>Economía por canal — Amazon vs Shopify</div></div>
+      {/* CHANNEL ECONOMICS (Phase 2/3) — built on top of true landed cost */}
+      <div style={S.sec}>Channel Economics — Amazon · Shopify · B2B<div style={faintEs}>Economía por canal — Amazon · Shopify · B2B</div></div>
       <div style={{ fontSize: 12, color: c.sub, fontStyle: "italic", marginBottom: 12 }}>
-        Starts from your true landed cost ({money2(econ.total)}/unit), then layers each channel's real fees on top. Defaults are estimates — edit them to match your Amazon statement and Shopify plan.
-        <div style={faintEs}>Parte de tu costo real en destino ({money2(econ.total)}/u), luego suma las comisiones reales de cada canal. Los valores por defecto son estimados — edítalos según tu estado de Amazon y tu plan de Shopify.</div>
+        Starts from your true landed cost ({money2(econ.total)}/unit), then layers each channel's real fees on top. Amazon &amp; Shopify sell at retail; B2B sells at your wholesale price. Defaults are estimates — edit them to match reality.
+        <div style={faintEs}>Parte de tu costo real en destino ({money2(econ.total)}/u), luego suma las comisiones de cada canal. Amazon y Shopify venden a precio de venta; B2B vende a tu precio de mayoreo. Los valores por defecto son estimados — edítalos según la realidad.</div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px,1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px,1fr))", gap: 14 }}>
 
         {/* AMAZON */}
-        <div style={{ ...S.panel, borderTop: `3px solid ${econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin ? c.gold : c.line}` }}>
+        <div style={{ ...S.panel, borderTop: `3px solid ${bestCh === "az" ? c.gold : c.line}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
             <div style={{ fontSize: 16 }}>Amazon (FBA)</div>
-            {econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>best margin · mejor margen</span>}
+            {bestCh === "az" && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>keeps most · retiene más</span>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px,1fr))", gap: 10, marginTop: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Referral %</span><Inp value={cset.amazon.referralPct} onChange={(v) => setChan("amazon", { referralPct: v })} w="100%" /></label>
@@ -414,15 +428,14 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
 
         {/* SHOPIFY */}
-        <div style={{ ...S.panel, borderTop: `3px solid ${econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin ? c.gold : c.line}` }}>
+        <div style={{ ...S.panel, borderTop: `3px solid ${bestCh === "sh" ? c.gold : c.line}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
             <div style={{ fontSize: 16 }}>Shopify (D2C)</div>
-            {econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>best margin · mejor margen</span>}
+            {bestCh === "sh" && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>keeps most · retiene más</span>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px,1fr))", gap: 10, marginTop: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing %</span><Inp value={cset.shopify.processingPct} onChange={(v) => setChan("shopify", { processingPct: v })} w="100%" /></label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing $ fixed</span><Inp value={cset.shopify.processingFixed} onChange={(v) => setChan("shopify", { processingFixed: v })} w="100%" /></label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Outbound ship $/u</span><Inp value={cset.shopify.outboundShip} onChange={(v) => setChan("shopify", { outboundShip: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing $ fixed</span><Inp value={cset.shopify.processingFixed} onChange={(v) => setChan("shopify", { processingFixed: v })} w="100%" /></label><label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Outbound ship $/u</span><Inp value={cset.shopify.outboundShip} onChange={(v) => setChan("shopify", { outboundShip: v })} w="100%" /></label>
           </div>
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${c.lineSoft}` }}>
             <KV label="Landed cost · costo en destino" value={money2(econ.total)} />
@@ -435,17 +448,49 @@ export default function CogsBuilder({ data, onSave }) {
           </div>
         </div>
 
+        {/* B2B / WHOLESALE */}
+        <div style={{ ...S.panel, borderTop: `3px solid ${bestCh === "b2b" ? c.gold : c.line}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
+            <div style={{ fontSize: 16 }}>B2B / Wholesale</div>
+            {bestCh === "b2b" && <span style={{ fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.gold }}>keeps most · retiene más</span>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px,1fr))", gap: 10, marginTop: 12 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Wholesale $/u</span><Inp value={cset.b2b.wholesalePrice} onChange={(v) => setChan("b2b", { wholesalePrice: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Commission %</span><Inp value={cset.b2b.commissionPct} onChange={(v) => setChan("b2b", { commissionPct: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Freight $/u</span><Inp value={cset.b2b.freightPerUnit} onChange={(v) => setChan("b2b", { freightPerUnit: v })} w="100%" /></label>
+          </div>
+          {b2bPrice > 0 ? (
+            <>
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${c.lineSoft}` }}>
+                <KV label="Landed cost · costo en destino" value={money2(econ.total)} />
+                <KV label="+ Freight to buyer · flete al comprador" value={money2(chEcon.b2b.cogs - econ.total)} />
+                <KV label={`+ Commission (${num(cset.b2b.commissionPct)}%) · comisión`} value={money2(chEcon.b2b.fee)} />
+              </div>
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${c.line}`, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10 }}>
+                <div><div style={S.cap}>All-in cost / unit · costo total/u</div><div style={{ fontSize: 28 }}>{money2(chEcon.b2b.allIn)}</div></div>
+                <div style={{ textAlign: "right" }}><div style={S.cap}>Net @ {money2(b2bPrice)} · margen</div><div style={{ fontSize: 16 }}>{money2(chEcon.b2b.net)} · <span style={{ color: mColor(chEcon.b2b.margin) }}>{pct(chEcon.b2b.margin)}</span></div></div>
+              </div>
+            </>
+          ) : (
+            <div style={{ marginTop: 12, fontSize: 12, color: c.sub, fontStyle: "italic" }}>
+              Enter a wholesale price to see B2B economics — typically about half of retail.
+              <div style={faintEs}>Ingresa un precio de mayoreo para ver la economía B2B — normalmente cerca de la mitad del precio de venta.</div>
+            </div>
+          )}
+        </div>
+
       </div>
       <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 10 }}>
-        Same product, same landed cost — the gap between the two margins is pure channel economics (Amazon's referral + FBA fees vs Shopify's processing + shipping). B2B, ad cost, break-even ROAS, and contribution margin come next phase.
-        <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los dos márgenes es pura economía de canal (comisión + FBA de Amazon vs procesamiento + envío de Shopify). B2B, costo de anuncios, ROAS de equilibrio y margen de contribución vienen en la siguiente fase.</div>
+        Same product, same landed cost — the gap between the margins is pure channel economics: Amazon's referral + FBA, Shopify's processing + shipping, and B2B's lower wholesale price. Margin waterfall, inventory carrying cost, and the launch simulator come next.
+        <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los márgenes es pura economía de canal: comisión + FBA de Amazon, procesamiento + envío de Shopify, y el precio de mayoreo más bajo de B2B. Cascada de márgenes, costo de mantener inventario y el simulador de lanzamiento vienen después.</div>
       </div>
 
       {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}
       <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label><div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
             Break-even ROAS is where ad spend swallows all your contribution. To still keep the margin above, your real ROAS must beat the Min ROAS below.
             <div style={faintEs}>El ROAS de equilibrio es donde el gasto en anuncios se come toda tu contribución. Para conservar el margen de arriba, tu ROAS real debe superar el ROAS mínimo de abajo.</div>
           </div>
@@ -479,13 +524,14 @@ export default function CogsBuilder({ data, onSave }) {
         <div style={faintEs}>Costo total real por unidad, por canal</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 16, marginTop: 10 }}>
           {[
-            { l: "Amazon (FBA)", allIn: chEcon.az.allIn, net: chEcon.az.net, m: chEcon.az.margin, best: econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin },
-            { l: "Shopify (D2C)", allIn: chEcon.sh.allIn, net: chEcon.sh.net, m: chEcon.sh.margin, best: econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin },
+            { key: "az", l: "Amazon (FBA)", allIn: chEcon.az.allIn, net: chEcon.az.net, m: chEcon.az.margin, price: econ.retail, show: econ.retail > 0 },
+            { key: "sh", l: "Shopify (D2C)", allIn: chEcon.sh.allIn, net: chEcon.sh.net, m: chEcon.sh.margin, price: econ.retail, show: econ.retail > 0 },
+            { key: "b2b", l: "B2B / Wholesale", allIn: chEcon.b2b.allIn, net: chEcon.b2b.net, m: chEcon.b2b.margin, price: b2bPrice, show: b2bPrice > 0 },
           ].map((x) => (
-            <div key={x.l}>
-              <div style={{ display: "flex", gap: 7, alignItems: "baseline" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{x.best && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}</div>
+            <div key={x.key}>
+              <div style={{ display: "flex", gap: 7, alignItems: "baseline" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{bestCh === x.key && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}</div>
               <div style={{ fontSize: 32, marginTop: 2 }}>{money2(x.allIn)}</div>
-              <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{econ.retail > 0 ? pct(x.m) : "—"}</span> margin at {money2(econ.retail)} · deja neto</div>
+              <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>{x.show ? <>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{pct(x.m)}</span> margin at {money2(x.price)} · deja neto</> : "set a price · define un precio"}</div>
             </div>
           ))}
         </div>
