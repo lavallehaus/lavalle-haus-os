@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ProfitMatrix from "./ProfitMatrix.jsx";
 import CogsBuilder from "./CogsBuilder.jsx";
 import AICoo from "./AICoo.jsx";
@@ -190,7 +190,7 @@ const [draft, setDraft] = useState({});
 
 function startEdit(p) {
 setEditing(p.id);
-setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, channels: p.channels || ["Amazon"] });
+setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
 }
 
 function saveEdit(id) {
@@ -200,6 +200,7 @@ const updated = prev.map(p => p.id !== id ? p : {
 available: +draft.available || 0,inbound: +draft.inbound || 0,
 unitsSold30: +draft.unitsSold30 || 0,
 notes: draft.notes,
+reorderLink: draft.reorderLink || "",
 channels: draft.channels,
 });
 // Persist to DB
@@ -249,6 +250,7 @@ return (
 ))}
 </div>
 {p.notes && <div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
+{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 <div style={{ flex: 1, height: 4, background: "#e5e1da", borderRadius: 1 }}>
 <div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
@@ -270,6 +272,11 @@ style={{ width: 56, background: "#e5e1da", border: "1px solid #4a3f2a", borderRa
 </div>
 <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} rows={2}
 style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace", resize: "none" }} />
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Reorder Link (supplier / Amazon URL)</div>
+<input value={draft.reorderLink || ""} onChange={e => setDraft(d => ({ ...d, reorderLink: e.target.value }))} placeholder="https://..."
+style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#1a1714", fontSize: 11, fontFamily: "monospace" }} />
+</div>
 <div style={{ marginBottom: 4 }}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 6 }}>Sold On</div>
 <div style={{ display: "flex", gap: 8 }}>
@@ -289,14 +296,14 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
 {[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30]].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
-<div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
+<div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div><div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
 </div>
 ))}
 <button onClick={() => startEdit(p)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>Edit</button>
 </div>
 )}
-</div></div>
+</div>
+</div>
 </Card>
 );
 })}
@@ -438,14 +445,14 @@ return (
 </div>
 </>
 )}
-</div>
-</div>
+</div></div>
 <div>
 {isEditing ? (
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 {[["price", "List Price"], ["cogs", "COGS/unit"], ["shipping", "Ship/unit"], ["adSpend", "Ad/unit"]].map(([f, l]) => (
-<div key={f}><div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
+<div key={f}>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <NumInput value={r[f]} onChange={val => update(r.id, f, val)} />
 </div>
 ))}
@@ -587,14 +594,15 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 </Card>
 ) : (
 <button onClick={() => setAdding(true)} style={{ background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "monospace", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
-+ ADD THIS WEEK'S NUMBERS
-</button>
++ ADD THIS WEEK'S NUMBERS</button>
 )}
 
 {weeks.length === 0 && !adding && (
 <Card style={{ textAlign: "center", padding: "32px 20px" }}>
 <div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div></Card>
-)}<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+)}
+
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 {weeks.map((w, i) => {
 const t = tacos(w);
 const prevWeek = weeks[i + 1];
@@ -735,14 +743,14 @@ Enter estimated cost per item to track against your $250 weekly budget
 <div style={{ display: "flex", gap: 20 }}>
 {[
 { label: "Budget", value: `$${WEEKLY_BUDGET}`, color: "#9c8d7b" },
-{ label: "Allocated", value: `$${allocatedTotal.toFixed(2)}`, color: "#a07848" },
-{ label: "Remaining", value: `$${remaining.toFixed(2)}`, color: remaining < 0 ? "#9b5e5e" : "#5a7a5a" },
+{ label: "Allocated", value: `$${allocatedTotal.toFixed(2)}`, color: "#a07848" },{ label: "Remaining", value: `$${remaining.toFixed(2)}`, color: remaining < 0 ? "#9b5e5e" : "#5a7a5a" },
 ].map(s => (
 <div key={s.label} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 400, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#b0a89a", letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</div>
 </div>
-))}</div>
+))}
+</div>
 </div>
 <div style={{ marginTop: 14, height: 3, background: "#e5e1da" }}>
 <div style={{ width: `${Math.min((allocatedTotal / WEEKLY_BUDGET) * 100, 100)}%`, height: "100%", background: remaining < 0 ? "#9b5e5e" : "#a07848", transition: "width 0.4s" }} />
@@ -795,7 +803,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 ) : (
 <span style={{ fontSize: 14, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{m.name}</span>
 )}
-{hasLink && <span style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "monospace", letterSpacing: 1 }}>↗ LINK ADDED</span>}
+{hasLink && <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "monospace", letterSpacing: 1, textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "2px 8px" }}>↗ OPEN LINK</a>}
 </div>
 {m.note && <div style={{ fontSize: 11, color: "#9c8d7b", fontStyle: "italic" }}>{m.note}</div>}
 </div>
@@ -884,14 +892,13 @@ if (!question.trim()) return;
 const userMsg = { role: "user", content: question };
 setHistory(h => [...h, userMsg]);
 setQ("");
-setLoading(true);
-
-const invCtx = products.map(p => {
+setLoading(true);const invCtx = products.map(p => {
 const w = weeksOfSupply(p.available, p.unitsSold30);
 return `${p.name}: ${p.available} on hand, ${p.inbound} inbound, ${p.unitsSold30} sold/30d, ${w > 99 ? "99+" : w}w supply`;
 }).join("\n");
 
-const adCtx = campaigns.map(c =>`${c.name}: $${c.spend7d} spent, $${c.sales7d} sales, ROAS ${c.roas || 0}, status: ${c.status}`
+const adCtx = campaigns.map(c =>
+`${c.name}: $${c.spend7d} spent, $${c.sales7d} sales, ROAS ${c.roas || 0}, status: ${c.status}`
 ).join("\n");
 
 const sys = `You are the AI business advisor for Lavalle Haus, a botanical candle brand.
@@ -977,8 +984,8 @@ phrase: "#a07848",
 broad: "#9b5e5e",
 };
 
-function KeywordsTab({ products }) {
-const [keywords, setKeywords] = useState(INITIAL_KEYWORDS);
+function KeywordsTab({ products, dbState, setDbState }) {
+const [keywords, setKeywords] = useState(() => (dbState && dbState.keywords && dbState.keywords.length ? dbState.keywords : INITIAL_KEYWORDS));
 const [filter, setFilter] = useState("all");
 const [adding, setAdding] = useState(false);
 const [editId, setEditId] = useState(null);
@@ -986,6 +993,13 @@ const [draft, setDraft] = useState({});
 const [aiProduct, setAiProduct] = useState("");
 const [aiResults, setAiResults] = useState([]);
 const [aiLoading, setAiLoading] = useState(false);
+
+const kwFirst = useRef(true);
+useEffect(() => {
+if (kwFirst.current) { kwFirst.current = false; return; }
+const full = { ...dbState, keywords };
+setDbState(full); dbSave(full);
+}, [keywords]);
 
 const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
 
@@ -1026,8 +1040,7 @@ messages: [{ role: "user", content: `Generate 12 Amazon PPC keywords for this pr
 const data = await res.json();
 const text = data.content?.[0]?.text || "[]";
 const clean = text.replace(/```json|```/g, "").trim();
-const parsed = JSON.parse(clean);
-setAiResults(parsed);
+const parsed = JSON.parse(clean);setAiResults(parsed);
 } catch (e) {
 setAiResults([{ keyword: "Error generating keywords", matchType: "exact", intent: "high", notes: "Try again" }]);
 }
@@ -1040,7 +1053,8 @@ id: Date.now(),
 product: aiProduct,
 keyword: kw.keyword,
 matchType: kw.matchType,
-spend: 0, clicks: 0, orders: 0, acos: null,status: "test",
+spend: 0, clicks: 0, orders: 0, acos: null,
+status: "test",
 notes: kw.notes,
 }, ...prev]);
 }
@@ -1175,8 +1189,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1 }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}><div style={{ flex: 1 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
 <span style={{ fontFamily: "monospace", fontSize: 13, color: "#1a1714", fontWeight: 700 }}>{k.keyword}</span>
 <span style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", background: MATCH_COLORS[k.matchType] + "22", color: MATCH_COLORS[k.matchType], border: `1px solid ${MATCH_COLORS[k.matchType]}44`, letterSpacing: 1 }}>{k.matchType.toUpperCase()}</span>
@@ -1189,7 +1202,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 ["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
 ["Clicks", k.clicks || "—", "#1a1714"],
 ["Orders", k.orders || "—", "#5a7a5a"],
-["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],].map(([l, v, c]) => (
+["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
+].map(([l, v, c]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
@@ -1284,7 +1298,7 @@ const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {} });
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS });
 const [loaded, setLoaded] = useState(false);
 
 useEffect(() => {
@@ -1306,6 +1320,7 @@ materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
 weekly: d.weekly || [],
 profitMatrix: d.profitMatrix || {},
 cogs: d.cogs || {},
+keywords: d.keywords && d.keywords.length ? d.keywords : INITIAL_KEYWORDS,
 });
 }
 setLoaded(true);
@@ -1323,8 +1338,7 @@ const NAV = [
 ] },
 { id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
 { id: "ppc", label: "Amazon PPC" },
-{ id: "keywords", label: "Keyword Library" },
-{ id: "meta", label: "Shopify / Meta" },
+{ id: "keywords", label: "Keyword Library" },{ id: "meta", label: "Shopify / Meta" },
 { id: "b2b", label: "B2B Ads" },
 ] },
 { id: "inventory", label: "Inventory", labelEs: "Inventario", alert: criticalCount || null, subs: [
@@ -1338,7 +1352,8 @@ const NAV = [
 { id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
 { id: "competitors", label: "Competitor Intel" },
 { id: "creators", label: "Influencer / Creator" },
-{ id: "retail", label: "Retail Expansion" },{ id: "weeklynums", label: "Weekly Numbers" },
+{ id: "retail", label: "Retail Expansion" },
+{ id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Ops Checklist" },
 ] },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
@@ -1384,7 +1399,7 @@ return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials=
 }
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
-if (activeSub === "keywords") return <KeywordsTab products={products} />;
+if (activeSub === "keywords") return <KeywordsTab products={products} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "meta") return <ComingSoon title="Shopify / Meta Ads" titleEs="Anuncios Shopify / Meta" lines={["Spend · ROAS · MER · CPA · CTR · CPC · Revenue", "Campaigns: Prospecting · Retargeting · Creator Ads · Catalog Ads"]} />;if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
