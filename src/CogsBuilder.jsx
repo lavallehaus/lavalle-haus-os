@@ -162,10 +162,12 @@ function channelEconomics(p, landed) {
   const shFee  = retail * num(sh.processingPct) / 100 + num(sh.processingFixed);
   const shNet  = retail - shCogs - shFee;
   return {
-    az: { cogs: azCogs, fee: azFee, allIn: azCogs + azFee, net: azNet, margin: retail > 0 ? azNet / retail : 0 },
-    sh: { cogs: shCogs, fee: shFee, allIn: shCogs + shFee, net: shNet, margin: retail > 0 ? shNet / retail : 0 },
+    az: { cogs: azCogs, fee: azFee, allIn: azCogs + azFee, net: azNet, margin: retail > 0 ? azNet / retail : 0, beRoas: azNet > 0 ? retail / azNet : 0 },
+    sh: { cogs: shCogs, fee: shFee, allIn: shCogs + shFee, net: shNet, margin: retail > 0 ? shNet / retail : 0, beRoas: shNet > 0 ? retail / shNet : 0 },
   };
 }
+const roasFmt = (r) => (r && isFinite(r) && r > 0 ? r.toFixed(2) + "×" : "—");
+const acosFmt = (a) => (isFinite(a) ? (a * 100).toFixed(1) + "%" : "—");
 const mColor = (m) => (m >= 0.5 ? c.green : m >= 0.3 ? c.yellow : c.red);
 const KV = ({ label, value, strong }) => (
   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "2px 0", fontSize: 13 }}>
@@ -277,6 +279,14 @@ export default function CogsBuilder({ data, onSave }) {
 
   if (!product) return null;
   const cset = chan(product);
+  const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);
+  const tf = tgtPct / 100;
+  const azMaxAd = chEcon.az.net - tf * econ.retail;
+  const shMaxAd = chEcon.sh.net - tf * econ.retail;
+  const azTgtAcos = econ.retail > 0 ? azMaxAd / econ.retail : 0;
+  const shTgtAcos = econ.retail > 0 ? shMaxAd / econ.retail : 0;
+  const azTgtRoas = azMaxAd > 0 ? econ.retail / azMaxAd : 0;
+  const shTgtRoas = shMaxAd > 0 ? econ.retail / shMaxAd : 0;
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
   const marginColor = econ.margin >= 0.5 ? c.green : econ.margin >= 0.3 ? c.yellow : c.red;
 
@@ -286,8 +296,7 @@ export default function CogsBuilder({ data, onSave }) {
         <div>
           <h1 style={S.h1}>COGS Builder</h1><div style={faintEs}>Constructor de costos</div>
           <div style={S.sub}>Every ingredient, box, and minute of labor — the true cost of one unit.</div>
-          <div style={faintEs}>Cada ingrediente, caja y minuto de mano de obra — el costo real de una unidad.</div>
-        </div>
+          <div style={faintEs}>Cada ingrediente, caja y minuto de mano de obra — el costo real de una unidad.</div></div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Labor rate $/hr · tarifa/hora</span><Inp value={rate} onChange={(v) => { setRate(v); touch(); }} w={84} /></label>
           <button onClick={save} style={{ fontFamily: sans, fontSize: 13, cursor: "pointer", padding: "9px 20px", borderRadius: 2, border: `1px solid ${c.ink}`, background: dirty ? c.ink : c.sub, color: c.bg }}>{dirty ? "Save · guardar" : "Saved · guardado"}</button>
@@ -306,7 +315,8 @@ export default function CogsBuilder({ data, onSave }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Product name · nombre</span>
             <input value={product.name} onChange={(e) => setProd(product.id, { name: e.target.value })} style={{ fontFamily: sans, fontSize: 14, padding: "6px 8px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} /></label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>SKU</span><input value={product.sku || ""} onChange={(e) => setProd(product.id, { sku: e.target.value })} style={{ fontFamily: sans, fontSize: 14, padding: "6px 8px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>SKU</span>
+            <input value={product.sku || ""} onChange={(e) => setProd(product.id, { sku: e.target.value })} style={{ fontFamily: sans, fontSize: 14, padding: "6px 8px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} /></label>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Retail price · precio</span><Inp value={product.retail} onChange={(v) => setProd(product.id, { retail: v })} w="100%" /></label>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Batch yield (units) · rinde lote</span><Inp value={product.batchYield} onChange={(v) => setProd(product.id, { batchYield: v })} w="100%" /></label>
         </div>
@@ -435,8 +445,7 @@ export default function CogsBuilder({ data, onSave }) {
       <div style={{ ...S.panel, marginTop: 14, borderLeft: `3px solid ${c.gold}` }}>
         <div style={S.cap}>Bottom line — true all-in cost per unit, by channel</div>
         <div style={faintEs}>Costo total real por unidad, por canal</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 16, marginTop: 10 }}>
-          {[
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 16, marginTop: 10 }}>{[
             { l: "Amazon (FBA)", allIn: chEcon.az.allIn, net: chEcon.az.net, m: chEcon.az.margin, best: econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin },
             { l: "Shopify (D2C)", allIn: chEcon.sh.allIn, net: chEcon.sh.net, m: chEcon.sh.margin, best: econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin },
           ].map((x) => (
@@ -446,6 +455,39 @@ export default function CogsBuilder({ data, onSave }) {
               <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{econ.retail > 0 ? pct(x.m) : "—"}</span> margin at {money2(econ.retail)} · deja neto</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}
+      <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+            Break-even ROAS is where ad spend swallows all your contribution. To still keep the margin above, your real ROAS must beat the Min ROAS below.
+            <div style={faintEs}>El ROAS de equilibrio es donde el gasto en anuncios se come toda tu contribución. Para conservar el margen de arriba, tu ROAS real debe superar el ROAS mínimo de abajo.</div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16, marginTop: 14 }}>
+          {[
+            { name: "Amazon (FBA)", net: chEcon.az.net, margin: chEcon.az.margin, beRoas: chEcon.az.beRoas, tAcos: azTgtAcos, tRoas: azTgtRoas },
+            { name: "Shopify (D2C)", net: chEcon.sh.net, margin: chEcon.sh.margin, beRoas: chEcon.sh.beRoas, tAcos: shTgtAcos, tRoas: shTgtRoas },
+          ].map((x) => (
+            <div key={x.name}>
+              <div style={{ fontSize: 15, marginBottom: 8 }}>{x.name}</div>
+              <KV label="Contribution / unit (pre-ads) · contribución/u" value={money2(x.net)} strong />
+              <KV label="Break-even ACOS · ACOS equilibrio" value={econ.retail > 0 ? acosFmt(x.margin) : "—"} />
+              <KV label="Break-even ROAS · ROAS equilibrio" value={roasFmt(x.beRoas)} />
+              <div style={{ borderTop: `1px solid ${c.lineSoft}`, marginTop: 8, paddingTop: 8 }}>
+                <KV label={`Max ACOS to keep ${tgtPct}% · ACOS máx`} value={x.tAcos > 0 ? acosFmt(x.tAcos) : "can't · imposible"} />
+                <KV label={`Min ROAS to keep ${tgtPct}% · ROAS mín`} value={roasFmt(x.tRoas)} strong />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
+          Example: a 2.50× break-even ROAS means every $1 of ad spend must bring back $2.50 in sales just to not lose money on that unit.
+          <div style={faintEs}>Ejemplo: un ROAS de equilibrio de 2.50× significa que cada $1 de gasto en anuncios debe traer $2.50 en ventas solo para no perder dinero en esa unidad.</div>
         </div>
       </div>
     </div>
