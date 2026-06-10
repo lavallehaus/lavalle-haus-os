@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ProfitMatrix from "./ProfitMatrix.jsx";
 import CogsBuilder from "./CogsBuilder.jsx";
+import AICoo from "./AICoo.jsx";
 
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
@@ -146,8 +147,7 @@ ok: { color: "#5a7a5a", bg: "#5a7a5a14", label: "HEALTHY" },
 };
 
 const CAMP_STYLE = {
-pause: { color: "#9b5e5e", label: "PAUSE" },
-keep: { color: "#5a7a5a", label: "KEEP" },
+pause: { color: "#9b5e5e", label: "PAUSE" },keep: { color: "#5a7a5a", label: "KEEP" },
 watch: { color: "#a07848", label: "WATCH" },
 monitor: { color: "#7a7a9a", label: "MONITOR" },
 };
@@ -296,8 +296,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 <button onClick={() => startEdit(p)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>Edit</button>
 </div>
 )}
-</div>
-</div>
+</div></div>
 </Card>
 );
 })}
@@ -446,8 +445,7 @@ return (
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 {[["price", "List Price"], ["cogs", "COGS/unit"], ["shipping", "Ship/unit"], ["adSpend", "Ad/unit"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
+<div key={f}><div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <NumInput value={r[f]} onChange={val => update(r.id, f, val)} />
 </div>
 ))}
@@ -596,9 +594,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 {weeks.length === 0 && !adding && (
 <Card style={{ textAlign: "center", padding: "32px 20px" }}>
 <div style={{ fontSize: 13, color: "#c8c2b8", fontFamily: "monospace" }}>No weekly data yet. Add your first entry above.</div></Card>
-)}
-
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+)}<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 {weeks.map((w, i) => {
 const t = tacos(w);
 const prevWeek = weeks[i + 1];
@@ -746,8 +742,7 @@ Enter estimated cost per item to track against your $250 weekly budget
 <div style={{ fontSize: 18, fontWeight: 400, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#b0a89a", letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</div>
 </div>
-))}
-</div>
+))}</div>
 </div>
 <div style={{ marginTop: 14, height: 3, background: "#e5e1da" }}>
 <div style={{ width: `${Math.min((allocatedTotal / WEEKLY_BUDGET) * 100, 100)}%`, height: "100%", background: remaining < 0 ? "#9b5e5e" : "#a07848", transition: "width 0.4s" }} />
@@ -896,8 +891,7 @@ const w = weeksOfSupply(p.available, p.unitsSold30);
 return `${p.name}: ${p.available} on hand, ${p.inbound} inbound, ${p.unitsSold30} sold/30d, ${w > 99 ? "99+" : w}w supply`;
 }).join("\n");
 
-const adCtx = campaigns.map(c =>
-`${c.name}: $${c.spend7d} spent, $${c.sales7d} sales, ROAS ${c.roas || 0}, status: ${c.status}`
+const adCtx = campaigns.map(c =>`${c.name}: $${c.spend7d} spent, $${c.sales7d} sales, ROAS ${c.roas || 0}, status: ${c.status}`
 ).join("\n");
 
 const sys = `You are the AI business advisor for Lavalle Haus, a botanical candle brand.
@@ -1046,8 +1040,7 @@ id: Date.now(),
 product: aiProduct,
 keyword: kw.keyword,
 matchType: kw.matchType,
-spend: 0, clicks: 0, orders: 0, acos: null,
-status: "test",
+spend: 0, clicks: 0, orders: 0, acos: null,status: "test",
 notes: kw.notes,
 }, ...prev]);
 }
@@ -1196,8 +1189,7 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 ["Spend", k.spend ? `$${k.spend.toFixed(2)}` : "—", "#a07848"],
 ["Clicks", k.clicks || "—", "#1a1714"],
 ["Orders", k.orders || "—", "#5a7a5a"],
-["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],
-].map(([l, v, c]) => (
+["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#a07848" : "#9b5e5e") : "#a09488"],].map(([l, v, c]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
@@ -1346,8 +1338,7 @@ const NAV = [
 { id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
 { id: "competitors", label: "Competitor Intel" },
 { id: "creators", label: "Influencer / Creator" },
-{ id: "retail", label: "Retail Expansion" },
-{ id: "weeklynums", label: "Weekly Numbers" },
+{ id: "retail", label: "Retail Expansion" },{ id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Ops Checklist" },
 ] },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
@@ -1355,7 +1346,7 @@ const NAV = [
 { id: "suppliers", label: "Supplier Database" },
 { id: "priceoz", label: "Price / Oz" },
 ] },
-{ id: "ai", label: "✦ AI", labelEs: "Asesor AI" },
+{ id: "ai", label: "✦ AI", labelEs: "Asesor AI", subs: [{ id: "coo", label: "AI COO" }, { id: "advisor", label: "Advisor" }] },
 ];
 
 const activeNav = NAV.find(n => n.id === tab) || NAV[0];
@@ -1387,7 +1378,10 @@ if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={
 return profitNode;
 }
 if (tab === "roadmap") return <RoadmapTab />;
-if (tab === "ai") return <AITab products={products} campaigns={campaigns} />;
+if (tab === "ai") {
+if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} />;
+return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials={materials} cogs={dbState.cogs || {}} />;
+}
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
 if (activeSub === "keywords") return <KeywordsTab products={products} />;
