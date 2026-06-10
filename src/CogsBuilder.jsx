@@ -131,16 +131,93 @@ const Inp = ({ value, onChange, w = 78, type = "number", placeholder, align = "r
     onChange={(e) => onChange(e.target.value)}
     style={{ width: w, fontFamily: sans, fontSize: 13, textAlign: align, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink, boxSizing: "border-box" }} />
 );
-const BasisToggle = ({ value, onChange, yield_ }) => (
-  <button onClick={() => onChange(value === "unit" ? "batch" : "unit")} title="per unit vs per batch"
-    style={{ fontFamily: sans, fontSize: 11, cursor: "pointer", padding: "4px 9px", borderRadius: 2, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, whiteSpace: "nowrap" }}>
-    {value === "unit" ? "per unit" : `per batch (÷${yield_})`}
-  </button>
+const UOM_OPTIONS = ["lb", "oz", "unit", "inch", "ml", "gram", "kg"];
+const selStyle = { fontFamily: sans, fontSize: 11.5, cursor: "pointer", padding: "4px 7px", borderRadius: 2, border: `1px solid ${c.line}`, background: c.panel, color: c.sub, whiteSpace: "nowrap" };
+const UomSelect = ({ value, onChange }) => (
+  <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} style={{ ...selStyle, width: 72 }}>
+    {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+  </select>
+);
+const BasisSelect = ({ value, onChange, yield_ }) => (
+  <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} title="how this cost is allocated" style={{ ...selStyle, width: 128 }}>
+    <option value="unit">per unit</option>
+    <option value="batch">{`per batch (÷${yield_})`}</option>
+  </select>
 );
 
 /* ============================================================================
    MAIN
-   ========================================================================== */
+   ========================================================================== */const S = {
+  wrap: { fontFamily: serif, color: c.ink, background: c.bg, padding: "26px 22px 60px", maxWidth: 1180, margin: "0 auto" }, h1: { fontFamily: serif, fontSize: 30, fontWeight: 400, letterSpacing: 0.3, margin: 0 },
+  sub: { color: c.sub, fontSize: 14.5, marginTop: 4, fontStyle: "italic" },
+  panel: { background: c.panel, border: `1px solid ${c.line}`, borderRadius: 4, padding: 18 },
+  sec: { fontSize: 19, fontWeight: 400, margin: "26px 0 12px", letterSpacing: 0.3, borderBottom: `1px solid ${c.line}`, paddingBottom: 8 },
+  cap: { fontFamily: sans, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", color: c.sub },
+  th: { fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.sub, padding: "7px 8px", textAlign: "right", borderBottom: `1px solid ${c.line}`, whiteSpace: "nowrap" },
+  thL: { textAlign: "left" },
+  td: { fontSize: 13, padding: "7px 8px", textAlign: "right", borderBottom: `1px solid ${c.lineSoft}`, whiteSpace: "nowrap", verticalAlign: "top" },
+  tdL: { textAlign: "left" },
+};
+
+/* Section is defined at MODULE scope (not inside CogsBuilder) so React keeps the
+   same component identity across renders — inputs no longer lose focus on each
+   keystroke, and the page no longer jumps when deleting. */
+function Section({ title, titleEs, section, isLabor, product, rate, editLine, addLine, delLine }) {
+  const rows = product[section] || [];
+  const y = Math.max(num(product.batchYield), 1);
+  const subtotal = rows.reduce((s, l) => { const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l); return s + perUnit(cost, l.basis, y); }, 0);
+  const colCount = isLabor ? 5 : 7;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <div><div style={{ fontSize: 16 }}>{title}</div><div style={faintEs}>{titleEs}</div></div>
+        <div style={{ textAlign: "right" }}><span style={S.cap}>{isLabor ? "Labor / unit · mano de obra/u" : "Cost / unit · costo/u"}</span><div style={{ fontSize: 17 }}>{money2(subtotal)}</div></div>
+      </div>
+      <div style={{ overflowX: "auto", marginTop: 8, border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isLabor ? 480 : 620 }}>
+          <thead><tr>
+            <th style={{ ...S.th, ...S.thL }}>Item / Step<div style={faintEs}>Ítem / Paso</div></th>
+            {isLabor
+              ? <th style={S.th}>Hours<div style={faintEs}>Horas</div></th>
+              : <><th style={S.th}>Qty<div style={faintEs}>Cant.</div></th><th style={S.th}>UoM<div style={faintEs}>Unidad</div></th><th style={S.th}>Unit $<div style={faintEs}>$ unidad</div></th></>}
+            <th style={S.th}>Basis<div style={faintEs}>Base</div></th>
+            <th style={S.th}>= /unit<div style={faintEs}>/unidad</div></th>
+            <th style={S.th}></th>
+          </tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={colCount} style={{ ...S.td, ...S.tdL, color: c.sub, fontStyle: "italic" }}>No lines yet — add one below. · Sin líneas aún — agrega una abajo.</td></tr>}
+            {rows.map((l) => {
+              const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l);
+              const pu = perUnit(cost, l.basis, y);
+              return (
+                <tr key={l.id}>
+                  <td style={{ ...S.td, ...S.tdL, whiteSpace: "normal", minWidth: 190 }}>
+                    <input value={l.name || ""} placeholder="English name" onChange={(e) => editLine(section, l.id, { name: e.target.value })}
+                      style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} />
+                    <input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
+                      style={{ width: "100%", boxSizing: "border-box", marginTop: 4, fontFamily: sans, fontSize: 11.5, fontStyle: "italic", padding: "4px 7px", border: `1px solid ${c.lineSoft}`, borderRadius: 2, background: c.panel, color: "rgba(111,102,87,0.85)" }} />
+                  </td>
+                  {isLabor
+                    ? <td style={S.td}><Inp value={l.hours} onChange={(v) => editLine(section, l.id, { hours: v })} w={66} /></td>
+                    : <><td style={S.td}><Inp value={l.qty} onChange={(v) => editLine(section, l.id, { qty: v })} w={58} /></td>
+                       <td style={S.td}><UomSelect value={l.uom} onChange={(v) => editLine(section, l.id, { uom: v })} /></td>
+                       <td style={S.td}><Inp value={l.unitCost} onChange={(v) => editLine(section, l.id, { unitCost: v })} w={70} /></td></>}
+                  <td style={S.td}><BasisSelect value={l.basis} onChange={(v) => editLine(section, l.id, { basis: v })} yield_={y} /></td>
+                  <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td>
+                  <td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <button onClick={() => addLine(section)} style={{ marginTop: 8, fontFamily: sans, fontSize: 12.5, cursor: "pointer", padding: "5px 12px", borderRadius: 2, border: `1px solid ${c.line}`, background: "transparent", color: c.clay }}>
+        + Add {isLabor ? "step" : "line"} · agregar {isLabor ? "paso" : "línea"}
+      </button>
+    </div>
+  );
+}
+
 export default function CogsBuilder({ data, onSave }) {
   const [prods, setProds] = useState(() => (data && data.products && data.products.length ? data.products : SEED_COGS).map((p) => ({ ...p })));
   const [rate, setRate] = useState(() => (data && data.laborRate != null ? data.laborRate : LABOR_RATE_DEFAULT));
@@ -155,7 +232,7 @@ export default function CogsBuilder({ data, onSave }) {
   const setLine = (section, lineId, patch) =>
     setProds((prev) => prev.map((p) => p.id !== active ? p : { ...p, [section]: p[section].map((l) => (l.id === lineId ? { ...l, ...patch } : l)) })) && touch();
   const editLine = (section, lineId, patch) => { setProds((prev) => prev.map((p) => p.id !== active ? p : { ...p, [section]: (p[section] || []).map((l) => (l.id === lineId ? { ...l, ...patch } : l)) })); touch(); };
-  const addLine = (section) => { setProds((prev) => prev.map((p) => { if (p.id !== active) return p; const blank = section === "labor" ? { id: uid("l"), name: "", nameEs: "", hours: 0, basis: "batch" } : { id: uid("m"), name: "", nameEs: "", qty: 1, unitCost: 0, basis: section === "materials" ? "batch" : "unit" }; return { ...p, [section]: [...(p[section] || []), blank] }; })); touch(); };
+  const addLine = (section) => { setProds((prev) => prev.map((p) => { if (p.id !== active) return p; const blank = section === "labor" ? { id: uid("l"), name: "", nameEs: "", hours: 0, basis: "batch" } : { id: uid("m"), name: "", nameEs: "", qty: 1, unitCost: 0, uom: "unit", basis: section === "materials" ? "batch" : "unit" }; return { ...p, [section]: [...(p[section] || []), blank] }; })); touch(); };
   const delLine = (section, lineId) => { setProds((prev) => prev.map((p) => p.id !== active ? p : { ...p, [section]: (p[section] || []).filter((l) => l.id !== lineId) })); touch(); };
 
   const addProduct = () => {
@@ -165,72 +242,6 @@ export default function CogsBuilder({ data, onSave }) {
   };
   const delProduct = () => { if (prods.length <= 1) return; const next = prods.filter((p) => p.id !== active); setProds(next); setActive(next[0].id); touch(); };
   const save = () => { onSave?.({ products: prods, laborRate: rate }); setDirty(false); };
-
-  const S = {
-    wrap: { fontFamily: serif, color: c.ink, background: c.bg, padding: "26px 22px 60px", maxWidth: 1180, margin: "0 auto" },h1: { fontFamily: serif, fontSize: 30, fontWeight: 400, letterSpacing: 0.3, margin: 0 },
-    sub: { color: c.sub, fontSize: 14.5, marginTop: 4, fontStyle: "italic" },
-    panel: { background: c.panel, border: `1px solid ${c.line}`, borderRadius: 4, padding: 18 },
-    sec: { fontSize: 19, fontWeight: 400, margin: "26px 0 12px", letterSpacing: 0.3, borderBottom: `1px solid ${c.line}`, paddingBottom: 8 },
-    cap: { fontFamily: sans, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", color: c.sub },
-    th: { fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: c.sub, padding: "7px 8px", textAlign: "right", borderBottom: `1px solid ${c.line}`, whiteSpace: "nowrap" },
-    thL: { textAlign: "left" },
-    td: { fontSize: 13, padding: "7px 8px", textAlign: "right", borderBottom: `1px solid ${c.lineSoft}`, whiteSpace: "nowrap", verticalAlign: "top" },
-    tdL: { textAlign: "left" },
-  };
-
-  const Section = ({ title, titleEs, section, isLabor }) => {
-    const rows = product[section] || [];
-    const y = Math.max(num(product.batchYield), 1);
-    const subtotal = rows.reduce((s, l) => { const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l); return s + perUnit(cost, l.basis, y); }, 0);
-    return (
-      <div style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-          <div><div style={{ fontSize: 16 }}>{title}</div><div style={faintEs}>{titleEs}</div></div>
-          <div style={{ textAlign: "right" }}><span style={S.cap}>{isLabor ? "Labor / unit · mano de obra/u" : "Cost / unit · costo/u"}</span><div style={{ fontSize: 17 }}>{money2(subtotal)}</div></div>
-        </div>
-        <div style={{ overflowX: "auto", marginTop: 8, border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isLabor ? 480 : 540 }}>
-            <thead><tr>
-              <th style={{ ...S.th, ...S.thL }}>Item / Step<div style={faintEs}>Ítem / Paso</div></th>
-              {isLabor
-                ? <th style={S.th}>Hours<div style={faintEs}>Horas</div></th>
-                : <><th style={S.th}>Qty<div style={faintEs}>Cant.</div></th><th style={S.th}>Unit $<div style={faintEs}>$ unidad</div></th></>}
-              <th style={S.th}>Basis<div style={faintEs}>Base</div></th>
-              <th style={S.th}>= /unit<div style={faintEs}>/unidad</div></th>
-              <th style={S.th}></th>
-            </tr></thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={6} style={{ ...S.td, ...S.tdL, color: c.sub, fontStyle: "italic" }}>No lines yet — add one below. · Sin líneas aún — agrega una abajo.</td></tr>}
-              {rows.map((l) => {
-                const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l);
-                const pu = perUnit(cost, l.basis, y);
-                return (
-                  <tr key={l.id}>
-                    <td style={{ ...S.td, ...S.tdL, whiteSpace: "normal", minWidth: 190 }}>
-                      <input value={l.name || ""} placeholder="English name" onChange={(e) => editLine(section, l.id, { name: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} />
-                      <input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
-                        style={{ width: "100%", boxSizing: "border-box", marginTop: 4, fontFamily: sans, fontSize: 11.5, fontStyle: "italic", padding: "4px 7px", border: `1px solid ${c.lineSoft}`, borderRadius: 2, background: c.panel, color: "rgba(111,102,87,0.85)" }} />
-                    </td>
-                    {isLabor
-                      ? <td style={S.td}><Inp value={l.hours} onChange={(v) => editLine(section, l.id, { hours: v })} w={66} /></td>
-                      : <><td style={S.td}><Inp value={l.qty} onChange={(v) => editLine(section, l.id, { qty: v })} w={58} /></td>
-                         <td style={S.td}><Inp value={l.unitCost} onChange={(v) => editLine(section, l.id, { unitCost: v })} w={70} /></td></>}
-                    <td style={S.td}><BasisToggle value={l.basis} onChange={(v) => editLine(section, l.id, { basis: v })} yield_={y} /></td>
-                    <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td>
-                    <td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <button onClick={() => addLine(section)} style={{ marginTop: 8, fontFamily: sans, fontSize: 12.5, cursor: "pointer", padding: "5px 12px", borderRadius: 2, border: `1px solid ${c.line}`, background: "transparent", color: c.clay }}>
-          + Add {isLabor ? "step" : "line"} · agregar {isLabor ? "paso" : "línea"}
-        </button>
-      </div>
-    );
-  };
 
   if (!product) return null;
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
@@ -274,10 +285,10 @@ export default function CogsBuilder({ data, onSave }) {
       </div>
 
       {/* THE FOUR EDITABLE SECTIONS */}
-      <Section title="Materials / Ingredients" titleEs="Materiales / Ingredientes" section="materials" isLabor={false} />
-      <Section title="Packaging" titleEs="Empaque" section="packaging" isLabor={false} />
-      <Section title="Shipping / Freight" titleEs="Envío / Flete" section="shipping" isLabor={false} />
-      <Section title="Labor — production steps" titleEs="Mano de obra — pasos de producción" section="labor" isLabor={true} />
+      <Section title="Materials / Ingredients" titleEs="Materiales / Ingredientes" section="materials" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
+      <Section title="Packaging" titleEs="Empaque" section="packaging" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
+      <Section title="Shipping / Freight" titleEs="Envío / Flete" section="shipping" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
+      <Section title="Labor — production steps" titleEs="Mano de obra — pasos de producción" section="labor" isLabor={true} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
 
       {/* TRUE COST ROLL-UP (the Bezos lens) */}
       <div style={S.sec}>True Cost Per Unit<div style={faintEs}>Costo real por unidad</div></div>
@@ -285,8 +296,7 @@ export default function CogsBuilder({ data, onSave }) {
         {[
           { l: "Materials", le: "Materiales", v: econ.materials },
           { l: "Packaging", le: "Empaque", v: econ.packaging },
-          { l: "Shipping", le: "Envío", v: econ.shipping },
-          { l: "Labor", le: "Mano de obra", v: econ.labor, note: `${econ.totalHours.toFixed(2)} hrs/unit @ ${money2(rate)}/hr` },
+          { l: "Shipping", le: "Envío", v: econ.shipping },{ l: "Labor", le: "Mano de obra", v: econ.labor, note: `${econ.totalHours.toFixed(2)} hrs/unit @ ${money2(rate)}/hr` },
         ].map((x) => (
           <div key={x.l} style={{ ...S.panel, padding: "14px 16px" }}>
             <div style={S.cap}>{x.l}</div><div style={faintEs}>{x.le}</div>
