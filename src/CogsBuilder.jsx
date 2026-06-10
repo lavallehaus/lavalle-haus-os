@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 
 /* ============================================================================
    LAVALLE HAUS OS — COGS BUILDER  (true cost-per-unit, the Bezos lens)
@@ -107,19 +107,26 @@ const SEED_COGS = [
 const lineCost = (l) => num(l.qty) * num(l.unitCost);
 const perUnit = (cost, basis, yield_) => (basis === "unit" ? cost : cost / Math.max(num(yield_), 1));
 
+const SECTIONS = [
+  { key: "materials", title: "Materials / Ingredients", titleEs: "Materiales / Ingredientes", isLabor: false },
+  { key: "packaging", title: "Packaging", titleEs: "Empaque", isLabor: false },
+  { key: "shipping", title: "Inbound Freight & Labels", titleEs: "Flete de entrada y etiquetas", isLabor: false },
+  { key: "labor", title: "Labor — production steps", titleEs: "Mano de obra — pasos de producción", isLabor: true },
+];
+
 function productEconomics(p, rate) {
   const y = Math.max(num(p.batchYield), 1);
+  const hidden = (k) => Array.isArray(p.hiddenSections) && p.hiddenSections.includes(k);
   const sumSection = (rows, isLabor) =>
     (rows || []).reduce((s, l) => {
       const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l);
       return s + perUnit(cost, l.basis, y);
     }, 0);
-  const materials = sumSection(p.materials, false);
-  const packaging = sumSection(p.packaging, false);
-  const shipping  = sumSection(p.shipping, false);
-  const labor     = sumSection(p.labor, true);
+  const materials = hidden("materials") ? 0 : sumSection(p.materials, false);const packaging = hidden("packaging") ? 0 : sumSection(p.packaging, false);
+  const shipping  = hidden("shipping")  ? 0 : sumSection(p.shipping, false);
+  const labor     = hidden("labor")     ? 0 : sumSection(p.labor, true);
   const total = materials + packaging + shipping + labor;
-  const totalHours = (p.labor || []).reduce((s, l) => s + perUnit(num(l.hours), l.basis, y), 0);
+  const totalHours = hidden("labor") ? 0 : (p.labor || []).reduce((s, l) => s + perUnit(num(l.hours), l.basis, y), 0);
   const retail = num(p.retail);
   const margin = retail > 0 ? (retail - total) / retail : 0;
   return { materials, packaging, shipping, labor, total, totalHours, retail, margin };
@@ -127,7 +134,8 @@ function productEconomics(p, rate) {
 
 /* ---- PRIMITIVES --------------------------------------------------------- */
 const Inp = ({ value, onChange, w = 78, type = "number", placeholder, align = "right" }) => (
-  <input type={type} value={value === null || value === undefined ? "" : value} placeholder={placeholder}onChange={(e) => onChange(e.target.value)}
+  <input type={type} value={value === null || value === undefined ? "" : value} placeholder={placeholder}
+    onChange={(e) => onChange(e.target.value)}
     style={{ width: w, fontFamily: sans, fontSize: 13, textAlign: align, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink, boxSizing: "border-box" }} />
 );
 const UOM_OPTIONS = ["lb", "oz", "unit", "inch", "ml", "gram", "kg"];
@@ -225,7 +233,7 @@ const S = {
 /* Section is defined at MODULE scope (not inside CogsBuilder) so React keeps the
    same component identity across renders — inputs no longer lose focus on each
    keystroke, and the page no longer jumps when deleting. */
-function Section({ title, titleEs, section, isLabor, product, rate, editLine, addLine, delLine }) {
+function Section({ title, titleEs, section, isLabor, product, rate, editLine, addLine, delLine, onRemove }) {
   const rows = product[section] || [];
   const y = Math.max(num(product.batchYield), 1);
   const subtotal = rows.reduce((s, l) => { const cost = isLabor ? num(l.hours) * num(rate) : lineCost(l); return s + perUnit(cost, l.basis, y); }, 0);
@@ -233,10 +241,12 @@ function Section({ title, titleEs, section, isLabor, product, rate, editLine, ad
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <div><div style={{ fontSize: 16 }}>{title}</div><div style={faintEs}>{titleEs}</div></div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <div><div style={{ fontSize: 16 }}>{title}</div><div style={faintEs}>{titleEs}</div></div>
+          {onRemove && <button onClick={() => onRemove(section)} title="remove this section from this product" style={{ fontFamily: sans, fontSize: 11, cursor: "pointer", padding: "3px 8px", borderRadius: 2, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, whiteSpace: "nowrap" }}>✕ remove · quitar</button>}
+        </div>
         <div style={{ textAlign: "right" }}><span style={S.cap}>{isLabor ? "Labor / unit · mano de obra/u" : "Cost / unit · costo/u"}</span><div style={{ fontSize: 17 }}>{money2(subtotal)}</div></div>
-      </div>
-      <div style={{ overflowX: "auto", marginTop: 8, border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
+      </div><div style={{ overflowX: "auto", marginTop: 8, border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isLabor ? 480 : 620 }}>
           <thead><tr>
             <th style={{ ...S.th, ...S.thL }}>Item / Step<div style={faintEs}>Ítem / Paso</div></th>
@@ -256,7 +266,8 @@ function Section({ title, titleEs, section, isLabor, product, rate, editLine, ad
                 <tr key={l.id}>
                   <td style={{ ...S.td, ...S.tdL, whiteSpace: "normal", minWidth: 190 }}>
                     <input value={l.name || ""} placeholder="English name" onChange={(e) => editLine(section, l.id, { name: e.target.value })}
-                      style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} /><input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
+                      style={{ width: "100%", boxSizing: "border-box", fontFamily: sans, fontSize: 13, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink }} />
+                    <input value={l.nameEs || ""} placeholder="nombre en español" onChange={(e) => editLine(section, l.id, { nameEs: e.target.value })}
                       style={{ width: "100%", boxSizing: "border-box", marginTop: 4, fontFamily: sans, fontSize: 11.5, fontStyle: "italic", padding: "4px 7px", border: `1px solid ${c.lineSoft}`, borderRadius: 2, background: c.panel, color: "rgba(111,102,87,0.85)" }} />
                   </td>
                   {isLabor
@@ -285,6 +296,8 @@ export default function CogsBuilder({ data, onSave }) {
   const [rate, setRate] = useState(() => (data && data.laborRate != null ? data.laborRate : LABOR_RATE_DEFAULT));
   const [active, setActive] = useState(() => (data && data.products && data.products[0] ? data.products[0].id : SEED_COGS[0].id));
   const [dirty, setDirty] = useState(false);
+  const [hist, setHist] = useState({ stack: [], ptr: -1 });
+  const skipHist = useRef(false);
 
   const product = prods.find((p) => p.id === active) || prods[0];
   const econ = useMemo(() => (product ? productEconomics(product, rate) : null), [product, rate, prods]);
@@ -298,6 +311,8 @@ export default function CogsBuilder({ data, onSave }) {
   const addLine = (section) => { setProds((prev) => prev.map((p) => { if (p.id !== active) return p; const blank = section === "labor" ? { id: uid("l"), name: "", nameEs: "", hours: 0, basis: "batch" } : { id: uid("m"), name: "", nameEs: "", qty: 1, unitCost: 0, uom: "unit", basis: section === "materials" ? "batch" : "unit" }; return { ...p, [section]: [...(p[section] || []), blank] }; })); touch(); };
   const delLine = (section, lineId) => { setProds((prev) => prev.map((p) => p.id !== active ? p : { ...p, [section]: (p[section] || []).filter((l) => l.id !== lineId) })); touch(); };
   const setChan = (chKey, patch) => { setProds((prev) => prev.map((p) => { if (p.id !== active) return p; const cur = chan(p); return { ...p, channels: { ...cur, [chKey]: { ...cur[chKey], ...patch } } }; })); touch(); };
+  const hideSection = (k) => setProd(active, { hiddenSections: [...((prods.find((p) => p.id === active) || {}).hiddenSections || []), k] });
+  const showSection = (k) => setProd(active, { hiddenSections: (((prods.find((p) => p.id === active) || {}).hiddenSections) || []).filter((x) => x !== k) });
 
   const addProduct = () => {
     const id = prods.reduce((mx, p) => Math.max(mx, Number(p.id) || 0), 0) + 1;
@@ -307,8 +322,24 @@ export default function CogsBuilder({ data, onSave }) {
   const delProduct = () => { if (prods.length <= 1) return; const next = prods.filter((p) => p.id !== active); setProds(next); setActive(next[0].id); touch(); };
   const save = () => { onSave?.({ products: prods, laborRate: rate }); setDirty(false); };
 
+  // Undo/redo: snapshot every change to prods/rate; skip the snapshot when the
+  // change itself came from an undo/redo. In-memory only (resets on reload).
+  useEffect(() => {
+    if (skipHist.current) { skipHist.current = false; return; }
+    setHist((h) => {
+      const base = h.stack.slice(0, h.ptr + 1);
+      const next = [...base, { prods, rate }].slice(-60);
+      return { stack: next, ptr: next.length - 1 };
+    });
+  }, [prods, rate]);
+  const canUndo = hist.ptr > 0;
+  const canRedo = hist.ptr >= 0 && hist.ptr < hist.stack.length - 1;
+  const undo = () => { if (!canUndo) return; const ptr = hist.ptr - 1; const s = hist.stack[ptr]; skipHist.current = true; setProds(s.prods); setRate(s.rate); setHist((h) => ({ ...h, ptr })); setDirty(true); };
+  const redo = () => { if (!canRedo) return; const ptr = hist.ptr + 1; const s = hist.stack[ptr]; skipHist.current = true; setProds(s.prods); setRate(s.rate); setHist((h) => ({ ...h, ptr })); setDirty(true); };
+
   if (!product) return null;
   const cset = chan(product);
+  const isHidden = (k) => Array.isArray(product.hiddenSections) && product.hiddenSections.includes(k);
   const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);
   const tf = tgtPct / 100;
   const azMaxAd = chEcon.az.net - tf * econ.retail;
@@ -336,6 +367,24 @@ export default function CogsBuilder({ data, onSave }) {
   const carryRate = num(product.carryRatePct != null ? product.carryRatePct : 25) / 100;
   const carryCost = econ.total * carryRate * (daysInv / 365);
   const turns = daysInv > 0 ? 365 / daysInv : 0;
+  // target-margin alerts (vs the after-ads target above)
+  const belowTgt = (key) => {
+    if (key === "az") return econ.retail > 0 && chEcon.az.margin < tf;
+    if (key === "sh") return econ.retail > 0 && chEcon.sh.margin < tf;return b2bPrice > 0 && chEcon.b2b.margin < tf;
+  };
+  const tgtFlags = [["az", "Amazon"], ["sh", "Shopify"], ["b2b", "B2B"]].filter(([k]) => belowTgt(k)).map(([, l]) => l);
+  // launch simulator (12-month projection for one channel)
+  const simCh = product.launchChannel || bestCh || "az";
+  const simNet = (chEcon[simCh] || chEcon.az).net;
+  const simPrice = simCh === "b2b" ? b2bPrice : econ.retail;
+  const simBudget = num(product.launchBudget != null ? product.launchBudget : 500);
+  const simU1 = num(product.launchUnits1 != null ? product.launchUnits1 : 30);
+  const simG = num(product.launchGrowthPct != null ? product.launchGrowthPct : 15) / 100;
+  const simAcos = num(product.launchAcosPct != null ? product.launchAcosPct : 0) / 100;
+  const simRows = (() => { const rows = []; let cum = -simBudget; for (let m = 1; m <= 12; m++) { const units = simU1 * Math.pow(1 + simG, m - 1); const profit = units * simNet - units * simPrice * simAcos; cum += profit; rows.push({ m, units, profit, cum }); } return rows; })();
+  const paybackRow = simRows.find((r) => r.cum >= 0);
+  const total12 = simRows.length ? simRows[simRows.length - 1].cum : -simBudget;
+  const simLabel = { az: "Amazon (FBA)", sh: "Shopify (D2C)", b2b: "B2B / Wholesale" };
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
   const marginColor = econ.margin >= 0.5 ? c.green : econ.margin >= 0.3 ? c.yellow : c.red;
 
@@ -349,6 +398,8 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Labor rate $/hr · tarifa/hora</span><Inp value={rate} onChange={(v) => { setRate(v); touch(); }} w={84} /></label>
+          <button onClick={undo} disabled={!canUndo} title="undo · deshacer" style={{ fontFamily: sans, fontSize: 13, cursor: canUndo ? "pointer" : "default", padding: "9px 13px", borderRadius: 2, border: `1px solid ${canUndo ? c.line : c.lineSoft}`, background: "transparent", color: canUndo ? c.ink : c.line }}>↶ Undo</button>
+          <button onClick={redo} disabled={!canRedo} title="redo · rehacer" style={{ fontFamily: sans, fontSize: 13, cursor: canRedo ? "pointer" : "default", padding: "9px 13px", borderRadius: 2, border: `1px solid ${canRedo ? c.line : c.lineSoft}`, background: "transparent", color: canRedo ? c.ink : c.line }}>↷ Redo</button>
           <button onClick={save} style={{ fontFamily: sans, fontSize: 13, cursor: "pointer", padding: "9px 20px", borderRadius: 2, border: `1px solid ${c.ink}`, background: dirty ? c.ink : c.sub, color: c.bg }}>{dirty ? "Save · guardar" : "Saved · guardado"}</button>
         </div>
       </div>
@@ -376,20 +427,35 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
       </div>
 
-      {/* THE FOUR EDITABLE SECTIONS */}
-      <Section title="Materials / Ingredients" titleEs="Materiales / Ingredientes" section="materials" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
-      <Section title="Packaging" titleEs="Empaque" section="packaging" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
-      <Section title="Inbound Freight & Labels" titleEs="Flete de entrada y etiquetas" section="shipping" isLabor={false} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
-      <Section title="Labor — production steps" titleEs="Mano de obra — pasos de producción" section="labor" isLabor={true} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} />
+      {tgtFlags.length > 0 && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 3, border: `1px solid ${c.red}`, background: "rgba(168,72,58,0.06)", color: c.red, fontSize: 13 }}>
+          ⚠ Below your {tgtPct}% target margin on: {tgtFlags.join(", ")}.
+          <div style={{ ...faintEs, color: "rgba(168,72,58,0.72)" }}>⚠ Por debajo de tu margen meta de {tgtPct}% en: {tgtFlags.join(", ")}.</div>
+        </div>
+      )}
+
+      {/* EDITABLE COST SECTIONS (removable per product) */}
+      {SECTIONS.filter((s) => !isHidden(s.key)).map((s) => (
+        <Section key={s.key} title={s.title} titleEs={s.titleEs} section={s.key} isLabor={s.isLabor} product={product} rate={rate} editLine={editLine} addLine={addLine} delLine={delLine} onRemove={hideSection} />
+      ))}
+      {SECTIONS.some((s) => isHidden(s.key)) && (
+        <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={S.cap}>Removed · quitadas:</span>
+          {SECTIONS.filter((s) => isHidden(s.key)).map((s) => (
+            <button key={s.key} onClick={() => showSection(s.key)} style={{ fontFamily: sans, fontSize: 12.5, cursor: "pointer", padding: "5px 12px", borderRadius: 2, border: `1px dashed ${c.line}`, background: "transparent", color: c.clay }}>+ {s.title} · restaurar</button>
+          ))}
+        </div>
+      )}
 
       {/* TRUE COST ROLL-UP (the Bezos lens) */}
       <div style={S.sec}>True Landed Cost Per Unit<div style={faintEs}>Costo real en destino por unidad</div></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
-        {[{ l: "Materials", le: "Materiales", v: econ.materials },
-          { l: "Packaging", le: "Empaque", v: econ.packaging },
-          { l: "Inbound", le: "Entrada", v: econ.shipping },
-          { l: "Labor", le: "Mano de obra", v: econ.labor, note: `${econ.totalHours.toFixed(2)} hrs/unit @ ${money2(rate)}/hr` },
-        ].map((x) => (
+        {[
+          { k: "materials", l: "Materials", le: "Materiales", v: econ.materials },
+          { k: "packaging", l: "Packaging", le: "Empaque", v: econ.packaging },
+          { k: "shipping", l: "Inbound", le: "Entrada", v: econ.shipping },
+          { k: "labor", l: "Labor", le: "Mano de obra", v: econ.labor, note: `${econ.totalHours.toFixed(2)} hrs/unit @ ${money2(rate)}/hr` },
+        ].filter((x) => !isHidden(x.k)).map((x) => (
           <div key={x.l} style={{ ...S.panel, padding: "14px 16px" }}>
             <div style={S.cap}>{x.l}</div><div style={faintEs}>{x.le}</div>
             <div style={{ fontSize: 22, marginTop: 6 }}>{money2(x.v)}</div>
@@ -428,8 +494,7 @@ export default function CogsBuilder({ data, onSave }) {
         {prods.length > 1 && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${c.line}`, textAlign: "right" }}>
             <button onClick={delProduct} style={{ fontFamily: sans, fontSize: 12.5, cursor: "pointer", padding: "6px 14px", borderRadius: 2, border: `1px solid ${c.red}`, background: "transparent", color: c.red }}>Delete this product · eliminar</button>
-          </div>
-        )}
+          </div>)}
       </div>
 
       {/* CHANNEL ECONOMICS (Phase 2/3) — built on top of true landed cost */}
@@ -513,7 +578,9 @@ export default function CogsBuilder({ data, onSave }) {
               <div style={faintEs}>Ingresa un precio de mayoreo para ver la economía B2B — normalmente cerca de la mitad del precio de venta.</div>
             </div>
           )}
-        </div></div>
+        </div>
+
+      </div>
       <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 10 }}>
         Same product, same landed cost — the gap between the margins is pure channel economics: Amazon's referral + FBA, Shopify's processing + shipping, and B2B's lower wholesale price. Margin waterfall, inventory carrying cost, and the launch simulator come next.
         <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los márgenes es pura economía de canal: comisión + FBA de Amazon, procesamiento + envío de Shopify, y el precio de mayoreo más bajo de B2B. Cascada de márgenes, costo de mantener inventario y el simulador de lanzamiento vienen después.</div>
@@ -551,8 +618,7 @@ export default function CogsBuilder({ data, onSave }) {
       <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
-          <div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label><div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
             Break-even ROAS is where ad spend swallows all your contribution. To still keep the margin above, your real ROAS must beat the Min ROAS below.
             <div style={faintEs}>El ROAS de equilibrio es donde el gasto en anuncios se come toda tu contribución. Para conservar el margen de arriba, tu ROAS real debe superar el ROAS mínimo de abajo.</div>
           </div>
@@ -642,7 +708,8 @@ export default function CogsBuilder({ data, onSave }) {
             <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>{money2(econ.total)} held {daysInv} days @ {Math.round(carryRate * 100)}%/yr</div>
           </div>
           <div style={{ ...S.panel, padding: "14px 16px" }}>
-            <div style={S.cap}>Inventory turns / yr · rotaciones</div><div style={{ fontSize: 24, marginTop: 4 }}>{turns > 0 ? turns.toFixed(1) + "×" : "—"}</div>
+            <div style={S.cap}>Inventory turns / yr · rotaciones</div>
+            <div style={{ fontSize: 24, marginTop: 4 }}>{turns > 0 ? turns.toFixed(1) + "×" : "—"}</div>
             <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>higher = cash recycles faster · más alto = el efectivo rota más rápido</div>
           </div>
         </div>
@@ -672,6 +739,58 @@ export default function CogsBuilder({ data, onSave }) {
         )}
       </div>
 
+      {/* LAUNCH SIMULATOR (Phase 3) — when a new product pays back */}
+      <div style={S.sec}>Launch Simulator — when does it pay back?<div style={faintEs}>Simulador de lanzamiento — ¿cuándo se recupera?</div></div>
+      <div style={S.panel}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>{["az", "sh", "b2b"].map((k) => { const on = k === simCh; const avail = k === "b2b" ? b2bPrice > 0 : econ.retail > 0;
+            return <button key={k} onClick={() => avail && setProd(product.id, { launchChannel: k })} disabled={!avail} style={{ fontFamily: sans, fontSize: 12.5, cursor: avail ? "pointer" : "default", padding: "6px 12px", borderRadius: 2, border: `1px solid ${on ? c.gold : c.line}`, background: on ? c.gold : "transparent", color: on ? "#fff" : (avail ? c.sub : c.line) }}>{simLabel[k]}</button>; })}
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Launch budget $ · presupuesto</span><Inp value={product.launchBudget != null ? product.launchBudget : 500} onChange={(v) => setProd(product.id, { launchBudget: v })} w={100} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Units month 1 · unidades mes 1</span><Inp value={product.launchUnits1 != null ? product.launchUnits1 : 30} onChange={(v) => setProd(product.id, { launchUnits1: v })} w={90} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Monthly growth % · crecimiento</span><Inp value={product.launchGrowthPct != null ? product.launchGrowthPct : 15} onChange={(v) => setProd(product.id, { launchGrowthPct: v })} w={90} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Ongoing ACOS % · ACOS continuo</span><Inp value={product.launchAcosPct != null ? product.launchAcosPct : 0} onChange={(v) => setProd(product.id, { launchAcosPct: v })} w={90} /></label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 14, marginTop: 14 }}>
+          <div style={{ ...S.panel, padding: "14px 16px" }}>
+            <div style={S.cap}>Pays back · se recupera</div>
+            <div style={{ fontSize: 24, marginTop: 4, color: paybackRow ? c.green : c.red }}>{paybackRow ? `Month ${paybackRow.m}` : "not in 12 mo"}</div>
+            <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>{simLabel[simCh]} · net {money2(simNet)}/unit</div>
+          </div>
+          <div style={{ ...S.panel, padding: "14px 16px" }}>
+            <div style={S.cap}>12-month cumulative · acumulado</div>
+            <div style={{ fontSize: 24, marginTop: 4, color: mColor(total12 > 0 ? 1 : 0) }}>{money2(total12)}</div>
+            <div style={{ fontSize: 11.5, color: c.sub, marginTop: 3 }}>after the {money2(simBudget)} launch budget · tras el presupuesto</div>
+          </div>
+        </div>
+        <div style={{ overflowX: "auto", marginTop: 12, border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
+            <thead><tr>
+              <th style={{ ...S.th, ...S.thL }}>Month<div style={faintEs}>Mes</div></th>
+              <th style={S.th}>Units<div style={faintEs}>Unidades</div></th>
+              <th style={S.th}>Monthly profit<div style={faintEs}>Ganancia mes</div></th>
+              <th style={S.th}>Cumulative<div style={faintEs}>Acumulado</div></th>
+            </tr></thead>
+            <tbody>
+              {simRows.map((r) => { const isPay = paybackRow && r.m === paybackRow.m;
+                return (
+                  <tr key={r.m} style={{ background: isPay ? "rgba(92,122,82,0.08)" : "transparent" }}>
+                    <td style={{ ...S.td, ...S.tdL }}>{r.m}{isPay ? " ◀ payback" : ""}</td>
+                    <td style={S.td}>{Math.round(r.units)}</td>
+                    <td style={S.td}>{money2(r.profit)}</td>
+                    <td style={{ ...S.td, color: r.cum >= 0 ? c.green : c.red }}>{money2(r.cum)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
+          Units grow each month by your growth rate; monthly profit uses that channel's net per unit minus ongoing ad spend (ACOS × revenue). The cumulative column starts at minus your launch budget and climbs — payback is the first month it crosses $0.
+          <div style={faintEs}>Las unidades crecen cada mes por tu tasa; la ganancia mensual usa el neto por unidad de ese canal menos el gasto continuo en anuncios (ACOS × ingresos). El acumulado empieza en menos tu presupuesto de lanzamiento y sube — la recuperación es el primer mes que cruza $0.</div>
+        </div>
+      </div>
+
       {/* BOTTOM LINE — true all-in cost per unit, by channel (ALWAYS LAST) */}
       <div style={{ ...S.panel, marginTop: 14, borderLeft: `3px solid ${c.gold}` }}>
         <div style={S.cap}>Bottom line — true all-in cost per unit, by channel</div>
@@ -683,7 +802,7 @@ export default function CogsBuilder({ data, onSave }) {
             { key: "b2b", l: "B2B / Wholesale", allIn: chEcon.b2b.allIn, net: chEcon.b2b.net, m: chEcon.b2b.margin, price: b2bPrice, show: b2bPrice > 0 },
           ].map((x) => (
             <div key={x.key}>
-              <div style={{ display: "flex", gap: 7, alignItems: "baseline" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{bestCh === x.key && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}</div>
+              <div style={{ display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{bestCh === x.key && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}{belowTgt(x.key) && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.red }}>▼ below target · bajo meta</span>}</div>
               <div style={{ fontSize: 32, marginTop: 2 }}>{money2(x.allIn)}</div>
               <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>{x.show ? <>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{pct(x.m)}</span> margin at {money2(x.price)} · deja neto</> : "set a price · define un precio"}</div>
             </div>
