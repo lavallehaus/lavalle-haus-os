@@ -441,29 +441,11 @@ export default function CogsBuilder({ data, onSave }) {
         <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los dos márgenes es pura economía de canal (comisión + FBA de Amazon vs procesamiento + envío de Shopify). B2B, costo de anuncios, ROAS de equilibrio y margen de contribución vienen en la siguiente fase.</div>
       </div>
 
-      {/* BOTTOM LINE — true all-in cost per unit, by channel */}
-      <div style={{ ...S.panel, marginTop: 14, borderLeft: `3px solid ${c.gold}` }}>
-        <div style={S.cap}>Bottom line — true all-in cost per unit, by channel</div>
-        <div style={faintEs}>Costo total real por unidad, por canal</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 16, marginTop: 10 }}>{[
-            { l: "Amazon (FBA)", allIn: chEcon.az.allIn, net: chEcon.az.net, m: chEcon.az.margin, best: econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin },
-            { l: "Shopify (D2C)", allIn: chEcon.sh.allIn, net: chEcon.sh.net, m: chEcon.sh.margin, best: econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin },
-          ].map((x) => (
-            <div key={x.l}>
-              <div style={{ display: "flex", gap: 7, alignItems: "baseline" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{x.best && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}</div>
-              <div style={{ fontSize: 32, marginTop: 2 }}>{money2(x.allIn)}</div>
-              <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{econ.retail > 0 ? pct(x.m) : "—"}</span> margin at {money2(econ.retail)} · deja neto</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}
       <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
-          <div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label><div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
             Break-even ROAS is where ad spend swallows all your contribution. To still keep the margin above, your real ROAS must beat the Min ROAS below.
             <div style={faintEs}>El ROAS de equilibrio es donde el gasto en anuncios se come toda tu contribución. Para conservar el margen de arriba, tu ROAS real debe superar el ROAS mínimo de abajo.</div>
           </div>
@@ -488,6 +470,24 @@ export default function CogsBuilder({ data, onSave }) {
         <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
           Example: a 2.50× break-even ROAS means every $1 of ad spend must bring back $2.50 in sales just to not lose money on that unit.
           <div style={faintEs}>Ejemplo: un ROAS de equilibrio de 2.50× significa que cada $1 de gasto en anuncios debe traer $2.50 en ventas solo para no perder dinero en esa unidad.</div>
+        </div>
+      </div>
+
+      {/* BOTTOM LINE — true all-in cost per unit, by channel (ALWAYS LAST) */}
+      <div style={{ ...S.panel, marginTop: 14, borderLeft: `3px solid ${c.gold}` }}>
+        <div style={S.cap}>Bottom line — true all-in cost per unit, by channel</div>
+        <div style={faintEs}>Costo total real por unidad, por canal</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 16, marginTop: 10 }}>
+          {[
+            { l: "Amazon (FBA)", allIn: chEcon.az.allIn, net: chEcon.az.net, m: chEcon.az.margin, best: econ.retail > 0 && chEcon.az.margin >= chEcon.sh.margin },
+            { l: "Shopify (D2C)", allIn: chEcon.sh.allIn, net: chEcon.sh.net, m: chEcon.sh.margin, best: econ.retail > 0 && chEcon.sh.margin > chEcon.az.margin },
+          ].map((x) => (
+            <div key={x.l}>
+              <div style={{ display: "flex", gap: 7, alignItems: "baseline" }}><span style={{ fontFamily: sans, fontSize: 12.5, color: c.sub }}>{x.l}</span>{x.best && <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase", color: c.gold }}>✦ keeps most · retiene más</span>}</div>
+              <div style={{ fontSize: 32, marginTop: 2 }}>{money2(x.allIn)}</div>
+              <div style={{ fontSize: 12.5, color: c.sub, marginTop: 2 }}>leaves {money2(x.net)} net · <span style={{ color: mColor(x.m) }}>{econ.retail > 0 ? pct(x.m) : "—"}</span> margin at {money2(econ.retail)} · deja neto</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
