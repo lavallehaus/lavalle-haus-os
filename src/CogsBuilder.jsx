@@ -127,8 +127,7 @@ function productEconomics(p, rate) {
 
 /* ---- PRIMITIVES --------------------------------------------------------- */
 const Inp = ({ value, onChange, w = 78, type = "number", placeholder, align = "right" }) => (
-  <input type={type} value={value === null || value === undefined ? "" : value} placeholder={placeholder}
-    onChange={(e) => onChange(e.target.value)}
+  <input type={type} value={value === null || value === undefined ? "" : value} placeholder={placeholder}onChange={(e) => onChange(e.target.value)}
     style={{ width: w, fontFamily: sans, fontSize: 13, textAlign: align, padding: "5px 7px", border: `1px solid ${c.line}`, borderRadius: 2, background: c.panel, color: c.ink, boxSizing: "border-box" }} />
 );
 const UOM_OPTIONS = ["lb", "oz", "unit", "inch", "ml", "gram", "kg"];
@@ -137,7 +136,8 @@ const UomSelect = ({ value, onChange }) => (
   <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} style={{ ...selStyle, width: 72 }}>
     {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
   </select>
-);const BasisSelect = ({ value, onChange, yield_ }) => (
+);
+const BasisSelect = ({ value, onChange, yield_ }) => (
   <select value={value || "unit"} onChange={(e) => onChange(e.target.value)} title="how this cost is allocated" style={{ ...selStyle, width: 128 }}>
     <option value="unit">per unit</option>
     <option value="batch">{`per batch (÷${yield_})`}</option>
@@ -148,7 +148,7 @@ const UomSelect = ({ value, onChange }) => (
 const CHAN_DEFAULTS = {
   amazon:  { referralPct: 15, fbaFee: 0, storagePerUnit: 0 },
   shopify: { processingPct: 2.9, processingFixed: 0.3, outboundShip: 0 },
-  b2b:     { wholesalePrice: 0, commissionPct: 0, freightPerUnit: 0 },
+  b2b:     { wholesalePrice: 0, commissionPct: 0, freightPerUnit: 0, ordersPerAccount: 4, reorderCommissionPct: 0 },
 };
 const chan = (p) => ({
   amazon:  { ...CHAN_DEFAULTS.amazon,  ...((p.channels || {}).amazon  || {}) },
@@ -182,6 +182,30 @@ const KV = ({ label, value, strong }) => (
     <span style={{ color: strong ? c.ink : c.sub, fontWeight: strong ? 600 : 400, whiteSpace: "nowrap" }}>{value}</span>
   </div>
 );
+const Waterfall = ({ title, price, rows }) => {
+  if (!(price > 0)) return null;
+  const costSum = rows.slice(0, -1).reduce((s, r) => s + num(r.v), 0);
+  const net = price - costSum;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ fontSize: 14 }}>{title}</div>
+        <div style={{ fontSize: 12, color: c.sub }}>price {money2(price)} · precio</div>
+      </div>
+      <div style={{ display: "flex", height: 22, borderRadius: 3, overflow: "hidden", marginTop: 6, border: `1px solid ${c.lineSoft}` }}>
+        {rows.map((r, i) => { const w = Math.max(0, (num(r.v) / price) * 100); return w > 0 ? <div key={i} title={`${r.label}: ${money2(r.v)}`} style={{ width: `${w}%`, background: r.color }} /> : null; })}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 7 }}>
+        {rows.map((r, i) => (
+          <span key={i} style={{ fontSize: 11.5, color: c.sub, display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 9, height: 9, background: r.color, borderRadius: 2, display: "inline-block" }} />{r.label} {money2(r.v)}
+          </span>
+        ))}
+        {net < 0 && <span style={{ fontSize: 11.5, color: c.red }}>over price by {money2(-net)} · sobre el precio</span>}
+      </div>
+    </div>
+  );
+};
 
 /* ============================================================================
    MAIN
@@ -242,8 +266,7 @@ function Section({ title, titleEs, section, isLabor, product, rate, editLine, ad
                        <td style={S.td}><UomSelect value={l.uom} onChange={(v) => editLine(section, l.id, { uom: v })} /></td>
                        <td style={S.td}><Inp value={l.unitCost} onChange={(v) => editLine(section, l.id, { unitCost: v })} w={70} /></td></>}
                   <td style={S.td}><BasisSelect value={l.basis} onChange={(v) => editLine(section, l.id, { basis: v })} yield_={y} /></td>
-                  <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td>
-                  <td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
+                  <td style={{ ...S.td, color: c.ink }}>{money2(pu)}</td><td style={S.td}><button onClick={() => delLine(section, l.id)} style={{ cursor: "pointer", border: "none", background: "transparent", color: c.sub, fontSize: 16 }}>×</button></td>
                 </tr>
               );
             })}
@@ -286,7 +309,8 @@ export default function CogsBuilder({ data, onSave }) {
 
   if (!product) return null;
   const cset = chan(product);
-  const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);const tf = tgtPct / 100;
+  const tgtPct = num(product.targetMarginAfterAds != null ? product.targetMarginAfterAds : 15);
+  const tf = tgtPct / 100;
   const azMaxAd = chEcon.az.net - tf * econ.retail;
   const shMaxAd = chEcon.sh.net - tf * econ.retail;
   const azTgtAcos = econ.retail > 0 ? azMaxAd / econ.retail : 0;
@@ -300,6 +324,13 @@ export default function CogsBuilder({ data, onSave }) {
     if (b2bPrice > 0) cands.push(["b2b", chEcon.b2b.net]);
     return cands.length ? cands.reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null;
   })();
+  const b2bOrders = Math.max(num(cset.b2b.ordersPerAccount), 1);
+  const b2bReorderComm = num(cset.b2b.reorderCommissionPct) / 100;
+  const b2bContribFirst = chEcon.b2b.net; // first order (uses first-order commission from B2B card)
+  const b2bContribReorder = b2bPrice - econ.total - num(cset.b2b.freightPerUnit) - b2bPrice * b2bReorderComm;
+  const b2bLtvContrib = b2bContribFirst + (b2bOrders - 1) * b2bContribReorder;
+  const b2bBeRoasFirst = b2bContribFirst > 0 ? b2bPrice / b2bContribFirst : 0;
+  const b2bBeRoasLtv = b2bLtvContrib > 0 ? b2bPrice / b2bLtvContrib : 0;
   const maxCogs = econ.retail; // price carries the cost; max allowable shown vs target margins below
   const marginColor = econ.margin >= 0.5 ? c.green : econ.margin >= 0.3 ? c.yellow : c.red;
 
@@ -374,8 +405,7 @@ export default function CogsBuilder({ data, onSave }) {
         </div>
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${c.line}` }}>
           <div style={S.cap}>Working backwards — max COGS the price can carry · COGS máximo que soporta el precio</div>
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8 }}>
-            {[0.5, 0.6, 0.7].map((m) => { const maxc = econ.retail * (1 - m); const ok = econ.total <= maxc;
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8 }}>{[0.5, 0.6, 0.7].map((m) => { const maxc = econ.retail * (1 - m); const ok = econ.total <= maxc;
               return (
                 <div key={m} style={{ fontSize: 13 }}>
                   <span style={{ color: c.sub }}>{Math.round(m * 100)}% margin → </span>
@@ -435,7 +465,8 @@ export default function CogsBuilder({ data, onSave }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px,1fr))", gap: 10, marginTop: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing %</span><Inp value={cset.shopify.processingPct} onChange={(v) => setChan("shopify", { processingPct: v })} w="100%" /></label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing $ fixed</span><Inp value={cset.shopify.processingFixed} onChange={(v) => setChan("shopify", { processingFixed: v })} w="100%" /></label><label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Outbound ship $/u</span><Inp value={cset.shopify.outboundShip} onChange={(v) => setChan("shopify", { outboundShip: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Processing $ fixed</span><Inp value={cset.shopify.processingFixed} onChange={(v) => setChan("shopify", { processingFixed: v })} w="100%" /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Outbound ship $/u</span><Inp value={cset.shopify.outboundShip} onChange={(v) => setChan("shopify", { outboundShip: v })} w="100%" /></label>
           </div>
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${c.lineSoft}` }}>
             <KV label="Landed cost · costo en destino" value={money2(econ.total)} />
@@ -485,8 +516,35 @@ export default function CogsBuilder({ data, onSave }) {
         <div style={faintEs}>Mismo producto, mismo costo en destino — la diferencia entre los márgenes es pura economía de canal: comisión + FBA de Amazon, procesamiento + envío de Shopify, y el precio de mayoreo más bajo de B2B. Cascada de márgenes, costo de mantener inventario y el simulador de lanzamiento vienen después.</div>
       </div>
 
-      {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}
-      <div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
+      {/* MARGIN WATERFALL (Phase 3) — where each dollar of price goes */}
+      <div style={S.sec}>Margin Waterfall — where each dollar of price goes<div style={faintEs}>Cascada de márgenes — a dónde va cada dólar del precio</div></div>
+      <div style={S.panel}>
+        <Waterfall title="Amazon (FBA)" price={econ.retail} rows={[
+          { label: "Landed", v: econ.total, color: c.clay },
+          { label: "FBA + storage", v: chEcon.az.cogs - econ.total, color: c.gold },
+          { label: "Referral", v: chEcon.az.fee, color: "#cbbfa6" },
+          { label: "Net", v: chEcon.az.net, color: mColor(chEcon.az.margin) },
+        ]} />
+        <Waterfall title="Shopify (D2C)" price={econ.retail} rows={[
+          { label: "Landed", v: econ.total, color: c.clay },
+          { label: "Shipping", v: chEcon.sh.cogs - econ.total, color: c.gold },
+          { label: "Processing", v: chEcon.sh.fee, color: "#cbbfa6" },
+          { label: "Net", v: chEcon.sh.net, color: mColor(chEcon.sh.margin) },
+        ]} />
+        {b2bPrice > 0 && <Waterfall title="B2B / Wholesale" price={b2bPrice} rows={[
+          { label: "Landed", v: econ.total, color: c.clay },
+          { label: "Freight", v: chEcon.b2b.cogs - econ.total, color: c.gold },
+          { label: "Commission", v: chEcon.b2b.fee, color: "#cbbfa6" },
+          { label: "Net", v: chEcon.b2b.net, color: mColor(chEcon.b2b.margin) },
+        ]} />}
+        {!(econ.retail > 0) && <div style={{ fontSize: 12, color: c.sub, fontStyle: "italic" }}>Set a retail price to see the waterfall. · Fija un precio de venta para ver la cascada.</div>}
+        <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
+          Each bar is one unit's price, broken into where the money goes. The green slice on the right is what you keep — the shorter it is, the more the channel is eating.
+          <div style={faintEs}>Cada barra es el precio de una unidad, dividido en a dónde va el dinero. La franja verde de la derecha es lo que retienes — entre más corta, más se lleva el canal.</div>
+        </div>
+      </div>
+
+      {/* AD HEADROOM (Phase 3) — break-even & target ROAS */}<div style={S.sec}>Ad Headroom — break-even & target ROAS<div style={faintEs}>Margen para anuncios — equilibrio y ROAS meta</div></div>
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Keep this net margin after ads · margen tras anuncios</span><Inp value={tgtPct} onChange={(v) => setProd(product.id, { targetMarginAfterAds: v })} w={90} /></label>
@@ -516,6 +574,49 @@ export default function CogsBuilder({ data, onSave }) {
           Example: a 2.50× break-even ROAS means every $1 of ad spend must bring back $2.50 in sales just to not lose money on that unit.
           <div style={faintEs}>Ejemplo: un ROAS de equilibrio de 2.50× significa que cada $1 de gasto en anuncios debe traer $2.50 en ventas solo para no perder dinero en esa unidad.</div>
         </div>
+      </div>
+
+      {/* B2B / FAIRE AD HEADROOM (Phase 3) — account-LTV break-even */}
+      <div style={S.sec}>B2B / Faire Ad Headroom — account-lifetime break-even<div style={faintEs}>Margen para anuncios B2B / Faire — equilibrio por vida de la cuenta</div></div>
+      <div style={S.panel}>
+        {b2bPrice > 0 ? (
+          <>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Orders per account (lifetime) · órdenes por cuenta</span><Inp value={cset.b2b.ordersPerAccount} onChange={(v) => setChan("b2b", { ordersPerAccount: v })} w={90} /></label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={S.cap}>Reorder commission % · comisión recompra</span><Inp value={cset.b2b.reorderCommissionPct} onChange={(v) => setChan("b2b", { reorderCommissionPct: v })} w={90} /></label>
+              <div style={{ flex: 1, minWidth: 220, fontSize: 11.5, color: c.sub, fontStyle: "italic" }}>
+                Faire usually charges more on the first order and less on reorders — set the first-order rate in the B2B card above, and the reorder rate here.
+                <div style={faintEs}>Faire suele cobrar más en la primera orden y menos en recompras — fija la tasa de la primera orden en la tarjeta B2B de arriba, y la de recompra aquí.</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16, marginTop: 14 }}>
+              <div>
+                <div style={{ fontSize: 15, marginBottom: 8 }}>Contribution per account · contribución</div>
+                <KV label="First-order contribution · 1ª orden" value={money2(b2bContribFirst)} strong />
+                <KV label="Each reorder · cada recompra" value={money2(b2bContribReorder)} />
+                <KV label={`Lifetime over ${b2bOrders} orders · de por vida`} value={money2(b2bLtvContrib)} strong />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, marginBottom: 8 }}>Break-even ROAS · ROAS equilibrio</div>
+                <KV label="First order only (worst case) · solo 1ª orden" value={roasFmt(b2bBeRoasFirst)} />
+                <KV label="Across account lifetime (real bar) · vida de cuenta" value={roasFmt(b2bBeRoasLtv)} strong />
+              </div>
+            </div>
+            <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 12 }}>
+              {b2bLtvContrib > 0
+                ? <>Read it this way: a Faire ad only needs to report a first-order ROAS above {roasFmt(b2bBeRoasLtv)} for the account to pay off over its lifetime — even though a single order in isolation would need {roasFmt(b2bBeRoasFirst)}. The more a retailer reorders, the lower that bar drops.</>
+                : <>At these numbers each order loses money even across the account's lifetime, so ads can't fix it — the wholesale price, commission, or landed cost has to change first.</>}
+              <div style={faintEs}>{b2bLtvContrib > 0
+                ? `Léelo así: un anuncio de Faire solo necesita un ROAS de primera orden por encima de ${roasFmt(b2bBeRoasLtv)} para que la cuenta rinda en su vida — aunque una sola orden aislada necesitaría ${roasFmt(b2bBeRoasFirst)}. Mientras más recompre el minorista, más baja esa barra.`
+                : "Con estos números cada orden pierde dinero incluso en la vida de la cuenta, así que los anuncios no lo arreglan — primero debe cambiar el precio de mayoreo, la comisión o el costo en destino."}</div>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: c.sub, fontStyle: "italic" }}>
+            Set a wholesale price in the B2B card above to model Faire ad headroom.
+            <div style={faintEs}>Ingresa un precio de mayoreo en la tarjeta B2B de arriba para modelar el margen de anuncios de Faire.</div>
+          </div>
+        )}
       </div>
 
       {/* BOTTOM LINE — true all-in cost per unit, by channel (ALWAYS LAST) */}
