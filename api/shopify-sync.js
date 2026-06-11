@@ -123,6 +123,46 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "GET") {
+    // /api/shopify-sync?debug=1 — human-readable dump of every product and
+    // variant with stock + whether Shopify is tracking its inventory.
+    if (req.query && req.query.debug) {
+      try {
+        const query = `
+          query ProductTree($after: String) {
+            products(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              edges { node {
+                title status totalInventory tracksInventory
+                variants(first: 50) { edges { node { title inventoryQuantity sku } } }
+              } }
+            }
+          }`;
+        let after = null;
+        let all = [];
+        for (let i = 0; i < 10; i++) {
+          const data = await gql(auth.shop, auth.accessToken, query, { after });
+          const conn = data.products;
+          all = all.concat(conn.edges.map((e) => e.node));
+          if (!conn.pageInfo.hasNextPage) break;
+          after = conn.pageInfo.endCursor;
+        }
+        const tree = all.map((p) => ({
+          product: p.title,
+          status: p.status,
+          tracksInventory: p.tracksInventory,
+          totalInventory: p.totalInventory,
+          mappedToAppId: TITLE_MAP[(p.title || "").trim().toLowerCase()] ?? null,
+          variants: ((p.variants && p.variants.edges) || []).map((v) => ({
+            variant: v.node.title, sku: v.node.sku, qty: v.node.inventoryQuantity,
+          })),
+        }));
+        res.status(200).json({ shop: auth.shop, productCount: tree.length, tree });
+        return;
+      } catch (e) {
+        res.status(500).json({ error: String(e).slice(0, 300) });
+        return;
+      }
+    }
     res.status(200).json({ connected: true, shop: auth.shop, lastSync: auth.lastSync || null });
     return;
   }
