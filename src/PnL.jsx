@@ -287,6 +287,15 @@ export default function PnL({ data = {}, onSave }) {
     const m = {}; transactions.forEach((t) => { const k = mkey(t.merchant || t.description); m[k] = (m[k] || 0) + 1; }); return m;
   }, [transactions]);
 
+  // Which P&L category line is expanded (null = none). Clicking a category in
+  // the summary unfolds every transaction feeding that line, date-ordered.
+  const [openCat, setOpenCat] = useState(null);
+  const byDate = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0); // newest first
+  const catTx = (cat) => viewTx.filter((t) => (cat === "__income__" ? t.type === "income" : t.type !== "income" && t.category === cat)).slice().sort(byDate);
+
+  // Main transactions table, ordered by transaction date (newest first)
+  const dateSorted = useMemo(() => viewTx.slice().sort(byDate), [viewTx]);
+
   const pnl = useMemo(() => {
     let income = 0; const exp = {};
     viewTx.forEach((t) => {
@@ -493,12 +502,38 @@ export default function PnL({ data = {}, onSave }) {
 
       <div style={S.sec}>Profit &amp; Loss<div style={faintEs}>Estado de resultados - {currentLabel}</div></div>
       <div style={S.panel}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 14 }}>
-          <span>Revenue - Ingresos</span><span style={{ color: c.green }}>{money(pnl.income)}</span>
+        <div onClick={() => setOpenCat(openCat === "__income__" ? null : "__income__")} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 14, cursor: "pointer" }}>
+          <span><span style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginRight: 6 }}>{openCat === "__income__" ? "\u25be" : "\u25b8"}</span>Revenue - Ingresos</span><span style={{ color: c.green }}>{money(pnl.income)}</span>
         </div>
+        {openCat === "__income__" && (
+          <div style={{ margin: "2px 0 6px 26px", borderLeft: `2px solid ${c.green}40`, paddingLeft: 10 }}>
+            {catTx("__income__").map((t) => (
+              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "3px 0", fontSize: 11.5, color: c.sub, borderBottom: `1px solid ${c.lineSoft}` }}>
+                <span style={{ whiteSpace: "nowrap", fontFamily: sans, fontSize: 10.5 }}>{t.date}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.description}</span>
+                <span style={{ whiteSpace: "nowrap", color: c.green }}>{money(t.amount)}</span>
+              </div>
+            ))}
+            {catTx("__income__").length === 0 && <div style={{ fontSize: 11, fontStyle: "italic", color: c.sub, padding: "3px 0" }}>No income transactions in this period.</div>}
+          </div>
+        )}
         {pnl.expenseRows.map(([cat, v]) => (
-          <div key={cat} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 14px", fontSize: 12.5, color: c.sub }}>
-            <span>{cat}</span><span>({money(v)})</span>
+          <div key={cat}>
+            <div onClick={() => setOpenCat(openCat === cat ? null : cat)} title="Click to see every transaction in this category"
+              style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 14px", fontSize: 12.5, color: openCat === cat ? c.ink : c.sub, cursor: "pointer" }}>
+              <span><span style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginRight: 6 }}>{openCat === cat ? "\u25be" : "\u25b8"}</span>{cat}<span style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, marginLeft: 6 }}>({catTx(cat).length})</span></span><span>({money(v)})</span>
+            </div>
+            {openCat === cat && (
+              <div style={{ margin: "2px 0 6px 34px", borderLeft: `2px solid ${c.clay}40`, paddingLeft: 10 }}>
+                {catTx(cat).map((t) => (
+                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "3px 0", fontSize: 11.5, color: c.sub, borderBottom: `1px solid ${c.lineSoft}` }}>
+                    <span style={{ whiteSpace: "nowrap", fontFamily: sans, fontSize: 10.5 }}>{t.date}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.description}</span>
+                    <span style={{ whiteSpace: "nowrap" }}>({money(t.amount)})</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, borderTop: `1px solid ${c.lineSoft}`, marginTop: 4 }}>
@@ -527,7 +562,7 @@ export default function PnL({ data = {}, onSave }) {
                 <th style={S.th}></th>
               </tr></thead>
               <tbody>
-                {viewTx.map((t) => {
+                {dateSorted.map((t) => {
                   const recurring = counts[mkey(t.merchant || t.description)] > 1;
                   return (
                     <tr key={t.id}>
