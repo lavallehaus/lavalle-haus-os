@@ -46,8 +46,8 @@ const INITIAL_PRODUCTS = [
 { id: 1, name: "SeaShell Vessel Candle", sku: "RH-SeaShell-9633", asin: "B0GR8452CL", available: 0, inbound: 200, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "200 units incoming — launch campaigns on arrival" },
 { id: 2, name: "Beeswax Candle Sand 16oz", sku: "RH-Sandwax-AC-16c", asin: "B0GR1NWNG8", available: 30, inbound: 0, unitsSold30: 8, price: 26, channels: ["Amazon"], status: "ok", notes: "Main revenue driver. Phrase Match & H10 campaigns performing." },
 { id: 3, name: "Beeswax Candle Sand 32oz", sku: "RH-Sandwax-AC-32c", asin: "B0GR1KQ253", available: 30, inbound: 0, unitsSold30: 1, price: 46, channels: ["Amazon"], status: "slow", notes: "129 weeks supply. Very slow mover — pause ads, evaluate." },
-{ id: 4, name: "Small Apple Vanilla Candle", sku: "RH-CANDLE-SM-AP", asin: "B0FVGM15JB", available: 55, inbound: 0, unitsSold30: 16, price: 18.99, channels: ["Amazon"], status: "ok", notes: "Best seller by units. Keep campaigns healthy." },
-{ id: 5, name: "Large Apple Vanilla Candle", sku: "RH-CANDLE-LG-AP", asin: "B0FVGM15J7", available: 34, inbound: 0, unitsSold30: 8, price: 59, channels: ["Amazon"], status: "ok", notes: "Good velocity. Monitor stock — 18 weeks supply." },
+{ id: 4, name: "Mini Spiced Apple Botanical Candle", sku: "RH-CANDLE-SM-AP", asin: "B0FVGM15JB", available: 55, inbound: 0, unitsSold30: 16, price: 18.99, channels: ["Amazon", "Shopify"], status: "ok", notes: "Best seller by units. Keep campaigns healthy." },
+{ id: 5, name: "Large Spiced Apple Botanical Candle", sku: "RH-CANDLE-LG-AP", asin: "B0FVGM15J7", available: 34, inbound: 0, unitsSold30: 8, price: 59, channels: ["Amazon", "Shopify"], status: "ok", notes: "Good velocity. Monitor stock — 18 weeks supply." },
 { id: 6, name: "Bath Salts Unscented", sku: "LH-BATH-SALT-UN", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "inbound", notes: "Upcoming Amazon launch. ASIN TBD." },
 // ── SHOPIFY ONLY ──
 { id: 7, name: "Dough Bowl Vessel Candle", sku: "LH-VESSEL-DOUGH", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Shopify only. Add stock levels and pricing." },
@@ -257,7 +257,7 @@ persistProducts(nxt);
 
 function startEdit(p) {
 setEditing(p.id);
-setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, minStock: p.minStock || 0, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
+setDraft({ name: p.name, available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, minStock: p.minStock || 0, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
 }
 
 function saveEdit(id) {
@@ -265,6 +265,7 @@ setPast(p => [...p, products].slice(-50));
 setFuture([]);
 const updated = products.map(p => p.id !== id ? p : {
 ...p,
+name: (draft.name || "").trim() || p.name,
 available: +draft.available || 0,
 inbound: +draft.inbound || 0,
 unitsSold30: +draft.unitsSold30 || 0,
@@ -395,6 +396,11 @@ return (
 <div>
 {isEditing ? (
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+<div>
+<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Product Name</div>
+<input value={draft.name || ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }} />
+</div>
 <div style={{ display: "flex", gap: 8 }}>
 {[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"], ["minStock", "Min Stock"]].map(([f, l]) => (
 <div key={f}>
@@ -1496,15 +1502,28 @@ if (d) {
 // Merge: saved products win, but newly seeded products (by id) are appended
 // so app updates can introduce products without wiping user data.
 let mergedProducts = d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS;
+let productsChanged = false;
 if (d.products && d.products.length > 0) {
 const have = new Set(d.products.map(p => p.id));
 const missing = INITIAL_PRODUCTS.filter(p => !have.has(p.id));
-if (missing.length) mergedProducts = [...d.products, ...missing];
+if (missing.length) { mergedProducts = [...d.products, ...missing]; productsChanged = true; }
 }
+// One-time reconciliation: exact Shopify store titles + Shopify channel for the apple candles.
+const NAME_FIX = { 4: "Mini Spiced Apple Botanical Candle", 5: "Large Spiced Apple Botanical Candle" };
+mergedProducts = mergedProducts.map(p => {
+const fix = NAME_FIX[p.id];
+if (!fix) return p;
+const chans = p.channels || ["Amazon"];
+const needName = p.name !== fix;
+const needChan = !chans.includes("Shopify");
+if (!needName && !needChan) return p;
+productsChanged = true;
+return { ...p, name: fix, channels: needChan ? [...chans, "Shopify"] : chans };
+});
 if (mergedProducts.length > 0) setProducts(mergedProducts);
 if (d.materials && d.materials.length > 0) setMaterials(d.materials);
 if (d.weekly && d.weekly.length > 0) setWeeks(d.weekly);
-setDbState({
+const nextDb = {
 products: mergedProducts,
 materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
 weekly: d.weekly || [],
@@ -1516,7 +1535,9 @@ pnl: d.pnl || {},
 googleAds: d.googleAds || [],
 metaAds: d.metaAds || [],
 emailRetention: d.emailRetention || [],
-});
+};
+setDbState(nextDb);
+if (productsChanged) dbSave(nextDb);
 }
 setLoaded(true);
 });
