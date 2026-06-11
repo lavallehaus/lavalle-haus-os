@@ -803,21 +803,46 @@ return (
 function MaterialsTab({ materials, setMaterials, dbState, setDbState }) {
 const [editId, setEditId] = useState(null);
 const [draft, setDraft] = useState({});
+const [past, setPast] = useState([]);
+const [future, setFuture] = useState([]);
 
 const urgentItems = materials.filter(m => m.status === "out" || m.status === "reorder");
 const allocatedTotal = urgentItems.reduce((s, m) => s + (parseFloat(m.estCost) || 0), 0);
 const remaining = WEEKLY_BUDGET - allocatedTotal;
 
-function toggleStatus(id) {
-setMaterials(prev => {
-const updated = prev.map(m => m.id !== id ? m : {
-...m, status: m.status === "ok" ? "reorder" : m.status === "reorder" ? "out" : "ok"
-});
+function persistMaterials(updated) {
+setMaterials(updated);
 const full = { ...dbState, materials: updated };
 setDbState(full);
 dbSave(full);
-return updated;
-});
+}
+
+function recordHistory() {
+setPast(p => [...p, materials].slice(-50));
+setFuture([]);
+}
+
+function undo() {
+if (!past.length) return;
+const prev = past[past.length - 1];
+setFuture(f => [...f, materials].slice(-50));
+setPast(p => p.slice(0, -1));
+persistMaterials(prev);
+}
+
+function redo() {
+if (!future.length) return;
+const nxt = future[future.length - 1];
+setPast(p => [...p, materials].slice(-50));
+setFuture(f => f.slice(0, -1));
+persistMaterials(nxt);
+}
+
+function toggleStatus(id) {
+recordHistory();
+persistMaterials(materials.map(m => m.id !== id ? m : {
+...m, status: m.status === "ok" ? "reorder" : m.status === "reorder" ? "out" : "ok"
+}));
 }
 
 function startEdit(m) {
@@ -826,18 +851,13 @@ setDraft({ buyLink: m.buyLink || "", estCost: m.estCost || "", note: m.note || "
 }
 
 function saveEdit(id) {
-setMaterials(prev => {
-const updated = prev.map(m => m.id !== id ? m : {
+recordHistory();
+persistMaterials(materials.map(m => m.id !== id ? m : {
 ...m,
 buyLink: draft.buyLink,
 estCost: draft.estCost === "" ? null : parseFloat(draft.estCost),
 note: draft.note,
-});
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
+}));
 setEditId(null);
 }
 
@@ -846,6 +866,11 @@ const sorted = [...materials].sort((a, b) => (a.priority || 9) - (b.priority || 
 return (
 <div>
 <SectionTitle>Raw Materials · Reorder Status</SectionTitle>
+<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: past.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>UNDO</button>
+<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: future.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>REDO</button>
+<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "monospace" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+</div>
 
 <Card style={{ marginBottom: 20, borderLeft: "2px solid #a07848" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -944,13 +969,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #c8c2b8", padd
 <button onClick={() => {
 const newId = Math.max(...materials.map(m => m.id)) + 1;
 const newMaterial = { id: newId, name: "New Material", status: "reorder", note: "", buyLink: "", estCost: null, priority: 4 };
-setMaterials(prev => {
-const updated = [...prev, newMaterial];
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
+recordHistory();
+persistMaterials([...materials, newMaterial]);
 setEditId(newId);
 setDraft({ buyLink: "", estCost: "", note: "" });
 }} style={{ marginTop: 14, width: "100%", background: "transparent", border: "1px dashed #c8c2b8", color: "#a09488", padding: "10px 0", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 2 }}>
@@ -1543,7 +1563,7 @@ dbSave(next);
 function renderBody() {
 if (tab === "profit") {
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
-if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} />;
+if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} />;
 if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
 return profitNode;
 }
