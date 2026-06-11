@@ -110,6 +110,7 @@ export default function PnL({ data = {}, onSave }) {
   const [pickVal, setPickVal] = useState("");
   const [editStmt, setEditStmt] = useState(null);
   const [draftLabel, setDraftLabel] = useState("");
+  const [draftLink, setDraftLink] = useState("");
 
   // ---- data snapshot + undo/redo history (session-only; data itself is saved to Redis) ----
   const dataState = () => ({ transactions, rules, totalCost, seen, statements });
@@ -215,8 +216,8 @@ export default function PnL({ data = {}, onSave }) {
     mutate({ transactions: [], statements: [] });
   }
 
-  function renameStatement(id, label) {
-    const next = statements.map((s) => (s.id === id ? { ...s, label } : s));
+  function renameStatement(id, label, link) {
+    const next = statements.map((s) => (s.id === id ? { ...s, label, link } : s));
     mutate({ statements: next });
   }
   function removeStatement(id) {
@@ -259,8 +260,9 @@ export default function PnL({ data = {}, onSave }) {
 
   const counts = useMemo(() => {
     const m = {}; transactions.forEach((t) => { const k = mkey(t.merchant || t.description); m[k] = (m[k] || 0) + 1; }); return m;
-  }, [transactions]);const pnl = useMemo(() => {
-    let income = 0; const exp = {};
+  }, [transactions]);
+
+  const pnl = useMemo(() => {let income = 0; const exp = {};
     viewTx.forEach((t) => {
       if (t.type === "income") income += num(t.amount);
       else exp[t.category] = (exp[t.category] || 0) + num(t.amount);
@@ -390,8 +392,9 @@ export default function PnL({ data = {}, onSave }) {
           </div>
         )}
         {err && <div style={{ fontSize: 12.5, color: c.red, marginTop: 10 }}>Error: {err}</div>}
-      </div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
-        <div style={{ ...S.panel, padding: "14px 16px" }}>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}><div style={{ ...S.panel, padding: "14px 16px" }}>
           <div style={S.cap}>Last run cost</div><div style={faintEs}>Costo ultima vez</div>
           <div style={{ fontSize: 22, marginTop: 4, color: c.ink }}>{lastRun ? cents(lastRun.cost) : "-"}</div>
           {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens - +{lastRun.added} new</div>}
@@ -412,8 +415,8 @@ export default function PnL({ data = {}, onSave }) {
       <div style={S.sec}>Imported statements ({statements.length})<div style={faintEs}>Estados importados - para tus registros</div></div>
       <div style={S.panel}>
         <div style={{ fontSize: 12.5, color: c.sub, marginBottom: statements.length ? 12 : 0, lineHeight: 1.5 }}>
-          A record of every statement you've imported. Rename any entry for your books. The original PDF isn't stored in the app - keep your bank's PDF in Google Drive / Files as the source document.
-          <div style={faintEs}>Registro de cada estado importado. Renombra para tus libros. El PDF original no se guarda - guardalo en Drive.</div>
+          A record of every statement you've imported. Rename any entry and paste a Google Drive link to the original PDF, so you can jump straight to the source document for accounting or an audit. The PDF itself isn't stored in the app.
+          <div style={faintEs}>Registro de cada estado importado. Renombra y pega un enlace de Google Drive al PDF original. El PDF no se guarda en la app.</div>
         </div>
         {statements.length === 0 && <div style={{ fontSize: 12.5, color: c.sub, fontStyle: "italic" }}>No statements logged yet - your next import will appear here. - Aun no hay registros.</div>}
         {statements.map((st) => (
@@ -422,19 +425,23 @@ export default function PnL({ data = {}, onSave }) {
               {editStmt === st.id ? (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <input value={draftLabel} onChange={(e) => setDraftLabel(e.target.value)} style={{ ...S.sel, fontSize: 13, minWidth: 200 }} placeholder="Statement name" />
-                  <button onClick={() => { renameStatement(st.id, draftLabel.trim() || st.label); setEditStmt(null); }} style={{ ...S.btn, padding: "4px 14px" }}>Save</button>
+                  <input value={draftLink} onChange={(e) => setDraftLink(e.target.value)} style={{ ...S.sel, fontSize: 13, minWidth: 240 }} placeholder="Google Drive link to PDF (optional)" />
+                  <button onClick={() => { renameStatement(st.id, draftLabel.trim() || st.label, draftLink.trim()); setEditStmt(null); }} style={{ ...S.btn, padding: "4px 14px" }}>Save</button>
                   <button onClick={() => setEditStmt(null)} style={{ ...S.btnGhost, padding: "4px 10px" }}>Cancel</button>
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 14 }}>{st.label}</div>
+                  <div style={{ fontSize: 14 }}>
+                    {st.label}
+                    {st.link && <a href={st.link} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 10, fontFamily: sans, fontSize: 11, letterSpacing: 0.5, color: c.clay, textDecoration: "none" }}>Open PDF &gt;</a>}
+                  </div>
                   <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{st.periodLabel} &middot; {st.count} tx &middot; imported {st.importedAt} &middot; {cents(st.cost)}</div>
                 </>
               )}
             </div>
             {editStmt !== st.id && (
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => { setEditStmt(st.id); setDraftLabel(st.label); }} style={{ ...S.btnGhost, padding: "4px 12px" }}>Rename</button>
+                <button onClick={() => { setEditStmt(st.id); setDraftLabel(st.label); setDraftLink(st.link || ""); }} style={{ ...S.btnGhost, padding: "4px 12px" }}>Rename</button>
                 <button onClick={() => removeStatement(st.id)} style={{ ...S.btnGhost, padding: "4px 12px", color: c.red }}>Remove</button>
               </div>
             )}
