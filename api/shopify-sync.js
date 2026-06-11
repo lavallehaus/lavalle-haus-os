@@ -87,7 +87,10 @@ async function fetchSold30(shop, token) {
         }
       }
     }`;
-  const q = `created_at:>=${since}`;
+  // Only paid, non-cancelled orders count as real sales. Refunded /
+  // partially-refunded / voided / test orders are excluded so Sold/30d
+  // reflects what actually sold and stayed sold.
+  const q = `created_at:>=${since} AND financial_status:paid AND -status:cancelled`;
   const totals = {};
   let after = null;
   for (let i = 0; i < 20; i++) {
@@ -136,12 +139,15 @@ export default async function handler(req, res) {
     }
 
     let sold = [];
+    let soldUnmatched = [];
     let soldError = null;
     try {
       const totals = await fetchSold30(auth.shop, auth.accessToken);
       for (const key of Object.keys(totals)) {
         if (TITLE_MAP[key] !== undefined) {
           sold.push({ productId: TITLE_MAP[key], qty: totals[key] });
+        } else {
+          soldUnmatched.push({ title: key, qty: totals[key] });
         }
       }
     } catch (e) {
@@ -151,7 +157,7 @@ export default async function handler(req, res) {
     const syncedAt = new Date().toISOString();
     await kvSet("shopify_oauth", { ...auth, lastSync: syncedAt });
 
-    res.status(200).json({ connected: true, syncedAt, items, sold, unmatched, soldError });
+    res.status(200).json({ connected: true, syncedAt, items, sold, unmatched, soldUnmatched, soldError });
   } catch (e) {
     res.status(500).json({ connected: true, error: String(e).slice(0, 300) });
   }
