@@ -295,6 +295,7 @@ return (
 </div>
 <Card style={{ borderLeft: `3px solid ${shopify && shopify.connected ? "#5a7a5a" : "#a07848"}`, padding: "12px 16px" }}>
 {shopify && shopify.connected ? (
+<>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
 <div>
 <span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 2, color: "#5a7a5a" }}>● SHOPIFY CONNECTED · LIVE STOCK</span>
@@ -303,6 +304,19 @@ return (
 </div>
 <button onClick={onShopifySync} disabled={shopify.syncing} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: shopify.syncing ? "default" : "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>{shopify.syncing ? "SYNCING…" : "SYNC NOW"}</button>
 </div>
+{((shopify.unmatched && shopify.unmatched.length > 0) || (shopify.soldUnmatched && shopify.soldUnmatched.length > 0)) && (
+<div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #0000000d" }}>
+<div style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 2, color: "#a07848", marginBottom: 4 }}>⚠ SHOPIFY PRODUCTS NOT YET MAPPED TO THIS APP</div>
+{(shopify.unmatched || []).map((u, i) => (
+<div key={"u" + i} style={{ fontSize: 11, color: "#8c7d6b", fontFamily: "monospace" }}>· {u.title} — {u.qty} in stock</div>
+))}
+{(shopify.soldUnmatched || []).map((u, i) => (
+<div key={"s" + i} style={{ fontSize: 11, color: "#8c7d6b", fontFamily: "monospace" }}>· {u.title} — {u.qty} sold/30d</div>
+))}
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 4, fontFamily: "'IM Fell English', Georgia, serif" }}>Estos títulos de Shopify aún no están enlazados a un producto del app — compártelos con Claude para mapearlos.</div>
+</div>
+)}
+</>
 ) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
 <div>
@@ -1436,7 +1450,7 @@ const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [] });
 const [loaded, setLoaded] = useState(false);
-const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, syncedAt: null, syncing: false });
+const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 
 async function shopifySync() {
 setShopify(s => ({ ...s, syncing: true }));
@@ -1448,12 +1462,12 @@ const items = {};
 (d.items || []).forEach(it => { items[it.productId] = it.qty; });
 const sold = {};
 (d.sold || []).forEach(it => { sold[it.productId] = it.qty; });
-setShopify({ connected: true, items, sold, syncedAt: d.syncedAt, syncing: false });
+setShopify({ connected: true, items, sold, unmatched: d.unmatched || [], soldUnmatched: d.soldUnmatched || [], syncedAt: d.syncedAt, syncing: false });
 } else if (d && d.connected && d.error) {
 console.warn("Shopify sync error:", d.error);
 setShopify(s => ({ ...s, connected: true, syncing: false }));
 } else {
-setShopify({ connected: false, items: {}, sold: {}, syncedAt: null, syncing: false });
+setShopify({ connected: false, items: {}, sold: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 }
 } catch(e) {
 console.warn("shopify sync failed:", e);
