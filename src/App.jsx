@@ -55,6 +55,11 @@ const INITIAL_PRODUCTS = [
 // ── COMING SOON ──
 { id: 9, name: "Lavender Body Oil", sku: "LH-OIL-LAV", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify first. Plan Amazon launch — update channel when live." },
 { id: 10, name: "Moroccan Soap", sku: "LH-SOAP-MOR", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify only for now." },
+
+{ id: 11, name: "Sugar Scrub Sample", sku: "LH-SCRUB-SUGAR-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Sample size of Vanilla Cashmere Sugar Scrub." },
+{ id: 12, name: "Small Apple Candle Sample", sku: "LH-CANDLE-SM-AP-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Sample size of Mini Spiced Apple candle." },
+{ id: 13, name: "Small Apple Candle Wholesale", sku: "LH-CANDLE-SM-AP-WS", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["B2B"], status: "ok", notes: "Wholesale listing of Mini Spiced Apple candle." },
+{ id: 14, name: "Spiced Apple Sandwax Candle", sku: "LH-SANDWAX-AP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Spiced Apple Cider sandwax candle." },
 ];
 
 const INITIAL_CAMPAIGNS = [
@@ -1488,11 +1493,19 @@ document.head.appendChild(link);
 useEffect(() => {
 dbLoad().then(d => {
 if (d) {
-if (d.products && d.products.length > 0) setProducts(d.products);
+// Merge: saved products win, but newly seeded products (by id) are appended
+// so app updates can introduce products without wiping user data.
+let mergedProducts = d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS;
+if (d.products && d.products.length > 0) {
+const have = new Set(d.products.map(p => p.id));
+const missing = INITIAL_PRODUCTS.filter(p => !have.has(p.id));
+if (missing.length) mergedProducts = [...d.products, ...missing];
+}
+if (mergedProducts.length > 0) setProducts(mergedProducts);
 if (d.materials && d.materials.length > 0) setMaterials(d.materials);
 if (d.weekly && d.weekly.length > 0) setWeeks(d.weekly);
 setDbState({
-products: d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS,
+products: mergedProducts,
 materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
 weekly: d.weekly || [],
 profitMatrix: d.profitMatrix || {},
