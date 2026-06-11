@@ -58,7 +58,25 @@ const Metric = ({ label, labelEs, value, note, pending }) => (
   </div>
 );
 
-export default function FinanceCash({ products = [], weeks = [], cogs = {} }) {
+export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl = {} }) {
+  // Real numbers from the P&L tab's imported statements.
+  const pnlStats = useMemo(() => {
+    const tx = Array.isArray(pnl.transactions) ? pnl.transactions : [];
+    if (!tx.length) return null;
+    let income = 0, expense = 0, mIncome = 0, mExpense = 0;
+    const months = new Set();
+    const ym = new Date().toISOString().slice(0, 7);
+    tx.forEach((t) => {
+      const amt = num(t.amount);
+      if (typeof t.date === "string" && t.date.length >= 7) months.add(t.date.slice(0, 7));
+      const thisMonth = typeof t.date === "string" && t.date.startsWith(ym);
+      if (t.type === "income") { income += amt; if (thisMonth) mIncome += amt; }
+      else { expense += amt; if (thisMonth) mExpense += amt; }
+    });
+    const monthCount = Math.max(months.size, 1);
+    return { net: income - expense, monthNet: mIncome - mExpense, avgBurn: expense / monthCount, count: tx.length, monthCount };
+  }, [pnl]);
+
   const fin = useMemo(() => {
     const rate = num(cogs.laborRate) || 15;
     const rows = (cogs.products || []).map((p) => {
@@ -127,7 +145,8 @@ export default function FinanceCash({ products = [], weeks = [], cogs = {} }) {
                 <tr key={i}>
                   <td style={{ ...S.td, ...S.tdL }}>{r.name}</td>
                   <td style={S.td}>{money2(r.retail)}</td>
-                  <td style={S.td}>{money2(r.landed)}</td><td style={{ ...S.td, color: mColor(r.margin) }}>{pct(r.margin)}</td>
+                  <td style={S.td}>{money2(r.landed)}</td>
+                  <td style={{ ...S.td, color: mColor(r.margin) }}>{pct(r.margin)}</td>
                 </tr>
               ))}
             </tbody>
@@ -150,8 +169,14 @@ export default function FinanceCash({ products = [], weeks = [], cogs = {} }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12 }}>
         <Metric label="CM1 (after COGS)" labelEs="CM1 (tras COGS)" value="pending" pending note="needs per-SKU weekly sales mapping" />
         <Metric label="CM2 (after ads/fees)" labelEs="CM2 (tras anuncios)" value="pending" pending note="needs sales mapping + ad/fee feeds" />
-        <Metric label="Net profit" labelEs="Utilidad neta" value="pending" pending note="needs operating expenses (accounting)" />
-        <Metric label="Cash runway" labelEs="Pista de efectivo" value="connect accounting" pending note="QuickBooks / Xero" />
+        {pnlStats ? (
+          <Metric label="Net profit" labelEs="Utilidad neta" value={money(pnlStats.net)}
+            note={`from P&L · ${pnlStats.count} transactions · this month ${money(pnlStats.monthNet)}`} />
+        ) : (
+          <Metric label="Net profit" labelEs="Utilidad neta" value="pending" pending note="import statements in the P&L tab" />
+        )}
+        <Metric label="Cash runway" labelEs="Pista de efectivo" value={pnlStats ? "add cash balance" : "connect accounting"} pending
+          note={pnlStats ? `avg spend ${money(pnlStats.avgBurn)}/mo over ${pnlStats.monthCount} month${pnlStats.monthCount === 1 ? "" : "s"}` : "QuickBooks / Xero"} />
         <Metric label="Cash conversion cycle" labelEs="Ciclo de conversión" value="connect accounting" pending note="DIO + DSO − DPO" />
       </div>
       <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 10 }}>
