@@ -55,7 +55,27 @@ export default function Wholesale({ data = [], onSave }) {
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(BLANK);
 
-  const commit = (next) => { setAccounts(next); onSave?.(next); };
+  const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
+
+  const apply = (next) => { setAccounts(next); onSave?.(next); };
+  const commit = (next) => { setPast((p) => [...p, accounts].slice(-50)); setFuture([]); apply(next); };
+  const undo = () => {
+    if (!past.length) return;
+    const prev = past[past.length - 1];
+    setFuture((f) => [...f, accounts].slice(-50));
+    setPast((p) => p.slice(0, -1));
+    setEditId(null);
+    apply(prev);
+  };
+  const redo = () => {
+    if (!future.length) return;
+    const nxt = future[future.length - 1];
+    setPast((p) => [...p, accounts].slice(-50));
+    setFuture((f) => f.slice(0, -1));
+    setEditId(null);
+    apply(nxt);
+  };
 
   const startAdd = () => { const a = { ...BLANK, id: uid() }; setEditId(a.id); setDraft(a); setAccounts((p) => [a, ...p]); };
   const startEdit = (a) => { setEditId(a.id); setDraft({ ...a }); };
@@ -77,6 +97,11 @@ export default function Wholesale({ data = [], onSave }) {
 
   return (
     <div style={S.wrap}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: `1px solid ${c.line}`, color: past.length ? c.sub : c.line, borderRadius: 2, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>UNDO</button>
+        <button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: `1px solid ${c.line}`, color: future.length ? c.sub : c.line, borderRadius: 2, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>REDO</button>
+        <span style={{ fontSize: 10, color: c.sub, fontFamily: sans, opacity: 0.7 }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+      </div>
       <div>
         <h1 style={S.h1}>Wholesale Accounts</h1><div style={faintEs}>Cuentas mayoristas</div>
         <div style={S.sub}>Accounts, reorder timing, and open opportunities — your B2B relationships in one place.</div>
@@ -127,7 +152,8 @@ export default function Wholesale({ data = [], onSave }) {
                     <button onClick={saveDraft} style={{ fontFamily: sans, fontSize: 13, cursor: "pointer", padding: "7px 18px", borderRadius: 2, border: "none", background: c.ink, color: c.bg }}>Save · guardar</button>
                     <button onClick={cancel} style={{ fontFamily: sans, fontSize: 13, cursor: "pointer", padding: "7px 18px", borderRadius: 2, border: `1px solid ${c.line}`, background: "transparent", color: c.sub }}>Cancel · cancelar</button>
                   </div>
-                </div>) : (
+                </div>
+              ) : (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
