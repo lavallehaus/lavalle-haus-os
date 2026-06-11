@@ -56,10 +56,8 @@ const INITIAL_PRODUCTS = [
 { id: 9, name: "Lavender Body Oil", sku: "LH-OIL-LAV", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify first. Plan Amazon launch — update channel when live." },
 { id: 10, name: "Moroccan Soap", sku: "LH-SOAP-MOR", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "inbound", notes: "Shopify only for now." },
 
-{ id: 11, name: "Sugar Scrub Sample", sku: "LH-SCRUB-SUGAR-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Sample size of Vanilla Cashmere Sugar Scrub." },
-{ id: 12, name: "Small Apple Candle Sample", sku: "LH-CANDLE-SM-AP-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Sample size of Mini Spiced Apple candle." },
-{ id: 13, name: "Small Apple Candle Wholesale", sku: "LH-CANDLE-SM-AP-WS", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["B2B"], status: "ok", notes: "Wholesale listing of Mini Spiced Apple candle." },
-{ id: 14, name: "Spiced Apple Sandwax Candle", sku: "LH-SANDWAX-AP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Shopify"], status: "ok", notes: "Spiced Apple Cider sandwax candle." },
+{ id: 11, name: "Sugar Scrub Sample", sku: "LH-SCRUB-SUGAR-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["B2B"], status: "ok", isSample: true, notes: "Tester — sample size of Vanilla Cashmere Sugar Scrub." },
+{ id: 12, name: "Small Apple Candle Sample", sku: "LH-CANDLE-SM-AP-SMP", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["B2B"], status: "ok", isSample: true, notes: "Tester — sample size of Mini Spiced Apple candle." },
 ];
 
 const INITIAL_CAMPAIGNS = [
@@ -231,6 +229,20 @@ const [draft, setDraft] = useState({});
 const [past, setPast] = useState([]);
 const [future, setFuture] = useState([]);
 const [channelFilter, setChannelFilter] = useState("All");
+const [openVariants, setOpenVariants] = useState(null);
+
+function deleteProduct(id) {
+if (!window.confirm("Remove this product from the list? UNDO can restore it this session.")) return;
+setPast(p => [...p, products].slice(-50));
+setFuture([]);
+const updated = products.filter(p => p.id !== id);
+const tomb = Array.from(new Set([...(dbState.deletedProducts || []), id]));
+setProducts(updated);
+const full = { ...dbState, products: updated, deletedProducts: tomb };
+setDbState(full);
+dbSave(full);
+setEditing(null);
+}
 
 function persistProducts(updated) {
 setProducts(updated);
@@ -257,7 +269,7 @@ persistProducts(nxt);
 
 function startEdit(p) {
 setEditing(p.id);
-setDraft({ name: p.name, available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, minStock: p.minStock || 0, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
+setDraft({ name: p.name, available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, minStock: p.minStock || 0, isSample: !!p.isSample, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
 }
 
 function saveEdit(id) {
@@ -266,6 +278,7 @@ setFuture([]);
 const updated = products.map(p => p.id !== id ? p : {
 ...p,
 name: (draft.name || "").trim() || p.name,
+isSample: !!draft.isSample,
 available: +draft.available || 0,
 inbound: +draft.inbound || 0,
 unitsSold30: +draft.unitsSold30 || 0,
@@ -290,6 +303,9 @@ const order = { out: 0, reorder: 1, low: 2, inbound: 3, slow: 4, ok: 5 };
 const visible = products.filter(p => channelFilter === "All" ? true : (p.channels || ["Amazon"]).includes(channelFilter));
 const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify)] ?? 6) - (order[stockStatus(b, shopify)] ?? 6));
 const reorderList = products.filter(p => { const s = stockStatus(p, shopify); return s === "out" || s === "reorder"; });
+const mainList = sorted.filter(p => !p.isSample);
+const sampleList = sorted.filter(p => p.isSample);
+const displayList = [...mainList, ...(sampleList.length ? [{ id: "__samplehdr", __sampleHeader: true }] : []), ...sampleList];
 
 return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -363,7 +379,13 @@ return (
 </div>
 </Card>
 )}
-{sorted.map(p => {
+{displayList.map(p => {
+if (p.__sampleHeader) return (
+<div key="__samplehdr" style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid #ddd8d0" }}>
+<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "monospace" }}>Samples / Testers · B2B</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras y testers — solo B2B, fuera del inventario de venta</div>
+</div>
+);
 const st = stockStatus(p, shopify);
 const { color, bg, label } = STATUS_STYLE[st];
 const weeks = weeksOfSupply(effectiveStock(p, shopify), effectiveSold(p, shopify));
@@ -386,6 +408,23 @@ return (
 </div>
 {p.notes && <div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
 {p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
+{shopify && shopify.variantDetail && shopify.variantDetail[p.id] && shopify.variantDetail[p.id].length > 0 && (
+<div style={{ marginBottom: 8 }}>
+<div onClick={() => setOpenVariants(openVariants === p.id ? null : p.id)} style={{ cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", display: "inline-block" }}>
+{openVariants === p.id ? "▾" : "▸"} {shopify.variantDetail[p.id].length} VARIANTS · LIVE
+</div>
+{openVariants === p.id && (
+<div style={{ marginTop: 6, borderLeft: "2px solid #5a7a5a40", paddingLeft: 10 }}>
+{shopify.variantDetail[p.id].map((v, i) => (
+<div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "monospace", color: "#8c7d6b", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
+<span>{v.name}</span>
+<span>{v.qty} in stock{v.sold ? ` · ${v.sold} sold/30d` : ""}{v.ugc ? ` · ${v.ugc} ugc` : ""}</span>
+</div>
+))}
+</div>
+)}
+</div>
+)}
 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 <div style={{ flex: 1, height: 4, background: "#e5e1da", borderRadius: 1 }}>
 <div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
@@ -427,13 +466,18 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 ))}
 </div>
 </div>
+<div onClick={() => setDraft(d => ({ ...d, isSample: !d.isSample }))} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+<span style={{ width: 11, height: 11, border: "1px solid #4a3f2a", background: draft.isSample ? "#a07848" : "transparent", display: "inline-block" }} />
+<span style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 1, color: "#8c7d6b" }}>SAMPLE / TESTER — groups at bottom, B2B</span>
+</div>
 <div style={{ display: "flex", gap: 6 }}>
 <button onClick={() => saveEdit(p.id)} style={{ flex: 1, background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
 <button onClick={() => setEditing(null)} style={{ flex: 1, background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+<button onClick={() => deleteProduct(p.id)} style={{ background: "transparent", color: "#9b5e5e", border: "1px solid #9b5e5e40", borderRadius: 1, padding: "6px 12px", cursor: "pointer", fontSize: 11 }}>Delete</button>
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", effectiveSold(p, shopify)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : [])].map(([l, v]) => (
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", effectiveSold(p, shopify)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
@@ -1459,9 +1503,9 @@ const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [] });
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [], deletedProducts: [] });
 const [loaded, setLoaded] = useState(false);
-const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
+const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, ugc: {}, variantDetail: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 
 async function shopifySync() {
 setShopify(s => ({ ...s, syncing: true }));
@@ -1473,12 +1517,14 @@ const items = {};
 (d.items || []).forEach(it => { items[it.productId] = it.qty; });
 const sold = {};
 (d.sold || []).forEach(it => { sold[it.productId] = it.qty; });
-setShopify({ connected: true, items, sold, unmatched: d.unmatched || [], soldUnmatched: d.soldUnmatched || [], syncedAt: d.syncedAt, syncing: false });
+const ugc = {};
+(d.ugcSold || []).forEach(it => { ugc[it.productId] = it.qty; });
+setShopify({ connected: true, items, sold, ugc, variantDetail: d.variantDetail || {}, unmatched: d.unmatched || [], soldUnmatched: d.soldUnmatched || [], syncedAt: d.syncedAt, syncing: false });
 } else if (d && d.connected && d.error) {
 console.warn("Shopify sync error:", d.error);
 setShopify(s => ({ ...s, connected: true, syncing: false }));
 } else {
-setShopify({ connected: false, items: {}, sold: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
+setShopify({ connected: false, items: {}, sold: {}, ugc: {}, variantDetail: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 }
 } catch(e) {
 console.warn("shopify sync failed:", e);
@@ -1497,6 +1543,7 @@ useEffect(() => {
 if (!loaded || !shopify.connected || !shopify.items) return;
 let changed = false;
 const updated = products.map(p => {
+if (p.isSample) return p;
 if (shopify.items[p.id] === undefined) return p;
 const chans = p.channels || ["Amazon"];
 if (chans.includes("Shopify")) return p;
@@ -1525,11 +1572,26 @@ if (d) {
 // so app updates can introduce products without wiping user data.
 let mergedProducts = d.products && d.products.length > 0 ? d.products : INITIAL_PRODUCTS;
 let productsChanged = false;
+// Deleted products never re-seed. ids 13/14 are retired by the app itself.
+const RETIRED_IDS = [13, 14];
+const tombstone = Array.from(new Set([...(d.deletedProducts || []), ...RETIRED_IDS]));
+if (tombstone.length !== (d.deletedProducts || []).length) productsChanged = true;
+const deletedSet = new Set(tombstone);
 if (d.products && d.products.length > 0) {
 const have = new Set(d.products.map(p => p.id));
-const missing = INITIAL_PRODUCTS.filter(p => !have.has(p.id));
+const missing = INITIAL_PRODUCTS.filter(p => !have.has(p.id) && !deletedSet.has(p.id));
 if (missing.length) { mergedProducts = [...d.products, ...missing]; productsChanged = true; }
 }
+const beforeRetire = mergedProducts.length;
+mergedProducts = mergedProducts.filter(p => !deletedSet.has(p.id));
+if (mergedProducts.length !== beforeRetire) productsChanged = true;
+// Samples are testers: grouped separately, tagged B2B.
+const SAMPLE_IDS = [11, 12];
+mergedProducts = mergedProducts.map(p => {
+if (!SAMPLE_IDS.includes(p.id) || p.isSample) return p;
+productsChanged = true;
+return { ...p, isSample: true, channels: ["B2B"] };
+});
 // One-time reconciliation: exact Shopify store titles + Shopify channel for the apple candles.
 const NAME_FIX = { 4: "Mini Spiced Apple Botanical Candle", 5: "Large Spiced Apple Botanical Candle" };
 mergedProducts = mergedProducts.map(p => {
@@ -1557,6 +1619,7 @@ pnl: d.pnl || {},
 googleAds: d.googleAds || [],
 metaAds: d.metaAds || [],
 emailRetention: d.emailRetention || [],
+deletedProducts: tombstone,
 };
 setDbState(nextDb);
 if (productsChanged) dbSave(nextDb);
