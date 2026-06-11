@@ -5,6 +5,9 @@ import AICoo from "./AICoo.jsx";
 import FinanceCash from "./FinanceCash.jsx";
 import Wholesale from "./Wholesale.jsx";
 import PnL from "./PnL.jsx";
+import GoogleAds from "./GoogleAds.jsx";
+import MetaAds from "./MetaAds.jsx";
+import EmailRetention from "./EmailRetention.jsx";
 
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
@@ -1301,7 +1304,7 @@ const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {} });
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [] });
 const [loaded, setLoaded] = useState(false);
 
 useEffect(() => {
@@ -1326,6 +1329,9 @@ cogs: d.cogs || {},
 keywords: d.keywords && d.keywords.length ? d.keywords : INITIAL_KEYWORDS,
 wholesale: d.wholesale || [],
 pnl: d.pnl || {},
+googleAds: d.googleAds || [],
+metaAds: d.metaAds || [],
+emailRetention: d.emailRetention || [],
 });
 }
 setLoaded(true);
@@ -1345,7 +1351,8 @@ const NAV = [
 { id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
 { id: "ppc", label: "Amazon PPC" },
 { id: "keywords", label: "Keyword Library" },
-{ id: "meta", label: "Shopify / Meta" },
+{ id: "meta", label: "Meta / Shopify" },
+{ id: "google", label: "Google Ads" },
 { id: "b2b", label: "B2B Ads" },
 ] },
 { id: "inventory", label: "Inventory", labelEs: "Inventario", alert: criticalCount || null, subs: [
@@ -1360,6 +1367,7 @@ const NAV = [
 { id: "competitors", label: "Competitor Intel" },
 { id: "creators", label: "Influencer / Creator" },
 { id: "retail", label: "Retail Expansion" },
+{ id: "email", label: "Email / Retention" },
 { id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Ops Checklist" },
 { id: "wholesale", label: "Wholesale Accounts" },
@@ -1410,7 +1418,9 @@ return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials=
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
 if (activeSub === "keywords") return <KeywordsTab products={products} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "meta") return <ComingSoon title="Shopify / Meta Ads" titleEs="Anuncios Shopify / Meta" lines={["Spend · ROAS · MER · CPA · CTR · CPC · Revenue", "Campaigns: Prospecting · Retargeting · Creator Ads · Catalog Ads"]} />;if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
+if (activeSub === "meta") return <MetaAds data={dbState.metaAds || []} onSave={(r) => { const next = { ...dbState, metaAds: r }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onSave={(r) => { const next = { ...dbState, googleAds: r }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
 if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />;
@@ -1424,6 +1434,7 @@ if (tab === "growth") {
 if (activeSub === "competitors") return <ComingSoon title="Competitor Intelligence" titleEs="Inteligencia de competidores" lines={["OSEA · Nécessaire · Josie Maran · Salt & Stone · Diptyque", "New launches · Promotions · Pricing · Packaging updates"]} />;
 if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Program" titleEs="Programa de creadores" lines={["Creator · Deliverables · Cost · Status · Revenue generated", "Cost per sale · Cost per post · ROAS"]} />;
 if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
+if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { const next = { ...dbState, emailRetention: r }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "checklist") return <ChecklistTab />;
 if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { const next = { ...dbState, wholesale: w }; setDbState(next); dbSave(next); }} />;
