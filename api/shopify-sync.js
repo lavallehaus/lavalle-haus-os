@@ -1,21 +1,21 @@
 // api/shopify-sync.js
-// LAVALLE HAUS OS — Shopify live inventory + 30-day sales sync
-// GET  -> { connected, shop, lastSync }
-// POST -> { connected, syncedAt, items: [{ productId, title, qty }],
-//          sold: [{ productId, qty }], unmatched }
+// LAVALLE HAUS OS — Shopify live inventory + 30-day sales sync (variant-aware)
+// GET             -> { connected, shop, lastSync }
+// GET ?debug=1    -> full product/variant tree with stock + tracking flags
+// POST            -> { connected, syncedAt, items, sold, unmatched, soldUnmatched }
 //
-// Inventory: GraphQL products.totalInventory (total across variants/locations).
-// Sales: GraphQL orders from the last 30 days, summing line-item quantities per
-// product title. Both map to app product IDs via TITLE_MAP. Needs read_orders.
+// Most products map at the product level via TITLE_MAP. Products whose
+// variants belong to DIFFERENT app products (e.g. Sandwax Refill Pouch:
+// 16oz vs 32oz) are split per-variant via VARIANT_SPLIT.
 
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const API_VERSION = "2025-10";
 
+// Product title (lowercased) -> app product ID
 const TITLE_MAP = {
   "seashell sand wax candle set": 1,
-  "sandwax refill pouch": 2,
   "mini spiced apple botanical candle": 4,
   "large spiced apple botanical candle": 5,
   "dough bowl sand wax candle set": 7,
@@ -24,6 +24,15 @@ const TITLE_MAP = {
   "mini spiced apple cider botanical candle sample": 12,
   "mini spiced apple cider botanical candle wholesale": 13,
   "spiced apple cider sandwax candle": 14,
+};
+
+// Product title (lowercased) -> variant routing rules. First rule whose
+// `match` appears in the lowercased variant title wins; its qty goes to `id`.
+const VARIANT_SPLIT = {
+  "sandwax refill pouch": [
+    { match: "16 oz", id: 2 }, // Beeswax Candle Sand 16oz
+    { match: "32 oz", id: 3 }, // Beeswax Candle Sand 32oz
+  ],
 };
 
 async function kvGet(key) {
@@ -56,12 +65,15 @@ async function gql(shop, token, query, variables) {
   return d.data;
 }
 
-async function fetchInventory(shop, token) {
+async function fetchProducts(shop, token) {
   const query = `
     query Products($after: String) {
       products(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
-        edges { node { title status totalInventory } }
+        edges { node {
+          title status totalInventory tracksInventory
+          variants(first: 50) { edges { node { title inventoryQuantity sku } } }
+        } }
       }
     }`;
   let after = null;
@@ -69,33 +81,38 @@ async function fetchInventory(shop, token) {
   for (let i = 0; i < 10; i++) {
     const data = await gql(shop, token, query, { after });
     const conn = data.products;
-    all = all.concat(conn.edges.map((e) => e.node));
+    all = all.concat(conn.edges.map((e) => ({
+      title: e.node.title,
+      status: e.node.status,
+      tracksInventory: e.node.tracksInventory,
+      totalInventory: e.node.totalInventory,
+      variants: ((e.node.variants && e.node.variants.edges) || []).map((v) => ({
+        title: v.node.title, sku: v.node.sku, qty: v.node.inventoryQuantity,
+      })),
+    })));
     if (!conn.pageInfo.hasNextPage) break;
     after = conn.pageInfo.endCursor;
   }
   return all;
 }
 
+// Aggregated sold units in the last 30 days from paid, non-cancelled orders,
+// keyed by product title + variant title (both lowercased).
 async function fetchSold30(shop, token) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const query = `
     query Orders($after: String, $q: String!) {
       orders(first: 100, after: $after, query: $q) {
         pageInfo { hasNextPage endCursor }
-        edges {
-          node {
-            lineItems(first: 50) {
-              edges { node { quantity product { title } } }
-            }
+        edges { node {
+          lineItems(first: 50) {
+            edges { node { quantity product { title } variant { title } } }
           }
-        }
+        } }
       }
     }`;
-  // Only paid, non-cancelled orders count as real sales. Refunded /
-  // partially-refunded / voided / test orders are excluded so Sold/30d
-  // reflects what actually sold and stayed sold.
   const q = `created_at:>=${since} AND financial_status:paid AND -status:cancelled`;
-  const totals = {};
+  const totals = {}; // "ptitle||vtitle" -> qty
   let after = null;
   for (let i = 0; i < 20; i++) {
     const data = await gql(shop, token, query, { after, q });
@@ -103,16 +120,27 @@ async function fetchSold30(shop, token) {
     for (const edge of conn.edges) {
       const lis = (edge.node.lineItems && edge.node.lineItems.edges) || [];
       for (const li of lis) {
-        const title = (li.node.product && li.node.product.title) || "";
-        const key = title.trim().toLowerCase();
-        if (!key) continue;
-        totals[key] = (totals[key] || 0) + (Number(li.node.quantity) || 0);
+        const pkey = ((li.node.product && li.node.product.title) || "").trim().toLowerCase();
+        const vkey = ((li.node.variant && li.node.variant.title) || "").trim().toLowerCase();
+        if (!pkey) continue;
+        const k = pkey + "||" + vkey;
+        totals[k] = (totals[k] || 0) + (Number(li.node.quantity) || 0);
       }
     }
     if (!conn.pageInfo.hasNextPage) break;
     after = conn.pageInfo.endCursor;
   }
   return totals;
+}
+
+// Resolve a product title (+ optional variant title) to an app product ID.
+function resolveId(pkey, vkey) {
+  const split = VARIANT_SPLIT[pkey];
+  if (split) {
+    const rule = split.find((r) => (vkey || "").includes(r.match));
+    return rule ? rule.id : null;
+  }
+  return TITLE_MAP[pkey] !== undefined ? TITLE_MAP[pkey] : null;
 }
 
 export default async function handler(req, res) {
@@ -123,77 +151,61 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "GET") {
-    // /api/shopify-sync?debug=1 — human-readable dump of every product and
-    // variant with stock + whether Shopify is tracking its inventory.
     if (req.query && req.query.debug) {
       try {
-        const query = `
-          query ProductTree($after: String) {
-            products(first: 100, after: $after) {
-              pageInfo { hasNextPage endCursor }
-              edges { node {
-                title status totalInventory tracksInventory
-                variants(first: 50) { edges { node { title inventoryQuantity sku } } }
-              } }
-            }
-          }`;
-        let after = null;
-        let all = [];
-        for (let i = 0; i < 10; i++) {
-          const data = await gql(auth.shop, auth.accessToken, query, { after });
-          const conn = data.products;
-          all = all.concat(conn.edges.map((e) => e.node));
-          if (!conn.pageInfo.hasNextPage) break;
-          after = conn.pageInfo.endCursor;
-        }
-        const tree = all.map((p) => ({
+        const products = await fetchProducts(auth.shop, auth.accessToken);
+        const tree = products.map((p) => ({
           product: p.title,
           status: p.status,
           tracksInventory: p.tracksInventory,
           totalInventory: p.totalInventory,
-          mappedToAppId: TITLE_MAP[(p.title || "").trim().toLowerCase()] ?? null,
-          variants: ((p.variants && p.variants.edges) || []).map((v) => ({
-            variant: v.node.title, sku: v.node.sku, qty: v.node.inventoryQuantity,
-          })),
+          mappedToAppId: TITLE_MAP[(p.title || "").trim().toLowerCase()] ?? (VARIANT_SPLIT[(p.title || "").trim().toLowerCase()] ? "variant-split" : null),
+          variants: p.variants.map((v) => ({ variant: v.title, sku: v.sku, qty: v.qty })),
         }));
         res.status(200).json({ shop: auth.shop, productCount: tree.length, tree });
-        return;
       } catch (e) {
         res.status(500).json({ error: String(e).slice(0, 300) });
-        return;
       }
+      return;
     }
     res.status(200).json({ connected: true, shop: auth.shop, lastSync: auth.lastSync || null });
     return;
   }
 
   try {
-    const products = await fetchInventory(auth.shop, auth.accessToken);
+    const products = await fetchProducts(auth.shop, auth.accessToken);
 
-    const items = [];
+    const qtyById = {};
     const unmatched = [];
     for (const p of products) {
-      const key = (p.title || "").trim().toLowerCase();
-      const qty = Number(p.totalInventory) || 0;
-      if (TITLE_MAP[key] !== undefined) {
-        items.push({ productId: TITLE_MAP[key], title: p.title, qty });
+      const pkey = (p.title || "").trim().toLowerCase();
+      if (VARIANT_SPLIT[pkey]) {
+        for (const v of p.variants) {
+          const id = resolveId(pkey, (v.title || "").trim().toLowerCase());
+          if (id !== null) qtyById[id] = (qtyById[id] || 0) + (Number(v.qty) || 0);
+        }
+      } else if (TITLE_MAP[pkey] !== undefined) {
+        const id = TITLE_MAP[pkey];
+        qtyById[id] = (qtyById[id] || 0) + (Number(p.totalInventory) || 0);
       } else {
-        unmatched.push({ title: p.title, qty });
+        unmatched.push({ title: p.title, qty: Number(p.totalInventory) || 0 });
       }
     }
+    const items = Object.entries(qtyById).map(([id, qty]) => ({ productId: Number(id), qty }));
 
     let sold = [];
     let soldUnmatched = [];
     let soldError = null;
     try {
       const totals = await fetchSold30(auth.shop, auth.accessToken);
-      for (const key of Object.keys(totals)) {
-        if (TITLE_MAP[key] !== undefined) {
-          sold.push({ productId: TITLE_MAP[key], qty: totals[key] });
-        } else {
-          soldUnmatched.push({ title: key, qty: totals[key] });
-        }
+      const soldById = {};
+      for (const k of Object.keys(totals)) {
+        const [pkey, vkey] = k.split("||");
+        const id = resolveId(pkey, vkey);
+        if (id !== null) soldById[id] = (soldById[id] || 0) + totals[k];
+        else soldUnmatched.push({ title: vkey ? `${pkey} (${vkey})` : pkey, qty: totals[k] });
       }
+      sold = Object.entries(soldById).map(([id, qty]) => ({ productId: Number(id), qty }));
     } catch (e) {
       soldError = String(e).slice(0, 200);
     }
