@@ -189,9 +189,34 @@ style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRa
 
 // ── TAB: INVENTORY ────────────────────────────────────────────────────────────
 
-function InventoryTab({ products, setProducts, dbState, setDbState }) {
+function InventoryTab({ products, setProducts, dbState, setDbState, shopify, onShopifySync }) {
 const [editing, setEditing] = useState(null);
 const [draft, setDraft] = useState({});
+const [past, setPast] = useState([]);
+const [future, setFuture] = useState([]);
+
+function persistProducts(updated) {
+setProducts(updated);
+const full = { ...dbState, products: updated };
+setDbState(full);
+dbSave(full);
+}
+
+function undo() {
+if (!past.length) return;
+const prev = past[past.length - 1];
+setFuture(f => [...f, products].slice(-50));
+setPast(p => p.slice(0, -1));
+persistProducts(prev);
+}
+
+function redo() {
+if (!future.length) return;
+const nxt = future[future.length - 1];
+setPast(p => [...p, products].slice(-50));
+setFuture(f => f.slice(0, -1));
+persistProducts(nxt);
+}
 
 function startEdit(p) {
 setEditing(p.id);
@@ -199,21 +224,18 @@ setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold3
 }
 
 function saveEdit(id) {
-setProducts(prev => {
-const updated = prev.map(p => p.id !== id ? p : {
+setPast(p => [...p, products].slice(-50));
+setFuture([]);
+const updated = products.map(p => p.id !== id ? p : {
 ...p,
-available: +draft.available || 0,inbound: +draft.inbound || 0,
+available: +draft.available || 0,
+inbound: +draft.inbound || 0,
 unitsSold30: +draft.unitsSold30 || 0,
 notes: draft.notes,
 reorderLink: draft.reorderLink || "",
 channels: draft.channels,
 });
-// Persist to DB
-const full = { ...dbState, products: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
+persistProducts(updated);
 setEditing(null);
 }
 
@@ -233,6 +255,31 @@ return (order[stockStatus(a)] ?? 5) - (order[stockStatus(b)] ?? 5);
 return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 <SectionTitle>Amazon FBA Inventory</SectionTitle>
+<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: past.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>UNDO</button>
+<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: future.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>REDO</button>
+<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "monospace" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+</div>
+<Card style={{ borderLeft: `3px solid ${shopify && shopify.connected ? "#5a7a5a" : "#a07848"}`, padding: "12px 16px" }}>
+{shopify && shopify.connected ? (
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+<div>
+<span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 2, color: "#5a7a5a" }}>● SHOPIFY CONNECTED · LIVE STOCK</span>
+{shopify.syncedAt && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#a09488", marginLeft: 10 }}>synced {new Date(shopify.syncedAt).toLocaleTimeString()}</span>}
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Shopify conectado — inventario en vivo en cada producto</div>
+</div>
+<button onClick={onShopifySync} disabled={shopify.syncing} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: shopify.syncing ? "default" : "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>{shopify.syncing ? "SYNCING…" : "SYNC NOW"}</button>
+</div>
+) : (
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+<div>
+<span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 2, color: "#a07848" }}>○ SHOPIFY NOT CONNECTED</span>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Conecta Shopify para ver el inventario en vivo de tu tienda</div>
+</div>
+<a href="/api/shopify-auth" style={{ background: "#1a1714", color: "#f7f4ef", borderRadius: 1, padding: "6px 16px", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, textDecoration: "none" }}>CONNECT SHOPIFY</a>
+</div>
+)}
+</Card>
 {sorted.map(p => {
 const st = stockStatus(p);
 const { color, bg, label } = STATUS_STYLE[st];
@@ -298,7 +345,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30]].map(([l, v]) => (
+<div style={{ display: "flex", gap: 10, alignItems: "center" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
@@ -1306,6 +1353,31 @@ const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [] });
 const [loaded, setLoaded] = useState(false);
+const [shopify, setShopify] = useState({ connected: false, items: {}, syncedAt: null, syncing: false });
+
+async function shopifySync() {
+setShopify(s => ({ ...s, syncing: true }));
+try {
+const res = await fetch("/api/shopify-sync", { method: "POST" });
+const d = await res.json();
+if (d && d.connected && !d.error) {
+const items = {};
+(d.items || []).forEach(it => { items[it.productId] = it.qty; });
+setShopify({ connected: true, items, syncedAt: d.syncedAt, syncing: false });
+} else if (d && d.connected && d.error) {
+console.warn("Shopify sync error:", d.error);
+setShopify(s => ({ ...s, connected: true, syncing: false }));
+} else {
+setShopify({ connected: false, items: {}, syncedAt: null, syncing: false });
+}
+} catch(e) {
+console.warn("shopify sync failed:", e);
+setShopify(s => ({ ...s, syncing: false }));
+}
+}
+
+// ── AUTO-FETCH SHOPIFY INVENTORY ON LOAD ──
+useEffect(() => { shopifySync(); }, []);
 
 useEffect(() => {
 const link = document.createElement("link");
@@ -1423,7 +1495,7 @@ if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onS
 if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
-if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />;
+if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} shopify={shopify} onShopifySync={shopifySync} />;
 if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
 if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
