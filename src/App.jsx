@@ -135,17 +135,48 @@ if (sold30 === 0) return available > 0 ? 99 : 0;
 return Math.round((available / sold30) * 4.3);
 }
 
-function stockStatus(p) {
+// Live Shopify on-hand for a product (or null if not synced)
+function shopifyQty(p, shopify) {
+if (shopify && shopify.items && shopify.items[p.id] !== undefined) return shopify.items[p.id];
+return null;
+}
+// Live Shopify units sold in last 30d (or null if not synced)
+function shopifySold(p, shopify) {
+if (shopify && shopify.sold && shopify.sold[p.id] !== undefined) return shopify.sold[p.id];
+return null;
+}
+// True total on-hand: manual (Amazon/FBA) + live Shopify, with sensible fallback
+function effectiveStock(p, shopify) {
+const manual = +p.available || 0;
+const sq = shopifyQty(p, shopify);
+if (sq === null) return manual;
+if ((p.channels || []).includes("Amazon")) return manual + sq; // sold on both channels
+return sq; // Shopify-only: the live count is the truth
+}
+// True 30-day units sold: manual (Amazon) + live Shopify orders
+function effectiveSold(p, shopify) {
+const manual = +p.unitsSold30 || 0;
+const ss = shopifySold(p, shopify);
+if (ss === null) return manual;
+return manual + ss;
+}
+
+function stockStatus(p, shopify) {
 if (p.status === "inbound") return "inbound";
-const w = weeksOfSupply(p.available, p.unitsSold30);
-if (p.available === 0) return "out";
+const stock = effectiveStock(p, shopify);
+const sold = effectiveSold(p, shopify);
+const min = +p.minStock || 0;
+if (stock <= 0) return "out";
+if (min > 0 && stock <= min) return "reorder";
+const w = weeksOfSupply(stock, sold);
 if (w < 6) return "low";
-if (w > 50 && p.unitsSold30 < 3) return "slow";
+if (w > 50 && sold < 3) return "slow";
 return "ok";
 }
 
 const STATUS_STYLE = {
 out: { color: "#9b5e5e", bg: "#9b5e5e14", label: "OUT OF STOCK" },
+reorder: { color: "#b06a2e", bg: "#b06a2e14", label: "REORDER NOW" },
 inbound: { color: "#a07848", bg: "#a0784814", label: "INBOUND" },
 low: { color: "#a07848", bg: "#a0784814", label: "LOW STOCK" },
 slow: { color: "#7a7a9a", bg: "#7a7a9a14", label: "SLOW MOVER" },
@@ -194,6 +225,7 @@ const [editing, setEditing] = useState(null);
 const [draft, setDraft] = useState({});
 const [past, setPast] = useState([]);
 const [future, setFuture] = useState([]);
+const [channelFilter, setChannelFilter] = useState("All");
 
 function persistProducts(updated) {
 setProducts(updated);
@@ -220,7 +252,7 @@ persistProducts(nxt);
 
 function startEdit(p) {
 setEditing(p.id);
-setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
+setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, minStock: p.minStock || 0, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
 }
 
 function saveEdit(id) {
@@ -231,6 +263,7 @@ const updated = products.map(p => p.id !== id ? p : {
 available: +draft.available || 0,
 inbound: +draft.inbound || 0,
 unitsSold30: +draft.unitsSold30 || 0,
+minStock: +draft.minStock || 0,
 notes: draft.notes,
 reorderLink: draft.reorderLink || "",
 channels: draft.channels,
@@ -247,10 +280,10 @@ return { ...d, channels: next.length ? next : [ch] };
 });
 }
 
-const sorted = [...products].sort((a, b) => {
-const order = { out: 0, low: 1, inbound: 2, slow: 3, ok: 4 };
-return (order[stockStatus(a)] ?? 5) - (order[stockStatus(b)] ?? 5);
-});
+const order = { out: 0, reorder: 1, low: 2, inbound: 3, slow: 4, ok: 5 };
+const visible = products.filter(p => channelFilter === "All" ? true : (p.channels || ["Amazon"]).includes(channelFilter));
+const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify)] ?? 6) - (order[stockStatus(b, shopify)] ?? 6));
+const reorderList = products.filter(p => { const s = stockStatus(p, shopify); return s === "out" || s === "reorder"; });
 
 return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -280,10 +313,40 @@ return (
 </div>
 )}
 </Card>
+<div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+{["All", "Amazon", "Shopify", "B2B"].map(ch => (
+<button key={ch} onClick={() => setChannelFilter(ch)} style={{ padding: "5px 16px", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${channelFilter === ch ? "#1a1714" : "#c8c2b8"}`, background: channelFilter === ch ? "#1a1714" : "transparent", color: channelFilter === ch ? "#f7f4ef" : "#8c7d6b" }}>{ch.toUpperCase()}</button>
+))}
+</div>
+{reorderList.length > 0 && (
+<Card style={{ borderLeft: "3px solid #b06a2e", background: "#b06a2e10" }}>
+<div style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 2, color: "#b06a2e" }}>⚠ REORDER NEEDED · {reorderList.length}</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, marginBottom: 10, fontFamily: "'IM Fell English', Georgia, serif" }}>Productos agotados o en/bajo su umbral mínimo</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+{reorderList.map(p => {
+const stock = effectiveStock(p, shopify);
+const min = +p.minStock || 0;
+const need = min > 0 ? Math.max(min * 2 - stock, min) : null;
+return (
+<div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid #0000000d", paddingTop: 6 }}>
+<div style={{ fontSize: 13, color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>{p.name}
+<span style={{ fontSize: 10, color: "#a09488", fontFamily: "monospace", marginLeft: 8 }}>{stock} on hand{min > 0 ? ` · min ${min}` : " · set a min in Edit"}{need ? ` · suggest +${need}` : ""}</span>
+</div>
+{p.reorderLink && p.reorderLink.trim() !== "" ? (
+<a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#b06a2e", textDecoration: "none", border: "1px solid #b06a2e40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>
+) : (
+<span style={{ fontSize: 9, color: "#a09488", fontFamily: "monospace" }}>add link in Edit</span>
+)}
+</div>
+);
+})}
+</div>
+</Card>
+)}
 {sorted.map(p => {
-const st = stockStatus(p);
+const st = stockStatus(p, shopify);
 const { color, bg, label } = STATUS_STYLE[st];
-const weeks = weeksOfSupply(p.available, p.unitsSold30);
+const weeks = weeksOfSupply(effectiveStock(p, shopify), effectiveSold(p, shopify));
 const isEditing = editing === p.id;
 return (
 <Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg }}>
@@ -314,7 +377,7 @@ return (
 {isEditing ? (
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 <div style={{ display: "flex", gap: 8 }}>
-{[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"]].map(([f, l]) => (
+{[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"], ["minStock", "Min Stock"]].map(([f, l]) => (
 <div key={f}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
@@ -332,7 +395,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 <div style={{ marginBottom: 4 }}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 6 }}>Sold On</div>
 <div style={{ display: "flex", gap: 8 }}>
-{["Amazon", "Shopify"].map(ch => (
+{["Amazon", "Shopify", "B2B"].map(ch => (
 <div key={ch} onClick={() => toggleChannel(ch)} style={{ cursor: "pointer", padding: "4px 12px", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, border: `1px solid ${draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#c8c2b8"}`, color: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#a09488", background: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a0784814" : "#5a7a5a14") : "transparent" }}>
 {ch}
 </div>
@@ -345,7 +408,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : [])].map(([l, v]) => (
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", effectiveSold(p, shopify)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
@@ -1353,7 +1416,7 @@ const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [] });
 const [loaded, setLoaded] = useState(false);
-const [shopify, setShopify] = useState({ connected: false, items: {}, syncedAt: null, syncing: false });
+const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, syncedAt: null, syncing: false });
 
 async function shopifySync() {
 setShopify(s => ({ ...s, syncing: true }));
@@ -1363,12 +1426,14 @@ const d = await res.json();
 if (d && d.connected && !d.error) {
 const items = {};
 (d.items || []).forEach(it => { items[it.productId] = it.qty; });
-setShopify({ connected: true, items, syncedAt: d.syncedAt, syncing: false });
+const sold = {};
+(d.sold || []).forEach(it => { sold[it.productId] = it.qty; });
+setShopify({ connected: true, items, sold, syncedAt: d.syncedAt, syncing: false });
 } else if (d && d.connected && d.error) {
 console.warn("Shopify sync error:", d.error);
 setShopify(s => ({ ...s, connected: true, syncing: false }));
 } else {
-setShopify({ connected: false, items: {}, syncedAt: null, syncing: false });
+setShopify({ connected: false, items: {}, sold: {}, syncedAt: null, syncing: false });
 }
 } catch(e) {
 console.warn("shopify sync failed:", e);
