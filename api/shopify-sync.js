@@ -1,19 +1,24 @@
 // api/shopify-sync.js
-// LAVALLE HAUS OS — Shopify live inventory + 30-day sales sync (variant-aware)
-// GET             -> { connected, shop, lastSync }
-// GET ?debug=1    -> full product/variant tree with stock + tracking flags
-// POST            -> { connected, syncedAt, items, sold, unmatched, soldUnmatched }
+// LAVALLE HAUS OS — Shopify sync: live inventory, 30-day sales, variant detail,
+// and UGC/marketing order separation.
+// GET            -> { connected, shop, lastSync }
+// GET ?debug=1   -> full product/variant tree
+// POST           -> { connected, syncedAt, items, sold, ugcSold, variantDetail,
+//                     unmatched, soldUnmatched }
 //
-// Most products map at the product level via TITLE_MAP. Products whose
-// variants belong to DIFFERENT app products (e.g. Sandwax Refill Pouch:
-// 16oz vs 32oz) are split per-variant via VARIANT_SPLIT.
+// Sales rules: only paid, non-cancelled orders count. Orders tagged "marketing"
+// (any case) OR with a $0 total are classified as UGC/marketing and reported
+// separately in ugcSold — they never inflate real Sold/30d. Orders tagged only
+// FF26K (free shipping, paid product) count as real sales.
 
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const API_VERSION = "2025-10";
 
-// Product title (lowercased) -> app product ID
+// Product title (lowercased) -> app product ID.
+// ids 13/14 are retired cards; their mappings remain so those listings don't
+// clutter the "unmatched" warning — the quantities flow to no visible card.
 const TITLE_MAP = {
   "seashell sand wax candle set": 1,
   "mini spiced apple botanical candle": 4,
@@ -26,8 +31,7 @@ const TITLE_MAP = {
   "spiced apple cider sandwax candle": 14,
 };
 
-// Product title (lowercased) -> variant routing rules. First rule whose
-// `match` appears in the lowercased variant title wins; its qty goes to `id`.
+// Variant routing for products whose variants belong to different app products.
 const VARIANT_SPLIT = {
   "sandwax refill pouch": [
     { match: "16 oz", id: 2 }, // Beeswax Candle Sand 16oz
@@ -96,8 +100,9 @@ async function fetchProducts(shop, token) {
   return all;
 }
 
-// Aggregated sold units in the last 30 days from paid, non-cancelled orders,
-// keyed by product title + variant title (both lowercased).
+// Sold units in the last 30 days from paid, non-cancelled orders, split into
+// real sales vs UGC/marketing ($0 or tagged "marketing").
+// Returns { real: {"ptitle||vtitle": qty}, ugc: {...} }
 async function fetchSold30(shop, token) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const query = `
@@ -105,6 +110,8 @@ async function fetchSold30(shop, token) {
       orders(first: 100, after: $after, query: $q) {
         pageInfo { hasNextPage endCursor }
         edges { node {
+          tags
+          totalPriceSet { shopMoney { amount } }
           lineItems(first: 50) {
             edges { node { quantity product { title } variant { title } } }
           }
@@ -112,28 +119,33 @@ async function fetchSold30(shop, token) {
       }
     }`;
   const q = `created_at:>=${since} AND financial_status:paid AND -status:cancelled`;
-  const totals = {}; // "ptitle||vtitle" -> qty
+  const real = {};
+  const ugc = {};
   let after = null;
   for (let i = 0; i < 20; i++) {
     const data = await gql(shop, token, query, { after, q });
     const conn = data.orders;
     for (const edge of conn.edges) {
-      const lis = (edge.node.lineItems && edge.node.lineItems.edges) || [];
+      const node = edge.node;
+      const tags = (node.tags || []).map((t) => String(t).trim().toLowerCase());
+      const total = parseFloat(node.totalPriceSet && node.totalPriceSet.shopMoney && node.totalPriceSet.shopMoney.amount) || 0;
+      const isMarketing = tags.includes("marketing") || total === 0;
+      const bucket = isMarketing ? ugc : real;
+      const lis = (node.lineItems && node.lineItems.edges) || [];
       for (const li of lis) {
         const pkey = ((li.node.product && li.node.product.title) || "").trim().toLowerCase();
         const vkey = ((li.node.variant && li.node.variant.title) || "").trim().toLowerCase();
         if (!pkey) continue;
         const k = pkey + "||" + vkey;
-        totals[k] = (totals[k] || 0) + (Number(li.node.quantity) || 0);
+        bucket[k] = (bucket[k] || 0) + (Number(li.node.quantity) || 0);
       }
     }
     if (!conn.pageInfo.hasNextPage) break;
     after = conn.pageInfo.endCursor;
   }
-  return totals;
+  return { real, ugc };
 }
 
-// Resolve a product title (+ optional variant title) to an app product ID.
 function resolveId(pkey, vkey) {
   const split = VARIANT_SPLIT[pkey];
   if (split) {
@@ -177,16 +189,28 @@ export default async function handler(req, res) {
 
     const qtyById = {};
     const unmatched = [];
+    const variantDetail = {}; // appId -> [{ name, nameKey, qty, sold, ugc }]
+    const addDetail = (id, name, qty) => {
+      if (!variantDetail[id]) variantDetail[id] = [];
+      variantDetail[id].push({ name, nameKey: name.trim().toLowerCase(), qty: Number(qty) || 0, sold: 0, ugc: 0 });
+    };
+
     for (const p of products) {
       const pkey = (p.title || "").trim().toLowerCase();
       if (VARIANT_SPLIT[pkey]) {
         for (const v of p.variants) {
-          const id = resolveId(pkey, (v.title || "").trim().toLowerCase());
-          if (id !== null) qtyById[id] = (qtyById[id] || 0) + (Number(v.qty) || 0);
+          const vkey = (v.title || "").trim().toLowerCase();
+          const id = resolveId(pkey, vkey);
+          if (id !== null) {
+            qtyById[id] = (qtyById[id] || 0) + (Number(v.qty) || 0);
+            addDetail(id, v.title || "", v.qty);
+          }
         }
       } else if (TITLE_MAP[pkey] !== undefined) {
         const id = TITLE_MAP[pkey];
         qtyById[id] = (qtyById[id] || 0) + (Number(p.totalInventory) || 0);
+        const meaningful = p.variants.filter((v) => (v.title || "").trim().toLowerCase() !== "default title");
+        for (const v of meaningful) addDetail(id, v.title || "", v.qty);
       } else {
         unmatched.push({ title: p.title, qty: Number(p.totalInventory) || 0 });
       }
@@ -194,26 +218,46 @@ export default async function handler(req, res) {
     const items = Object.entries(qtyById).map(([id, qty]) => ({ productId: Number(id), qty }));
 
     let sold = [];
+    let ugcSold = [];
     let soldUnmatched = [];
     let soldError = null;
     try {
-      const totals = await fetchSold30(auth.shop, auth.accessToken);
+      const { real, ugc } = await fetchSold30(auth.shop, auth.accessToken);
       const soldById = {};
-      for (const k of Object.keys(totals)) {
-        const [pkey, vkey] = k.split("||");
-        const id = resolveId(pkey, vkey);
-        if (id !== null) soldById[id] = (soldById[id] || 0) + totals[k];
-        else soldUnmatched.push({ title: vkey ? `${pkey} (${vkey})` : pkey, qty: totals[k] });
-      }
+      const ugcById = {};
+      const apply = (totals, byId, field) => {
+        for (const k of Object.keys(totals)) {
+          const [pkey, vkey] = k.split("||");
+          const id = resolveId(pkey, vkey);
+          if (id === null) {
+            if (field === "sold") soldUnmatched.push({ title: vkey ? `${pkey} (${vkey})` : pkey, qty: totals[k] });
+            continue;
+          }
+          byId[id] = (byId[id] || 0) + totals[k];
+          const rows = variantDetail[id];
+          if (rows) {
+            const row = rows.find((r) => r.nameKey === vkey);
+            if (row) row[field] += totals[k];
+          }
+        }
+      };
+      apply(real, soldById, "sold");
+      apply(ugc, ugcById, "ugc");
       sold = Object.entries(soldById).map(([id, qty]) => ({ productId: Number(id), qty }));
+      ugcSold = Object.entries(ugcById).map(([id, qty]) => ({ productId: Number(id), qty }));
     } catch (e) {
       soldError = String(e).slice(0, 200);
+    }
+
+    // Strip internal nameKey before responding
+    for (const id of Object.keys(variantDetail)) {
+      variantDetail[id] = variantDetail[id].map(({ name, qty, sold: s, ugc: u }) => ({ name, qty, sold: s, ugc: u }));
     }
 
     const syncedAt = new Date().toISOString();
     await kvSet("shopify_oauth", { ...auth, lastSync: syncedAt });
 
-    res.status(200).json({ connected: true, syncedAt, items, sold, unmatched, soldUnmatched, soldError });
+    res.status(200).json({ connected: true, syncedAt, items, sold, ugcSold, variantDetail, unmatched, soldUnmatched, soldError });
   } catch (e) {
     res.status(500).json({ connected: true, error: String(e).slice(0, 300) });
   }
