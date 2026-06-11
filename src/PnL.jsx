@@ -98,6 +98,8 @@ export default function PnL({ data = {}, onSave }) {
   const [totalCost, setTotalCost] = useState(num(data.totalCost));
   const [seen, setSeen] = useState(Array.isArray(data.seen) ? data.seen : []);
   const [statements, setStatements] = useState(Array.isArray(data.statements) ? data.statements : []);
+  const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
 
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -109,20 +111,37 @@ export default function PnL({ data = {}, onSave }) {
   const [editStmt, setEditStmt] = useState(null);
   const [draftLabel, setDraftLabel] = useState("");
 
-  const persist = (over = {}) => {
-    onSave?.({
-      transactions: "transactions" in over ? over.transactions : transactions,
-      rules: "rules" in over ? over.rules : rules,
-      totalCost: "totalCost" in over ? over.totalCost : totalCost,
-      seen: "seen" in over ? over.seen : seen,
-      statements: "statements" in over ? over.statements : statements,
-    });
+  // ---- data snapshot + undo/redo history (session-only; data itself is saved to Redis) ----
+  const dataState = () => ({ transactions, rules, totalCost, seen, statements });
+  const writeState = (st) => {
+    setTransactions(st.transactions); setRules(st.rules);
+    setTotalCost(st.totalCost); setSeen(st.seen); setStatements(st.statements);
+    onSave?.(st);
   };
+  function commit(next, record = true) {
+    if (record) { setPast((p) => [...p, dataState()].slice(-50)); setFuture([]); }
+    writeState(next);
+  }
+  const mutate = (over = {}) => commit({ ...dataState(), ...over }, true);
+  function undo() {
+    if (!past.length) return;
+    const prev = past[past.length - 1];
+    setFuture((f) => [...f, dataState()].slice(-50));
+    setPast((p) => p.slice(0, -1));
+    writeState(prev);
+  }function redo() {
+    if (!future.length) return;
+    const nxt = future[future.length - 1];
+    setPast((p) => [...p, dataState()].slice(-50));
+    setFuture((f) => f.slice(0, -1));
+    writeState(nxt);
+  }
 
   async function runCategorize() {
     setConfirming(false);
     if (!file || loading) return;
-    setErr(""); setLoading(true);try {
+    setErr(""); setLoading(true);
+    try {
       const fp = `${file.name}|${file.size}`;
       const fname = file.name;
       const pdfBase64 = await toBase64(file);
@@ -165,10 +184,9 @@ export default function PnL({ data = {}, onSave }) {
         nextStatements = [record, ...statements];
       }
 
-      setTransactions(nextTx); setTotalCost(nextCost); setSeen(nextSeen); setStatements(nextStatements);
       setLastRun({ input: u.input_tokens, output: u.output_tokens, cost: runCost, added: fresh.length, found: incoming.length });
       setFile(null);
-      persist({ transactions: nextTx, totalCost: nextCost, seen: nextSeen, statements: nextStatements });
+      mutate({ transactions: nextTx, totalCost: nextCost, seen: nextSeen, statements: nextStatements });
     } catch (e) {
       setErr(e.message || String(e));
     }
@@ -182,25 +200,24 @@ export default function PnL({ data = {}, onSave }) {
       newRules = { ...newRules, [mkey(t.merchant || t.description)]: cat };
       return { ...t, category: cat, source: "manual" };
     });
-    setTransactions(next); setRules(newRules);
-    persist({ transactions: next, rules: newRules });
+    mutate({ transactions: next, rules: newRules });
   }
   function setType(id, type) {
     const next = transactions.map((t) => (t.id === id ? { ...t, type } : t));
-    setTransactions(next); persist({ transactions: next });
+    mutate({ transactions: next });
   }
   function delTx(id) {
     const next = transactions.filter((t) => t.id !== id);
-    setTransactions(next); persist({ transactions: next });
+    mutate({ transactions: next });
   }
   function clearAll() {
     if (!window.confirm("Clear all transactions, the P&L, and the import log? Merchant rules are kept.")) return;
-    setTransactions([]); setStatements([]); persist({ transactions: [], statements: [] });
+    mutate({ transactions: [], statements: [] });
   }
 
   function renameStatement(id, label) {
     const next = statements.map((s) => (s.id === id ? { ...s, label } : s));
-    setStatements(next); persist({ statements: next });
+    mutate({ statements: next });
   }
   function removeStatement(id) {
     const st = statements.find((s) => s.id === id); if (!st) return;
@@ -208,8 +225,7 @@ export default function PnL({ data = {}, onSave }) {
     if (!window.confirm(`Remove "${st.label}" and its ${n} transactions from the P&L?`)) return;
     const nextTx = transactions.filter((t) => t.stmt !== id);
     const nextSt = statements.filter((s) => s.id !== id);
-    setTransactions(nextTx); setStatements(nextSt);
-    persist({ transactions: nextTx, statements: nextSt });
+    mutate({ transactions: nextTx, statements: nextSt });
   }
 
   // distinct period values at each granularity, newest first
@@ -243,10 +259,9 @@ export default function PnL({ data = {}, onSave }) {
 
   const counts = useMemo(() => {
     const m = {}; transactions.forEach((t) => { const k = mkey(t.merchant || t.description); m[k] = (m[k] || 0) + 1; }); return m;
-  }, [transactions]);
-
-  const pnl = useMemo(() => {
-    let income = 0; const exp = {};viewTx.forEach((t) => {
+  }, [transactions]);const pnl = useMemo(() => {
+    let income = 0; const exp = {};
+    viewTx.forEach((t) => {
       if (t.type === "income") income += num(t.amount);
       else exp[t.category] = (exp[t.category] || 0) + num(t.amount);
     });
@@ -313,6 +328,17 @@ export default function PnL({ data = {}, onSave }) {
         <div style={faintEs}>Sube un estado de cuenta, deja que la IA lo clasifique, y arma tu P&amp;L.</div>
       </div>
 
+      {/* UNDO / REDO - safety net for the whole team */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+        <button onClick={undo} disabled={!past.length} title="Undo last change"
+          style={{ ...S.btnGhost, padding: "6px 16px", opacity: past.length ? 1 : 0.4, cursor: past.length ? "pointer" : "default" }}>Undo</button>
+        <button onClick={redo} disabled={!future.length} title="Redo"
+          style={{ ...S.btnGhost, padding: "6px 16px", opacity: future.length ? 1 : 0.4, cursor: future.length ? "pointer" : "default" }}>Redo</button>
+        <span style={{ fontSize: 11, color: c.sub, fontStyle: "italic" }}>
+          {past.length ? `${past.length} change${past.length === 1 ? "" : "s"} you can undo this session` : "no changes yet this session"} - deshacer / rehacer
+        </span>
+      </div>
+
       {/* VIEW PERIOD FILTER - scopes everything below */}
       <div style={{ ...S.panel, marginTop: 16, padding: "14px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={S.cap}>View period - periodo</span>
@@ -364,13 +390,12 @@ export default function PnL({ data = {}, onSave }) {
           </div>
         )}
         {err && <div style={{ fontSize: 12.5, color: c.red, marginTop: 10 }}>Error: {err}</div>}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
+      </div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
         <div style={{ ...S.panel, padding: "14px 16px" }}>
           <div style={S.cap}>Last run cost</div><div style={faintEs}>Costo ultima vez</div>
           <div style={{ fontSize: 22, marginTop: 4, color: c.ink }}>{lastRun ? cents(lastRun.cost) : "-"}</div>
-          {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens - +{lastRun.added} new</div>}</div>
+          {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens - +{lastRun.added} new</div>}
+        </div>
         <div style={{ ...S.panel, padding: "14px 16px" }}>
           <div style={S.cap}>Total API cost</div><div style={faintEs}>Costo total API</div>
           <div style={{ fontSize: 22, marginTop: 4, color: c.gold }}>{cents(totalCost)}</div>
