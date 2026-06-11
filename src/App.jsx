@@ -4,6 +4,7 @@ import CogsBuilder from "./CogsBuilder.jsx";
 import AICoo from "./AICoo.jsx";
 import FinanceCash from "./FinanceCash.jsx";
 import Wholesale from "./Wholesale.jsx";
+import PnL from "./PnL.jsx";
 
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
@@ -146,156 +147,151 @@ inbound: { color: "#a07848", bg: "#a0784814", label: "INBOUND" },
 low: { color: "#a07848", bg: "#a0784814", label: "LOW STOCK" },
 slow: { color: "#7a7a9a", bg: "#7a7a9a14", label: "SLOW MOVER" },
 ok: { color: "#5a7a5a", bg: "#5a7a5a14", label: "HEALTHY" },
-};const CAMP_STYLE = {
-pause: { color: "#9b5e5e", label: "PAUSE" },
-keep: { color: "#5a7a5a", label: "KEEP" },
-watch: { color: "#a07848", label: "WATCH" },
-monitor: { color: "#7a7a9a", label: "MONITOR" },
-};
+};if (t.type === "income") income += num(t.amount);
+      else exp[t.category] = (exp[t.category] || 0) + num(t.amount);
+    });
+    const expenseRows = Object.entries(exp).sort((a, b) => b[1] - a[1]);
+    const expenseTotal = expenseRows.reduce((s, [, v]) => s + v, 0);
+    return { income, expenseRows, expenseTotal, net: income - expenseTotal };
+  }, [transactions]);
 
-function fmt(n, prefix = "$") {
-if (n === null || n === undefined || n === "") return "—";
-return `${prefix}${parseFloat(n).toFixed(2)}`;
-}
+  const dupWarn = file && seen.includes(`${file.name}|${file.size}`);
 
-// ── COMPONENTS ───────────────────────────────────────────────────────────────
+  return (
+    <div style={S.wrap}>
+      <div>
+        <h1 style={S.h1}>P&amp;L / Transactions</h1><div style={faintEs}>Estado de resultados / transacciones</div>
+        <div style={S.sub}>Upload a bank statement, let AI categorize it, and build your profit &amp; loss.</div>
+        <div style={faintEs}>Sube un estado de cuenta, deja que la IA lo clasifique, y arma tu P&amp;L.</div>
+      </div>
 
-function Tag({ color, label }) {
-return <span style={{ fontSize: 10, fontFamily: "monospace", letterSpacing: 1, padding: "2px 8px", borderRadius: 1, background: color + "22", color, border: `1px solid ${color}44` }}>{label}</span>;
-}
+      {/* UPLOAD */}
+      <div style={S.sec}>Import a statement<div style={faintEs}>Importar estado de cuenta</div></div>
+      <div style={S.panel}>
+        <div style={{ fontSize: 12.5, color: c.sub, marginBottom: 12, lineHeight: 1.5 }}>
+          Upload a <strong>PDF</strong> statement (Chase, etc.). Redacting your account number first is fine — only date, description, and amount are needed. The statement is sent to the Claude API to read and categorize.
+          <div style={faintEs}>Sube un PDF. Redactar el número de cuenta está bien — solo se necesitan fecha, descripción y monto. El estado se envía a la API de Claude.</div>
+        </div>
 
-function Card({ children, style = {} }) {
-return <div style={{ background: "#edeae4", border: "1px solid #3a3020", borderRadius: 1, padding: "18px 20px", ...style }}>{children}</div>;
-}
+        <input type="file" accept="application/pdf" onChange={(e) => { setErr(""); setFile(e.target.files && e.target.files[0]); }}
+          style={{ fontFamily: sans, fontSize: 13, color: c.ink, marginBottom: 12, display: "block" }} />
 
-function SectionTitle({ children }) {
-return <div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", marginBottom: 20, fontFamily: "monospace", fontWeight: 400 }}>{children}</div>;
-}
+        {dupWarn && <div style={{ fontSize: 12, color: c.yellow, marginBottom: 10 }}>⚠ This statement looks already imported — re-running will call the API again. Duplicate transactions won't be added. · Parece ya importado; no se duplicarán transacciones.</div>}
 
-function NumInput({ value, onChange, prefix = "$", placeholder = "Enter" }) {
-return (
-<input
-value={value === null || value === undefined ? "" : value}
-onChange={e => onChange(e.target.value === "" ? null : e.target.value)}
-placeholder={placeholder}
-style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "3px 6px", color: "#1a1714", fontSize: 12, textAlign: "center", fontFamily: "monospace" }}
-/>
-);
-}
+        {!confirming ? (
+          <button disabled={!file || loading} onClick={() => setConfirming(true)}
+            style={{ ...S.btn, opacity: !file || loading ? 0.45 : 1 }}>
+            {loading ? "Reading statement…" : "Categorize statement"}
+          </button>
+        ) : (
+          <div style={{ border: `1px solid ${c.gold}`, borderRadius: 3, padding: 14, background: "#fffaf2" }}>
+            <div style={{ fontSize: 13, color: c.ink, marginBottom: 4 }}>This will send the statement to the Claude API — <strong>one call</strong>, typically a few cents.</div>
+            <div style={faintEs}>Esto enviará el estado a la API de Claude — una sola llamada, normalmente unos centavos.</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={runCategorize} style={S.btn}>Confirm &amp; run · confirmar</button>
+              <button onClick={() => setConfirming(false)} style={S.btnGhost}>Cancel · cancelar</button>
+            </div>
+          </div>
+        )}
+        {err && <div style={{ fontSize: 12.5, color: c.red, marginTop: 10 }}>Error: {err}</div>}
+      </div>
 
-// ── TAB: INVENTORY ────────────────────────────────────────────────────────────
+      {/* COST PANEL */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
+        <div style={{ ...S.panel, padding: "14px 16px" }}>
+          <div style={S.cap}>Last run cost</div><div style={faintEs}>Costo última vez</div>
+          <div style={{ fontSize: 22, marginTop: 4, color: c.ink }}>{lastRun ? cents(lastRun.cost) : "—"}</div>
+          {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens · +{lastRun.added} new</div>}
+        </div>
+        <div style={{ ...S.panel, padding: "14px 16px" }}>
+          <div style={S.cap}>Total API cost</div><div style={faintEs}>Costo total API</div>
+          <div style={{ fontSize: 22, marginTop: 4, color: c.gold }}>{cents(totalCost)}</div>
+          <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>cumulative, all statements</div>
+        </div>
+        <div style={{ ...S.panel, padding: "14px 16px" }}>
+          <div style={S.cap}>Merchant rules learned</div><div style={faintEs}>Reglas aprendidas</div>
+          <div style={{ fontSize: 22, marginTop: 4, color: c.blue }}>{Object.keys(rules).length}</div>
+          <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>auto-applied to future statements</div>
+        </div>
+      </div>
 
-function InventoryTab({ products, setProducts, dbState, setDbState }) {
-const [editing, setEditing] = useState(null);
-const [draft, setDraft] = useState({});
+      {/* P&L SUMMARY */}
+      <div style={S.sec}>Profit &amp; Loss<div style={faintEs}>Estado de resultados</div></div>
+      <div style={S.panel}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 14 }}>
+          <span>Revenue · Ingresos</span><span style={{ color: c.green }}>{money(pnl.income)}</span>
+        </div>
+        {pnl.expenseRows.map(([cat, v]) => (
+          <div key={cat} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 14px", fontSize: 12.5, color: c.sub }}>
+            <span>{cat}</span><span>({money(v)})</span>
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, borderTop: `1px solid ${c.lineSoft}`, marginTop: 4 }}>
+          <span>Total expenses · Gastos</span><span style={{ color: c.red }}>({money(pnl.expenseTotal)})</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", fontSize: 16, borderTop: `2px solid ${c.line}`, marginTop: 6 }}>
+          <span>Net · Neto</span><span style={{ color: pnl.net >= 0 ? c.green : c.red }}>{money(pnl.net)}</span>
+        </div>
+        {transactions.length === 0 && <div style={{ fontSize: 12.5, color: c.sub, fontStyle: "italic", marginTop: 8 }}>No transactions yet — import a statement above. · Sin transacciones aún.</div>}
+      </div>
 
-function startEdit(p) {
-setEditing(p.id);
-setDraft({ available: p.available, inbound: p.inbound, unitsSold30: p.unitsSold30, notes: p.notes, reorderLink: p.reorderLink || "", channels: p.channels || ["Amazon"] });
-}
-
-function saveEdit(id) {
-setProducts(prev => {
-const updated = prev.map(p => p.id !== id ? p : {
-...p,
-available: +draft.available || 0,inbound: +draft.inbound || 0,
-unitsSold30: +draft.unitsSold30 || 0,
-notes: draft.notes,
-reorderLink: draft.reorderLink || "",
-channels: draft.channels,
-});
-// Persist to DB
-const full = { ...dbState, products: updated };
-setDbState(full);
-dbSave(full);
-return updated;
-});
-setEditing(null);
-}
-
-function toggleChannel(ch) {
-setDraft(d => {
-const has = d.channels.includes(ch);
-const next = has ? d.channels.filter(c => c !== ch) : [...d.channels, ch];
-return { ...d, channels: next.length ? next : [ch] };
-});
-}
-
-const sorted = [...products].sort((a, b) => {
-const order = { out: 0, low: 1, inbound: 2, slow: 3, ok: 4 };
-return (order[stockStatus(a)] ?? 5) - (order[stockStatus(b)] ?? 5);
-});
-
-return (
-<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-<SectionTitle>Amazon FBA Inventory</SectionTitle>
-{sorted.map(p => {
-const st = stockStatus(p);
-const { color, bg, label } = STATUS_STYLE[st];
-const weeks = weeksOfSupply(p.available, p.unitsSold30);
-const isEditing = editing === p.id;
-return (
-<Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-<div style={{ flex: 1, minWidth: 200 }}>
-<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "'IM Fell English', Georgia, serif", fontSize: 15, color: "#1a1714" }}>{p.name}</span>
-<Tag color={color} label={label} />
-</div>
-<div style={{ fontSize: 11, color: "#a09488", fontFamily: "monospace", marginBottom: 6 }}>{p.sku}{p.asin ? ` · ${p.asin}` : ""}</div>
-<div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-{(p.channels || ["Amazon"]).map(ch => (
-<span key={ch} style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 1.5, padding: "2px 8px", background: ch === "Amazon" ? "#a0784814" : ch === "Shopify" ? "#5a7a5a14" : "#7a7a9a14", color: ch === "Amazon" ? "#a07848" : ch === "Shopify" ? "#5a7a5a" : "#7a7a9a", border: `1px solid ${ch === "Amazon" ? "#a0784830" : ch === "Shopify" ? "#5a7a5a30" : "#7a7a9a30"}` }}>
-{ch.toUpperCase()}
-</span>
-))}
-</div>
-{p.notes && <div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
-{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
-<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-<div style={{ flex: 1, height: 4, background: "#e5e1da", borderRadius: 1 }}>
-<div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
-</div>
-<span style={{ fontSize: 12, color, fontFamily: "monospace", minWidth: 40 }}>{weeks === 0 ? "—" : weeks > 99 ? "99+w" : `${weeks}w`}</span>
-</div>
-</div>
-<div>
-{isEditing ? (
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-<div style={{ display: "flex", gap: 8 }}>
-{[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"]].map(([f, l]) => (
-<div key={f}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
-<input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: 56, background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "4px 6px", color: "#1a1714", fontSize: 13, textAlign: "center", fontFamily: "monospace" }} />
-</div>
-))}
-</div>
-<textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} rows={2}
-style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 8px", color: "#8c7d6b", fontSize: 11, fontFamily: "monospace", resize: "none" }} />
-<div>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Reorder Link (supplier / Amazon URL)</div>
-<input value={draft.reorderLink || ""} onChange={e => setDraft(d => ({ ...d, reorderLink: e.target.value }))} placeholder="https://..."
-style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#1a1714", fontSize: 11, fontFamily: "monospace" }} />
-</div>
-<div style={{ marginBottom: 4 }}>
-<div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "monospace", marginBottom: 6 }}>Sold On</div>
-<div style={{ display: "flex", gap: 8 }}>
-{["Amazon", "Shopify"].map(ch => (
-<div key={ch} onClick={() => toggleChannel(ch)} style={{ cursor: "pointer", padding: "4px 12px", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, border: `1px solid ${draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#c8c2b8"}`, color: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a07848" : "#5a7a5a") : "#a09488", background: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#a0784814" : "#5a7a5a14") : "transparent" }}>
-{ch}
-</div>
-))}
-</div>
-</div>
-<div style={{ display: "flex", gap: 6 }}>
-<button onClick={() => saveEdit(p.id)} style={{ flex: 1, background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
-<button onClick={() => setEditing(null)} style={{ flex: 1, background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12 }}>Cancel</button>
-</div>
-</div>
-) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30]].map(([l, v]) => (<div key={l} style={{ textAlign: "center" }}>
+      {/* TRANSACTIONS TABLE */}
+      {transactions.length > 0 && (
+        <>
+          <div style={S.sec}>
+            Transactions ({transactions.length})<div style={faintEs}>Transacciones</div>
+          </div>
+          <div style={{ overflowX: "auto", border: `1px solid ${c.lineSoft}`, borderRadius: 3 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+              <thead><tr>
+                <th style={{ ...S.th, textAlign: "left" }}>Date</th>
+                <th style={{ ...S.th, textAlign: "left" }}>Description</th>
+                <th style={S.th}>Amount</th>
+                <th style={{ ...S.th, textAlign: "center" }}>Type</th>
+                <th style={{ ...S.th, textAlign: "left" }}>Category</th>
+                <th style={S.th}></th>
+              </tr></thead>
+              <tbody>
+                {transactions.map((t) => {
+                  const recurring = counts[mkey(t.merchant || t.description)] > 1;
+                  return (
+                    <tr key={t.id}>
+                      <td style={{ ...S.td, textAlign: "left", color: c.sub }}>{t.date}</td>
+                      <td style={{ ...S.td, textAlign: "left", maxWidth: 240, whiteSpace: "normal" }}>
+                        {t.description}
+                        {recurring && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, color: c.blue, border: `1px solid ${c.blue}40`, borderRadius: 2, padding: "0 4px", marginLeft: 6 }}>RECURRING</span>}
+                        {t.source === "rule" && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, color: c.green, marginLeft: 6 }}>auto</span>}
+                      </td>
+                      <td style={{ ...S.td, color: t.type === "income" ? c.green : c.ink }}>{t.type === "income" ? "" : "("}{money(t.amount).replace("$", "$")}{t.type === "income" ? "" : ")"}</td>
+                      <td style={{ ...S.td, textAlign: "center" }}>
+                        <select value={t.type} onChange={(e) => setType(t.id, e.target.value)} style={S.sel}>
+                          <option value="expense">expense</option>
+                          <option value="income">income</option>
+                        </select>
+                      </td>
+                      <td style={{ ...S.td, textAlign: "left" }}>
+                        <select value={t.category} onChange={(e) => setCategory(t.id, e.target.value)} style={S.sel}>
+                          {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                      </td>
+                      <td style={S.td}><button onClick={() => delTx(t.id)} style={{ ...S.btnGhost, padding: "2px 8px", color: c.red }}>✕</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: c.sub, marginTop: 8, fontStyle: "italic" }}>
+            Changing a category teaches a merchant rule — that merchant auto-categorizes on every future statement.
+            <div style={faintEs}>Cambiar una categoría enseña una regla — ese comercio se clasifica solo en el futuro.</div>
+          </div>
+          <button onClick={clearAll} style={{ ...S.btnGhost, marginTop: 12, color: c.red }}>Clear all transactions · borrar todo</button>
+        </>
+      )}
+    </div>
+  );
+}{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", p.unitsSold30]].map(([l, v]) => (
+<div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
 </div>
@@ -443,8 +439,8 @@ return (
 <div style={{ textAlign: "center" }}>
 <div style={{ fontSize: 13, color: parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#a07848", fontFamily: "monospace", fontWeight: 700 }}>{calc.margin}%</div>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5 }}>Margin</div>
-</div>
-</>)}
+</div></>
+)}
 </div>
 </div>
 <div>
@@ -592,8 +588,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", bord
 <button onClick={saveWeek} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "7px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save Week</button>
 <button onClick={() => setAdding(false)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", borderRadius: 1, padding: "7px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
 </div>
-</Card>
-) : (<button onClick={() => setAdding(true)} style={{ background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "monospace", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
+</Card>) : (
+<button onClick={() => setAdding(true)} style={{ background: "#e5e1da", border: "1px dashed #4a3f2a", color: "#9c8d7b", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "monospace", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
 + ADD THIS WEEK'S NUMBERS
 </button>
 )}
@@ -741,8 +737,8 @@ return (
 Enter estimated cost per item to track against your $250 weekly budget
 </div>
 </div>
-<div style={{ display: "flex", gap: 20 }}>
-{[{ label: "Budget", value: `$${WEEKLY_BUDGET}`, color: "#9c8d7b" },
+<div style={{ display: "flex", gap: 20 }}>{[
+{ label: "Budget", value: `$${WEEKLY_BUDGET}`, color: "#9c8d7b" },
 { label: "Allocated", value: `$${allocatedTotal.toFixed(2)}`, color: "#a07848" },
 { label: "Remaining", value: `$${remaining.toFixed(2)}`, color: remaining < 0 ? "#9b5e5e" : "#5a7a5a" },
 ].map(s => (
@@ -890,8 +886,8 @@ const suggestions = [
 
 async function ask(question) {
 if (!question.trim()) return;
-const userMsg = { role: "user", content: question };
-setHistory(h => [...h, userMsg]);setQ("");
+const userMsg = { role: "user", content: question };setHistory(h => [...h, userMsg]);
+setQ("");
 setLoading(true);
 
 const invCtx = products.map(p => {
@@ -1039,8 +1035,8 @@ system: `You are an Amazon PPC keyword research expert. Generate high-converting
 messages: [{ role: "user", content: `Generate 12 Amazon PPC keywords for this product: "${aiProduct}". Focus on buyer intent keywords. Mix of exact, phrase, and broad match. Include long-tail keywords that convert well.` }],
 }),
 });
-const data = await res.json();
-const text = data.content?.[0]?.text || "[]";const clean = text.replace(/```json|```/g, "").trim();
+const data = await res.json();const text = data.content?.[0]?.text || "[]";
+const clean = text.replace(/```json|```/g, "").trim();
 const parsed = JSON.parse(clean);
 setAiResults(parsed);
 } catch (e) {
@@ -1188,8 +1184,8 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 <div style={{ display: "flex", gap: 8 }}>
 <button onClick={() => saveEdit(k.id)} style={{ background: "#1a1714", color: "#f7f4ef", border: "none", padding: "5px 18px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Save</button>
 <button onClick={() => setEditId(null)} style={{ background: "#e5e1da", color: "#9c8d7b", border: "1px solid #4a3f2a", padding: "5px 14px", cursor: "pointer", fontSize: 11 }}>Cancel</button>
-</div>
-</div>) : (
+</div></div>
+) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
@@ -1300,7 +1296,7 @@ const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
-const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [] });
+const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {} });
 const [loaded, setLoaded] = useState(false);
 
 useEffect(() => {
@@ -1324,6 +1320,7 @@ profitMatrix: d.profitMatrix || {},
 cogs: d.cogs || {},
 keywords: d.keywords && d.keywords.length ? d.keywords : INITIAL_KEYWORDS,
 wholesale: d.wholesale || [],
+pnl: d.pnl || {},
 });
 }
 setLoaded(true);
@@ -1336,9 +1333,10 @@ const pauseCount = campaigns.filter(c => c.status === "pause").length;
 // ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
 { id: "profit", label: "Sales", labelEs: "Ventas", subs: [
-{ id: "matrix", label: "Profit Matrix" },
-{ id: "cogs", label: "COGS" },
-{ id: "finance", label: "Finance / Cash" },] },
+{ id: "matrix", label: "Profit Matrix" },{ id: "cogs", label: "COGS" },
+{ id: "finance", label: "Finance / Cash" },
+{ id: "pnl", label: "P&L / Transactions" },
+] },
 { id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
 { id: "ppc", label: "Amazon PPC" },
 { id: "keywords", label: "Keyword Library" },
@@ -1396,6 +1394,7 @@ function renderBody() {
 if (tab === "profit") {
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} />;
+if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
 return profitNode;
 }
 if (tab === "roadmap") return <RoadmapTab />;
