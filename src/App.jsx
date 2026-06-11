@@ -1489,6 +1489,28 @@ setShopify(s => ({ ...s, syncing: false }));
 // ── AUTO-FETCH SHOPIFY INVENTORY ON LOAD ──
 useEffect(() => { shopifySync(); }, []);
 
+// ── SELF-MAINTAINING CHANNEL TAGS ──
+// If the live sync returns a Shopify count for a product, that product is by
+// definition sold on Shopify — tag it automatically and persist, so channel
+// chips never need manual upkeep. (Add-only: tags are never auto-removed.)
+useEffect(() => {
+if (!loaded || !shopify.connected || !shopify.items) return;
+let changed = false;
+const updated = products.map(p => {
+if (shopify.items[p.id] === undefined) return p;
+const chans = p.channels || ["Amazon"];
+if (chans.includes("Shopify")) return p;
+changed = true;
+return { ...p, channels: [...chans, "Shopify"] };
+});
+if (changed) {
+setProducts(updated);
+const full = { ...dbState, products: updated };
+setDbState(full);
+dbSave(full);
+}
+}, [loaded, shopify.items]);
+
 useEffect(() => {
 const link = document.createElement("link");
 link.rel = "stylesheet"; link.href = FONT_LINK;
