@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 /* ============================================================================
    LAVALLE HAUS OS — P&L / TRANSACTIONS
@@ -111,6 +111,18 @@ export default function PnL({ data = {}, onSave }) {
   const [editStmt, setEditStmt] = useState(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [draftLink, setDraftLink] = useState("");
+  const [driveConnected, setDriveConnected] = useState(null);
+  const [driveFolderId, setDriveFolderId] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/drive-upload").then((r) => r.json()).then((d) => {
+      if (!alive) return;
+      setDriveConnected(!!d.connected);
+      setDriveFolderId(d.folderId || null);
+    }).catch(() => { if (alive) setDriveConnected(false); });
+    return () => { alive = false; };
+  }, []);
 
   // ---- data snapshot + undo/redo history (session-only; data itself is saved to Redis) ----
   const dataState = () => ({ transactions, rules, totalCost, seen, statements });
@@ -130,7 +142,8 @@ export default function PnL({ data = {}, onSave }) {
     setFuture((f) => [...f, dataState()].slice(-50));
     setPast((p) => p.slice(0, -1));
     writeState(prev);
-  }function redo() {
+  }
+  function redo() {
     if (!future.length) return;
     const nxt = future[future.length - 1];
     setPast((p) => [...p, dataState()].slice(-50));
@@ -175,12 +188,24 @@ export default function PnL({ data = {}, onSave }) {
 
       let nextStatements = statements;
       if (fresh.length) {
+        let driveLink = "";
+        if (driveConnected) {
+          try {
+            const upRes = await fetch("/api/drive-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pdfBase64, filename: fname }),
+            });
+            const upOut = await upRes.json();
+            if (upRes.ok && upOut.link) driveLink = upOut.link;
+          } catch (e) { /* non-fatal: statement still logs; link can be added manually */ }
+        }
         const stIncome = fresh.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
         const stExpense = fresh.filter((t) => t.type !== "income").reduce((s, t) => s + t.amount, 0);
         const record = {
           id: stmtId, label: fname, importedAt: new Date().toISOString().slice(0, 10),
           periodLabel: rangeLabel(fresh.map((t) => t.date)), count: fresh.length,
-          income: stIncome, expense: stExpense, cost: runCost,
+          income: stIncome, expense: stExpense, cost: runCost, link: driveLink,
         };
         nextStatements = [record, ...statements];
       }
@@ -262,7 +287,8 @@ export default function PnL({ data = {}, onSave }) {
     const m = {}; transactions.forEach((t) => { const k = mkey(t.merchant || t.description); m[k] = (m[k] || 0) + 1; }); return m;
   }, [transactions]);
 
-  const pnl = useMemo(() => {let income = 0; const exp = {};
+  const pnl = useMemo(() => {
+    let income = 0; const exp = {};
     viewTx.forEach((t) => {
       if (t.type === "income") income += num(t.amount);
       else exp[t.category] = (exp[t.category] || 0) + num(t.amount);
@@ -371,6 +397,20 @@ export default function PnL({ data = {}, onSave }) {
           <div style={faintEs}>Sube un PDF. Redactar el numero de cuenta esta bien - solo se necesitan fecha, descripcion y monto.</div>
         </div>
 
+        {driveConnected === true && (
+          <div style={{ fontSize: 12, color: c.green, marginBottom: 10 }}>
+            Google Drive connected - statements auto-save to your Drive and bookmark themselves.
+            {driveFolderId && <a href={`https://drive.google.com/drive/folders/${driveFolderId}`} target="_blank" rel="noopener noreferrer" style={{ color: c.clay, textDecoration: "none", marginLeft: 6 }}>Open folder &gt;</a>}
+            <div style={faintEs}>Google Drive conectado - los estados se guardan y se marcan solos.</div>
+          </div>
+        )}
+        {driveConnected === false && (
+          <div style={{ marginBottom: 12 }}>
+            <a href="/api/google-auth" style={{ ...S.btnGhost, display: "inline-block", textDecoration: "none", color: c.clay, borderColor: c.clay }}>Connect Google Drive</a>
+            <div style={faintEs}>Conecta Google Drive para guardar cada estado automaticamente.</div>
+          </div>
+        )}
+
         <input type="file" accept="application/pdf" onChange={(e) => { setErr(""); setFile(e.target.files && e.target.files[0]); }}
           style={{ fontFamily: sans, fontSize: 13, color: c.ink, marginBottom: 12, display: "block" }} />
 
@@ -394,7 +434,8 @@ export default function PnL({ data = {}, onSave }) {
         {err && <div style={{ fontSize: 12.5, color: c.red, marginTop: 10 }}>Error: {err}</div>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}><div style={{ ...S.panel, padding: "14px 16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
+        <div style={{ ...S.panel, padding: "14px 16px" }}>
           <div style={S.cap}>Last run cost</div><div style={faintEs}>Costo ultima vez</div>
           <div style={{ fontSize: 22, marginTop: 4, color: c.ink }}>{lastRun ? cents(lastRun.cost) : "-"}</div>
           {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens - +{lastRun.added} new</div>}
