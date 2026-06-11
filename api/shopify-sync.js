@@ -20,6 +20,10 @@ const TITLE_MAP = {
   "large spiced apple botanical candle": 5,
   "dough bowl sand wax candle set": 7,
   "vanilla cashmere sugar scrub": 8,
+  "vanilla cashmere sugar scrub sample": 11,
+  "mini spiced apple cider botanical candle sample": 12,
+  "mini spiced apple cider botanical candle wholesale": 13,
+  "spiced apple cider sandwax candle": 14,
 };
 
 async function kvGet(key) {
