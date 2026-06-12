@@ -252,6 +252,20 @@ setDbState(full);
 dbSave(full);
 }
 
+// One-click minimums: 6 weeks of cover at current velocity (live Shopify +
+// manual Amazon sold/30d). Only fills blanks — never overwrites a min you set.
+function suggestMins() {
+setPast(p => [...p, products].slice(-50));
+setFuture([]);
+persistProducts(products.map(p => {
+if (p.isSample) return p;
+if (+p.minStock > 0) return p;
+const sold = effectiveSold(p, shopify);
+if (!sold) return p;
+return { ...p, minStock: Math.ceil(sold * (6 / 4.3)) };
+}));
+}
+
 function undo() {
 if (!past.length) return;
 const prev = past[past.length - 1];
@@ -331,6 +345,8 @@ return (
 <button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: past.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>UNDO</button>
 <button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #c8c2b8", color: future.length ? "#8c7d6b" : "#c8c2b8", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>REDO</button>
 <span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "monospace" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+<button onClick={suggestMins} title="Sets Min Stock to 6 weeks of cover at current sales velocity. Only fills blanks — your own minimums are never overwritten. Undo reverses it."
+style={{ marginLeft: "auto", background: "transparent", border: "1px solid #a07848", color: "#a07848", borderRadius: 1, padding: "4px 14px", cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>SUGGEST MINS</button>
 </div>
 <Card style={{ borderLeft: `3px solid ${shopify && shopify.connected ? "#5a7a5a" : "#a07848"}`, padding: "12px 16px" }}>
 {shopify && shopify.connected ? (
