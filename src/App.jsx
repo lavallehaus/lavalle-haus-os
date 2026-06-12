@@ -8,6 +8,7 @@ import PnL from "./PnL.jsx";
 import GoogleAds from "./GoogleAds.jsx";
 import MetaAds from "./MetaAds.jsx";
 import EmailRetention from "./EmailRetention.jsx";
+import FbaShipments from "./FbaShipments.jsx";
 
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
@@ -1749,7 +1750,7 @@ const NAV = [
 { id: "products", label: "Products" },
 { id: "packaging", label: "Packaging" },
 { id: "raw", label: "Raw Materials" },
-{ id: "inbound", label: "Inbound" },
+{ id: "inbound", label: "FBA Shipments" },
 { id: "reorder", label: "Reorder List" },
 ] },
 { id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
@@ -1816,7 +1817,7 @@ if (activeSub === "fba") return <InventoryTab products={products} setProducts={s
 if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
 if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
-if (activeSub === "inbound") return <ComingSoon title="Inbound Shipments" titleEs="Envíos entrantes" lines={["Item · Category · Quantity · Supplier · ETA · Status", "All incoming Products, Packaging & Raw Materials in one place"]} />;
+if (activeSub === "inbound") return <FbaShipments />;
 if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
 }
 if (tab === "growth") {
