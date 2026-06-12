@@ -303,8 +303,10 @@ const order = { out: 0, reorder: 1, low: 2, inbound: 3, slow: 4, ok: 5 };
 const visible = products.filter(p => channelFilter === "All" ? true : (p.channels || ["Amazon"]).includes(channelFilter));
 const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify)] ?? 6) - (order[stockStatus(b, shopify)] ?? 6));
 const reorderList = products.filter(p => { const s = stockStatus(p, shopify); return s === "out" || s === "reorder"; });
-const mainList = sorted.filter(p => !p.isSample);
-const sampleList = sorted.filter(p => p.isSample);
+// Bottom group: samples/testers and anything sold on the B2B channel.
+const inB2BGroup = p => p.isSample || (p.channels || []).includes("B2B");
+const mainList = sorted.filter(p => !inB2BGroup(p));
+const sampleList = sorted.filter(inB2BGroup);
 const displayList = [...mainList, ...(sampleList.length ? [{ id: "__samplehdr", __sampleHeader: true }] : []), ...sampleList];
 
 return (
@@ -382,8 +384,8 @@ return (
 {displayList.map(p => {
 if (p.__sampleHeader) return (
 <div key="__samplehdr" style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid #ddd8d0" }}>
-<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "monospace" }}>Samples / Testers · B2B</div>
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras y testers — solo B2B, fuera del inventario de venta</div>
+<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "monospace" }}>Samples / Testers / B2B</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras, testers y productos B2B — agrupados fuera del inventario de venta directa</div>
 </div>
 );
 const st = stockStatus(p, shopify);
