@@ -208,6 +208,106 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── WIZARD B2: box contents & weights ──
+    if (op === "setboxes" && req.method === "POST") {
+      const b = req.body || {};
+      const planId = encodeURIComponent(b.planId || "");
+      const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/packingInformation`, "POST", {
+        packageGroupings: b.packageGroupings || [],
+      });
+      res.status(200).json({ connected: true, operationId: d.operationId });
+      return;
+    }
+
+    // ── WIZARD B2: placement options (generate / list / confirm) ──
+    if (op === "placement") {
+      const planId = encodeURIComponent(req.query.planId || "");
+      const action = req.query.action || "list";
+      if (action === "generate") {
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/placementOptions`, "POST", {});
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      if (action === "confirm") {
+        const optId = encodeURIComponent(req.query.optionId || "");
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/placementOptions/${optId}/confirmation`, "POST", {});
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      const d = await spapi(token, `${INBOUND}/inboundPlans/${planId}/placementOptions?pageSize=20`);
+      const options = (d.placementOptions || []).map((o) => ({
+        id: o.placementOptionId,
+        status: o.status,
+        expiration: o.expiration,
+        shipmentIds: o.shipmentIds || [],
+        fees: (o.fees || []).map((f) => ({ type: f.type, target: f.target, amount: f.value && f.value.amount, code: f.value && f.value.code })),
+        discounts: (o.discounts || []).map((f) => ({ type: f.type, target: f.target, amount: f.value && f.value.amount, code: f.value && f.value.code })),
+      }));
+      res.status(200).json({ connected: true, options });
+      return;
+    }
+
+    // ── WIZARD B2: shipment detail within a plan ──
+    if (op === "planshipment") {
+      const planId = encodeURIComponent(req.query.planId || "");
+      const shipmentId = encodeURIComponent(req.query.shipmentId || "");
+      const d = await spapi(token, `${INBOUND}/inboundPlans/${planId}/shipments/${shipmentId}`);
+      res.status(200).json({
+        connected: true,
+        shipment: {
+          id: d.shipmentId,
+          confirmationId: d.shipmentConfirmationId || null,
+          destination: d.destination && (d.destination.warehouseId || d.destination.destinationType),
+          status: d.status,
+        },
+      });
+      return;
+    }
+
+    // ── WIZARD B2: transportation (generate / list / confirm) ──
+    if (op === "transport") {
+      const action = req.query.action || "list";
+      if (action === "generate" && req.method === "POST") {
+        const b = req.body || {};
+        const planId = encodeURIComponent(b.planId || "");
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/transportationOptions`, "POST", {
+          placementOptionId: b.placementOptionId,
+          shipmentTransportationConfigurations: (b.shipments || []).map((s) => ({
+            shipmentId: s.shipmentId,
+            readyToShipWindow: { start: s.readyDate },
+            contactInformation: b.contact || undefined,
+          })),
+        });
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      if (action === "confirm" && req.method === "POST") {
+        const b = req.body || {};
+        const planId = encodeURIComponent(b.planId || "");
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/transportationOptions/confirmation`, "POST", {
+          transportationSelections: (b.selections || []).map((s) => ({
+            shipmentId: s.shipmentId,
+            transportationOptionId: s.transportationOptionId,
+          })),
+        });
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      const planId = encodeURIComponent(req.query.planId || "");
+      const qs = req.query.shipmentId ? `&shipmentId=${encodeURIComponent(req.query.shipmentId)}` : "";
+      const d = await spapi(token, `${INBOUND}/inboundPlans/${planId}/transportationOptions?placementOptionId=${encodeURIComponent(req.query.placementOptionId || "")}${qs}&pageSize=20`);
+      const options = (d.transportationOptions || []).map((o) => ({
+        id: o.transportationOptionId,
+        shipmentId: o.shipmentId,
+        carrier: o.carrier && (o.carrier.name || o.carrier.alphaCode),
+        mode: o.shippingMode,
+        solution: o.shippingSolution,
+        cost: o.quote && o.quote.cost ? { amount: o.quote.cost.amount, code: o.quote.cost.code } : null,
+      }));
+      res.status(200).json({ connected: true, options });
+      return;
+    }
+
     if (op === "shipments") {
       const statuses = "WORKING,READY_TO_SHIP,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING,CLOSED";
       const d = await spapi(
