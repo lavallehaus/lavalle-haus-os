@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 // api/shopify-sync.js
 // LAVALLE HAUS OS — Shopify sync: live inventory, 30-day sales, variant detail,
 // and UGC/marketing order separation.
@@ -155,7 +156,22 @@ function resolveId(pkey, vkey) {
   return TITLE_MAP[pkey] !== undefined ? TITLE_MAP[pkey] : null;
 }
 
+
+// ── APP LOCK ──────────────────────────────────────────────────────────────────
+// When APP_PASSWORD is set in Vercel, every request must carry the session
+// token in the x-app-token header. Until it is set, the lock stays off — so
+// deploying this code before adding the env var can never lock anyone out.
+const SESSION_SALT = "lavalle-haus-session-v1";
+function appToken() {
+  return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
+}
+function isAuthed(req) {
+  if (!process.env.APP_PASSWORD) return true;
+  return (req.headers["x-app-token"] || "") === appToken();
+}
+
 export default async function handler(req, res) {
+  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   const auth = await kvGet("shopify_oauth");
   if (!auth || !auth.accessToken) {
     res.status(200).json({ connected: false });
