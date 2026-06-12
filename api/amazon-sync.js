@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 // api/amazon-sync.js
 // LAVALLE HAUS OS — Amazon SP-API sync: live FBA inventory, inbound quantities,
 // and per-SKU units sold over the trailing 30 days.
@@ -115,7 +116,22 @@ async function fetchSold30ForSku(token, sku) {
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
+
+// ── APP LOCK ──────────────────────────────────────────────────────────────────
+// When APP_PASSWORD is set in Vercel, every request must carry the session
+// token in the x-app-token header. Until it is set, the lock stays off — so
+// deploying this code before adding the env var can never lock anyone out.
+const SESSION_SALT = "lavalle-haus-session-v1";
+function appToken() {
+  return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
+}
+function isAuthed(req) {
+  if (!process.env.APP_PASSWORD) return true;
+  return (req.headers["x-app-token"] || "") === appToken();
+}
+
 export default async function handler(req, res) {
+  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   const configured = Boolean(LWA_ID && LWA_SECRET && REFRESH_TOKEN);
 
   if (req.method === "GET") {
