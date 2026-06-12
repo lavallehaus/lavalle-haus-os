@@ -1796,7 +1796,7 @@ dbSave(next);
 
 function renderBody() {
 if (tab === "profit") {
-if (activeSub === "amazondaily") return <AmazonProfit />;
+if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} />;
 if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
