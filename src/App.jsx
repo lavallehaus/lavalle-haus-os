@@ -148,26 +148,33 @@ function shopifySold(p, shopify) {
 if (shopify && shopify.sold && shopify.sold[p.id] !== undefined) return shopify.sold[p.id];
 return null;
 }
-// True total on-hand: manual (Amazon/FBA) + live Shopify, with sensible fallback
-function effectiveStock(p, shopify) {
-const manual = +p.available || 0;
+// Live Amazon FBA info for a product (or null if not synced)
+function amazonInfo(p, amazon) {
+if (amazon && amazon.items && amazon.items[p.id]) return amazon.items[p.id];
+return null;
+}
+// True total on-hand: live FBA (or manual fallback) + live Shopify
+function effectiveStock(p, shopify, amazon) {
+const az = amazonInfo(p, amazon);
+const base = az ? (+az.fba || 0) : (+p.available || 0); // live FBA replaces manual when present
 const sq = shopifyQty(p, shopify);
-if (sq === null) return manual;
-if ((p.channels || []).includes("Amazon")) return manual + sq; // sold on both channels
+if (sq === null) return base;
+if (az || (p.channels || []).includes("Amazon")) return base + sq;
 return sq; // Shopify-only: the live count is the truth
 }
-// True 30-day units sold: manual (Amazon) + live Shopify orders
-function effectiveSold(p, shopify) {
-const manual = +p.unitsSold30 || 0;
+// True 30-day units sold: live Amazon (or manual fallback) + live Shopify orders
+function effectiveSold(p, shopify, amazon) {
+const az = amazon && amazon.sold && amazon.sold[p.id] !== undefined ? +amazon.sold[p.id] : null;
+const base = az !== null ? az : (+p.unitsSold30 || 0);
 const ss = shopifySold(p, shopify);
-if (ss === null) return manual;
-return manual + ss;
+if (ss === null) return base;
+return base + ss;
 }
 
-function stockStatus(p, shopify) {
+function stockStatus(p, shopify, amazon) {
 if (p.status === "inbound") return "inbound";
-const stock = effectiveStock(p, shopify);
-const sold = effectiveSold(p, shopify);
+const stock = effectiveStock(p, shopify, amazon);
+const sold = effectiveSold(p, shopify, amazon);
 const min = +p.minStock || 0;
 if (stock <= 0) return "out";
 if (min > 0 && stock <= min) return "reorder";
@@ -223,7 +230,7 @@ style={{ width: 72, background: "#e5e1da", border: "1px solid #4a3f2a", borderRa
 
 // ── TAB: INVENTORY ────────────────────────────────────────────────────────────
 
-function InventoryTab({ products, setProducts, dbState, setDbState, shopify, onShopifySync }) {
+function InventoryTab({ products, setProducts, dbState, setDbState, shopify, onShopifySync, amazon, onAmazonSync }) {
 const [editing, setEditing] = useState(null);
 const [draft, setDraft] = useState({});
 const [past, setPast] = useState([]);
@@ -260,7 +267,7 @@ setFuture([]);
 persistProducts(products.map(p => {
 if (p.isSample) return p;
 if (+p.minStock > 0) return p;
-const sold = effectiveSold(p, shopify);
+const sold = effectiveSold(p, shopify, amazon);
 if (!sold) return p;
 return { ...p, minStock: Math.ceil(sold * (6 / 4.3)) };
 }));
@@ -316,8 +323,8 @@ return { ...d, channels: next.length ? next : [ch] };
 
 const order = { out: 0, reorder: 1, low: 2, inbound: 3, slow: 4, ok: 5 };
 const visible = products.filter(p => channelFilter === "All" ? true : (p.channels || ["Amazon"]).includes(channelFilter));
-const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify)] ?? 6) - (order[stockStatus(b, shopify)] ?? 6));
-const reorderList = products.filter(p => { const s = stockStatus(p, shopify); return s === "out" || s === "reorder"; });
+const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify, amazon)] ?? 6) - (order[stockStatus(b, shopify, amazon)] ?? 6));
+const reorderList = products.filter(p => { const s = stockStatus(p, shopify, amazon); return s === "out" || s === "reorder"; });
 // Samples nest under their parent product as a concealed dropdown; samples
 // without a living parent fall to a small section at the end.
 const mainList = sorted.filter(p => !p.isSample);
@@ -357,8 +364,20 @@ style={{ marginLeft: "auto", background: "transparent", border: "1px solid #a078
 {shopify.syncedAt && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#a09488", marginLeft: 10 }}>synced {new Date(shopify.syncedAt).toLocaleTimeString()}</span>}
 <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Shopify conectado — inventario en vivo en cada producto</div>
 </div>
-<button onClick={onShopifySync} disabled={shopify.syncing} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: shopify.syncing ? "default" : "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>{shopify.syncing ? "SYNCING…" : "SYNC NOW"}</button>
+<button onClick={() => { onShopifySync(); if (onAmazonSync) onAmazonSync(); }} disabled={shopify.syncing || (amazon && amazon.syncing)} style={{ background: "#e5e1da", border: "1px solid #4a3f2a", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: (shopify.syncing || (amazon && amazon.syncing)) ? "default" : "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>{(shopify.syncing || (amazon && amazon.syncing)) ? "SYNCING…" : "SYNC NOW"}</button>
 </div>
+<div style={{ marginTop: 6, fontSize: 10, fontFamily: "monospace", letterSpacing: 2, color: amazon && amazon.connected ? "#5a7a5a" : "#a07848" }}>
+{amazon && amazon.connected ? "● AMAZON SP-API · LIVE FBA" : "○ AMAZON SP-API NOT CONNECTED"}
+{amazon && amazon.syncedAt ? <span style={{ letterSpacing: 0, color: "#8c7d6b" }}> · synced {new Date(amazon.syncedAt).toLocaleTimeString()}</span> : null}
+</div>
+{amazon && amazon.unmatchedSkus && amazon.unmatchedSkus.length > 0 && (
+<div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #0000000d" }}>
+<div style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 2, color: "#a07848", marginBottom: 4 }}>⚠ AMAZON SKUS NOT YET MAPPED</div>
+{amazon.unmatchedSkus.map((u, i) => (
+<div key={"az" + i} style={{ fontSize: 11, color: "#8c7d6b", fontFamily: "monospace" }}>· {u.sku} — {u.qty} units</div>
+))}
+</div>
+)}
 {((shopify.unmatched && shopify.unmatched.length > 0) || (shopify.soldUnmatched && shopify.soldUnmatched.length > 0)) && (
 <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #0000000d" }}>
 <div style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 2, color: "#a07848", marginBottom: 4 }}>⚠ SHOPIFY PRODUCTS NOT YET MAPPED TO THIS APP</div>
@@ -393,7 +412,7 @@ style={{ marginLeft: "auto", background: "transparent", border: "1px solid #a078
 <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, marginBottom: 10, fontFamily: "'IM Fell English', Georgia, serif" }}>Productos agotados o en/bajo su umbral mínimo</div>
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 {reorderList.map(p => {
-const stock = effectiveStock(p, shopify);
+const stock = effectiveStock(p, shopify, amazon);
 const min = +p.minStock || 0;
 const need = min > 0 ? Math.max(min * 2 - stock, min) : null;
 return (
@@ -425,9 +444,9 @@ if (p.__sampleHeader) return (
 <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras sin producto padre asignado</div>
 </div>
 );
-const st = stockStatus(p, shopify);
+const st = stockStatus(p, shopify, amazon);
 const { color, bg, label } = STATUS_STYLE[st];
-const weeks = weeksOfSupply(effectiveStock(p, shopify), effectiveSold(p, shopify));
+const weeks = weeksOfSupply(effectiveStock(p, shopify, amazon), effectiveSold(p, shopify, amazon));
 const isEditing = editing === p.id;
 return (
 <Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg, marginLeft: p.__nested ? 24 : 0 }}>
@@ -447,23 +466,35 @@ return (
 </div>
 {p.notes && <div style={{ fontSize: 12, color: "#8c7d6b", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
 {p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
-{shopify && shopify.variantDetail && shopify.variantDetail[p.id] && shopify.variantDetail[p.id].length > 0 && (
+{(() => {
+const sv = shopify && shopify.variantDetail && shopify.variantDetail[p.id] && shopify.variantDetail[p.id].length > 0 ? shopify.variantDetail[p.id] : null;
+const ak = amazon && amazon.skuDetail && amazon.skuDetail[p.id] && amazon.skuDetail[p.id].length > 0 ? amazon.skuDetail[p.id] : null;
+if (!sv && !ak) return null;
+const count = (sv ? sv.length : 0) + (ak ? ak.length : 0);
+return (
 <div style={{ marginBottom: 8 }}>
 <div onClick={() => setOpenVariants(openVariants === p.id ? null : p.id)} style={{ cursor: "pointer", fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#5a7a5a", display: "inline-block" }}>
-{openVariants === p.id ? "▾" : "▸"} {shopify.variantDetail[p.id].length} VARIANTS · LIVE
+{openVariants === p.id ? "▾" : "▸"} {count} LIVE DETAIL{count === 1 ? "" : "S"}
 </div>
 {openVariants === p.id && (
 <div style={{ marginTop: 6, borderLeft: "2px solid #5a7a5a40", paddingLeft: 10 }}>
-{shopify.variantDetail[p.id].map((v, i) => (
-<div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "monospace", color: "#8c7d6b", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
-<span>{v.name}</span>
+{sv && sv.map((v, i) => (
+<div key={"s" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "monospace", color: "#8c7d6b", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
+<span>SHOPIFY · {v.name}</span>
 <span>{v.qty} in stock{v.sold ? ` · ${v.sold} sold/30d` : ""}{v.ugc ? ` · ${v.ugc} ugc` : ""}</span>
+</div>
+))}
+{ak && ak.map((v, i) => (
+<div key={"a" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "monospace", color: "#8c7d6b", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
+<span>FBA · {v.sku}</span>
+<span>{v.fba} in FBA{v.inbound ? ` · ${v.inbound} inbound` : ""}{v.sold ? ` · ${v.sold} sold/30d` : ""}</span>
 </div>
 ))}
 </div>
 )}
 </div>
-)}
+);
+})()}
 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 <div style={{ flex: 1, height: 4, background: "#e5e1da", borderRadius: 1 }}>
 <div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
@@ -516,7 +547,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[["On Hand", p.available], ["Inbound", p.inbound], ["Sold/30d", effectiveSold(p, shopify)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[...(amazonInfo(p, amazon) ? [["FBA", amazonInfo(p, amazon).fba], ["Inbound", amazonInfo(p, amazon).inbound]] : [["On Hand", p.available], ["Inbound", p.inbound]]), ["Sold/30d", effectiveSold(p, shopify, amazon)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
@@ -1571,23 +1602,50 @@ setShopify(s => ({ ...s, syncing: false }));
 }
 }
 
-// ── AUTO-FETCH SHOPIFY INVENTORY ON LOAD ──
-useEffect(() => { shopifySync(); }, []);
+const [amazon, setAmazon] = useState({ connected: false, items: {}, sold: {}, skuDetail: {}, unmatchedSkus: [], syncedAt: null, syncing: false });
+
+async function amazonSync() {
+setAmazon(s => ({ ...s, syncing: true }));
+try {
+const r = await fetch("/api/amazon-sync", { method: "POST" });
+const d = await r.json();
+if (d && d.connected && d.items) {
+const items = {};
+(d.items || []).forEach(it => { items[it.productId] = { fba: it.fba, inbound: it.inbound }; });
+const sold = {};
+(d.sold || []).forEach(it => { sold[it.productId] = it.qty; });
+setAmazon({ connected: true, items, sold, skuDetail: d.skuDetail || {}, unmatchedSkus: d.unmatchedSkus || [], syncedAt: d.syncedAt, syncing: false });
+} else {
+setAmazon({ connected: false, items: {}, sold: {}, skuDetail: {}, unmatchedSkus: [], syncedAt: null, syncing: false });
+}
+} catch (e) {
+setAmazon(s => ({ ...s, syncing: false }));
+}
+}
+
+// ── AUTO-FETCH SHOPIFY + AMAZON ON LOAD ──
+useEffect(() => { shopifySync(); amazonSync(); }, []);
 
 // ── SELF-MAINTAINING CHANNEL TAGS ──
 // If the live sync returns a Shopify count for a product, that product is by
 // definition sold on Shopify — tag it automatically and persist, so channel
 // chips never need manual upkeep. (Add-only: tags are never auto-removed.)
 useEffect(() => {
-if (!loaded || !shopify.connected || !shopify.items) return;
+if (!loaded) return;
 let changed = false;
 const updated = products.map(p => {
 if (p.isSample) return p;
-if (shopify.items[p.id] === undefined) return p;
-const chans = p.channels || ["Amazon"];
-if (chans.includes("Shopify")) return p;
+let chans = p.channels || ["Amazon"];
+let touched = false;
+if (shopify.connected && shopify.items && shopify.items[p.id] !== undefined && !chans.includes("Shopify")) {
+chans = [...chans, "Shopify"]; touched = true;
+}
+if (amazon.connected && amazon.items && amazon.items[p.id] !== undefined && !chans.includes("Amazon")) {
+chans = [...chans, "Amazon"]; touched = true;
+}
+if (!touched) return p;
 changed = true;
-return { ...p, channels: [...chans, "Shopify"] };
+return { ...p, channels: chans };
 });
 if (changed) {
 setProducts(updated);
@@ -1595,7 +1653,7 @@ const full = { ...dbState, products: updated };
 setDbState(full);
 dbSave(full);
 }
-}, [loaded, shopify.items]);
+}, [loaded, shopify.items, amazon.items]);
 
 useEffect(() => {
 const link = document.createElement("link");
@@ -1754,7 +1812,7 @@ if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onS
 if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
-if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} shopify={shopify} onShopifySync={shopifySync} />;
+if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} shopify={shopify} onShopifySync={shopifySync} amazon={amazon} onAmazonSync={amazonSync} />;
 if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
 if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
