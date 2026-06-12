@@ -11,6 +11,19 @@ import EmailRetention from "./EmailRetention.jsx";
 import FbaShipments from "./FbaShipments.jsx";
 import AmazonProfit from "./AmazonProfit.jsx";
 
+// ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = async (url, opts = {}) => {
+  if (typeof url === "string" && url.startsWith("/api/")) {
+    opts = { ...opts, headers: { ...(opts.headers || {}), "x-app-token": localStorage.getItem("lh_token") || "" } };
+  }
+  const r = await _nativeFetch(url, opts);
+  if (r.status === 401 && typeof url === "string" && url.startsWith("/api/") && !url.includes("op=login")) {
+    window.dispatchEvent(new Event("lh-locked"));
+  }
+  return r;
+};
+
 // ── DATABASE via Vercel API ───────────────────────────────────────────────────
 async function dbLoad() {
 try {
@@ -1568,6 +1581,59 @@ This section now has its permanent home. We'll build it out in an upcoming phase
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
+function LoginScreen() {
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!pw || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/data?op=login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const d = await r.json();
+      if (r.ok && d.token) {
+        localStorage.setItem("lh_token", d.token);
+        window.location.reload();
+      } else {
+        setErr("Wrong password — contraseña incorrecta");
+        setBusy(false);
+      }
+    } catch (e) {
+      setErr("Could not reach the server — no se pudo conectar");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f7f4ef", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IM Fell English', Georgia, serif" }}>
+      <div style={{ background: "#efece5", border: "1px solid #c8c2b8", borderRadius: 1, padding: "40px 44px", textAlign: "center", maxWidth: 340, width: "90%" }}>
+        <div style={{ fontSize: 10, letterSpacing: 5, color: "#9c8d7b", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 3 }}>Lavalle Haus</div>
+        <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase", color: "#1a1714" }}>Operating System</div>
+        <div style={{ fontSize: 11, fontStyle: "italic", color: "#8c7d6b", marginTop: 6, marginBottom: 22 }}>Private — enter the house password<br/>Privado — ingresa la contraseña de la casa</div>
+        <input
+          type="password"
+          value={pw}
+          autoFocus
+          onChange={e => setPw(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submit(); }}
+          placeholder="Password"
+          style={{ width: "100%", boxSizing: "border-box", background: "#f7f4ef", border: "1px solid #c8c2b8", borderRadius: 1, padding: "10px 12px", fontSize: 14, color: "#1a1714", textAlign: "center", letterSpacing: 2, outline: "none" }}
+        />
+        <button onClick={submit} disabled={busy}
+          style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "monospace", cursor: "pointer", textTransform: "uppercase" }}>
+          {busy ? "Unlocking…" : "Enter"}
+        </button>
+        {err && <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "monospace" }}>{err}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
 const [tab, setTab] = useState("profit");
 const [sub, setSub] = useState({});
@@ -1627,6 +1693,14 @@ setAmazon(s => ({ ...s, syncing: false }));
 
 // ── AUTO-FETCH SHOPIFY + AMAZON ON LOAD ──
 useEffect(() => { shopifySync(); amazonSync(); }, []);
+
+// ── APP LOCK state: any API 401 anywhere flips this and shows the login ──
+const [locked, setLocked] = useState(false);
+useEffect(() => {
+  const onLock = () => setLocked(true);
+  window.addEventListener("lh-locked", onLock);
+  return () => window.removeEventListener("lh-locked", onLock);
+}, []);
 
 // ── SELF-MAINTAINING CHANNEL TAGS ──
 // If the live sync returns a Shopify count for a product, that product is by
@@ -1838,6 +1912,8 @@ if (activeSub === "suppliers") return <ComingSoon title="Supplier Database" titl
 return null;
 }
 
+if (locked) return <LoginScreen />;
+
 return (
 <div style={{ minHeight: "100vh", background: "#f7f4ef", color: "#1a1714", fontFamily: "'IM Fell English', Georgia, serif" }}>
 <div style={{ background: "#ede9e3", borderBottom: "1px solid #3a3020", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -1856,6 +1932,11 @@ return (
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
+<button onClick={() => { localStorage.removeItem("lh_token"); window.location.reload(); }}
+  title="Lock the app — cerrar con llave"
+  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #c8c2b8", borderRadius: 1, color: "#8c7d6b", fontSize: 9, letterSpacing: 2, fontFamily: "monospace", cursor: "pointer", textTransform: "uppercase" }}>
+  ⏻ Lock
+</button>
 </div>
 </div>
 
