@@ -23,7 +23,7 @@ const FEE_LABEL = {
   DigitalServicesFee: "Digital services",
 };
 
-export default function AmazonProfit() {
+export default function AmazonProfit({ products = [] }) {
   const [daily, setDaily] = useState({ loading: true, days: [], error: null });
   const [fin, setFin] = useState({ loading: true, data: null, error: null });
   const [ord, setOrd] = useState({ loading: true, orders: [], vineByDate: {}, vineUnitsByDate: {}, error: null });
@@ -44,6 +44,32 @@ export default function AmazonProfit() {
   const [netSeries, setNetSeries] = useState({ loading: true, months: [], truncated: false, error: null });
   const [netGran, setNetGran] = useState("MONTH");
   const [hoverNet, setHoverNet] = useState(null);
+  const [chartSlide, setChartSlide] = useState(0); // 0 = growth, 1 = net
+  const [sns, setSns] = useState({ phase: "idle", headers: [], rows: [], error: null });
+  const [showSnsRaw, setShowSnsRaw] = useState(false);
+
+  async function loadSns() {
+    setSns({ phase: "creating", headers: [], rows: [], error: null });
+    try {
+      const cr = await fetch("/api/amazon-sync?op=sns&action=create").then(r => r.json());
+      if (!cr.reportId) throw new Error(cr.error || "Could not request the report");
+      setSns(s => ({ ...s, phase: "polling" }));
+      let docId = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(res => setTimeout(res, 4000));
+        const st = await fetch(`/api/amazon-sync?op=sns&action=status&reportId=${encodeURIComponent(cr.reportId)}`).then(r => r.json());
+        if (st.processingStatus === "DONE" && st.reportDocumentId) { docId = st.reportDocumentId; break; }
+        if (st.processingStatus === "FATAL" || st.processingStatus === "CANCELLED") throw new Error(`Amazon could not generate the report (${st.processingStatus})`);
+      }
+      if (!docId) throw new Error("Report is taking longer than 2 minutes — try again shortly");
+      setSns(s => ({ ...s, phase: "downloading" }));
+      const doc = await fetch(`/api/amazon-sync?op=sns&action=download&documentId=${encodeURIComponent(docId)}`).then(r => r.json());
+      if (!doc.headers) throw new Error(doc.error || "Could not read the report");
+      setSns({ phase: "ready", headers: doc.headers, rows: doc.rows || [], error: null });
+    } catch (e) {
+      setSns({ phase: "error", headers: [], rows: [], error: String(e).slice(0, 300) });
+    }
+  }
 
   function rangeFor(mode) {
     const t = new Date();
@@ -199,6 +225,17 @@ export default function AmazonProfit() {
         </div>
       )}
 
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setChartSlide(0)} disabled={chartSlide === 0} style={{ background: "transparent", border: "none", color: chartSlide === 0 ? c.line : c.ink, fontSize: 18, cursor: chartSlide === 0 ? "default" : "pointer", padding: "0 4px" }}>‹</button>
+          {["GROWTH CURVE", "NET PROFIT CURVE"].map((l, i) => (
+            <button key={l} onClick={() => setChartSlide(i)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${chartSlide === i ? "#1a1714" : c.line}`, background: chartSlide === i ? "#1a1714" : "transparent", color: chartSlide === i ? "#f7f4ef" : c.sub }}>{l}</button>
+          ))}
+          <button onClick={() => setChartSlide(1)} disabled={chartSlide === 1} style={{ background: "transparent", border: "none", color: chartSlide === 1 ? c.line : c.ink, fontSize: 18, cursor: chartSlide === 1 ? "default" : "pointer", padding: "0 4px" }}>›</button>
+        </div>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", width: "200%", transform: chartSlide === 1 ? "translateX(-50%)" : "translateX(0)", transition: "transform 0.35s ease" }}>
+            <div style={{ width: "50%", boxSizing: "border-box", paddingRight: 4 }}>
       {(() => {
         // ── PERIOD EXPLORER ──
         const pvbd = pOrd.vineByDate || {};
@@ -337,6 +374,8 @@ export default function AmazonProfit() {
         );
       })()}
 
+            </div>
+            <div style={{ width: "50%", boxSizing: "border-box", paddingLeft: 4 }}>
       {(() => {
         // ── NET PROFIT CURVE · SETTLED ──
         const ms = netSeries.months || [];
@@ -428,6 +467,84 @@ export default function AmazonProfit() {
                 <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif, marginTop: 4 }}>
                   Settled by Amazon posting date over the trailing 12 months. The current {netGran.toLowerCase()} (amber) is incomplete until Amazon finishes posting its fees.{netSeries.truncated ? " History was truncated at Amazon's page limit — older months may be partial." : ""}
                 </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {(() => {
+        // ── SUBSCRIBE & SAVE · ACTIVE SUBSCRIPTIONS ──
+        const hSku = sns.headers.find(h => h.toLowerCase() === "sku") || sns.headers.find(h => h.toLowerCase().includes("sku"));
+        const hState = sns.headers.find(h => h.toLowerCase().includes("state"));
+        const numericCols = sns.headers.filter(h => {
+          const lk = h.toLowerCase();
+          return (lk.includes("unit") || lk.includes("scheduled") || lk.includes("subscription") || lk.includes("week")) && sns.rows.some(r => r[h] !== "" && !isNaN(Number(r[h])));
+        });
+        const bySku = {};
+        for (const r of sns.rows) {
+          const sku = hSku ? r[hSku] : "?";
+          if (!sku) continue;
+          if (!bySku[sku]) bySku[sku] = { sku, state: hState ? r[hState] : "", total: 0, rows: 0 };
+          bySku[sku].rows += 1;
+          for (const col of numericCols) {
+            const v = Number(r[col]);
+            if (!isNaN(v)) bySku[sku].total += v;
+          }
+        }
+        const skuRows = Object.values(bySku).sort((a, b) => b.total - a.total);
+        const nameFor = (sku) => {
+          const p = products.find(pp => (pp.sku || "").trim().toLowerCase() === (sku || "").trim().toLowerCase());
+          return p ? p.name : null;
+        };
+        return (
+          <div style={{ ...card, marginTop: 12, borderLeft: `3px solid ${c.clay}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Subscribe & Save · active subscriptions</div>
+                <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif }}>Suscripciones activas por producto — unidades programadas en las próximas semanas, del reporte S&S de Amazon</div>
+              </div>
+              <button onClick={loadSns} disabled={sns.phase === "creating" || sns.phase === "polling" || sns.phase === "downloading"}
+                style={{ background: "transparent", border: `1px solid ${c.clay}`, color: c.clay, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>
+                {sns.phase === "idle" || sns.phase === "error" || sns.phase === "ready" ? "LOAD SUBSCRIPTIONS" : sns.phase === "creating" ? "REQUESTING…" : sns.phase === "polling" ? "AMAZON IS GENERATING…" : "DOWNLOADING…"}
+              </button>
+            </div>
+            {sns.phase === "idle" && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 8 }}>Amazon generates this report on request — it usually takes 15–60 seconds.</div>}
+            {sns.phase === "polling" && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 8 }}>Waiting on Amazon — this page will update itself…</div>}
+            {sns.phase === "error" && <div style={{ fontFamily: sans, fontSize: 11, color: c.red, marginTop: 8 }}>{sns.error}</div>}
+            {sns.phase === "ready" && skuRows.length === 0 && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 8 }}>No active Subscribe & Save offers found in the report.</div>}
+            {sns.phase === "ready" && skuRows.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                {skuRows.map((s, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontFamily: serif, fontSize: 14, color: c.ink }}>{nameFor(s.sku) || s.sku}</span>
+                      {nameFor(s.sku) && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub, marginLeft: 8 }}>{s.sku}</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      {s.state && <span style={{ fontSize: 9, letterSpacing: 1, fontFamily: sans, color: s.state.toUpperCase().includes("ACTIVE") ? c.green : c.sub, border: `1px solid ${c.line}`, borderRadius: 1, padding: "1px 6px" }}>{s.state.toUpperCase()}</span>}
+                      <span style={{ fontFamily: sans, fontSize: 11, color: c.ink }}>{s.total} units scheduled</span>
+                    </div>
+                  </div>
+                ))}
+                <div onClick={() => setShowSnsRaw(!showSnsRaw)} style={{ cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1, color: c.clay, marginTop: 8 }}>
+                  {showSnsRaw ? "▾" : "▸"} RAW REPORT · {sns.rows.length} rows
+                </div>
+                {showSnsRaw && (
+                  <div style={{ overflowX: "auto", marginTop: 6 }}>
+                    <table style={{ borderCollapse: "collapse", fontFamily: sans, fontSize: 10, color: c.sub }}>
+                      <thead><tr>{sns.headers.map((h, i) => <th key={i} style={{ textAlign: "left", padding: "3px 10px 3px 0", borderBottom: `1px solid ${c.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+                      <tbody>{sns.rows.slice(0, 60).map((r, i) => (
+                        <tr key={i}>{sns.headers.map((h, j) => <td key={j} style={{ padding: "2px 10px 2px 0", whiteSpace: "nowrap", borderBottom: "1px solid #00000008" }}>{r[h]}</td>)}</tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>
