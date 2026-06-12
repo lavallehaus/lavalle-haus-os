@@ -45,6 +45,10 @@ function CreateShipmentWizard({ onPlanCreated }) {
   const [status, setStatus] = useState(null); // progress / error line
   const [planId, setPlanId] = useState(null);
   const [packing, setPacking] = useState({ phase: "idle", options: [], groupItems: {}, confirmedId: null });
+  // B2 state
+  const [boxes, setBoxes] = useState({}); // groupId -> [{ items: {msku: qtyStr}, L, W, H, weight, count }]
+  const [placement, setPlacement] = useState({ phase: "idle", options: [], confirmedId: null });
+  const [transport, setTransport] = useState({ phase: "idle", readyDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10), options: [], picks: {}, confirmed: false });
 
   useEffect(() => {
     if (!show || addrLoaded) return;
@@ -149,6 +153,122 @@ function CreateShipmentWizard({ onPlanCreated }) {
     } catch (e) { setStatus(`✗ ${String(e).slice(0, 300)}`); }
   }
 
+  function defaultBoxesFor(groupId) {
+    const items = {};
+    for (const it of packing.groupItems[groupId] || []) items[it.msku] = String(it.quantity);
+    return [{ items, L: "", W: "", H: "", weight: "", count: "1" }];
+  }
+
+  function ensureBoxes() {
+    const next = { ...boxes };
+    const opt = packing.options.find(o => o.id === packing.confirmedId);
+    for (const gid of (opt ? opt.groupIds : [])) if (!next[gid]) next[gid] = defaultBoxesFor(gid);
+    setBoxes(next);
+    setStep(5);
+  }
+
+  const confirmedOpt = packing.options.find(o => o.id === packing.confirmedId);
+  const boxesOk = confirmedOpt && confirmedOpt.groupIds.every(gid =>
+    (boxes[gid] || []).length > 0 && (boxes[gid] || []).every(b =>
+      Number(b.L) > 0 && Number(b.W) > 0 && Number(b.H) > 0 && Number(b.weight) > 0 && Number(b.count) > 0 &&
+      Object.values(b.items).some(q => Number(q) > 0)
+    )
+  );
+
+  async function submitBoxes() {
+    setStatus("Sending box contents to Amazon…");
+    try {
+      const packageGroupings = confirmedOpt.groupIds.map(gid => ({
+        packingGroupId: gid,
+        boxes: (boxes[gid] || []).map(b => ({
+          contentInformationSource: "BOX_CONTENT_PROVIDED",
+          quantity: Number(b.count) || 1,
+          dimensions: { length: Number(b.L), width: Number(b.W), height: Number(b.H), unitOfMeasurement: "IN" },
+          weight: { value: Number(b.weight), unit: "LB" },
+          items: Object.entries(b.items).filter(([, q]) => Number(q) > 0).map(([msku, q]) => ({ msku, quantity: Number(q), prepOwner: "SELLER", labelOwner: "SELLER" })),
+        })),
+      }));
+      const d = await fetch("/api/fba-shipments?op=setboxes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, packageGroupings }),
+      }).then(r => r.json());
+      await pollOperation(d.operationId, "Box information");
+      setStatus(null);
+      setStep(6);
+    } catch (e) { setStatus(`✗ ${String(e).slice(0, 300)}`); }
+  }
+
+  async function generatePlacement() {
+    setPlacement(p => ({ ...p, phase: "generating" }));
+    setStatus("Asking Amazon where these boxes can go…");
+    try {
+      const g = await fetch(`/api/fba-shipments?op=placement&action=generate&planId=${encodeURIComponent(planId)}`).then(r => r.json());
+      await pollOperation(g.operationId, "Placement options");
+      const l = await fetch(`/api/fba-shipments?op=placement&action=list&planId=${encodeURIComponent(planId)}`).then(r => r.json());
+      setPlacement({ phase: "listed", options: l.options || [], confirmedId: null });
+      setStatus(null);
+    } catch (e) {
+      setPlacement(p => ({ ...p, phase: "idle" }));
+      setStatus(`✗ ${String(e).slice(0, 300)}`);
+    }
+  }
+
+  async function confirmPlacement(optionId) {
+    setStatus("Confirming placement…");
+    try {
+      const d = await fetch(`/api/fba-shipments?op=placement&action=confirm&planId=${encodeURIComponent(planId)}&optionId=${encodeURIComponent(optionId)}`).then(r => r.json());
+      await pollOperation(d.operationId, "Placement confirmation");
+      setPlacement(p => ({ ...p, phase: "confirmed", confirmedId: optionId }));
+      setStatus(null);
+      setStep(7);
+    } catch (e) { setStatus(`✗ ${String(e).slice(0, 300)}`); }
+  }
+
+  async function generateTransport() {
+    const opt = placement.options.find(o => o.id === placement.confirmedId);
+    if (!opt) return;
+    setTransport(t => ({ ...t, phase: "generating" }));
+    setStatus("Getting carrier quotes…");
+    try {
+      const g = await fetch("/api/fba-shipments?op=transport&action=generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId,
+          placementOptionId: placement.confirmedId,
+          contact: { name: addr.name, phoneNumber: addr.phoneNumber, email: addr.email || undefined },
+          shipments: opt.shipmentIds.map(sid => ({ shipmentId: sid, readyDate: `${transport.readyDate}T08:00:00Z` })),
+        }),
+      }).then(r => r.json());
+      await pollOperation(g.operationId, "Carrier quotes");
+      const l = await fetch(`/api/fba-shipments?op=transport&action=list&planId=${encodeURIComponent(planId)}&placementOptionId=${encodeURIComponent(placement.confirmedId)}`).then(r => r.json());
+      setTransport(t => ({ ...t, phase: "listed", options: l.options || [], picks: {} }));
+      setStatus(null);
+    } catch (e) {
+      setTransport(t => ({ ...t, phase: "idle" }));
+      setStatus(`✗ ${String(e).slice(0, 300)}`);
+    }
+  }
+
+  const placementOpt = placement.options.find(o => o.id === placement.confirmedId);
+  const allPicked = placementOpt && placementOpt.shipmentIds.every(sid => transport.picks[sid]);
+
+  async function confirmTransport() {
+    setStatus("Booking carrier — this is the binding step…");
+    try {
+      const d = await fetch("/api/fba-shipments?op=transport&action=confirm", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId,
+          selections: Object.entries(transport.picks).map(([shipmentId, transportationOptionId]) => ({ shipmentId, transportationOptionId })),
+        }),
+      }).then(r => r.json());
+      await pollOperation(d.operationId, "Carrier confirmation");
+      setTransport(t => ({ ...t, phase: "confirmed", confirmed: true }));
+      setStatus(null);
+      if (onPlanCreated) onPlanCreated();
+    } catch (e) { setStatus(`✗ ${String(e).slice(0, 300)}`); }
+  }
+
   if (!show) {
     return (
       <button onClick={() => setShow(true)} style={{ ...btnDark, marginBottom: 14 }}>＋ Create shipment</button>
@@ -169,7 +289,7 @@ function CreateShipmentWizard({ onPlanCreated }) {
         <button onClick={() => setShow(false)} style={btnGhost}>CLOSE</button>
       </div>
       <div style={{ display: "flex", gap: 14, margin: "10px 0 12px", flexWrap: "wrap" }}>
-        <StepDot n={1} label="SHIP FROM" /><StepDot n={2} label="ITEMS" /><StepDot n={3} label="CREATE PLAN" /><StepDot n={4} label="PACKING" />
+        <StepDot n={1} label="SHIP FROM" /><StepDot n={2} label="ITEMS" /><StepDot n={3} label="CREATE PLAN" /><StepDot n={4} label="PACKING" /><StepDot n={5} label="BOXES" /><StepDot n={6} label="PLACEMENT" /><StepDot n={7} label="CARRIER" />
       </div>
 
       {step === 1 && (
@@ -250,8 +370,122 @@ function CreateShipmentWizard({ onPlanCreated }) {
             </div>
           ))}
           {packing.phase === "confirmed" && (
+            <div>
+              <div style={{ fontFamily: sans, fontSize: 11, color: c.green, marginBottom: 8 }}>✓ Packing structure confirmed.</div>
+              <button onClick={ensureBoxes} style={btnDark}>Boxes & weights ›</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 5 && confirmedOpt && (
+        <div>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)", marginBottom: 8 }}>
+            Tell Amazon what's physically in each box — dimensions in inches, weight in pounds. "× identical" ships several same-packed boxes without retyping.
+            <br/>Dile a Amazon qué hay físicamente en cada caja — pulgadas y libras.
+          </div>
+          {confirmedOpt.groupIds.map((gid, gi) => (
+            <div key={gid} style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: 10, marginBottom: 8 }}>
+              <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, color: c.sub, marginBottom: 6 }}>PACKING GROUP {gi + 1}</div>
+              {(boxes[gid] || []).map((b, bi) => (
+                <div key={bi} style={{ borderLeft: `2px solid ${c.line}`, paddingLeft: 10, marginBottom: 10 }}>
+                  <div style={{ fontFamily: sans, fontSize: 10, color: c.ink, marginBottom: 4 }}>BOX {bi + 1}{(boxes[gid] || []).length > 1 && (
+                    <span onClick={() => setBoxes({ ...boxes, [gid]: boxes[gid].filter((_, j) => j !== bi) })} style={{ color: c.red, cursor: "pointer", marginLeft: 10 }}>✕ remove</span>
+                  )}</div>
+                  {Object.keys(b.items).map(msku => (
+                    <div key={msku} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "2px 0" }}>
+                      <span style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>{msku}</span>
+                      <input value={b.items[msku]} onChange={e => {
+                        const nb = [...boxes[gid]]; nb[bi] = { ...b, items: { ...b.items, [msku]: e.target.value.replace(/[^0-9]/g, "") } };
+                        setBoxes({ ...boxes, [gid]: nb });
+                      }} style={{ ...inputS, width: 60, textAlign: "center" }} />
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {[["L", "L in"], ["W", "W in"], ["H", "H in"], ["weight", "lbs"], ["count", "× identical"]].map(([k, ph]) => (
+                      <input key={k} value={b[k]} placeholder={ph} onChange={e => {
+                        const nb = [...boxes[gid]]; nb[bi] = { ...b, [k]: e.target.value.replace(/[^0-9.]/g, "") };
+                        setBoxes({ ...boxes, [gid]: nb });
+                      }} style={{ ...inputS, width: 76, textAlign: "center" }} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setBoxes({ ...boxes, [gid]: [...(boxes[gid] || []), { items: Object.fromEntries(Object.keys((boxes[gid] && boxes[gid][0] ? boxes[gid][0].items : {})).map(k => [k, "0"])), L: "", W: "", H: "", weight: "", count: "1" }] })} style={btnGhost}>＋ Add box</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setStep(4)} style={btnGhost}>‹ Back</button>
+            <button onClick={submitBoxes} disabled={!boxesOk} style={{ ...btnDark, opacity: boxesOk ? 1 : 0.4 }}>Send box info ›</button>
+          </div>
+        </div>
+      )}
+
+      {step === 6 && (
+        <div>
+          {placement.phase === "idle" && (
+            <div>
+              <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.clay, marginBottom: 8 }}>
+                Gate 3: placement decides which warehouses receive your boxes. Single-destination options often carry a placement fee; split options are usually cheaper or free. The fees show on each option before you choose.
+                <br/>Compuerta 3: la colocación decide qué almacenes reciben tus cajas — las tarifas se muestran antes de elegir.
+              </div>
+              <button onClick={generatePlacement} style={btnDark}>Get placement options</button>
+            </div>
+          )}
+          {placement.phase === "listed" && placement.options.map((o, i) => {
+            const fee = o.fees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+            const disc = o.discounts.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+            return (
+              <div key={o.id} style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: 10, marginBottom: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: 11, color: c.ink }}>
+                  OPTION {i + 1} · {o.shipmentIds.length} shipment{o.shipmentIds.length !== 1 ? "s" : ""}
+                  {fee > 0 && <span style={{ color: c.red }}> · placement fee ${fee.toFixed(2)}</span>}
+                  {fee === 0 && <span style={{ color: c.green }}> · no placement fee</span>}
+                  {disc > 0 && <span style={{ color: c.green }}> · discount ${disc.toFixed(2)}</span>}
+                </div>
+                <button onClick={() => confirmPlacement(o.id)} style={{ ...btnDark, marginTop: 8 }}>Confirm placement (Gate 3)</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {step === 7 && (
+        <div>
+          {transport.phase !== "confirmed" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>READY TO SHIP ON</span>
+              <input type="date" value={transport.readyDate} onChange={e => setTransport(t => ({ ...t, readyDate: e.target.value }))} style={inputS} />
+              {transport.phase === "idle" && <button onClick={generateTransport} style={btnDark}>Get carrier quotes</button>}
+            </div>
+          )}
+          {transport.phase === "listed" && placementOpt && (
+            <div>
+              {placementOpt.shipmentIds.map(sid => (
+                <div key={sid} style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: 10, marginBottom: 8 }}>
+                  <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, color: c.sub, marginBottom: 6 }}>SHIPMENT {sid.slice(-8)}</div>
+                  {transport.options.filter(o => o.shipmentId === sid).map(o => (
+                    <label key={o.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "3px 0", cursor: "pointer", fontFamily: sans, fontSize: 11, color: c.ink }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="radio" name={`tp-${sid}`} checked={transport.picks[sid] === o.id} onChange={() => setTransport(t => ({ ...t, picks: { ...t.picks, [sid]: o.id } }))} />
+                        {o.carrier || "Carrier"} · {(o.mode || "").replace(/_/g, " ").toLowerCase()} · {o.solution === "AMAZON_PARTNERED_CARRIER" ? "Amazon partnered" : "your own carrier"}
+                      </span>
+                      <span style={{ color: c.green }}>{o.cost ? `$${Number(o.cost.amount).toFixed(2)}` : "—"}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+              <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.red, margin: "8px 0" }}>
+                Gate 4 — the binding one: confirming books the carrier. Partnered-carrier costs are charged to your seller account and label printing unlocks. This is the only step in the wizard that spends money.
+                <br/>Compuerta 4 — la vinculante: confirmar reserva el transportista y cobra a tu cuenta. Es el único paso que gasta dinero.
+              </div>
+              <button onClick={confirmTransport} disabled={!allPicked} style={{ ...btnDark, opacity: allPicked ? 1 : 0.4 }}>Book carrier (Gate 4)</button>
+            </div>
+          )}
+          {transport.phase === "confirmed" && (
             <div style={{ fontFamily: sans, fontSize: 11, color: c.green }}>
-              ✓ Packing structure confirmed. <span style={{ color: c.sub }}>Phase B2 continues from here: box contents & weights, placement (where Amazon routes the boxes), carrier, and labels — each behind its own gate.</span>
+              ✓ Shipment booked. It now appears in the shipments list above — use ⎙ BOX LABELS there once Amazon issues the confirmation ID (usually within minutes). 
+              <span style={{ color: c.sub }}> Envío reservado — usa ⎙ BOX LABELS arriba cuando Amazon emita el ID de confirmación.</span>
             </div>
           )}
         </div>
