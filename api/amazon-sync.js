@@ -119,6 +119,81 @@ export default async function handler(req, res) {
       res.status(200).json({ connected: false, reason: "Missing AMZ_LWA_CLIENT_ID / AMZ_LWA_CLIENT_SECRET / AMZ_REFRESH_TOKEN env vars" });
       return;
     }
+
+    // ?op=daily — per-day revenue/units/orders for the trailing 30 days (Sales API)
+    if (req.query && req.query.op === "daily") {
+      try {
+        const token = await getAccessToken();
+        const end = new Date();
+        const start = new Date(Date.now() - 30 * 86400000);
+        const interval = `${start.toISOString().slice(0, 19)}Z--${end.toISOString().slice(0, 19)}Z`;
+        const d = await spapi(
+          token,
+          `/sales/v1/orderMetrics?marketplaceIds=${MARKETPLACE}&interval=${encodeURIComponent(interval)}&granularity=Day`
+        );
+        const days = (d.payload || []).map((row) => ({
+          date: (row.interval || "").slice(0, 10),
+          units: Number(row.unitCount) || 0,
+          orders: Number(row.orderCount) || 0,
+          sales: row.totalSales ? Number(row.totalSales.amount) || 0 : 0,
+        }));
+        res.status(200).json({ connected: true, days });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
+    // ?op=finances — fee/refund/net summary for the trailing 30 days (Finances API)
+    if (req.query && req.query.op === "finances") {
+      try {
+        const token = await getAccessToken();
+        const after = new Date(Date.now() - 30 * 86400000).toISOString();
+        let next = null;
+        let gross = 0, refunds = 0;
+        const feesByType = {};
+        for (let i = 0; i < 6; i++) {
+          const qs = next
+            ? `NextToken=${encodeURIComponent(next)}`
+            : `PostedAfter=${encodeURIComponent(after)}&MaxResultsPerPage=100`;
+          const d = await spapi(token, `/finances/v0/financialEvents?${qs}`);
+          const ev = (d.payload && d.payload.FinancialEvents) || {};
+          for (const se of ev.ShipmentEventList || []) {
+            for (const item of se.ShipmentItemList || []) {
+              for (const ch of item.ItemChargeList || []) {
+                if (ch.ChargeType === "Principal") gross += Number(ch.ChargeAmount && ch.ChargeAmount.CurrencyAmount) || 0;
+              }
+              for (const fee of item.ItemFeeList || []) {
+                const t = fee.FeeType || "Other";
+                const amt = Number(fee.FeeAmount && fee.FeeAmount.CurrencyAmount) || 0;
+                feesByType[t] = (feesByType[t] || 0) + amt;
+              }
+            }
+          }
+          for (const re of ev.RefundEventList || []) {
+            for (const item of re.ShipmentItemAdjustmentList || []) {
+              for (const ch of item.ItemChargeAdjustmentList || []) {
+                if (ch.ChargeType === "Principal") refunds += Math.abs(Number(ch.ChargeAmount && ch.ChargeAmount.CurrencyAmount) || 0);
+              }
+              for (const fee of item.ItemFeeAdjustmentList || []) {
+                const t = (fee.FeeType || "Other") + " (refund adj)";
+                const amt = Number(fee.FeeAmount && fee.FeeAmount.CurrencyAmount) || 0;
+                feesByType[t] = (feesByType[t] || 0) + amt;
+              }
+            }
+          }
+          next = d.payload && d.payload.NextToken;
+          if (!next) break;
+        }
+        const totalFees = Object.values(feesByType).reduce((s, v) => s + Math.abs(v), 0);
+        const net = gross - totalFees - refunds;
+        res.status(200).json({ connected: true, gross, refunds, feesByType, totalFees, net, since: after });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
     if (req.query && req.query.debug) {
       try {
         const token = await getAccessToken();
