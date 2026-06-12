@@ -29,14 +29,73 @@ export default function AmazonProfit() {
   const [ord, setOrd] = useState({ loading: true, orders: [], vineByDate: {}, vineUnitsByDate: {}, error: null });
   const [showLog, setShowLog] = useState(false);
   const [showRecon, setShowRecon] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState(null);
+
+  // ── Period explorer state ──
+  const dkey = (d) => d.toISOString().slice(0, 10);
+  const NOW = new Date();
+  const [periodMode, setPeriodMode] = useState("30D");
+  const [pStart, setPStart] = useState(dkey(new Date(Date.now() - 30 * 86400000)));
+  const [pEnd, setPEnd] = useState(dkey(NOW));
+  const [pDaily, setPDaily] = useState({ loading: false, days: [], error: null });
+  const [pOrd, setPOrd] = useState({ loading: false, orders: [], vineByDate: {}, vineUnitsByDate: {}, vineValue: 0, error: null });
+  const [showPLog, setShowPLog] = useState(false);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const [netSeries, setNetSeries] = useState({ loading: true, months: [], truncated: false, error: null });
+  const [netGran, setNetGran] = useState("MONTH");
+  const [hoverNet, setHoverNet] = useState(null);
+
+  function rangeFor(mode) {
+    const t = new Date();
+    const y = t.getFullYear(), m = t.getMonth();
+    if (mode === "7D") return [dkey(new Date(Date.now() - 7 * 86400000)), dkey(t)];
+    if (mode === "30D") return [dkey(new Date(Date.now() - 30 * 86400000)), dkey(t)];
+    if (mode === "90D") return [dkey(new Date(Date.now() - 90 * 86400000)), dkey(t)];
+    if (mode === "THIS MONTH") return [dkey(new Date(Date.UTC(y, m, 1))), dkey(t)];
+    if (mode === "LAST MONTH") return [dkey(new Date(Date.UTC(y, m - 1, 1))), dkey(new Date(Date.UTC(y, m, 0)))];
+    if (mode === "YTD") return [`${y}-01-01`, dkey(t)];
+    return [pStart, pEnd];
+  }
+
+  function loadPeriod(start, end) {
+    const spanDays = Math.max(1, Math.round((new Date(end) - new Date(start)) / 86400000));
+    const gran = spanDays > 95 ? "Month" : "Day";
+    setPDaily(s => ({ ...s, loading: true, error: null }));
+    setPOrd(s => ({ ...s, loading: true, error: null }));
+    fetch(`/api/amazon-sync?op=daily&start=${start}&end=${end}&granularity=${gran}`).then(r => r.json()).then(d => {
+      if (d.days) setPDaily({ loading: false, days: d.days, error: null });
+      else setPDaily({ loading: false, days: [], error: d.error || "Not connected" });
+    }).catch(e => setPDaily({ loading: false, days: [], error: String(e) }));
+    fetch(`/api/amazon-sync?op=orders&start=${start}&end=${end}`).then(r => r.json()).then(d => {
+      if (d.orders) setPOrd({ loading: false, orders: d.orders, vineByDate: d.vineByDate || {}, vineUnitsByDate: d.vineUnitsByDate || {}, vineValue: d.vineValue || 0, error: null });
+      else setPOrd({ loading: false, orders: [], vineByDate: {}, vineUnitsByDate: {}, vineValue: 0, error: d.error || "Not connected" });
+    }).catch(e => setPOrd({ loading: false, orders: [], vineByDate: {}, vineUnitsByDate: {}, vineValue: 0, error: String(e) }));
+  }
+
+  function pickPeriod(mode) {
+    setPeriodMode(mode);
+    if (mode !== "CUSTOM" && mode !== "DAY") {
+      const [s, e] = rangeFor(mode);
+      setPStart(s); setPEnd(e);
+      loadPeriod(s, e);
+    }
+    if (mode === "DAY") { /* waits for date pick */ }
+  }
+  useEffect(() => { loadPeriod(pStart, pEnd); }, []);
 
   async function load() {
     setDaily(s => ({ ...s, loading: true, error: null }));
     setFin(s => ({ ...s, loading: true, error: null }));
     fetch("/api/amazon-sync?op=daily").then(r => r.json()).then(d => {
+      setFetchedAt(new Date());
       if (d.days) setDaily({ loading: false, days: d.days, error: null });
       else setDaily({ loading: false, days: [], error: d.error || d.reason || "Not connected" });
     }).catch(e => setDaily({ loading: false, days: [], error: String(e) }));
+    setNetSeries(s => ({ ...s, loading: true, error: null }));
+    fetch("/api/amazon-sync?op=netseries").then(r => r.json()).then(d => {
+      if (d.months) setNetSeries({ loading: false, months: d.months, truncated: !!d.truncated, error: null });
+      else setNetSeries({ loading: false, months: [], truncated: false, error: d.error || "Not connected" });
+    }).catch(e => setNetSeries({ loading: false, months: [], truncated: false, error: String(e) }));
     setOrd(s => ({ ...s, loading: true, error: null }));
     fetch("/api/amazon-sync?op=orders").then(r => r.json()).then(d => {
       if (d.orders) setOrd({ loading: false, orders: d.orders, vineByDate: d.vineByDate || {}, vineUnitsByDate: d.vineUnitsByDate || {}, error: null });
@@ -103,7 +162,13 @@ export default function AmazonProfit() {
           <h1 style={{ fontFamily: serif, fontSize: 26, fontWeight: 400, color: c.ink, margin: 0 }}>Amazon Daily</h1>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.6)" }}>Ventas y utilidad diaria de Amazon — datos en vivo de SP-API</div>
         </div>
-        <button onClick={load} style={{ background: "transparent", border: `1px solid ${c.line}`, color: c.sub, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>REFRESH</button>
+        <div style={{ textAlign: "right" }}>
+          <button onClick={() => { load(); loadPeriod(pStart, pEnd); }} style={{ background: "transparent", border: `1px solid ${c.line}`, color: c.sub, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>REFRESH</button>
+          <div style={{ fontSize: 9, fontFamily: sans, letterSpacing: 1, color: fetchedAt ? c.green : c.sub, marginTop: 4 }}>
+            {fetchedAt ? `● DATA AS OF ${fetchedAt.toLocaleTimeString()}` : "○ FETCHING…"}
+          </div>
+          <div style={{ fontSize: 9, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif }}>{fetchedAt ? "datos en vivo de Amazon" : ""}</div>
+        </div>
       </div>
 
       {daily.error && <div style={{ ...card, borderLeft: `3px solid ${c.red}`, marginTop: 10 }}><span style={{ fontFamily: sans, fontSize: 11, color: c.red }}>{String(daily.error)}</span></div>}
@@ -134,20 +199,240 @@ export default function AmazonProfit() {
         </div>
       )}
 
-      <div style={{ ...card, marginTop: 12 }}>
-        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans, marginBottom: 8 }}>Daily revenue · last 14 days</div>
-        {daily.loading && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>Loading…</div>}
-        {last14.map((d, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
-            <span style={{ width: 74, fontFamily: sans, fontSize: 10, color: c.sub }}>{d.date.slice(5)}</span>
-            <div style={{ flex: 1, height: 10, background: "#e5e1da", borderRadius: 1 }}>
-              <div style={{ width: `${(d.sales / maxSales) * 100}%`, height: "100%", background: c.green, borderRadius: 1 }} />
+      {(() => {
+        // ── PERIOD EXPLORER ──
+        const pvbd = pOrd.vineByDate || {};
+        const pDays = (pDaily.days || []).map(d => ({ ...d, real: Math.max(0, d.sales - (pvbd[d.date] || 0)) }));
+        const totAmz = pDays.reduce((s, d) => s + d.sales, 0);
+        const totReal = pDays.reduce((s, d) => s + d.real, 0);
+        const totUnits = pDays.reduce((s, d) => s + d.units, 0);
+        const totOrders = pDays.reduce((s, d) => s + d.orders, 0);
+        const pReal = pOrd.orders.filter(o => o.kind === "real");
+        const pVine = pOrd.orders.filter(o => o.kind === "vine");
+        const pVineUnits = pVine.reduce((s, o) => s + (o.units || 0), 0);
+
+        // Smooth area curve (Catmull-Rom → bezier)
+        const W = 640, H = 170, PAD = 8;
+        const maxV = Math.max(1, ...pDays.map(d => d.real));
+        const pts = pDays.map((d, i) => [
+          PAD + (pDays.length === 1 ? (W - 2 * PAD) / 2 : (i / (pDays.length - 1)) * (W - 2 * PAD)),
+          H - PAD - (d.real / maxV) * (H - 2 * PAD - 14),
+        ]);
+        let path = "";
+        if (pts.length === 1) path = `M ${pts[0][0]} ${pts[0][1]} L ${pts[0][0] + 1} ${pts[0][1]}`;
+        else if (pts.length > 1) {
+          path = `M ${pts[0][0]} ${pts[0][1]}`;
+          for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+            const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+            const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+            path += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
+          }
+        }
+        const area = pts.length > 1 ? `${path} L ${pts[pts.length - 1][0]} ${H - PAD} L ${pts[0][0]} ${H - PAD} Z` : "";
+        const peak = pDays.reduce((best, d) => (d.real > (best ? best.real : -1) ? d : best), null);
+        const tickEvery = Math.max(1, Math.ceil(pDays.length / 6));
+        const KIND_STYLE = { real: { color: c.green, label: "SALE" }, vine: { color: c.clay, label: "VINE / $0" }, pending: { color: c.sub, label: "PENDING" }, canceled: { color: c.red, label: "CANCELED" } };
+
+        return (
+          <div style={{ ...card, marginTop: 12 }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Period explorer · growth curve</div>
+            <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif, marginBottom: 8 }}>Explora cualquier día, mes, año o periodo — curva de crecimiento con ingreso real (sin Vine)</div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {["7D", "30D", "90D", "THIS MONTH", "LAST MONTH", "YTD", "DAY", "CUSTOM"].map(m => (
+                <button key={m} onClick={() => pickPeriod(m)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${periodMode === m ? "#1a1714" : c.line}`, background: periodMode === m ? "#1a1714" : "transparent", color: periodMode === m ? "#f7f4ef" : c.sub }}>{m}</button>
+              ))}
             </div>
-            <span style={{ width: 90, textAlign: "right", fontFamily: sans, fontSize: 11, color: c.ink }}>{money(d.sales)}</span>
-            <span style={{ width: 50, textAlign: "right", fontFamily: sans, fontSize: 10, color: c.sub }}>{d.units}u</span>
+            {(periodMode === "CUSTOM" || periodMode === "DAY") && (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                <input type="date" value={pStart} onChange={e => { setPStart(e.target.value); if (periodMode === "DAY") setPEnd(e.target.value); }}
+                  style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />
+                {periodMode === "CUSTOM" && <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>to</span>}
+                {periodMode === "CUSTOM" && <input type="date" value={pEnd} onChange={e => setPEnd(e.target.value)}
+                  style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />}
+                <button onClick={() => loadPeriod(pStart, periodMode === "DAY" ? pStart : pEnd)} style={{ padding: "4px 14px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: "1px solid #1a1714", background: "#1a1714", color: "#f7f4ef" }}>APPLY</button>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 8 }}>
+              <div><span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>REVENUE </span><span style={{ fontFamily: serif, fontSize: 22, color: c.ink }}>{money(totReal)}</span>{totAmz - totReal > 0.005 && <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}> (Amazon: {money(totAmz)})</span>}</div>
+              <div><span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>UNITS </span><span style={{ fontFamily: serif, fontSize: 22, color: c.ink }}>{totUnits}</span></div>
+              <div><span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>ORDERS </span><span style={{ fontFamily: serif, fontSize: 22, color: c.ink }}>{totOrders}</span></div>
+              {pVine.length > 0 && <div><span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>VINE </span><span style={{ fontFamily: serif, fontSize: 22, color: c.clay }}>{pVineUnits}u</span></div>}
+            </div>
+
+            {pDaily.loading && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>Drawing the curve…</div>}
+            {pDaily.error && <div style={{ fontFamily: sans, fontSize: 11, color: c.red }}>{String(pDaily.error)}</div>}
+            {!pDaily.loading && pDays.length > 0 && (
+              <div>
+                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", cursor: "crosshair" }}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * W;
+                    if (pDays.length < 1) return;
+                    const idx = pDays.length === 1 ? 0 : Math.round(((x - PAD) / (W - 2 * PAD)) * (pDays.length - 1));
+                    setHoverIdx(Math.max(0, Math.min(pDays.length - 1, idx)));
+                  }}
+                  onMouseLeave={() => setHoverIdx(null)}>
+                  {area && <path d={area} fill="#5a7a5a1f" />}
+                  <path d={path} fill="none" stroke={c.green} strokeWidth="2" />
+                  {hoverIdx !== null && pts[hoverIdx] && (
+                    <g>
+                      <line x1={pts[hoverIdx][0]} y1={PAD} x2={pts[hoverIdx][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
+                      <circle cx={pts[hoverIdx][0]} cy={pts[hoverIdx][1]} r="4" fill={c.clay} />
+                      <text x={Math.min(W - 90, Math.max(90, pts[hoverIdx][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="monospace" fill={c.ink}>
+                        {pDays[hoverIdx].date.slice(5)} · {money(pDays[hoverIdx].real)}{pDays[hoverIdx].sales - pDays[hoverIdx].real > 0.005 ? ` (Amazon: ${money(pDays[hoverIdx].sales)})` : ""}
+                      </text>
+                    </g>
+                  )}
+                  {hoverIdx === null && peak && pts.length > 1 && (() => {
+                    const pi = pDays.indexOf(peak);
+                    return <g>
+                      <circle cx={pts[pi][0]} cy={pts[pi][1]} r="3" fill={c.green} />
+                      <text x={Math.min(W - 70, Math.max(40, pts[pi][0]))} y={Math.max(12, pts[pi][1] - 8)} textAnchor="middle" fontSize="10" fontFamily="monospace" fill={c.sub}>{money(peak.real)}</text>
+                    </g>;
+                  })()}
+                  <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke={c.line} strokeWidth="1" />
+                </svg>
+                <div style={{ minHeight: 18, fontFamily: sans, fontSize: 11, color: hoverIdx !== null ? c.ink : c.sub, marginTop: 4 }}>
+                  {hoverIdx !== null && pDays[hoverIdx] ? (
+                    <span>
+                      <span style={{ color: c.clay }}>▸ {pDays[hoverIdx].date}</span>
+                      {" · "}{money(pDays[hoverIdx].real)} real revenue
+                      {pDays[hoverIdx].sales - pDays[hoverIdx].real > 0.005 ? ` (Amazon: ${money(pDays[hoverIdx].sales)})` : ""}
+                      {" · "}{pDays[hoverIdx].units} units · {pDays[hoverIdx].orders} orders
+                    </span>
+                  ) : (
+                    <span style={{ fontStyle: "italic", fontFamily: serif, color: "rgba(111,102,87,0.55)" }}>Hover the curve for any point's date and revenue — pasa el mouse sobre la curva para ver fecha e ingreso de cada punto</span>
+                  )}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 9, color: c.sub }}>
+                  {pDays.filter((_, i) => i % tickEvery === 0 || i === pDays.length - 1).map((d, i) => <span key={i}>{d.date.slice(5)}</span>)}
+                </div>
+              </div>
+            )}
+
+            <div onClick={() => setShowPLog(!showPLog)} style={{ cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1, color: c.green, marginTop: 10 }}>
+              {showPLog ? "▾" : "▸"} ORDERS IN THIS PERIOD · {pOrd.orders.length}
+            </div>
+            {showPLog && (
+              <div style={{ marginTop: 6, borderLeft: `2px solid ${c.line}`, paddingLeft: 10, maxHeight: 360, overflowY: "auto" }}>
+                {pOrd.orders.map((o, i) => {
+                  const ks = KIND_STYLE[o.kind] || KIND_STYLE.real;
+                  return (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontFamily: sans, fontSize: 11, color: c.sub, padding: "3px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+                      <span style={{ whiteSpace: "nowrap" }}>{(o.date || "").slice(0, 10)}</span>
+                      <span style={{ flex: 1, minWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.id}</span>
+                      <span style={{ fontSize: 9, letterSpacing: 1, color: ks.color, border: `1px solid ${ks.color}40`, borderRadius: 1, padding: "1px 6px" }}>{ks.label}</span>
+                      <span style={{ width: 36, textAlign: "right" }}>{o.units}u</span>
+                      <span style={{ width: 110, textAlign: "right", color: o.kind === "vine" ? c.clay : c.ink }}>{o.kind === "vine" && o.attributed ? `$0 (${money(o.attributed)} list)` : o.total === null ? "—" : money(o.total)}</span>
+                    </div>
+                  );
+                })}
+                {pOrd.orders.length === 0 && !pOrd.loading && <div style={{ fontSize: 11, fontStyle: "italic", color: c.sub }}>No orders in this period.</div>}
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+        );
+      })()}
+
+      {(() => {
+        // ── NET PROFIT CURVE · SETTLED ──
+        const ms = netSeries.months || [];
+        const qKey = (m) => `${m.slice(0, 4)}-Q${Math.ceil(Number(m.slice(5, 7)) / 3)}`;
+        const agg = {};
+        for (const row of ms) {
+          const k = netGran === "MONTH" ? row.month : netGran === "QUARTER" ? qKey(row.month) : row.month.slice(0, 4);
+          if (!agg[k]) agg[k] = { label: k, gross: 0, fees: 0, refunds: 0, net: 0 };
+          agg[k].gross += row.gross; agg[k].fees += row.fees; agg[k].refunds += row.refunds; agg[k].net += row.net;
+        }
+        const buckets = Object.values(agg).sort((a, b) => (a.label < b.label ? -1 : 1));
+        const W = 640, H = 170, PAD = 8;
+        const vals = buckets.map(bk => bk.net);
+        const maxV = Math.max(1, ...vals);
+        const minV = Math.min(0, ...vals);
+        const span = Math.max(1, maxV - minV);
+        const yOf = (v) => H - PAD - ((v - minV) / span) * (H - 2 * PAD - 14);
+        const pts = buckets.map((bk, i) => [
+          PAD + (buckets.length === 1 ? (W - 2 * PAD) / 2 : (i / (buckets.length - 1)) * (W - 2 * PAD)),
+          yOf(bk.net),
+        ]);
+        let npath = "";
+        if (pts.length === 1) npath = `M ${pts[0][0]} ${pts[0][1]} L ${pts[0][0] + 1} ${pts[0][1]}`;
+        else if (pts.length > 1) {
+          npath = `M ${pts[0][0]} ${pts[0][1]}`;
+          for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+            const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+            const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+            npath += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
+          }
+        }
+        const zeroY = yOf(0);
+        const curKey = netGran === "MONTH" ? new Date().toISOString().slice(0, 7) : netGran === "QUARTER" ? qKey(new Date().toISOString().slice(0, 7)) : new Date().toISOString().slice(0, 4);
+        return (
+          <div style={{ ...card, marginTop: 12, borderLeft: `3px solid ${c.green}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Net profit curve · settled money</div>
+                <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif }}>Curva de utilidad neta — dinero liquidado por fecha de registro</div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {["MONTH", "QUARTER", "YEAR"].map(g => (
+                  <button key={g} onClick={() => { setNetGran(g); setHoverNet(null); }} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${netGran === g ? "#1a1714" : c.line}`, background: netGran === g ? "#1a1714" : "transparent", color: netGran === g ? "#f7f4ef" : c.sub }}>{g}</button>
+                ))}
+              </div>
+            </div>
+            {netSeries.loading && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 8 }}>Loading settlement history…</div>}
+            {netSeries.error && <div style={{ fontFamily: sans, fontSize: 11, color: c.red, marginTop: 8 }}>{String(netSeries.error)}</div>}
+            {!netSeries.loading && buckets.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", cursor: "crosshair" }}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * W;
+                    const idx = buckets.length === 1 ? 0 : Math.round(((x - PAD) / (W - 2 * PAD)) * (buckets.length - 1));
+                    setHoverNet(Math.max(0, Math.min(buckets.length - 1, idx)));
+                  }}
+                  onMouseLeave={() => setHoverNet(null)}>
+                  <line x1={PAD} y1={zeroY} x2={W - PAD} y2={zeroY} stroke={c.line} strokeWidth="1" strokeDasharray="2,3" />
+                  <path d={npath} fill="none" stroke={c.green} strokeWidth="2" />
+                  {pts.map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r={hoverNet === i ? 4.5 : 3} fill={buckets[i].net >= 0 ? c.green : c.red} />
+                  ))}
+                  {hoverNet !== null && pts[hoverNet] && (
+                    <g>
+                      <line x1={pts[hoverNet][0]} y1={PAD} x2={pts[hoverNet][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
+                      <text x={Math.min(W - 110, Math.max(110, pts[hoverNet][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="monospace" fill={c.ink}>
+                        {buckets[hoverNet].label} · net {money(buckets[hoverNet].net)}
+                      </text>
+                    </g>
+                  )}
+                </svg>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 9, color: c.sub }}>
+                  {buckets.map((bk, i) => <span key={i} style={{ color: bk.label === curKey ? c.clay : c.sub }}>{bk.label.slice(2)}</span>)}
+                </div>
+                <div style={{ minHeight: 18, fontFamily: sans, fontSize: 11, color: hoverNet !== null ? c.ink : c.sub, marginTop: 4 }}>
+                  {hoverNet !== null && buckets[hoverNet] ? (
+                    <span>
+                      <span style={{ color: c.clay }}>▸ {buckets[hoverNet].label}</span>
+                      {" · net "}<span style={{ color: buckets[hoverNet].net >= 0 ? c.green : c.red }}>{money(buckets[hoverNet].net)}</span>
+                      {" — "}{money(buckets[hoverNet].gross)} gross · ({money(buckets[hoverNet].fees)}) fees · ({money(buckets[hoverNet].refunds)}) refunds
+                      {buckets[hoverNet].label === curKey ? " · current period, still settling" : ""}
+                    </span>
+                  ) : (
+                    <span style={{ fontStyle: "italic", fontFamily: serif, color: "rgba(111,102,87,0.55)" }}>Hover for any period's net, gross, fees, and refunds — pasa el mouse para el neto, bruto, comisiones y reembolsos de cada periodo</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif, marginTop: 4 }}>
+                  Settled by Amazon posting date over the trailing 12 months. The current {netGran.toLowerCase()} (amber) is incomplete until Amazon finishes posting its fees.{netSeries.truncated ? " History was truncated at Amazon's page limit — older months may be partial." : ""}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {(() => {
         const orders = ord.orders || [];
