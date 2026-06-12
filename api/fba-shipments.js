@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 // api/fba-shipments.js
 // LAVALLE HAUS OS — FBA inbound shipments: list shipments + box label download.
 // GET ?op=shipments                          -> { connected, shipments: [...] }
@@ -62,7 +63,22 @@ async function spapi(token, path) {
   return d;
 }
 
+
+// ── APP LOCK ──────────────────────────────────────────────────────────────────
+// When APP_PASSWORD is set in Vercel, every request must carry the session
+// token in the x-app-token header. Until it is set, the lock stays off — so
+// deploying this code before adding the env var can never lock anyone out.
+const SESSION_SALT = "lavalle-haus-session-v1";
+function appToken() {
+  return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
+}
+function isAuthed(req) {
+  if (!process.env.APP_PASSWORD) return true;
+  return (req.headers["x-app-token"] || "") === appToken();
+}
+
 export default async function handler(req, res) {
+  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   if (!(LWA_ID && LWA_SECRET && REFRESH_TOKEN)) {
     res.status(200).json({ connected: false, reason: "Amazon credentials not configured" });
     return;
