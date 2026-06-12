@@ -230,6 +230,7 @@ const [past, setPast] = useState([]);
 const [future, setFuture] = useState([]);
 const [channelFilter, setChannelFilter] = useState("All");
 const [openVariants, setOpenVariants] = useState(null);
+const [openSamples, setOpenSamples] = useState(null);
 
 function deleteProduct(id) {
 if (!window.confirm("Remove this product from the list? UNDO can restore it this session.")) return;
@@ -303,11 +304,25 @@ const order = { out: 0, reorder: 1, low: 2, inbound: 3, slow: 4, ok: 5 };
 const visible = products.filter(p => channelFilter === "All" ? true : (p.channels || ["Amazon"]).includes(channelFilter));
 const sorted = [...visible].sort((a, b) => (order[stockStatus(a, shopify)] ?? 6) - (order[stockStatus(b, shopify)] ?? 6));
 const reorderList = products.filter(p => { const s = stockStatus(p, shopify); return s === "out" || s === "reorder"; });
-// Bottom group: samples/testers and anything sold on the B2B channel.
-const inB2BGroup = p => p.isSample || (p.channels || []).includes("B2B");
-const mainList = sorted.filter(p => !inB2BGroup(p));
-const sampleList = sorted.filter(inB2BGroup);
-const displayList = [...mainList, ...(sampleList.length ? [{ id: "__samplehdr", __sampleHeader: true }] : []), ...sampleList];
+// Samples nest under their parent product as a concealed dropdown; samples
+// without a living parent fall to a small section at the end.
+const mainList = sorted.filter(p => !p.isSample);
+const allSamples = products.filter(p => p.isSample);
+const kidsOf = (id) => allSamples.filter(s => s.parentId === id);
+const orphanSamples = allSamples.filter(s => !s.parentId || !products.some(pp => pp.id === s.parentId && !pp.isSample));
+const displayList = [];
+for (const p of mainList) {
+displayList.push(p);
+const kids = kidsOf(p.id);
+if (kids.length) {
+displayList.push({ id: "__st" + p.id, __sampleToggle: true, parentId: p.id, count: kids.length });
+if (openSamples === p.id) kids.forEach(k => displayList.push({ ...k, __nested: true }));
+}
+}
+if (orphanSamples.length) {
+displayList.push({ id: "__samplehdr", __sampleHeader: true });
+orphanSamples.forEach(s => displayList.push(s));
+}
 
 return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -382,10 +397,16 @@ return (
 </Card>
 )}
 {displayList.map(p => {
+if (p.__sampleToggle) return (
+<div key={p.id} onClick={() => setOpenSamples(openSamples === p.parentId ? null : p.parentId)}
+style={{ cursor: "pointer", marginLeft: 24, marginTop: -4, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, color: "#a09488" }}>
+{openSamples === p.parentId ? "▾" : "▸"} {p.count} SAMPLE{p.count === 1 ? "" : "S"} / TESTER{p.count === 1 ? "" : "S"}
+</div>
+);
 if (p.__sampleHeader) return (
 <div key="__samplehdr" style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid #ddd8d0" }}>
-<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "monospace" }}>Samples / Testers / B2B</div>
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras, testers y productos B2B — agrupados fuera del inventario de venta directa</div>
+<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "monospace" }}>Samples / Testers</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'IM Fell English', Georgia, serif" }}>Muestras sin producto padre asignado</div>
 </div>
 );
 const st = stockStatus(p, shopify);
@@ -393,7 +414,7 @@ const { color, bg, label } = STATUS_STYLE[st];
 const weeks = weeksOfSupply(effectiveStock(p, shopify), effectiveSold(p, shopify));
 const isEditing = editing === p.id;
 return (
-<Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg }}>
+<Card key={p.id} style={{ borderLeft: `3px solid ${color}`, background: bg, marginLeft: p.__nested ? 24 : 0 }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1, minWidth: 200 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
@@ -470,7 +491,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 </div>
 <div onClick={() => setDraft(d => ({ ...d, isSample: !d.isSample }))} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
 <span style={{ width: 11, height: 11, border: "1px solid #4a3f2a", background: draft.isSample ? "#a07848" : "transparent", display: "inline-block" }} />
-<span style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 1, color: "#8c7d6b" }}>SAMPLE / TESTER — groups at bottom, B2B</span>
+<span style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 1, color: "#8c7d6b" }}>SAMPLE / TESTER — concealed under its parent product</span>
 </div>
 <div style={{ display: "flex", gap: 6 }}>
 <button onClick={() => saveEdit(p.id)} style={{ flex: 1, background: "#1a1714", color: "#f7f4ef", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
@@ -1587,12 +1608,14 @@ if (missing.length) { mergedProducts = [...d.products, ...missing]; productsChan
 const beforeRetire = mergedProducts.length;
 mergedProducts = mergedProducts.filter(p => !deletedSet.has(p.id));
 if (mergedProducts.length !== beforeRetire) productsChanged = true;
-// Samples are testers: grouped separately, tagged B2B.
-const SAMPLE_IDS = [11, 12];
+// Samples are testers: nested under their parent product.
+const SAMPLE_PARENT = { 11: 8, 12: 4 };
 mergedProducts = mergedProducts.map(p => {
-if (!SAMPLE_IDS.includes(p.id) || p.isSample) return p;
+const parent = SAMPLE_PARENT[p.id];
+if (!parent) return p;
+if (p.isSample && p.parentId === parent) return p;
 productsChanged = true;
-return { ...p, isSample: true, channels: ["B2B"] };
+return { ...p, isSample: true, parentId: parent, channels: p.channels && p.channels.length ? p.channels : ["B2B"] };
 });
 // One-time reconciliation: exact Shopify store titles + Shopify channel for the apple candles.
 const NAME_FIX = { 4: "Mini Spiced Apple Botanical Candle", 5: "Large Spiced Apple Botanical Candle" };
