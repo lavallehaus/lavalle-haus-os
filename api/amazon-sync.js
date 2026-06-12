@@ -128,13 +128,19 @@ export default async function handler(req, res) {
     if (req.query && req.query.op === "orders") {
       try {
         const token = await getAccessToken();
-        const after = new Date(Date.now() - 30 * 86400000).toISOString();
+        const ds = /^\d{4}-\d{2}-\d{2}$/;
+        const qStart = ds.test(req.query.start || "") ? req.query.start : null;
+        const qEnd = ds.test(req.query.end || "") ? req.query.end : null;
+        const after = qStart ? `${qStart}T00:00:00Z` : new Date(Date.now() - 30 * 86400000).toISOString();
+        // CreatedBefore must trail "now" by 2+ minutes; only send it for past end dates
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const before = qEnd && qEnd < todayKey ? `${qEnd}T23:59:59Z` : null;
         let next = null;
         let orders = [];
         for (let i = 0; i < 3; i++) {
           const qs = next
             ? `NextToken=${encodeURIComponent(next)}`
-            : `MarketplaceIds=${MARKETPLACE}&CreatedAfter=${encodeURIComponent(after)}&MaxResultsPerPage=100`;
+            : `MarketplaceIds=${MARKETPLACE}&CreatedAfter=${encodeURIComponent(after)}${before ? `&CreatedBefore=${encodeURIComponent(before)}` : ""}&MaxResultsPerPage=100`;
           const d = await spapi(token, `/orders/v0/orders?${qs}`);
           const page = (d.payload && d.payload.Orders) || [];
           orders = orders.concat(page.map((o) => {
@@ -195,12 +201,16 @@ export default async function handler(req, res) {
     if (req.query && req.query.op === "daily") {
       try {
         const token = await getAccessToken();
-        const end = new Date();
-        const start = new Date(Date.now() - 30 * 86400000);
-        const interval = `${start.toISOString().slice(0, 19)}Z--${end.toISOString().slice(0, 19)}Z`;
+        const ds = /^\d{4}-\d{2}-\d{2}$/;
+        const qStart = ds.test(req.query.start || "") ? req.query.start : null;
+        const qEnd = ds.test(req.query.end || "") ? req.query.end : null;
+        const gran = ["Day", "Week", "Month", "Year"].includes(req.query.granularity) ? req.query.granularity : "Day";
+        const startIso = qStart ? `${qStart}T00:00:00Z` : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 19) + "Z";
+        const endIso = qEnd ? `${qEnd}T23:59:59Z` : new Date().toISOString().slice(0, 19) + "Z";
+        const interval = `${startIso}--${endIso}`;
         const d = await spapi(
           token,
-          `/sales/v1/orderMetrics?marketplaceIds=${MARKETPLACE}&interval=${encodeURIComponent(interval)}&granularity=Day`
+          `/sales/v1/orderMetrics?marketplaceIds=${MARKETPLACE}&interval=${encodeURIComponent(interval)}&granularity=${gran}`
         );
         const days = (d.payload || []).map((row) => ({
           date: (row.interval || "").slice(0, 10),
@@ -209,6 +219,67 @@ export default async function handler(req, res) {
           sales: row.totalSales ? Number(row.totalSales.amount) || 0 : 0,
         }));
         res.status(200).json({ connected: true, days });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
+    // ?op=netseries — settled net profit bucketed by posting MONTH over the
+    // trailing 12 months (Finances API). Frontend rolls months into quarters
+    // or years. Buckets by PostedDate, so the figures are real settled money.
+    if (req.query && req.query.op === "netseries") {
+      try {
+        const token = await getAccessToken();
+        const ds = /^\d{4}-\d{2}-\d{2}$/;
+        const qStart = ds.test(req.query.start || "") ? req.query.start : null;
+        const after = qStart ? `${qStart}T00:00:00Z` : new Date(Date.now() - 365 * 86400000).toISOString();
+        let next = null;
+        let truncated = false;
+        const buckets = {}; // "YYYY-MM" -> { gross, fees, refunds }
+        const b = (k) => (buckets[k] = buckets[k] || { gross: 0, fees: 0, refunds: 0 });
+        for (let i = 0; i < 12; i++) {
+          const qs = next
+            ? `NextToken=${encodeURIComponent(next)}`
+            : `PostedAfter=${encodeURIComponent(after)}&MaxResultsPerPage=100`;
+          const d = await spapi(token, `/finances/v0/financialEvents?${qs}`);
+          const ev = (d.payload && d.payload.FinancialEvents) || {};
+          for (const se of ev.ShipmentEventList || []) {
+            const mk = (se.PostedDate || "").slice(0, 7);
+            if (!mk) continue;
+            for (const item of se.ShipmentItemList || []) {
+              for (const ch of item.ItemChargeList || []) {
+                if (ch.ChargeType === "Principal") b(mk).gross += Number(ch.ChargeAmount && ch.ChargeAmount.CurrencyAmount) || 0;
+              }
+              for (const fee of item.ItemFeeList || []) {
+                b(mk).fees += Math.abs(Number(fee.FeeAmount && fee.FeeAmount.CurrencyAmount) || 0);
+              }
+            }
+          }
+          for (const re of ev.RefundEventList || []) {
+            const mk = (re.PostedDate || "").slice(0, 7);
+            if (!mk) continue;
+            for (const item of re.ShipmentItemAdjustmentList || []) {
+              for (const ch of item.ItemChargeAdjustmentList || []) {
+                if (ch.ChargeType === "Principal") b(mk).refunds += Math.abs(Number(ch.ChargeAmount && ch.ChargeAmount.CurrencyAmount) || 0);
+              }
+              for (const fee of item.ItemFeeAdjustmentList || []) {
+                b(mk).fees += Math.abs(Number(fee.FeeAmount && fee.FeeAmount.CurrencyAmount) || 0);
+              }
+            }
+          }
+          next = d.payload && d.payload.NextToken;
+          if (!next) break;
+          if (i === 11) truncated = true;
+        }
+        const months = Object.keys(buckets).sort().map((k) => ({
+          month: k,
+          gross: buckets[k].gross,
+          fees: buckets[k].fees,
+          refunds: buckets[k].refunds,
+          net: buckets[k].gross - buckets[k].fees - buckets[k].refunds,
+        }));
+        res.status(200).json({ connected: true, months, truncated });
       } catch (e) {
         res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
       }
