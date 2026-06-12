@@ -16,6 +16,8 @@ const LWA_ID = process.env.AMZ_LWA_CLIENT_ID;
 const LWA_SECRET = process.env.AMZ_LWA_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.AMZ_REFRESH_TOKEN;
 
+export const maxDuration = 60; // headroom for the per-order item loop
+
 const SPAPI = "https://sellingpartnerapi-na.amazon.com";
 const MARKETPLACE = "ATVPDKIKX0DER"; // amazon.com (US)
 
@@ -117,6 +119,75 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     if (!configured) {
       res.status(200).json({ connected: false, reason: "Missing AMZ_LWA_CLIENT_ID / AMZ_LWA_CLIENT_SECRET / AMZ_REFRESH_TOKEN env vars" });
+      return;
+    }
+
+    // ?op=orders — order-level ledger for the trailing 30 days (Orders API).
+    // Classification: an order with a $0 total (and not Pending/Canceled) is a
+    // Vine claim or 100%-off promo — real units and real fees, zero revenue.
+    if (req.query && req.query.op === "orders") {
+      try {
+        const token = await getAccessToken();
+        const after = new Date(Date.now() - 30 * 86400000).toISOString();
+        let next = null;
+        let orders = [];
+        for (let i = 0; i < 3; i++) {
+          const qs = next
+            ? `NextToken=${encodeURIComponent(next)}`
+            : `MarketplaceIds=${MARKETPLACE}&CreatedAfter=${encodeURIComponent(after)}&MaxResultsPerPage=100`;
+          const d = await spapi(token, `/orders/v0/orders?${qs}`);
+          const page = (d.payload && d.payload.Orders) || [];
+          orders = orders.concat(page.map((o) => {
+            const total = o.OrderTotal ? Number(o.OrderTotal.Amount) : null;
+            const status = o.OrderStatus || "";
+            let kind = "real";
+            if (status === "Pending") kind = "pending";
+            else if (status === "Canceled") kind = "canceled";
+            else if (total !== null && total === 0) kind = "vine";
+            return {
+              id: o.AmazonOrderId,
+              date: o.PurchaseDate,
+              status,
+              total,
+              units: (Number(o.NumberOfItemsShipped) || 0) + (Number(o.NumberOfItemsUnshipped) || 0),
+              kind,
+            };
+          }));
+          next = d.payload && d.payload.NextToken;
+          if (!next) break;
+        }
+        orders.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+        // For Vine/$0 orders, pull line items: ItemPrice carries the full list
+        // value Amazon attributes before the 100% rebate — exactly the amount
+        // that inflates the Sales Dashboard, so exactly what we reconcile out.
+        const vineOrders = orders.filter((o) => o.kind === "vine").slice(0, 25);
+        const vineByDate = {};
+        const vineUnitsByDate = {};
+        let vineValue = 0;
+        for (const vo of vineOrders) {
+          try {
+            const di = await spapi(token, `/orders/v0/orders/${encodeURIComponent(vo.id)}/orderItems`);
+            const items = (di.payload && di.payload.OrderItems) || [];
+            let val = 0, units = 0;
+            for (const it of items) {
+              val += Number(it.ItemPrice && it.ItemPrice.Amount) || 0;
+              units += Number(it.QuantityOrdered) || 0;
+            }
+            vo.attributed = val;
+            if (units) vo.units = units;
+            const dk = (vo.date || "").slice(0, 10);
+            vineByDate[dk] = (vineByDate[dk] || 0) + val;
+            vineUnitsByDate[dk] = (vineUnitsByDate[dk] || 0) + (units || vo.units || 0);
+            vineValue += val;
+            await sleep(350);
+          } catch (e) { /* leave order without attributed value */ }
+        }
+
+        res.status(200).json({ connected: true, orders, vineByDate, vineUnitsByDate, vineValue });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
       return;
     }
 
