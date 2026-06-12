@@ -16,6 +16,8 @@ const LWA_ID = process.env.AMZ_LWA_CLIENT_ID;
 const LWA_SECRET = process.env.AMZ_LWA_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.AMZ_REFRESH_TOKEN;
 
+import { gunzipSync } from "node:zlib";
+
 export const maxDuration = 60; // headroom for the per-order item loop
 
 const SPAPI = "https://sellingpartnerapi-na.amazon.com";
@@ -219,6 +221,57 @@ export default async function handler(req, res) {
           sales: row.totalSales ? Number(row.totalSales.amount) || 0 : 0,
         }));
         res.status(200).json({ connected: true, days });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
+    // ?op=sns — Subscribe & Save report flow (Reports API).
+    // action=create   -> { reportId }
+    // action=status   -> { processingStatus, reportDocumentId }
+    // action=download -> { headers, rows } parsed from the TSV document
+    if (req.query && req.query.op === "sns") {
+      const action = req.query.action || "create";
+      try {
+        const token = await getAccessToken();
+        if (action === "create") {
+          const r = await fetch(`${SPAPI}/reports/2021-06-30/reports`, {
+            method: "POST",
+            headers: { "x-amz-access-token": token, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportType: req.query.type === "performance" ? "GET_FBA_SNS_PERFORMANCE_DATA" : "GET_FBA_SNS_FORECAST_DATA",
+              marketplaceIds: [MARKETPLACE],
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(`createReport ${r.status}: ${JSON.stringify(d).slice(0, 250)}`);
+          res.status(200).json({ reportId: d.reportId });
+          return;
+        }
+        if (action === "status") {
+          const d = await spapi(token, `/reports/2021-06-30/reports/${encodeURIComponent(req.query.reportId || "")}`);
+          res.status(200).json({ processingStatus: d.processingStatus, reportDocumentId: d.reportDocumentId || null });
+          return;
+        }
+        if (action === "download") {
+          const meta = await spapi(token, `/reports/2021-06-30/documents/${encodeURIComponent(req.query.documentId || "")}`);
+          const docR = await fetch(meta.url);
+          const buf = Buffer.from(await docR.arrayBuffer());
+          const text = (meta.compressionAlgorithm === "GZIP" ? gunzipSync(buf) : buf).toString("utf8");
+          const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+          if (!lines.length) { res.status(200).json({ headers: [], rows: [] }); return; }
+          const headers = lines[0].split("\t").map((h) => h.trim());
+          const rows = lines.slice(1).map((l) => {
+            const cells = l.split("\t");
+            const o = {};
+            headers.forEach((h, i) => { o[h] = (cells[i] || "").trim(); });
+            return o;
+          });
+          res.status(200).json({ headers, rows });
+          return;
+        }
+        res.status(400).json({ error: "Unknown sns action" });
       } catch (e) {
         res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
       }
