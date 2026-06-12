@@ -19,14 +19,18 @@ const REFRESH_TOKEN = process.env.AMZ_REFRESH_TOKEN;
 const SPAPI = "https://sellingpartnerapi-na.amazon.com";
 const MARKETPLACE = "ATVPDKIKX0DER"; // amazon.com (US)
 
-// Seller SKU -> app product ID (from the app's product cards)
+// Seller SKU (lowercased) -> app product ID. Confirmed against live FBA
+// inventory 2026-06-12. Sand pools by SIZE: AC (Apple Cider) and SC (Vanilla
+// Cashmere) scent families both flow into the 16oz / 32oz cards.
 const SKU_MAP = {
   "rh-seashell-9633": 1, // SeaShell Vessel Candle
-  "rh-sandwax-ac-16c": 2, // Beeswax Candle Sand 16oz
-  "rh-sandwax-ac-32c": 3, // Beeswax Candle Sand 32oz
-  "rh-candle-sm-ap": 4, // Mini Spiced Apple Botanical Candle
-  "rh-candle-lg-ap": 5, // Large Spiced Apple Botanical Candle
-  "lh-bath-salt-un": 6, // Bath Salts Unscented
+  "rh-sandwax-ac-16oz": 2, // Apple Cider sand 16oz
+  "rh-beeswax-sc-16oz": 2, // Vanilla Cashmere sand 16oz
+  "rh-sandwax-ac-32oz": 3, // Apple Cider sand 32oz (2-pack of 16oz)
+  "rh-beeswax-sc-32oz": 3, // Vanilla Cashmere sand 32oz (2-pack of 16oz)
+  "rh-candle-sm-appl": 4, // Mini Spiced Apple Botanical Candle
+  "rh-candle-lg-apple": 5, // Large Spiced Apple Botanical Candle
+  "rh-scrub-8tin-fba": 8, // Sugar Scrub (upcoming Amazon launch listing)
 };
 
 async function kvGet(key) {
@@ -152,7 +156,8 @@ export default async function handler(req, res) {
     const token = await getAccessToken();
     const inv = await fetchFbaInventory(token);
 
-    const items = [];
+    const byId = {}; // productId -> { fba, inbound }
+    const skuDetail = {}; // productId -> [{ sku, fba, inbound, sold }]
     const unmatchedSkus = [];
     const mappedSkus = [];
     for (const s of inv) {
@@ -164,12 +169,18 @@ export default async function handler(req, res) {
         (Number(det.inboundWorkingQuantity) || 0) +
         (Number(det.inboundReceivingQuantity) || 0);
       if (SKU_MAP[key] !== undefined) {
-        items.push({ productId: SKU_MAP[key], sku: s.sellerSku, fba, inbound });
-        mappedSkus.push({ id: SKU_MAP[key], sku: s.sellerSku });
+        const id = SKU_MAP[key];
+        if (!byId[id]) byId[id] = { fba: 0, inbound: 0 };
+        byId[id].fba += fba;
+        byId[id].inbound += inbound;
+        if (!skuDetail[id]) skuDetail[id] = [];
+        skuDetail[id].push({ sku: s.sellerSku, fba, inbound, sold: 0 });
+        mappedSkus.push({ id, sku: s.sellerSku });
       } else {
         unmatchedSkus.push({ sku: s.sellerSku, asin: s.asin, qty: Number(s.totalQuantity) || 0 });
       }
     }
+    const items = Object.entries(byId).map(([id, v]) => ({ productId: Number(id), fba: v.fba, inbound: v.inbound }));
 
     // Sold/30d per mapped SKU — sequential with a small gap (Sales API ~0.5 rps).
     let sold = [];
@@ -179,6 +190,11 @@ export default async function handler(req, res) {
       for (const m of mappedSkus) {
         const qty = await fetchSold30ForSku(token, m.sku);
         soldById[m.id] = (soldById[m.id] || 0) + qty;
+        const rows = skuDetail[m.id];
+        if (rows) {
+          const row = rows.find((r) => r.sku === m.sku);
+          if (row) row.sold = qty;
+        }
         await sleep(600);
       }
       sold = Object.entries(soldById).map(([id, qty]) => ({ productId: Number(id), qty }));
@@ -189,7 +205,7 @@ export default async function handler(req, res) {
     const syncedAt = new Date().toISOString();
     await kvSet("amazon_meta", { lastSync: syncedAt });
 
-    res.status(200).json({ connected: true, syncedAt, items, sold, unmatchedSkus, soldError });
+    res.status(200).json({ connected: true, syncedAt, items, sold, skuDetail, unmatchedSkus, soldError });
   } catch (e) {
     res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
   }
