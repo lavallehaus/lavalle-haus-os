@@ -63,6 +63,21 @@ async function spapi(token, path) {
   return d;
 }
 
+async function spapiW(token, path, method, body) {
+  const r = await fetch(`${SPAPI}${path}`, {
+    method,
+    headers: { "x-amz-access-token": token, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  let d;
+  try { d = JSON.parse(text); } catch { d = { raw: text.slice(0, 300) }; }
+  if (!r.ok) throw new Error(`SP-API ${r.status} on ${path.split("?")[0]}: ${text.slice(0, 350)}`);
+  return d;
+}
+
+const INBOUND = "/inbound/fba/2024-03-20";
+
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
 // When APP_PASSWORD is set in Vercel, every request must carry the session
@@ -87,6 +102,111 @@ export default async function handler(req, res) {
 
   try {
     const token = await getAccessToken();
+
+    // ── WIZARD: ship-from address, stored in Redis ──
+    if (op === "address") {
+      if (req.method === "POST") {
+        await kvSet("ship_from_address", (req.body && req.body.address) || {});
+        res.status(200).json({ ok: true });
+        return;
+      }
+      const a = await kvGet("ship_from_address");
+      res.status(200).json({ connected: true, address: a || null });
+      return;
+    }
+
+    // ── WIZARD: list inbound plans (drafts and active) ──
+    if (op === "plans") {
+      const d = await spapi(token, `${INBOUND}/inboundPlans?pageSize=20&sortBy=LAST_UPDATED_TIME&sortOrder=DESC`);
+      const plans = (d.inboundPlans || []).map((p) => ({
+        id: p.inboundPlanId,
+        name: p.name,
+        status: p.status,
+        created: p.createdAt,
+        updated: p.lastUpdatedAt,
+        marketplaces: p.marketplaceIds,
+      }));
+      res.status(200).json({ connected: true, plans });
+      return;
+    }
+
+    // ── WIZARD: create a draft inbound plan ──
+    if (op === "createplan" && req.method === "POST") {
+      const b = req.body || {};
+      const a = b.address || {};
+      const items = (b.items || []).filter((i) => i.msku && Number(i.quantity) > 0);
+      if (!items.length) { res.status(400).json({ error: "No items with quantity > 0" }); return; }
+      const payload = {
+        destinationMarketplaces: [MARKETPLACE],
+        name: b.name || `LH OS plan ${new Date().toISOString().slice(0, 10)}`,
+        sourceAddress: {
+          name: a.name,
+          companyName: a.companyName || undefined,
+          addressLine1: a.addressLine1,
+          addressLine2: a.addressLine2 || undefined,
+          city: a.city,
+          stateOrProvinceCode: a.stateOrProvinceCode,
+          postalCode: a.postalCode,
+          countryCode: "US",
+          phoneNumber: a.phoneNumber,
+          email: a.email || undefined,
+        },
+        items: items.map((i) => ({
+          msku: i.msku,
+          quantity: Number(i.quantity),
+          prepOwner: "SELLER",
+          labelOwner: "SELLER",
+        })),
+      };
+      const d = await spapiW(token, `${INBOUND}/inboundPlans`, "POST", payload);
+      res.status(200).json({ connected: true, inboundPlanId: d.inboundPlanId, operationId: d.operationId });
+      return;
+    }
+
+    // ── WIZARD: poll an async inbound operation ──
+    if (op === "operation") {
+      const d = await spapi(token, `${INBOUND}/operations/${encodeURIComponent(req.query.operationId || "")}`);
+      res.status(200).json({ connected: true, status: d.operationStatus, problems: d.operationProblems || [] });
+      return;
+    }
+
+    // ── WIZARD: packing options (generate / list / confirm) ──
+    if (op === "packing") {
+      const planId = encodeURIComponent(req.query.planId || "");
+      const action = req.query.action || "list";
+      if (action === "generate") {
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/packingOptions`, "POST", {});
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      if (action === "confirm") {
+        const optId = encodeURIComponent(req.query.optionId || "");
+        const d = await spapiW(token, `${INBOUND}/inboundPlans/${planId}/packingOptions/${optId}/confirmation`, "POST", {});
+        res.status(200).json({ connected: true, operationId: d.operationId });
+        return;
+      }
+      const d = await spapi(token, `${INBOUND}/inboundPlans/${planId}/packingOptions?pageSize=20`);
+      const options = (d.packingOptions || []).map((o) => ({
+        id: o.packingOptionId,
+        status: o.status,
+        expiration: o.expiration,
+        discounts: o.discounts || [],
+        fees: o.fees || [],
+        groupIds: o.packingGroups || [],
+      }));
+      res.status(200).json({ connected: true, options });
+      return;
+    }
+
+    // ── WIZARD: items inside one packing group ──
+    if (op === "packinggroupitems") {
+      const planId = encodeURIComponent(req.query.planId || "");
+      const groupId = encodeURIComponent(req.query.groupId || "");
+      const d = await spapi(token, `${INBOUND}/inboundPlans/${planId}/packingGroups/${groupId}/items?pageSize=100`);
+      const items = (d.items || []).map((i) => ({ msku: i.msku, quantity: i.quantity, asin: i.asin }));
+      res.status(200).json({ connected: true, items });
+      return;
+    }
 
     if (op === "shipments") {
       const statuses = "WORKING,READY_TO_SHIP,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING,CLOSED";
