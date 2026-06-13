@@ -267,17 +267,13 @@ setFuture([]);
 const updated = products.filter(p => p.id !== id);
 const tomb = Array.from(new Set([...(dbState.deletedProducts || []), id]));
 setProducts(updated);
-const full = { ...dbState, products: updated, deletedProducts: tomb };
-setDbState(full);
-dbSave(full);
+setDbState((prev) => { const full = { ...prev, products: updated, deletedProducts: tomb }; dbSave(full); return full; });
 setEditing(null);
 }
 
 function persistProducts(updated) {
 setProducts(updated);
-const full = { ...dbState, products: updated };
-setDbState(full);
-dbSave(full);
+setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full); return full; });
 }
 
 // One-click minimums: 6 weeks of cover at current velocity (live Shopify +
@@ -824,9 +820,7 @@ function saveWeek() {
 if (!draft.date) return;
 setWeeks(prev => {
 const updated = [{ ...draft, id: Date.now() }, ...prev];
-const full = { ...dbState, weekly: updated };
-setDbState(full);
-dbSave(full);
+setDbState((prev) => { const full = { ...prev, weekly: updated }; dbSave(full); return full; });
 return updated;
 });
 setDraft(BLANK_WEEK);
@@ -972,9 +966,7 @@ const remaining = WEEKLY_BUDGET - allocatedTotal;
 
 function persistMaterials(updated) {
 setMaterials(updated);
-const full = { ...dbState, materials: updated };
-setDbState(full);
-dbSave(full);
+setDbState((prev) => { const full = { ...prev, materials: updated }; dbSave(full); return full; });
 }
 
 function recordHistory() {
@@ -1293,8 +1285,7 @@ const [aiLoading, setAiLoading] = useState(false);
 const kwFirst = useRef(true);
 useEffect(() => {
 if (kwFirst.current) { kwFirst.current = false; return; }
-const full = { ...dbState, keywords };
-setDbState(full); dbSave(full);
+setDbState((prev) => { const full = { ...prev, keywords }; dbSave(full); return full; });
 }, [keywords]);
 
 const productNames = [...new Set(products.filter(p => p.channels?.includes("Amazon")).map(p => p.name))];const filtered = filter === "all" ? keywords : keywords.filter(k => k.status === filter);
@@ -1731,9 +1722,7 @@ return { ...p, channels: chans };
 });
 if (changed) {
 setProducts(updated);
-const full = { ...dbState, products: updated };
-setDbState(full);
-dbSave(full);
+setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full); return full; });
 }
 }, [loaded, shopify.items, amazon.items]);
 
@@ -1874,9 +1863,7 @@ const profitNode = (
 <ProfitMatrix
 data={dbState.profitMatrix || {}}
 onSave={(pm) => {
-const next = { ...dbState, profitMatrix: { products: pm.products, opex: pm.opex, keep: pm.keep, assignees: pm.assignees, profitAdjustments: pm.adjustments, profitManual: pm.manual } };
-setDbState(next);
-dbSave(next);
+setDbState((prev) => { const next = { ...prev, profitMatrix: { products: pm.products, opex: pm.opex, keep: pm.keep, assignees: pm.assignees, profitAdjustments: pm.adjustments, profitManual: pm.manual } }; dbSave(next); return next; });
 }}
 />
 );
@@ -1885,11 +1872,11 @@ function renderBody() {
 if (tab === "profit") {
 if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
 if (activeSub === "pricing") return <Pricing products={products} />;
-if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
-if (activeSub === "margins") return <Margins cogs={dbState.cogs || {}} products={products} campaigns={campaigns} profitMatrix={dbState.profitMatrix || {}} data={dbState.margins || {}} onSave={(m) => { const next = { ...dbState, margins: m }; setDbState(next); dbSave(next); }} />;
-if (activeSub === "bank") return <Bank onSaveCash={(total, updatedAt) => { const full = { ...dbState, bankCash: { total, updatedAt } }; setDbState(full); dbSave(full); }} />;
+if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { setDbState((prev) => { const next = { ...prev, cogs: { products: cg.products, laborRate: cg.laborRate } }; dbSave(next); return next; }); }} />;
+if (activeSub === "margins") return <Margins cogs={dbState.cogs || {}} products={products} campaigns={campaigns} profitMatrix={dbState.profitMatrix || {}} data={dbState.margins || {}} onSave={(m) => { setDbState((prev) => { const next = { ...prev, margins: m }; dbSave(next); return next; }); }} />;
+if (activeSub === "bank") return <Bank onSaveCash={(total, updatedAt) => { setDbState((prev) => { const full = { ...prev, bankCash: { total, updatedAt } }; dbSave(full); return full; }); }} />;
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} bankCash={dbState.bankCash || null} margins={dbState.margins || null} />;
-if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { setDbState((prev) => { const next = { ...prev, pnl: pl }; dbSave(next); return next; }); }} />;
 return profitNode;
 }
 if (tab === "roadmap") return <RoadmapTab />;
@@ -1900,8 +1887,8 @@ return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials=
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
 if (activeSub === "keywords") return <KeywordsTab products={products} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "meta") return <MetaAds data={dbState.metaAds || []} onSave={(r) => { const next = { ...dbState, metaAds: r }; setDbState(next); dbSave(next); }} />;
-if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onSave={(r) => { const next = { ...dbState, googleAds: r }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "meta") return <MetaAds data={dbState.metaAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, metaAds: r }; dbSave(next); return next; }); }} />;
+if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, googleAds: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
 }
 if (tab === "inventory") {
@@ -1917,9 +1904,7 @@ const onListingCommit = (ev) => {
     setProducts(updated);
   }
   const listingLog = [ev.logRecord, ...((dbState.listingLog) || [])].slice(0, 500);
-  const full = { ...dbState, products: updated, listingLog };
-  setDbState(full);
-  dbSave(full);
+  setDbState((prev) => { const full = { ...prev, products: updated, listingLog }; dbSave(full); return full; });
 };
 if (activeSub === "listings") return <Listings products={products} dbState={dbState} onCommit={onListingCommit} />;
 if (activeSub === "createlisting") return <VesselCreator onCommit={onListingCommit} />;
@@ -1929,10 +1914,10 @@ if (tab === "growth") {
 if (activeSub === "competitors") return <ComingSoon title="Competitor Intelligence" titleEs="Inteligencia de competidores" lines={["OSEA · Nécessaire · Josie Maran · Salt & Stone · Diptyque", "New launches · Promotions · Pricing · Packaging updates"]} />;
 if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Program" titleEs="Programa de creadores" lines={["Creator · Deliverables · Cost · Status · Revenue generated", "Cost per sale · Cost per post · ROAS"]} />;
 if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
-if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { const next = { ...dbState, emailRetention: r }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={(dbState.margins && dbState.margins.flags) || []} recurring={CHECKLIST_ITEMS} onSave={(payload) => { const next = { ...dbState, actionsBoard: payload }; setDbState(next); dbSave(next); }} />;
-if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { const next = { ...dbState, wholesale: w }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={(dbState.margins && dbState.margins.flags) || []} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
+if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { setDbState((prev) => { const next = { ...prev, wholesale: w }; dbSave(next); return next; }); }} />;
 }
 if (tab === "materials") {
 if (activeSub === "priceoz") return <PriceOzTab />;
