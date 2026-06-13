@@ -1666,8 +1666,9 @@ function PrivacyModal({ onClose }) {
 }
 
 export default function App() {
-const [tab, setTab] = useState("profit");
-const [sub, setSub] = useState({});
+const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "profit"; } catch { return "profit"; } });
+const [sub, setSub] = useState(() => { try { return JSON.parse(localStorage.getItem("lh_sub") || "{}"); } catch { return {}; } });
+useEffect(() => { try { localStorage.setItem("lh_tab", tab); localStorage.setItem("lh_sub", JSON.stringify(sub)); } catch {} }, [tab, sub]);
 const [products, setProducts] = useState(INITIAL_PRODUCTS);
 const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
