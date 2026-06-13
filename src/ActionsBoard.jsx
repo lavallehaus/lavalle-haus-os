@@ -1,0 +1,264 @@
+import { useState, useMemo, useEffect } from "react";
+
+// LAVALLE HAUS OS — Action Items board (Growth → Action Items).
+// A Trello-style priority board. Items are either:
+//   • AUTO  — generated from the Margins tab's flags (losing money, ad waste,
+//             thin margin, missing COGS, no price). Keyed so they dedupe and
+//             auto-resolve when the underlying condition clears.
+//   • MANUAL — anything the team adds by hand.
+// Each item carries an urgency, an assignee (from the team roster, with email),
+// and a status. Assigned items get a one-tap "Email" that drafts a notification
+// to that person. Sorted by urgency. Undo/Redo on every change.
+// The recurring bi-weekly ops review (the old checklist) lives at the bottom.
+
+const c = {
+  bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
+  green: "#5a7a5a", clay: "#a07848", red: "#9b5e5e", card: "#efece5",
+};
+const serif = "'IM Fell English', Georgia, serif";
+const sans = "monospace";
+const card = { background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 12 };
+const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
+const input = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "5px 7px", borderRadius: 1, boxSizing: "border-box", fontFamily: sans };
+const selStyle = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
+
+const AVATAR_COLORS = ["#a07848", "#5a7a5a", "#9b5e5e", "#6b7a8c", "#8c6b7a", "#7a6b4a"];
+const SEV = { high: { label: "HIGH", color: c.red, rank: 0 }, med: { label: "MED", color: c.clay, rank: 1 }, low: { label: "LOW", color: c.sub, rank: 2 } };
+const STATUS = ["open", "doing", "done"];
+const isLive = (it) => it.status !== "done" && it.status !== "resolved";
+const initials = (name) => (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+const uid = (seed) => seed + "_" + Math.random().toString(36).slice(2, 7);
+
+// Merge Margins flags into the stored item list: upsert by key, refresh text,
+// preserve user-set assignee/status/severity, auto-resolve vanished flags.
+function reconcile(items, flags) {
+  const byKey = {};
+  items.forEach((it) => { if (it.key) byKey[it.key] = it; });
+  const flagKeys = new Set(flags.map((f) => f.key));
+  const out = [];
+  items.forEach((it) => { if (!it.key) out.push(it); }); // manual items untouched
+  flags.forEach((f) => {
+    const ex = byKey[f.key];
+    if (ex) out.push({ ...ex, title: f.title, detail: f.detail, name: f.name, productId: f.productId, autoResolved: false, status: ex.status === "resolved" ? "open" : ex.status });
+    else out.push({ id: uid("ai"), key: f.key, source: "margins", title: f.title, detail: f.detail, name: f.name, productId: f.productId, severity: f.severity, assigneeId: null, status: "open", createdAt: new Date().toISOString() });
+  });
+  items.forEach((it) => { if (it.key && !flagKeys.has(it.key)) out.push({ ...it, status: "resolved", autoResolved: true }); });
+  return out;
+}
+
+export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave }) {
+  const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
+  const [state, setState] = useState(() => ({
+    items: data.items || [],
+    team: data.team || [],
+    recurringChecked: data.recurringChecked || {},
+  }));
+  const [filter, setFilter] = useState("live"); // live | all | done
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [draft, setDraft] = useState(null); // new manual item draft
+  const [member, setMember] = useState({ name: "", email: "" });
+  const [emailState, setEmailState] = useState({}); // itemId -> "sending"|"sent"|"err:..."
+
+  const commit = (next) => { setPast((p) => [...p.slice(-49), state]); setFuture([]); setState(next); };
+  const undo = () => { if (!past.length) return; const prev = past[past.length - 1]; setPast((p) => p.slice(0, -1)); setFuture((f) => [state, ...f].slice(0, 50)); setState(prev); };
+  const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture((f) => f.slice(1)); setPast((p) => [...p.slice(-49), state]); setState(nxt); };
+
+  // Sync Margins flags in (does not create an undo entry).
+  const flagsKey = JSON.stringify(flags);
+  useEffect(() => {
+    setState((prev) => {
+      const merged = reconcile(prev.items, flags);
+      if (JSON.stringify(merged) === JSON.stringify(prev.items)) return prev;
+      return { ...prev, items: merged };
+    });
+    /* eslint-disable-next-line */
+  }, [flagsKey]);
+
+  // Persist everything on any change.
+  const persistKey = JSON.stringify(state);
+  useEffect(() => { if (onSave) onSave(state); /* eslint-disable-next-line */ }, [persistKey]);
+
+  const memberById = useMemo(() => { const m = {}; state.team.forEach((t) => { m[t.id] = t; }); return m; }, [state.team]);
+
+  const sorted = useMemo(() => {
+    const arr = state.items.filter((it) => filter === "all" ? true : filter === "done" ? !isLive(it) : isLive(it));
+    return arr.slice().sort((a, b) => {
+      const ra = SEV[a.severity] ? SEV[a.severity].rank : 1, rb = SEV[b.severity] ? SEV[b.severity].rank : 1;
+      if (ra !== rb) return ra - rb;
+      return (a.createdAt || "").localeCompare(b.createdAt || "");
+    });
+  }, [state.items, filter]);
+
+  const liveCount = state.items.filter(isLive).length;
+  const highCount = state.items.filter((it) => isLive(it) && it.severity === "high").length;
+
+  // ── mutations ────────────────────────────────────────────────────────────
+  const updateItem = (id, patch) => commit({ ...state, items: state.items.map((it) => it.id === id ? { ...it, ...patch } : it) });
+  const removeItem = (id) => commit({ ...state, items: state.items.filter((it) => it.id !== id) });
+  const clearResolved = () => commit({ ...state, items: state.items.filter(isLive) });
+  const addManual = () => {
+    if (!draft || !draft.title.trim()) { setDraft(null); return; }
+    const it = { id: uid("man"), source: "manual", title: draft.title.trim(), detail: draft.detail.trim(), severity: draft.severity, assigneeId: draft.assigneeId || null, status: "open", createdAt: new Date().toISOString() };
+    commit({ ...state, items: [it, ...state.items] }); setDraft(null);
+  };
+  const addMember = () => {
+    if (!member.name.trim()) return;
+    const t = { id: uid("tm"), name: member.name.trim(), email: member.email.trim(), color: AVATAR_COLORS[state.team.length % AVATAR_COLORS.length] };
+    commit({ ...state, team: [...state.team, t] }); setMember({ name: "", email: "" });
+  };
+  const removeMember = (id) => commit({ ...state, team: state.team.filter((t) => t.id !== id), items: state.items.map((it) => it.assigneeId === id ? { ...it, assigneeId: null } : it) });
+  const toggleRecurring = (rid) => commit({ ...state, recurringChecked: { ...state.recurringChecked, [rid]: !state.recurringChecked[rid] } });
+
+  const notifyAssignee = async (it) => {
+    const m = memberById[it.assigneeId]; if (!m || !m.email) return;
+    setEmailState((s) => ({ ...s, [it.id]: "sending" }));
+    try {
+      const d = await fetch("/api/data?op=notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: m.email, itemTitle: it.title, itemDetail: it.detail, productName: it.name, severity: it.severity }) }).then((r) => r.json());
+      if (d.sent) setEmailState((s) => ({ ...s, [it.id]: "sent" }));
+      else setEmailState((s) => ({ ...s, [it.id]: "err:" + (d.error || "failed") }));
+    } catch (e) { setEmailState((s) => ({ ...s, [it.id]: "err:" + String(e) })); }
+  };
+
+  const Avatar = ({ m, size = 24 }) => (
+    <span title={m ? (m.name + (m.email ? " · " + m.email : "")) : "unassigned"} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: m ? m.color : "transparent", border: m ? "none" : `1px dashed ${c.line}`, color: "#fff", fontFamily: sans, fontSize: size * 0.4, flexShrink: 0 }}>
+      {m ? initials(m.name) : ""}
+    </span>
+  );
+
+  const recurringCats = useMemo(() => [...new Set((recurring || []).map((i) => i.category))], [recurring]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+        <div>
+          <h1 style={{ fontFamily: serif, fontSize: 26, fontWeight: 400, color: c.ink, margin: 0 }}>Action Items</h1>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.6)" }}>Prioridades auto-generadas desde Márgenes — asigna a un miembro del equipo y notifícale por email.</div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={undo} disabled={!past.length} style={{ ...btnGhost, opacity: past.length ? 1 : 0.4 }}>↶ Undo</button>
+          <button onClick={redo} disabled={!future.length} style={{ ...btnGhost, opacity: future.length ? 1 : 0.4 }}>Redo ↷</button>
+        </div>
+      </div>
+
+      {/* summary + filters */}
+      <div style={{ ...card, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: serif, fontSize: 20, color: highCount ? c.red : c.ink }}>{liveCount}</span>
+        <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, letterSpacing: 1 }}>OPEN{highCount ? ` · ${highCount} HIGH` : ""}</span>
+        <span style={{ flex: 1 }} />
+        {["live", "all", "done"].map((f) => (
+          <button key={f} onClick={() => setFilter(f)} style={{ ...btnGhost, background: filter === f ? c.ink : "transparent", color: filter === f ? "#fff" : c.sub, borderColor: filter === f ? c.ink : c.line }}>{f}</button>
+        ))}
+        <button onClick={() => setDraft({ title: "", detail: "", severity: "med", assigneeId: "" })} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>+ Add item</button>
+        {state.items.some((it) => !isLive(it)) && <button onClick={clearResolved} style={btnGhost}>Clear done</button>}
+      </div>
+
+      {/* team roster */}
+      <div style={card}>
+        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans, marginBottom: 8 }}>Team</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          {state.team.map((t) => (
+            <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#e5e1da", border: `1px solid ${c.line}`, borderRadius: 14, padding: "3px 8px 3px 3px" }}>
+              <Avatar m={t} size={22} />
+              <span style={{ fontFamily: serif, fontSize: 13, color: c.ink }}>{t.name}</span>
+              {t.email && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>{t.email}</span>}
+              <button onClick={() => removeMember(t.id)} style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>×</button>
+            </span>
+          ))}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <input style={{ ...input, width: 110 }} placeholder="name" value={member.name} onChange={(e) => setMember({ ...member, name: e.target.value })} />
+            <input style={{ ...input, width: 150 }} placeholder="email" value={member.email} onChange={(e) => setMember({ ...member, email: e.target.value })} />
+            <button onClick={addMember} style={{ ...btnGhost, color: c.ink }}>+ Add</button>
+          </span>
+        </div>
+      </div>
+
+      {/* new manual item draft */}
+      {draft && (
+        <div style={{ ...card, borderLeft: `3px solid ${c.clay}` }}>
+          <input style={{ ...input, width: "100%", marginBottom: 6 }} placeholder="What needs to happen?" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} autoFocus />
+          <input style={{ ...input, width: "100%", marginBottom: 6 }} placeholder="Detail (optional)" value={draft.detail} onChange={(e) => setDraft({ ...draft, detail: e.target.value })} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select style={selStyle} value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}>
+              <option value="high">HIGH</option><option value="med">MED</option><option value="low">LOW</option>
+            </select>
+            <select style={selStyle} value={draft.assigneeId} onChange={(e) => setDraft({ ...draft, assigneeId: e.target.value })}>
+              <option value="">— assign —</option>
+              {state.team.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <button onClick={addManual} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>Save</button>
+            <button onClick={() => setDraft(null)} style={btnGhost}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* the board */}
+      {sorted.length === 0 && <div style={{ ...card, fontFamily: sans, fontSize: 12, color: c.green }}>No open action items. Nothing is quietly bleeding.</div>}
+      {sorted.map((it) => {
+        const sev = SEV[it.severity] || SEV.med;
+        const m = memberById[it.assigneeId];
+        const done = !isLive(it);
+        return (
+          <div key={it.id} style={{ ...card, borderLeft: `3px solid ${done ? c.line : sev.color}`, opacity: done ? 0.6 : 1, marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: "#fff", background: sev.color, padding: "1px 5px", borderRadius: 1 }}>{sev.label}</span>
+                  <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.sub }}>{it.source === "margins" ? "AUTO · MARGINS" : "MANUAL"}</span>
+                  {it.autoResolved && <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.green }}>AUTO-RESOLVED</span>}
+                </div>
+                <div style={{ fontFamily: serif, fontSize: 15, color: c.ink, textDecoration: done ? "line-through" : "none" }}>{it.title}</div>
+                {it.detail && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginTop: 2 }}>{it.detail}</div>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <select style={selStyle} value={it.severity} onChange={(e) => updateItem(it.id, { severity: e.target.value })}>
+                  <option value="high">HIGH</option><option value="med">MED</option><option value="low">LOW</option>
+                </select>
+                <select style={selStyle} value={it.status === "resolved" ? "done" : it.status} onChange={(e) => updateItem(it.id, { status: e.target.value, autoResolved: false })}>
+                  {STATUS.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+                </select>
+                <Avatar m={m} />
+                <select style={selStyle} value={it.assigneeId || ""} onChange={(e) => updateItem(it.id, { assigneeId: e.target.value || null })}>
+                  <option value="">— assign —</option>
+                  {state.team.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                {m && m.email && (() => {
+                  const st = emailState[it.id];
+                  const err = st && st.indexOf("err:") === 0;
+                  return (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <button onClick={() => notifyAssignee(it)} disabled={st === "sending"} style={{ ...btnGhost, color: st === "sent" ? c.green : c.clay, borderColor: st === "sent" ? c.green : c.clay, opacity: st === "sending" ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent — resend" : "✉ Email " + m.name.split(" ")[0]}</button>
+                      {err && <span style={{ fontFamily: sans, fontSize: 9, color: c.red, maxWidth: 220 }}>{st.slice(4)}</span>}
+                    </span>
+                  );
+                })()}
+                {it.source === "manual" && <button onClick={() => removeItem(it.id)} style={{ ...btnGhost }}>Delete</button>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* recurring ops review (preserved from the old checklist) */}
+      {recurring && recurring.length > 0 && (
+        <div style={card}>
+          <div onClick={() => setShowRecurring((v) => !v)} style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Bi-weekly ops review · {recurring.filter((i) => state.recurringChecked[i.id]).length}/{recurring.length}</span>
+            <span style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>{showRecurring ? "▾" : "▸"}</span>
+          </div>
+          {showRecurring && recurringCats.map((cat) => (
+            <div key={cat} style={{ marginTop: 10 }}>
+              <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.clay, marginBottom: 4 }}>{cat}</div>
+              {recurring.filter((i) => i.category === cat).map((item) => (
+                <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0", cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!state.recurringChecked[item.id]} onChange={() => toggleRecurring(item.id)} style={{ marginTop: 3 }} />
+                  <span style={{ fontFamily: serif, fontSize: 13, color: state.recurringChecked[item.id] ? c.sub : c.ink, textDecoration: state.recurringChecked[item.id] ? "line-through" : "none" }}>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
