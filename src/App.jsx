@@ -1646,8 +1646,8 @@ function PrivacyModal({ onClose }) {
           <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Privacy Policy</h1>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#8c7d6b", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Refillery Haus · Last updated {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
-        <p style={p}>Refillery Haus (“we,” “us”) operates a small candle and body-care business. This policy explains what information we handle and how we protect it.</p>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus · Last updated {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
+        <p style={p}>Lavalle Haus (“we,” “us”) operates a small candle and body-care business. This policy explains what information we handle and how we protect it.</p>
         <div style={hd}>What we collect</div>
         <p style={p}>Our internal operating system stores business data — products, inventory, sales, advertising, supplier and team records. When you connect an account (such as a bank via Plaid, Amazon Selling Partner, or Shopify), we store the access tokens needed to read that data on your behalf. We do not collect personal information from the public through this tool.</p>
         <div style={hd}>How it’s stored & secured</div>
@@ -2040,7 +2040,7 @@ return (
 {renderBody()}
 </div>
 <div style={{ borderTop: "1px solid #d4cfc7", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "monospace", fontSize: 10, letterSpacing: 1, color: "#a09488" }}>
-<span>© {new Date().getFullYear()} Refillery Haus</span>
+<span>© {new Date().getFullYear()} Lavalle Haus</span>
 <span>·</span>
 <button onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "#a07848", cursor: "pointer", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
 </div>
