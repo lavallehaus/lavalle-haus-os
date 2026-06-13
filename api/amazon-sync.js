@@ -356,9 +356,13 @@ export default async function handler(req, res) {
               ? `/products/fees/v0/listings/${encodeURIComponent(sku)}/feesEstimate`
               : `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`;
             const d = await spapiW(token, path, "POST", body);
-            const result = d && d.payload && d.payload.FeesEstimateResult;
+            // Be defensive about response nesting across SP-API variants.
+            const result = (d && d.payload && d.payload.FeesEstimateResult)
+              || (d && d.FeesEstimateResult)
+              || (d && d.payload) || null;
+            const est = result && (result.FeesEstimate || (result.payload && result.payload.FeesEstimate));
             const status = result && result.Status;
-            const details = (result && result.FeesEstimate && result.FeesEstimate.FeeDetailList) || [];
+            const details = (est && est.FeeDetailList) || [];
             const feeTypes = details.map((f) => f.FeeType);
             let fba = 0, found = false;
             for (const f of details) {
@@ -368,8 +372,16 @@ export default async function handler(req, res) {
                 if (amt != null) { fba += Number(amt); found = true; }
               }
             }
+            // Fallback: if there is a total estimate but no explicit FBA line, derive
+            // FBA = total − referral so we still show something rather than nothing.
+            if (!found && est && est.TotalFeesEstimate && est.TotalFeesEstimate.Amount != null) {
+              let referral = 0;
+              for (const f of details) { if (/Referral/i.test(f.FeeType || "")) { const a = (f.FeeAmount && f.FeeAmount.Amount) != null ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount); if (a != null) referral += Number(a); } }
+              const derived = Number(est.TotalFeesEstimate.Amount) - referral;
+              if (derived > 0) { fba = derived; found = true; }
+            }
             const errMsg = result && result.Error ? (result.Error.Message || result.Error.Code) : null;
-            out.push({ id: it.id, asin, sku, fbaFee: found ? Number(fba.toFixed(2)) : null, status, feeTypes, error: errMsg });
+            out.push({ id: it.id, asin, sku, fbaFee: found ? Number(fba.toFixed(2)) : null, status, feeTypes, error: errMsg, debug: found ? undefined : JSON.stringify(d).slice(0, 500) });
           } catch (e) {
             out.push({ id: it.id, asin, sku, fbaFee: null, error: String(e).slice(0, 220) });
           }
