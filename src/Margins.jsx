@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { buildMarginsModel, num, SPEND_30 } from "./marginsCore.js";
 
 // LAVALLE HAUS OS — Margins (CM1 / CM2 per SKU). Sales sub-tab.
 // CM1 = price − true COGS.   CM2 = CM1 − (referral % + returns % + FBA fee + ad/unit).
@@ -20,48 +21,13 @@ const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSp
 const cellInput = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, boxSizing: "border-box", width: 64, fontFamily: sans, textAlign: "right" };
 const selStyle = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
 
-const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const money = (v) => (v == null ? "—" : `$${Number(v).toFixed(2)}`);
 const pct = (v) => (v == null ? "—" : `${Number(v).toFixed(0)}%`);
 
-function cogsPerUnit(p, laborRate) {
-  const y = Math.max(num(p.batchYield), 1);
-  const per = (cost, basis) => (basis === "unit" ? cost : cost / y);
-  const sumMat = (rows) => (rows || []).reduce((s, l) => s + per(num(l.qty) * num(l.unitCost), l.basis), 0);
-  const sumLab = (rows) => (rows || []).reduce((s, l) => s + per(num(l.hours) * num(laborRate), l.basis), 0);
-  return sumMat(p.materials) + sumMat(p.packaging) + sumMat(p.shipping) + sumLab(p.labor);
-}
 const marginColor = (p) => (p == null ? c.sub : p < 0 ? c.red : p < 20 ? c.clay : c.green);
-const SPEND_30 = 30 / 7;
 
-// Auto-suggest which SKU a campaign promotes, from its name.
-const STOP = new Set(["match", "broad", "exact", "phrase", "discovery", "expansion", "high", "intent", "search", "volume", "targeting", "product", "h10", "campaign", "sponsored", "auto", "manual", "keyword", "keywords", "ads", "amazon", "the", "and", "for", "launch", "new", "test", "low", "brand", "defense", "competitor", "set", "vessel", "candle"]);
-const toks = (str) => (str || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
-function suggestProductId(campName, prods) {
-  const ct = toks(campName);
-  if (!ct.length) return "";
-  let best = "", bestScore = 0;
-  prods.forEach((p) => {
-    const pt = toks(p.name);
-    const lname = (p.name || "").toLowerCase();
-    let score = 0;
-    ct.forEach((w) => { if (pt.includes(w)) score += 1; else if (lname.includes(w)) score += 0.5; });
-    if (score > bestScore) { bestScore = score; best = p.id; }
-  });
-  return bestScore > 0 ? best : "";
-}
 
 export default function Margins({ cogs = {}, products = [], campaigns = [], profitMatrix = {}, data = {}, onSave }) {
-  const laborRate = num(cogs.laborRate);
-  const cogsProducts = cogs.products || [];
-  const pmById = useMemo(() => {
-    const m = {};
-    (profitMatrix.products || []).forEach((p) => {
-      m[p.id] = { fba: num(p.fbaFee) + num(p.storage), landed: num(p.cogs) + num(p.packaging) + num(p.freight), retail: num(p.retail) };
-    });
-    return m;
-  }, [profitMatrix]);
-
   const [state, setState] = useState(() => ({
     referralPct: data.referralPct != null ? data.referralPct : 15,
     returnsPct: data.returnsPct != null ? data.returnsPct : 2,
@@ -79,6 +45,11 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
   const setGlobal = (field, val) => commit({ ...state, [field]: val });
   const setSku = (id, field, val) => commit({ ...state, bySku: { ...state.bySku, [id]: { ...(state.bySku[id] || {}), [field]: val } } });
   const setAdMap = (campId, productId) => commit({ ...state, adMap: { ...state.adMap, [campId]: productId } });
+
+  // Single source of truth: the shared core builds rows/flags/summary/ad-mapping.
+  // The Action Items board uses the same core, so it never needs this tab open.
+  const model = useMemo(() => buildMarginsModel({ cogs, products, campaigns, profitMatrix, settings: state }), [cogs, products, campaigns, profitMatrix, state]);
+  const { rows, flags, summary, effMap, adByProduct, amazonTargets, totalCampaignSpend30, unmappedSpend30 } = model;
 
   async function fetchFbaFees() {
     const items = (products || [])
@@ -106,97 +77,6 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     }
   }
 
-  const amazonTargets = useMemo(() => products.filter((p) => (p.channels || []).includes("Amazon") || p.asin), [products]);
-
-  // effective campaign→SKU: explicit choice wins, else name-based suggestion
-  const effMap = useMemo(() => {
-    const out = {};
-    (campaigns || []).forEach((cm) => {
-      const explicit = state.adMap[cm.id];
-      out[cm.id] = (explicit !== undefined && explicit !== "") ? explicit : suggestProductId(cm.name, amazonTargets);
-    });
-    return out;
-  }, [campaigns, state.adMap, amazonTargets]);
-
-  const adByProduct = useMemo(() => {
-    const out = {};
-    (campaigns || []).forEach((cm) => {
-      const pid = effMap[cm.id];
-      if (pid == null || pid === "") return;
-      out[pid] = (out[pid] || 0) + num(cm.spend7d) * SPEND_30;
-    });
-    return out;
-  }, [campaigns, effMap]);
-
-  const cogsById = useMemo(() => { const m = {}; cogsProducts.forEach((p) => { m[p.id] = p; }); return m; }, [cogsProducts]);
-  const rows = useMemo(() => {
-    // Spine = the live product list (always present); enrich with cost data.
-    const spine = (products || []).filter((p) => !p.isSample && (num(p.price) > 0 || cogsById[p.id] || pmById[p.id] || p.asin));
-    return spine.map((prod) => {
-      const p = cogsById[prod.id] || {};
-      const pm = pmById[prod.id] || {};
-      const price = num(p.retail) > 0 ? num(p.retail) : (num(prod.price) > 0 ? num(prod.price) : num(pm.retail));
-      const builderCogs = cogsById[prod.id] ? cogsPerUnit(p, laborRate) : 0;
-      const cogsU = builderCogs > 0 ? builderCogs : (pm.landed || 0);
-      const cogsSrc = builderCogs > 0 ? "builder" : (pm.landed > 0 ? "matrix" : null);
-      const cm1 = price - cogsU;
-      const cm1pct = price > 0 ? (cm1 / price) * 100 : null;
-      const sk = state.bySku[prod.id] || {};
-      const referral = price * (num(state.referralPct) / 100);
-      const returns = price * (num(state.returnsPct) / 100);
-      const overrideFba = sk.fbaFee !== undefined && sk.fbaFee !== "";
-      const amzFba = state.amazonFba[prod.id];
-      const amzSet = amzFba != null && amzFba !== "";
-      const autoFba = amzSet ? num(amzFba) : (pm.fba != null ? pm.fba : null);
-      const fbaAutoSrc = amzSet ? "amazon" : (pm.fba != null && pm.fba > 0 ? "matrix" : null);
-      const fbaFee = overrideFba ? num(sk.fbaFee) : (autoFba != null && autoFba > 0 ? autoFba : null);
-      const fbaIsAuto = !overrideFba && autoFba != null && autoFba > 0;
-      const units = num(prod.unitsSold30);
-      const mappedSpend = adByProduct[prod.id] || 0;
-      const computedAd = units > 0 ? mappedSpend / units : null;
-      const overrideAd = sk.adPerUnit !== undefined && sk.adPerUnit !== "";
-      const ad = overrideAd ? num(sk.adPerUnit) : (computedAd != null ? computedAd : 0);
-      const adIsAuto = !overrideAd && computedAd != null && mappedSpend > 0;
-      const fbaSet = fbaFee != null;
-      const cm2 = fbaSet ? cm1 - referral - returns - fbaFee - ad : null;
-      const cm2pct = cm2 != null && price > 0 ? (cm2 / price) * 100 : null;
-      return { id: prod.id, name: prod.name, price, cogsU, cogsSrc, cm1, cm1pct, referral, returns, fbaFee, autoFba, fbaIsAuto, fbaAutoSrc, ad, adIsAuto, computedAd, mappedSpend, cm2, cm2pct, units, hasCogs: cogsU > 0 };
-    }).sort((a, b) => {
-      const am = a.cm2pct != null ? a.cm2pct : (a.cm1pct != null ? a.cm1pct : 999);
-      const bm = b.cm2pct != null ? b.cm2pct : (b.cm1pct != null ? b.cm1pct : 999);
-      return am - bm;
-    });
-  }, [cogsById, laborRate, state, products, adByProduct, pmById]);
-
-  const summary = useMemo(() => {
-    let wRev = 0, wCm1 = 0, wCm2 = 0, cm2KnownRev = 0;
-    const totUnits = rows.reduce((s, r) => s + r.units, 0);
-    rows.forEach((r) => {
-      const w = totUnits > 0 ? r.units : 1;
-      wRev += r.price * w; wCm1 += r.cm1 * w;
-      if (r.cm2 != null) { wCm2 += r.cm2 * w; cm2KnownRev += r.price * w; }
-    });
-    return { cm1Pct: wRev > 0 ? (wCm1 / wRev) * 100 : null, cm2Pct: cm2KnownRev > 0 ? (wCm2 / cm2KnownRev) * 100 : null };
-  }, [rows]);
-
-  // Flags consumed by the Action Items board (Growth → Action Items). Each has a
-  // stable key so the board can dedupe, preserve assignment, and auto-resolve.
-  const flags = useMemo(() => {
-    const f = [];
-    rows.forEach((r) => {
-      if (r.price <= 0) { f.push({ key: "price:" + r.id, productId: r.id, name: r.name, severity: "med", title: "Set a retail price for " + r.name, detail: "No price is set, so margin can't be calculated yet." }); return; }
-      if (r.units === 0 && r.mappedSpend > 0) { f.push({ key: "adwaste:" + r.id, productId: r.id, name: r.name, severity: "high", title: "Ad spend with no sales — " + r.name, detail: "$" + r.mappedSpend.toFixed(0) + "/mo in ads, 0 units sold in 30 days. Pure loss — pause or retarget." }); }
-      if (r.cm2 != null && r.cm2 < 0) {
-        const adBig = r.ad > (r.fbaFee || 0);
-        f.push({ key: "cm2neg:" + r.id, productId: r.id, name: r.name, severity: "high", title: r.name + " loses $" + Math.abs(r.cm2).toFixed(2) + "/unit after Amazon's cut", detail: "CM2 " + (r.cm2pct != null ? r.cm2pct.toFixed(0) + "%" : "") + ". Biggest lever: " + (adBig ? ("ad cost $" + r.ad.toFixed(2) + "/unit — review campaign mapping & spend") : ("FBA $" + (r.fbaFee || 0).toFixed(2) + "/unit")) + (r.hasCogs ? "" : " (COGS not yet entered, so the real loss is larger)") + "." });
-      } else if (r.cm2 != null && r.cm2pct != null && r.cm2pct < 15) {
-        f.push({ key: "thin:" + r.id, productId: r.id, name: r.name, severity: "med", title: "Thin margin on " + r.name + " (" + r.cm2pct.toFixed(0) + "% CM2)", detail: "Little cushion after Amazon fees and ads. A small cost rise or price drop turns it negative." });
-      }
-      if (!r.hasCogs && r.price > 0) { f.push({ key: "cogs:" + r.id, productId: r.id, name: r.name, severity: "low", title: "Add COGS for " + r.name, detail: "Margin is overstated until cost is entered in the COGS Builder and saved." }); }
-    });
-    return f;
-  }, [rows]);
-
   const persistKey = JSON.stringify({ s: state, sum: summary, fl: flags });
   useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: state.amazonFba, fbaUpdatedAt: state.fbaUpdatedAt, summary, flags }); /* eslint-disable-next-line */ }, [persistKey]);
 
@@ -206,8 +86,6 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
   const missingCogs = rows.filter((r) => !r.hasCogs);
   const missingFba = rows.filter((r) => r.fbaFee == null);
   const adNoSales = rows.filter((r) => r.units === 0 && r.mappedSpend > 0);
-  const totalCampaignSpend30 = (campaigns || []).reduce((s, cm) => s + num(cm.spend7d) * SPEND_30, 0);
-  const unmappedSpend30 = (campaigns || []).reduce((s, cm) => s + (effMap[cm.id] ? 0 : num(cm.spend7d) * SPEND_30), 0);
 
   const th = { fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub, padding: "6px 8px", textAlign: "right", borderBottom: `1px solid ${c.line}`, whiteSpace: "nowrap" };
   const td = { fontFamily: sans, fontSize: 12, color: c.ink, padding: "7px 8px", textAlign: "right", borderBottom: "1px solid #00000008", whiteSpace: "nowrap" };
