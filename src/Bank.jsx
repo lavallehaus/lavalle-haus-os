@@ -17,8 +17,9 @@ const money = (v) => (v == null || isNaN(v) ? "—" : `$${Number(v).toLocaleStri
 
 const PLAID_SCRIPT = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
 
-export default function Bank({ onSaveCash }) {
+export default function Bank({ onSaveCash, pnl, onSavePnl }) {
   const [bal, setBal] = useState({ loading: true, accounts: [], totalCash: 0, connected: false, updatedAt: null, error: null });
+  const [tx, setTx] = useState({ loading: false, status: "", error: false });
   const [linking, setLinking] = useState(false);
   const [scriptReady, setScriptReady] = useState(typeof window !== "undefined" && window.Plaid);
 
@@ -31,7 +32,7 @@ export default function Bank({ onSaveCash }) {
 
   const loadBalances = useCallback(() => {
     setBal((b) => ({ ...b, loading: true, error: null }));
-    fetch("/api/data?op=balances").then((r) => r.json()).then((d) => {
+    fetch("/api/plaid?op=balances").then((r) => r.json()).then((d) => {
       if (d.accounts) {
         setBal({ loading: false, accounts: d.accounts, totalCash: d.totalCash || 0, connected: d.connected, updatedAt: d.updatedAt, error: null });
         if (onSaveCash) onSaveCash(d.totalCash || 0, d.updatedAt);
@@ -45,12 +46,12 @@ export default function Bank({ onSaveCash }) {
     if (!scriptReady || !window.Plaid) { alert("Plaid is still loading — try again in a second."); return; }
     setLinking(true);
     try {
-      const { link_token } = await fetch("/api/data?op=link_token").then((r) => r.json());
+      const { link_token } = await fetch("/api/plaid?op=link_token").then((r) => r.json());
       if (!link_token) { setLinking(false); alert("Could not start Plaid — check that PLAID_CLIENT_ID and PLAID_SECRET are set in Vercel."); return; }
       const handler = window.Plaid.create({
         token: link_token,
         onSuccess: async (public_token, metadata) => {
-          await fetch("/api/data?op=exchange", {
+          await fetch("/api/plaid?op=exchange", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ public_token, institution: metadata && metadata.institution ? metadata.institution.name : "Bank" }),
           });
@@ -65,8 +66,30 @@ export default function Bank({ onSaveCash }) {
 
   async function disconnect(item_id) {
     if (!window.confirm("Disconnect this bank? Balances from it will stop updating.")) return;
-    await fetch("/api/data?op=remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_id }) });
+    await fetch("/api/plaid?op=remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_id }) });
     loadBalances();
+  }
+
+  async function pullAndCategorize() {
+    setTx({ loading: true, status: "Pulling transactions from your bank…", error: false });
+    try {
+      const pulled = await fetch("/api/plaid?op=transactions").then((r) => r.json());
+      if (pulled.error) { setTx({ loading: false, status: pulled.error, error: true }); return; }
+      if (pulled.pending) { setTx({ loading: false, status: pulled.message || "Your bank is still preparing transactions — try again shortly.", error: false }); return; }
+      const txns = pulled.transactions || [];
+      if (!txns.length) { setTx({ loading: false, status: "No transactions found yet on the connected bank(s).", error: false }); return; }
+      setTx({ loading: true, status: `Categorizing ${txns.length} transactions with AI…`, error: false });
+      const cat = await fetch("/api/categorize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transactions: txns, knownMerchants: (pnl && pnl.rules) || {} }) }).then((r) => r.json());
+      if (cat.error) { setTx({ loading: false, status: cat.error, error: true }); return; }
+      const byId = {}; (cat.transactions || []).forEach((x) => { byId[x.id] = x; });
+      const built = txns.map((t) => { const a = byId[t.id] || {}; return { id: t.id, date: t.date, description: t.description, merchant: a.merchant || t.merchant, amount: t.amount, type: a.type || t.type, category: a.category || "Uncategorized", source: "plaid" }; });
+      const existing = (pnl && Array.isArray(pnl.transactions)) ? pnl.transactions : [];
+      const have = new Set(existing.map((t) => t.id));
+      const fresh = built.filter((t) => !have.has(t.id));
+      const merged = [...fresh, ...existing];
+      onSavePnl && onSavePnl({ ...(pnl || {}), transactions: merged });
+      setTx({ loading: false, status: `✓ ${fresh.length} new transaction${fresh.length === 1 ? "" : "s"} categorized and added to your P&L${built.length - fresh.length ? ` (${built.length - fresh.length} already there)` : ""}.`, error: false });
+    } catch (e) { setTx({ loading: false, status: String(e).slice(0, 160), error: true }); }
   }
 
   const banks = {};
@@ -91,6 +114,16 @@ export default function Bank({ onSaveCash }) {
         <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Total cash · checking + savings</div>
         <div style={{ fontFamily: serif, fontSize: 38, color: c.ink, marginTop: 2 }}>{money(bal.totalCash)}</div>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>This figure now drives Cash Runway in the Finance / Cash tab. Esta cifra impulsa la pista de efectivo.</div>
+      </div>
+
+      <div style={{ ...card, borderLeft: `3px solid ${c.clay}` }}>
+        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Transactions → P&amp;L</div>
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.6)", margin: "3px 0 10px" }}>Pull recent bank transactions and let AI categorize them straight into your P&amp;L. Jala transacciones y la IA las categoriza en tu P&amp;L.</div>
+        <button onClick={pullAndCategorize} disabled={tx.loading || !bal.connected} style={{ ...btnDark, opacity: (tx.loading || !bal.connected) ? 0.5 : 1 }}>
+          {tx.loading ? "Working…" : "Pull & categorize transactions"}
+        </button>
+        {!bal.connected && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 8 }}>Connect a bank first.</div>}
+        {tx.status && <div style={{ fontFamily: sans, fontSize: 11, color: tx.error ? c.red : c.green, marginTop: 10 }}>{tx.status}</div>}
       </div>
 
       {bal.error && <div style={{ ...card, borderLeft: `3px solid ${c.red}`, fontFamily: sans, fontSize: 12, color: c.red }}>{bal.error}</div>}
