@@ -58,7 +58,7 @@ const Metric = ({ label, labelEs, value, note, pending }) => (
   </div>
 );
 
-export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl = {} }) {
+export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl = {}, bankCash = null }) {
   // Real numbers from the P&L tab's imported statements.
   const pnlStats = useMemo(() => {
     const tx = Array.isArray(pnl.transactions) ? pnl.transactions : [];
@@ -175,8 +175,20 @@ export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl 
         ) : (
           <Metric label="Net profit" labelEs="Utilidad neta" value="pending" pending note="import statements in the P&L tab" />
         )}
-        <Metric label="Cash runway" labelEs="Pista de efectivo" value={pnlStats ? "add cash balance" : "connect accounting"} pending
-          note={pnlStats ? `avg spend ${money(pnlStats.avgBurn)}/mo over ${pnlStats.monthCount} month${pnlStats.monthCount === 1 ? "" : "s"}` : "QuickBooks / Xero"} />
+{bankCash && bankCash.total != null ? (
+          (() => {
+            const burn = pnlStats && pnlStats.avgBurn > 0 ? pnlStats.avgBurn : null;
+            const months = burn ? bankCash.total / burn : null;
+            return (
+              <Metric label="Cash runway" labelEs="Pista de efectivo"
+                value={months != null ? `${months.toFixed(1)} months` : money(bankCash.total)}
+                note={burn ? `${money(bankCash.total)} cash ÷ ${money(burn)}/mo burn` : `${money(bankCash.total)} cash · import statements in P&L for burn rate`} />
+            );
+          })()
+        ) : (
+          <Metric label="Cash runway" labelEs="Pista de efectivo" value={pnlStats ? "connect bank" : "connect bank"} pending
+            note={pnlStats ? `avg spend ${money(pnlStats.avgBurn)}/mo · connect bank in Bank & Cash tab` : "connect bank in Bank & Cash tab"} />
+        )}
         <Metric label="Cash conversion cycle" labelEs="Ciclo de conversión" value="connect accounting" pending note="DIO + DSO − DPO" />
       </div>
       <div style={{ fontSize: 11.5, color: c.sub, fontStyle: "italic", marginTop: 10 }}>
