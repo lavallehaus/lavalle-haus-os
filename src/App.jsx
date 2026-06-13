@@ -1804,6 +1804,7 @@ if (mergedProducts.length > 0) setProducts(mergedProducts);
 if (d.materials && d.materials.length > 0) setMaterials(d.materials);
 if (d.weekly && d.weekly.length > 0) setWeeks(d.weekly);
 const nextDb = {
+...d,
 products: mergedProducts,
 materials: d.materials && d.materials.length > 0 ? d.materials : MATERIALS,
 weekly: d.weekly || [],
