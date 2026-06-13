@@ -328,6 +328,53 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ?op=fees — live FBA fulfillment-fee estimate per ASIN (Product Fees API).
+    // Body: { items:[{id, asin, price}] }. Returns the FBA fee only (referral is
+    // applied separately in the Margins tab, so we exclude it here to avoid
+    // double-counting). ~1 request/second rate limit, so we pace the loop.
+    if (req.query && req.query.op === "fees" && req.method === "POST") {
+      try {
+        const token = await getAccessToken();
+        const items = (req.body && req.body.items) || [];
+        const out = [];
+        for (const it of items) {
+          if (!it || !it.asin) { out.push({ id: it && it.id, asin: it && it.asin, fbaFee: null, error: "no ASIN" }); continue; }
+          try {
+            const body = {
+              FeesEstimateRequest: {
+                MarketplaceId: MARKETPLACE,
+                IdType: "ASIN",
+                IdValue: it.asin,
+                PriceToEstimateFees: { ListingPrice: { CurrencyCode: "USD", Amount: Number(it.price) || 0 } },
+                Identifier: String(it.id != null ? it.id : it.asin),
+                IsAmazonFulfilled: true,
+              },
+            };
+            const d = await spapiW(token, `/products/fees/v0/items/${encodeURIComponent(it.asin)}/feesEstimate`, "POST", body);
+            const result = d && d.payload && d.payload.FeesEstimateResult;
+            const status = result && result.Status;
+            const details = (result && result.FeesEstimate && result.FeesEstimate.FeeDetailList) || [];
+            let fba = 0, found = false;
+            for (const f of details) {
+              const t = f.FeeType || "";
+              if (/FBA|Fulfillment/i.test(t) && !/Referral/i.test(t)) {
+                const amt = (f.FeeAmount && f.FeeAmount.Amount != null) ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount);
+                if (amt != null) { fba += Number(amt); found = true; }
+              }
+            }
+            out.push({ id: it.id, asin: it.asin, fbaFee: found ? Number(fba.toFixed(2)) : null, status });
+          } catch (e) {
+            out.push({ id: it.id, asin: it.asin, fbaFee: null, error: String(e).slice(0, 200) });
+          }
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        res.status(200).json({ items: out, updatedAt: new Date().toISOString() });
+      } catch (e) {
+        res.status(500).json({ error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
     // ?op=createlisting — full new-listing creation via putListingsItem.
     // Frontend sends an already-shaped attributes object. requirements=LISTING.
     if (req.query && req.query.op === "createlisting" && req.method === "POST") {
