@@ -88,6 +88,21 @@ async function spapi(token, path) {
   return d;
 }
 
+async function spapiW(token, path, method, body) {
+  const r = await fetch(`${SPAPI}${path}`, {
+    method,
+    headers: { "x-amz-access-token": token, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  let d;
+  try { d = JSON.parse(text); } catch { d = { raw: text.slice(0, 300) }; }
+  if (!r.ok) throw new Error(`SP-API ${r.status} on ${path.split("?")[0]}: ${text.slice(0, 350)}`);
+  return d;
+}
+
+const SELLER_ID = process.env.AMZ_SELLER_ID || "";
+
 // All FBA inventory summaries (paginated).
 async function fetchFbaInventory(token) {
   let path = `/fba/inventory/v1/summaries?details=true&granularityType=Marketplace&granularityId=${MARKETPLACE}&marketplaceIds=${MARKETPLACE}`;
@@ -237,6 +252,120 @@ export default async function handler(req, res) {
           sales: row.totalSales ? Number(row.totalSales.amount) || 0 : 0,
         }));
         res.status(200).json({ connected: true, days });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
+    // ?op=listing — Listings Items API editor (Product Listing role).
+    // action=skus  -> picker list from FBA inventory
+    // action=get&sku=X -> current title/bullets/description/price/status/issues
+    // action=patch (POST) -> apply field changes
+    if (req.query && req.query.op === "listing") {
+      const action = req.query.action || "get";
+      if (!SELLER_ID) { res.status(400).json({ error: "AMZ_SELLER_ID is not set in Vercel environment variables." }); return; }
+      try {
+        const token = await getAccessToken();
+
+        if (action === "skus") {
+          const inv = await fetchFbaInventory(token);
+          const seen = {};
+          const skus = [];
+          for (const s of inv) {
+            const sku = s.sellerSku;
+            if (!sku || seen[sku]) continue;
+            seen[sku] = 1;
+            skus.push({ sku, asin: s.asin || null, name: s.productName || "" });
+          }
+          skus.sort((a, b) => (a.name + a.sku).localeCompare(b.name + b.sku));
+          res.status(200).json({ connected: true, skus });
+          return;
+        }
+
+        if (action === "get") {
+          const sku = req.query.sku || "";
+          if (!sku) { res.status(400).json({ error: "Missing sku" }); return; }
+          const d = await spapi(
+            token,
+            `/listings/2021-08-01/items/${encodeURIComponent(SELLER_ID)}/${encodeURIComponent(sku)}?marketplaceIds=${MARKETPLACE}&includedData=summaries,attributes,issues,offers,fulfillmentAvailability`
+          );
+          const attrs = d.attributes || {};
+          const summ = (d.summaries || [])[0] || {};
+          const offers = d.offers || [];
+          const mp = (arr) => Array.isArray(arr) ? arr : [];
+          const firstVal = (key) => {
+            const a = mp(attrs[key]);
+            return a.length ? (a[0].value !== undefined ? a[0].value : a[0]) : "";
+          };
+          const bullets = mp(attrs.bullet_point).map((b) => (b.value !== undefined ? b.value : b)).filter(Boolean);
+          // current price: prefer offers, fall back to purchasable_offer attribute
+          let price = null;
+          if (offers.length && offers[0].price && offers[0].price.amount) price = Number(offers[0].price.amount);
+          else {
+            const po = mp(attrs.purchasable_offer)[0];
+            const sched = po && po.our_price && po.our_price[0] && po.our_price[0].schedule && po.our_price[0].schedule[0];
+            if (sched && sched.value_with_tax !== undefined) price = Number(sched.value_with_tax);
+          }
+          res.status(200).json({
+            connected: true,
+            sku,
+            productType: summ.productType || (d.productTypes && d.productTypes[0] && d.productTypes[0].productType) || null,
+            asin: summ.asin || null,
+            status: summ.status || (summ.listingId ? "ACTIVE" : null),
+            itemName: summ.itemName || firstVal("item_name"),
+            bullets,
+            description: firstVal("product_description"),
+            price,
+            issues: (d.issues || []).map((i) => ({ code: i.code, message: i.message, severity: i.severity, attributeNames: i.attributeNames || [] })),
+          });
+          return;
+        }
+
+        if (action === "patch" && req.method === "POST") {
+          const b = req.body || {};
+          const sku = b.sku || "";
+          const productType = b.productType;
+          if (!sku || !productType) { res.status(400).json({ error: "Missing sku or productType" }); return; }
+          const patches = [];
+          const L = (value) => [{ value: String(value), marketplace_id: MARKETPLACE, language_tag: "en_US" }];
+          if (typeof b.itemName === "string" && b.itemName.length) {
+            patches.push({ op: "replace", path: "/attributes/item_name", value: L(b.itemName) });
+          }
+          if (Array.isArray(b.bullets)) {
+            patches.push({ op: "replace", path: "/attributes/bullet_point", value: b.bullets.filter((x) => x && x.trim()).map((x) => ({ value: x, marketplace_id: MARKETPLACE, language_tag: "en_US" })) });
+          }
+          if (typeof b.description === "string" && b.description.length) {
+            patches.push({ op: "replace", path: "/attributes/product_description", value: L(b.description) });
+          }
+          if (b.price !== undefined && b.price !== null && b.price !== "" && !isNaN(Number(b.price))) {
+            patches.push({
+              op: "replace",
+              path: "/attributes/purchasable_offer",
+              value: [{
+                marketplace_id: MARKETPLACE,
+                currency: "USD",
+                our_price: [{ schedule: [{ value_with_tax: Number(b.price) }] }],
+              }],
+            });
+          }
+          if (!patches.length) { res.status(400).json({ error: "Nothing to update" }); return; }
+          const d = await spapiW(
+            token,
+            `/listings/2021-08-01/items/${encodeURIComponent(SELLER_ID)}/${encodeURIComponent(sku)}?marketplaceIds=${MARKETPLACE}`,
+            "PATCH",
+            { productType, patches }
+          );
+          res.status(200).json({
+            connected: true,
+            status: d.status,
+            submissionId: d.submissionId,
+            issues: (d.issues || []).map((i) => ({ code: i.code, message: i.message, severity: i.severity })),
+          });
+          return;
+        }
+
+        res.status(400).json({ error: "Unknown listing action" });
       } catch (e) {
         res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
       }
