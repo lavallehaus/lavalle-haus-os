@@ -147,13 +147,14 @@ function baPeriod(period) {
   const weekStart = new Date(lastSat); weekStart.setUTCDate(lastSat.getUTCDate() - 6);
   return { start: weekStart.toISOString(), end: lastSat.toISOString() };
 }
-async function downloadReportRecords(doc, max) {
+async function downloadReportRecords(doc, max, predicate, maxBytes) {
+  const cap = maxBytes || 3500000;
   const r = await fetch(doc.url);
   const buf = Buffer.from(await r.arrayBuffer());
   const text = doc.compressionAlgorithm === "GZIP"
-    ? await gunzipCapped(buf, 3500000)
-    : buf.toString("utf-8").slice(0, 3500000);
-  return extractRecords(text, max);
+    ? await gunzipCapped(buf, cap)
+    : buf.toString("utf-8").slice(0, cap);
+  return extractRecords(text, max, predicate);
 }
 // Decompress only up to maxBytes of output, then stop — keeps memory tiny for huge reports.
 function gunzipCapped(buf, maxBytes) {
@@ -168,7 +169,7 @@ function gunzipCapped(buf, maxBytes) {
 }
 // Pull up to `max` complete record objects from the first data array, scanning by brace depth.
 // Works even if `text` is truncated mid-document.
-function extractRecords(text, max) {
+function extractRecords(text, max, predicate) {
   let i = -1;
   const m = text.search(/"data[A-Za-z]*"\s*:\s*\[/);
   if (m >= 0) i = text.indexOf("[", m);
@@ -182,7 +183,7 @@ function extractRecords(text, max) {
     if (inStr) { if (esc) esc = false; else if (ch === BS) esc = true; else if (ch === '"') inStr = false; continue; }
     if (ch === '"') { inStr = true; continue; }
     if (ch === "{") { if (depth === 0) start = p; depth++; }
-    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { try { recs.push(JSON.parse(text.slice(start, p + 1))); } catch (e) {} start = -1; } }
+    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { try { const rec = JSON.parse(text.slice(start, p + 1)); if (!predicate || predicate(rec)) recs.push(rec); } catch (e) {} start = -1; } }
     else if (ch === "]" && depth === 0) break;
   }
   return recs;
@@ -348,7 +349,13 @@ export default async function handler(req, res) {
       if (!docId) { res.status(200).json({ connected: true, pending: true, reportId: rid, kind, period }); return; }
 
       const doc = await spapi(token, "/reports/2021-06-30/documents/" + docId);
-      const records = await downloadReportRecords(doc, 300);
+      const filterTerms = Array.isArray(body.filter) ? body.filter.map((x) => String(x).toLowerCase()).filter(Boolean) : [];
+      let predicate = null, cap = 3500000;
+      if (kind !== "sqp" && filterTerms.length) {
+        predicate = (rec) => { const t = String(rec.searchTerm || "").toLowerCase(); return filterTerms.some((f) => t.indexOf(f) >= 0); };
+        cap = 22000000; // keep only matches, so we can scan far deeper than the top terms
+      }
+      const records = await downloadReportRecords(doc, 300, predicate, cap);
       const rows = kind === "sqp" ? parseSqp(records) : parseSearchTerms(records);
       const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(),
         debug: { count: rows.length, firstRaw: records[0] || null } };
