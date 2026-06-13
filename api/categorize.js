@@ -26,6 +26,28 @@ export default async function handler(req, res) {
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+
+  // Generic AI passthrough: any feature can POST { system, messages, max_tokens }.
+  // Keeps the key server-side and avoids browser CORS. Model is fixed to a known-good one.
+  if (body && Array.isArray(body.messages)) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: Math.min(Number(body.max_tokens) || 1024, 4096),
+          system: body.system || undefined,
+          messages: body.messages,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) { res.status(502).json({ error: (data && data.error && data.error.message) || "Claude API error", detail: data }); return; }
+      res.status(200).json({ content: data.content || [], usage: data.usage || {} });
+    } catch (e) { res.status(500).json({ error: "Request failed: " + (e && e.message ? e.message : String(e)) }); }
+    return;
+  }
+
   const pdfBase64 = body && body.pdfBase64;
   const knownMerchants = (body && body.knownMerchants) || {};
   if (!pdfBase64) {
@@ -58,7 +80,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: MODEL,
-         max_tokens: 32000,
+        max_tokens: 8000,
         messages: [{
           role: "user",
           content: [
