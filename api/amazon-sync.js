@@ -258,6 +258,99 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ?op=producttype — Product Type Definitions API. Grounds the creator in
+    // Amazon's real schema instead of guessed fields.
+    //   action=search&keywords=candle holder -> candidate product types
+    //   action=schema&productType=X          -> required + curated fields
+    if (req.query && req.query.op === "producttype") {
+      const action = req.query.action || "search";
+      try {
+        const token = await getAccessToken();
+        if (action === "search") {
+          const kw = encodeURIComponent(req.query.keywords || "");
+          const d = await spapi(token, `/definitions/2020-09-01/productTypes?keywords=${kw}&marketplaceIds=${MARKETPLACE}`);
+          const types = (d.productTypes || []).map((p) => ({ name: p.name, displayName: p.displayName || p.name }));
+          res.status(200).json({ connected: true, types });
+          return;
+        }
+        if (action === "schema") {
+          const pt = req.query.productType || "";
+          if (!pt) { res.status(400).json({ error: "Missing productType" }); return; }
+          const meta = await spapi(
+            token,
+            `/definitions/2020-09-01/productTypes/${encodeURIComponent(pt)}?marketplaceIds=${MARKETPLACE}&requirements=LISTING&locale=en_US`
+          );
+          const link = meta.schema && meta.schema.link && meta.schema.link.resource;
+          if (!link) { res.status(200).json({ connected: true, productType: pt, fields: [], required: [], note: "No schema link returned" }); return; }
+          const schemaRes = await fetch(link);
+          const schema = await schemaRes.json();
+          const props = schema.properties || {};
+          const required = schema.required || [];
+          // Curated common fields we always want surfaced if the type allows them
+          const curated = ["item_name", "brand", "product_description", "bullet_point",
+            "main_product_image_locator", "other_product_image_locator", "purchasable_offer",
+            "condition_type", "fulfillment_availability", "color", "material", "item_type_keyword",
+            "number_of_items", "country_of_origin", "supplier_declared_dg_hz_regulation",
+            "batteries_required", "list_price"];
+          const want = Array.from(new Set([...required, ...curated])).filter((n) => props[n]);
+          const fields = want.slice(0, 40).map((name) => {
+            const p = props[name] || {};
+            const items = p.items || {};
+            const ip = items.properties || {};
+            const valLeaf = ip.value || {};
+            const localizable = !!ip.language_tag;
+            const enumVals = valLeaf.enum || (valLeaf.items && valLeaf.items.enum) || null;
+            const enumNames = valLeaf.enumNames || null;
+            return {
+              name,
+              title: p.title || name,
+              description: (p.description || "").slice(0, 160),
+              required: required.includes(name),
+              localizable,
+              valueType: valLeaf.type || (Array.isArray(p.type) ? p.type[0] : p.type) || "string",
+              enum: enumVals ? enumVals.slice(0, 60) : null,
+              enumNames: enumNames ? enumNames.slice(0, 60) : null,
+              maxLength: valLeaf.maxLength || null,
+              maxItems: p.maxItems || (items && items.maxUniqueItems) || null,
+            };
+          });
+          res.status(200).json({ connected: true, productType: pt, required, fields });
+          return;
+        }
+        res.status(400).json({ error: "Unknown producttype action" });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
+    // ?op=createlisting — full new-listing creation via putListingsItem.
+    // Frontend sends an already-shaped attributes object. requirements=LISTING.
+    if (req.query && req.query.op === "createlisting" && req.method === "POST") {
+      if (!SELLER_ID) { res.status(400).json({ error: "AMZ_SELLER_ID is not set in Vercel." }); return; }
+      try {
+        const token = await getAccessToken();
+        const b = req.body || {};
+        const sku = b.sku, productType = b.productType, attributes = b.attributes || {};
+        if (!sku || !productType) { res.status(400).json({ error: "Missing sku or productType" }); return; }
+        const d = await spapiW(
+          token,
+          `/listings/2021-08-01/items/${encodeURIComponent(SELLER_ID)}/${encodeURIComponent(sku)}?marketplaceIds=${MARKETPLACE}`,
+          "PUT",
+          { productType, requirements: "LISTING", attributes }
+        );
+        res.status(200).json({
+          connected: true,
+          status: d.status,
+          submissionId: d.submissionId,
+          issues: (d.issues || []).map((i) => ({ code: i.code, message: i.message, severity: i.severity, attributeNames: i.attributeNames || [] })),
+        });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 500) });
+      }
+      return;
+    }
+
     // ?op=listing — Listings Items API editor (Product Listing role).
     // action=skus  -> picker list from FBA inventory
     // action=get&sku=X -> current title/bullets/description/price/status/issues
