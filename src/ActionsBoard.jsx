@@ -220,14 +220,15 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                 <Avatar m={m} />
                 <select style={selStyle} value={it.assigneeId || ""} onChange={(e) => updateItem(it.id, { assigneeId: e.target.value || null })}>
                   <option value="">— assign —</option>
-                  {state.team.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {state.team.map((t) => <option key={t.id} value={t.id}>{t.name}{t.email ? "" : " (no email)"}</option>)}
                 </select>
-                {m && m.email && (() => {
+                {(() => {
                   const st = emailState[it.id];
+                  const canSend = !!(m && m.email);
                   const err = st && st.indexOf("err:") === 0;
                   return (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <button onClick={() => notifyAssignee(it)} disabled={st === "sending"} style={{ ...btnGhost, color: st === "sent" ? c.green : c.clay, borderColor: st === "sent" ? c.green : c.clay, opacity: st === "sending" ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent — resend" : "✉ Email " + m.name.split(" ")[0]}</button>
+                      <button onClick={() => notifyAssignee(it)} disabled={!canSend || st === "sending"} title={canSend ? ("Send to " + m.email) : "Assign a team member who has an email first"} style={{ ...btnGhost, color: st === "sent" ? c.green : (canSend ? c.clay : c.sub), borderColor: st === "sent" ? c.green : (canSend ? c.clay : c.line), opacity: (!canSend || st === "sending") ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent" : "✉ Send email"}</button>
                       {err && <span style={{ fontFamily: sans, fontSize: 9, color: c.red, maxWidth: 220 }}>{st.slice(4)}</span>}
                     </span>
                   );
