@@ -95,12 +95,13 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       setState((prev) => ({ ...prev, amazonFba: map, fbaUpdatedAt: d.updatedAt }));
       if (got) { setFeeFetch({ loading: false, error: null }); }
       else {
-        const diag = (d.items || []).find((it) => it.error || (it.status && it.status !== "Success") || (it.feeTypes && it.feeTypes.length));
+        const diag = (d.items || []).find((it) => it.error || (it.status && it.status !== "Success") || (it.feeTypes && it.feeTypes.length) || it.debug);
         let msg = "Amazon returned no FBA fee.";
         if (diag) {
           if (diag.error) msg += ` Amazon said: ${diag.error}`;
           else if (diag.status && diag.status !== "Success") msg += ` Status: ${diag.status}.`;
           else if (diag.feeTypes && diag.feeTypes.length) msg += ` Fees returned: ${diag.feeTypes.join(", ")} (no FBA line).`;
+          else if (diag.debug) msg += ` [raw: ${diag.debug}]`;
         }
         setFeeFetch({ loading: false, error: msg });
       }
