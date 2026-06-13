@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { buildMarginsModel, num, SPEND_30 } from "./marginsCore.js";
 
 // LAVALLE HAUS OS — Margins (CM1 / CM2 per SKU). Sales sub-tab.
@@ -27,14 +27,12 @@ const pct = (v) => (v == null ? "—" : `${Number(v).toFixed(0)}%`);
 const marginColor = (p) => (p == null ? c.sub : p < 0 ? c.red : p < 20 ? c.clay : c.green);
 
 
-export default function Margins({ cogs = {}, products = [], campaigns = [], profitMatrix = {}, data = {}, onSave }) {
+export default function Margins({ cogs = {}, products = [], campaigns = [], profitMatrix = {}, data = {}, onSave, onFbaFees }) {
   const [state, setState] = useState(() => ({
     referralPct: data.referralPct != null ? data.referralPct : 15,
     returnsPct: data.returnsPct != null ? data.returnsPct : 2,
     bySku: data.bySku || {},
     adMap: data.adMap || {},
-    amazonFba: data.amazonFba || {},
-    fbaUpdatedAt: data.fbaUpdatedAt || null,
   }));
   const [feeFetch, setFeeFetch] = useState({ loading: false, error: null });
   const [past, setPast] = useState([]);
@@ -48,7 +46,7 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
 
   // Single source of truth: the shared core builds rows/flags/summary/ad-mapping.
   // The Action Items board uses the same core, so it never needs this tab open.
-  const model = useMemo(() => buildMarginsModel({ cogs, products, campaigns, profitMatrix, settings: state }), [cogs, products, campaigns, profitMatrix, state]);
+  const model = useMemo(() => buildMarginsModel({ cogs, products, campaigns, profitMatrix, settings: { ...state, amazonFba: data.amazonFba || {} } }), [cogs, products, campaigns, profitMatrix, state, data.amazonFba]);
   const { rows, flags, summary, effMap, adByProduct, amazonTargets, totalCampaignSpend30, unmappedSpend30 } = model;
 
   async function fetchFbaFees() {
@@ -60,10 +58,10 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     try {
       const d = await fetch("/api/amazon-sync?op=fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then((r) => r.json());
       if (d.error) { setFeeFetch({ loading: false, error: d.error }); return; }
-      const map = { ...state.amazonFba };
+      const map = { ...(data.amazonFba || {}) };
       const filled = [], failed = [];
       (d.items || []).forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; filled.push(it); } else { failed.push(it); } });
-      setState((prev) => ({ ...prev, amazonFba: map, fbaUpdatedAt: d.updatedAt }));
+      if (onFbaFees) onFbaFees(map, d.updatedAt);
       const nameOf = (id) => { const r = (rows || []).find((x) => x.id === id); return r ? r.name : ("#" + id); };
       if (filled.length && !failed.length) { setFeeFetch({ loading: false, error: null }); }
       else if (!filled.length && !failed.length) { setFeeFetch({ loading: false, error: "No SKUs returned." }); }
@@ -77,8 +75,17 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     }
   }
 
+  // Auto-pull on open if fees haven't been fetched yet — no button needed.
+  const fbaAutoRef = useRef(false);
+  useEffect(() => {
+    if (fbaAutoRef.current) return;
+    fbaAutoRef.current = true;
+    if (Object.keys(data.amazonFba || {}).length === 0) fetchFbaFees();
+    /* eslint-disable-next-line */
+  }, []);
+
   const persistKey = JSON.stringify({ s: state, sum: summary, fl: flags });
-  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: state.amazonFba, fbaUpdatedAt: state.fbaUpdatedAt, summary, flags }); /* eslint-disable-next-line */ }, [persistKey]);
+  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: data.amazonFba || {}, fbaUpdatedAt: data.fbaUpdatedAt || null, summary, flags }); /* eslint-disable-next-line */ }, [persistKey]);
 
   const unpriced = rows.filter((r) => r.price <= 0);
   const losers = rows.filter((r) => r.price > 0 && r.cm2 != null && r.cm2 < 0);
@@ -109,10 +116,10 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
           <input style={{ ...cellInput, width: 52, marginLeft: 6 }} value={state.referralPct} onChange={(e) => setGlobal("referralPct", e.target.value.replace(/[^0-9.]/g, ""))} /></label>
         <label style={{ fontFamily: sans, fontSize: 11, color: c.ink }}>Returns %
           <input style={{ ...cellInput, width: 52, marginLeft: 6 }} value={state.returnsPct} onChange={(e) => setGlobal("returnsPct", e.target.value.replace(/[^0-9.]/g, ""))} /></label>
-        <button onClick={fetchFbaFees} disabled={feeFetch.loading} style={{ ...btnGhost, color: c.ink, borderColor: c.clay, opacity: feeFetch.loading ? 0.5 : 1 }}>{feeFetch.loading ? "Asking Amazon…" : "↻ Pull FBA fees from Amazon"}</button>
-        {state.fbaUpdatedAt && !feeFetch.loading && <span style={{ fontFamily: sans, fontSize: 9, color: c.green, letterSpacing: 1 }}>● updated {new Date(state.fbaUpdatedAt).toLocaleTimeString()}</span>}
+        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.7)" }}>FBA fees auto-sync from Amazon{data.fbaUpdatedAt ? " · last " + new Date(data.fbaUpdatedAt).toLocaleDateString() : " · syncing on load"}</span>
+        <button onClick={fetchFbaFees} disabled={feeFetch.loading} style={{ ...btnGhost, fontSize: 9, padding: "3px 8px" }}>{feeFetch.loading ? "syncing…" : "↻ refresh"}</button>
         {feeFetch.error && <span style={{ fontFamily: sans, fontSize: 10, color: c.red }}>{feeFetch.error}</span>}
-        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>FBA fee: live from Amazon by ASIN (falls back to Profit Matrix) · ad/unit from mapped campaigns</span>
+        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>ad/unit from mapped campaigns</span>
       </div>
 
       <div style={{ ...card, padding: 0, overflowX: "auto" }}>
