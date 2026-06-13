@@ -16,6 +16,7 @@ import VesselCreator from "./VesselCreator.jsx";
 import Bank from "./Bank.jsx";
 import Margins from "./Margins.jsx";
 import ActionsBoard from "./ActionsBoard.jsx";
+import { buildMarginsModel } from "./marginsCore.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1726,6 +1727,31 @@ setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full)
 }
 }, [loaded, shopify.items, amazon.items]);
 
+// ── AUTO FBA FEES ── pull live FBA fees from Amazon in the background when they
+// are missing or older than 7 days, so the Margins + Action Items stay current
+// without anyone pressing a button. Runs at most once per session.
+const feesAutoRef = useRef(false);
+useEffect(() => {
+  if (!loaded || feesAutoRef.current) return;
+  const m = dbState.margins || {};
+  const fba = m.amazonFba || {};
+  const stale = !m.fbaUpdatedAt || (Date.now() - new Date(m.fbaUpdatedAt).getTime()) > 7 * 86400000;
+  if (Object.keys(fba).length > 0 && !stale) { feesAutoRef.current = true; return; }
+  const items = (products || []).filter((p) => (p.sku || p.asin) && !p.isSample).map((p) => ({ id: p.id, asin: p.asin, sku: p.sku, price: Number(p.price) || 0 }));
+  if (!items.length) return;
+  feesAutoRef.current = true;
+  (async () => {
+    try {
+      const d = await fetch("/api/amazon-sync?op=fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then((r) => r.json());
+      if (d && d.items) {
+        const map = { ...fba }; let got = 0;
+        d.items.forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; got += 1; } });
+        if (got) setDbState((prev) => { const next = { ...prev, margins: { ...(prev.margins || {}), amazonFba: map, fbaUpdatedAt: d.updatedAt } }; dbSave(next); return next; });
+      }
+    } catch (e) {}
+  })();
+}, [loaded, dbState, products]);
+
 useEffect(() => {
 const link = document.createElement("link");
 link.rel = "stylesheet"; link.href = FONT_LINK;
@@ -1801,7 +1827,7 @@ setLoaded(true);
 const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
 const pauseCount = campaigns.filter(c => c.status === "pause").length;
 const _storedActions = (dbState.actionsBoard && dbState.actionsBoard.items) || [];
-const _marginFlags = (dbState.margins && dbState.margins.flags) || [];
+const _marginFlags = buildMarginsModel({ cogs: dbState.cogs || {}, products, campaigns, profitMatrix: dbState.profitMatrix || {}, settings: dbState.margins || {} }).flags;
 const _liveActions = _storedActions.filter(a => a.status !== "done" && a.status !== "resolved");
 const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severity === "high").length : _marginFlags.filter(f => f.severity === "high").length;
 
@@ -1916,7 +1942,7 @@ if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Pro
 if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
 if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={(dbState.margins && dbState.margins.flags) || []} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
+if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
 if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { setDbState((prev) => { const next = { ...prev, wholesale: w }; dbSave(next); return next; }); }} />;
 }
 if (tab === "materials") {
