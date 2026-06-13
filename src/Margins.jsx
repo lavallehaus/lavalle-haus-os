@@ -57,7 +57,7 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
   const pmById = useMemo(() => {
     const m = {};
     (profitMatrix.products || []).forEach((p) => {
-      m[p.id] = { fba: num(p.fbaFee) + num(p.storage), landed: num(p.cogs) + num(p.packaging) + num(p.freight) };
+      m[p.id] = { fba: num(p.fbaFee) + num(p.storage), landed: num(p.cogs) + num(p.packaging) + num(p.freight), retail: num(p.retail) };
     });
     return m;
   }, [profitMatrix]);
@@ -99,25 +99,28 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     return out;
   }, [campaigns, effMap]);
 
+  const cogsById = useMemo(() => { const m = {}; cogsProducts.forEach((p) => { m[p.id] = p; }); return m; }, [cogsProducts]);
   const rows = useMemo(() => {
-    return cogsProducts.map((p) => {
-      const price = num(p.retail);
-      const builderCogs = cogsPerUnit(p, laborRate);
-      const pm = pmById[p.id] || {};
+    // Spine = the live product list (always present); enrich with cost data.
+    const spine = (products || []).filter((p) => !p.isSample && (num(p.price) > 0 || cogsById[p.id] || pmById[p.id] || p.asin));
+    return spine.map((prod) => {
+      const p = cogsById[prod.id] || {};
+      const pm = pmById[prod.id] || {};
+      const price = num(p.retail) > 0 ? num(p.retail) : (num(prod.price) > 0 ? num(prod.price) : num(pm.retail));
+      const builderCogs = cogsById[prod.id] ? cogsPerUnit(p, laborRate) : 0;
       const cogsU = builderCogs > 0 ? builderCogs : (pm.landed || 0);
       const cogsSrc = builderCogs > 0 ? "builder" : (pm.landed > 0 ? "matrix" : null);
       const cm1 = price - cogsU;
       const cm1pct = price > 0 ? (cm1 / price) * 100 : null;
-      const sk = state.bySku[p.id] || {};
+      const sk = state.bySku[prod.id] || {};
       const referral = price * (num(state.referralPct) / 100);
       const returns = price * (num(state.returnsPct) / 100);
       const overrideFba = sk.fbaFee !== undefined && sk.fbaFee !== "";
       const autoFba = pm.fba != null ? pm.fba : null;
       const fbaFee = overrideFba ? num(sk.fbaFee) : (autoFba != null && autoFba > 0 ? autoFba : null);
       const fbaIsAuto = !overrideFba && autoFba != null && autoFba > 0;
-      const prod = products.find((x) => x.id === p.id) || {};
       const units = num(prod.unitsSold30);
-      const mappedSpend = adByProduct[p.id] || 0;
+      const mappedSpend = adByProduct[prod.id] || 0;
       const computedAd = units > 0 ? mappedSpend / units : null;
       const overrideAd = sk.adPerUnit !== undefined && sk.adPerUnit !== "";
       const ad = overrideAd ? num(sk.adPerUnit) : (computedAd != null ? computedAd : 0);
@@ -125,13 +128,13 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       const fbaSet = fbaFee != null;
       const cm2 = fbaSet ? cm1 - referral - returns - fbaFee - ad : null;
       const cm2pct = cm2 != null && price > 0 ? (cm2 / price) * 100 : null;
-      return { id: p.id, name: p.name, price, cogsU, cogsSrc, cm1, cm1pct, referral, returns, fbaFee, autoFba, fbaIsAuto, ad, adIsAuto, computedAd, mappedSpend, cm2, cm2pct, units, hasCogs: cogsU > 0 };
+      return { id: prod.id, name: prod.name, price, cogsU, cogsSrc, cm1, cm1pct, referral, returns, fbaFee, autoFba, fbaIsAuto, ad, adIsAuto, computedAd, mappedSpend, cm2, cm2pct, units, hasCogs: cogsU > 0 };
     }).sort((a, b) => {
       const am = a.cm2pct != null ? a.cm2pct : (a.cm1pct != null ? a.cm1pct : 999);
       const bm = b.cm2pct != null ? b.cm2pct : (b.cm1pct != null ? b.cm1pct : 999);
       return am - bm;
     });
-  }, [cogsProducts, laborRate, state, products, adByProduct, pmById]);
+  }, [cogsById, laborRate, state, products, adByProduct, pmById]);
 
   const summary = useMemo(() => {
     let wRev = 0, wCm1 = 0, wCm2 = 0, cm2KnownRev = 0;
