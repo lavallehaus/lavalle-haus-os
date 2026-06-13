@@ -328,72 +328,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ?op=fees — live FBA fulfillment-fee estimate per ASIN (Product Fees API).
-    // Body: { items:[{id, asin, price}] }. Returns the FBA fee only (referral is
-    // applied separately in the Margins tab, so we exclude it here to avoid
-    // double-counting). ~1 request/second rate limit, so we pace the loop.
-    if (req.query && req.query.op === "fees" && req.method === "POST") {
-      try {
-        const token = await getAccessToken();
-        const items = (req.body && req.body.items) || [];
-        const out = [];
-        for (const it of items) {
-          const sku = it && it.sku, asin = it && it.asin;
-          if (!sku && !asin) { out.push({ id: it && it.id, asin, sku, fbaFee: null, error: "no SKU/ASIN" }); continue; }
-          try {
-            const useSku = Boolean(sku);
-            const body = {
-              FeesEstimateRequest: {
-                MarketplaceId: MARKETPLACE,
-                IdType: useSku ? "SellerSKU" : "ASIN",
-                IdValue: useSku ? sku : asin,
-                PriceToEstimateFees: { ListingPrice: { CurrencyCode: "USD", Amount: Number(it.price) || 0 } },
-                Identifier: String(it.id != null ? it.id : (sku || asin)),
-                IsAmazonFulfilled: true,
-              },
-            };
-            const path = useSku
-              ? `/products/fees/v0/listings/${encodeURIComponent(sku)}/feesEstimate`
-              : `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`;
-            const d = await spapiW(token, path, "POST", body);
-            // Be defensive about response nesting across SP-API variants.
-            const result = (d && d.payload && d.payload.FeesEstimateResult)
-              || (d && d.FeesEstimateResult)
-              || (d && d.payload) || null;
-            const est = result && (result.FeesEstimate || (result.payload && result.payload.FeesEstimate));
-            const status = result && result.Status;
-            const details = (est && est.FeeDetailList) || [];
-            const feeTypes = details.map((f) => f.FeeType);
-            let fba = 0, found = false;
-            for (const f of details) {
-              const t = f.FeeType || "";
-              if (/FBA|Fulfillment/i.test(t) && !/Referral/i.test(t)) {
-                const amt = (f.FeeAmount && f.FeeAmount.Amount != null) ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount);
-                if (amt != null) { fba += Number(amt); found = true; }
-              }
-            }
-            // Fallback: if there is a total estimate but no explicit FBA line, derive
-            // FBA = total − referral so we still show something rather than nothing.
-            if (!found && est && est.TotalFeesEstimate && est.TotalFeesEstimate.Amount != null) {
-              let referral = 0;
-              for (const f of details) { if (/Referral/i.test(f.FeeType || "")) { const a = (f.FeeAmount && f.FeeAmount.Amount) != null ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount); if (a != null) referral += Number(a); } }
-              const derived = Number(est.TotalFeesEstimate.Amount) - referral;
-              if (derived > 0) { fba = derived; found = true; }
-            }
-            const errMsg = result && result.Error ? (result.Error.Message || result.Error.Code) : null;
-            out.push({ id: it.id, asin, sku, fbaFee: found ? Number(fba.toFixed(2)) : null, status, feeTypes, error: errMsg, debug: found ? undefined : JSON.stringify(d).slice(0, 500) });
-          } catch (e) {
-            out.push({ id: it.id, asin, sku, fbaFee: null, error: String(e).slice(0, 220) });
-          }
-          await new Promise((r) => setTimeout(r, 700));
-        }
-        res.status(200).json({ items: out, updatedAt: new Date().toISOString() });
-      } catch (e) {
-        res.status(500).json({ error: String(e).slice(0, 400) });
-      }
-      return;
-    }
-
     // ?op=createlisting — full new-listing creation via putListingsItem.
     // Frontend sends an already-shaped attributes object. requirements=LISTING.
     if (req.query && req.query.op === "createlisting" && req.method === "POST") {
@@ -807,6 +741,72 @@ export default async function handler(req, res) {
     res.status(200).json({ connected: false });
     return;
   }
+
+    // ?op=fees — live FBA fulfillment-fee estimate per ASIN (Product Fees API).
+    // Body: { items:[{id, asin, price}] }. Returns the FBA fee only (referral is
+    // applied separately in the Margins tab, so we exclude it here to avoid
+    // double-counting). ~1 request/second rate limit, so we pace the loop.
+    if (req.query && req.query.op === "fees" && req.method === "POST") {
+      try {
+        const token = await getAccessToken();
+        const items = (req.body && req.body.items) || [];
+        const out = [];
+        for (const it of items) {
+          const sku = it && it.sku, asin = it && it.asin;
+          if (!sku && !asin) { out.push({ id: it && it.id, asin, sku, fbaFee: null, error: "no SKU/ASIN" }); continue; }
+          try {
+            const useSku = Boolean(sku);
+            const body = {
+              FeesEstimateRequest: {
+                MarketplaceId: MARKETPLACE,
+                IdType: useSku ? "SellerSKU" : "ASIN",
+                IdValue: useSku ? sku : asin,
+                PriceToEstimateFees: { ListingPrice: { CurrencyCode: "USD", Amount: Number(it.price) || 0 } },
+                Identifier: String(it.id != null ? it.id : (sku || asin)),
+                IsAmazonFulfilled: true,
+              },
+            };
+            const path = useSku
+              ? `/products/fees/v0/listings/${encodeURIComponent(sku)}/feesEstimate`
+              : `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`;
+            const d = await spapiW(token, path, "POST", body);
+            // Be defensive about response nesting across SP-API variants.
+            const result = (d && d.payload && d.payload.FeesEstimateResult)
+              || (d && d.FeesEstimateResult)
+              || (d && d.payload) || null;
+            const est = result && (result.FeesEstimate || (result.payload && result.payload.FeesEstimate));
+            const status = result && result.Status;
+            const details = (est && est.FeeDetailList) || [];
+            const feeTypes = details.map((f) => f.FeeType);
+            let fba = 0, found = false;
+            for (const f of details) {
+              const t = f.FeeType || "";
+              if (/FBA|Fulfillment/i.test(t) && !/Referral/i.test(t)) {
+                const amt = (f.FeeAmount && f.FeeAmount.Amount != null) ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount);
+                if (amt != null) { fba += Number(amt); found = true; }
+              }
+            }
+            // Fallback: if there is a total estimate but no explicit FBA line, derive
+            // FBA = total − referral so we still show something rather than nothing.
+            if (!found && est && est.TotalFeesEstimate && est.TotalFeesEstimate.Amount != null) {
+              let referral = 0;
+              for (const f of details) { if (/Referral/i.test(f.FeeType || "")) { const a = (f.FeeAmount && f.FeeAmount.Amount) != null ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount); if (a != null) referral += Number(a); } }
+              const derived = Number(est.TotalFeesEstimate.Amount) - referral;
+              if (derived > 0) { fba = derived; found = true; }
+            }
+            const errMsg = result && result.Error ? (result.Error.Message || result.Error.Code) : null;
+            out.push({ id: it.id, asin, sku, fbaFee: found ? Number(fba.toFixed(2)) : null, status, feeTypes, error: errMsg, debug: found ? undefined : JSON.stringify(d).slice(0, 500) });
+          } catch (e) {
+            out.push({ id: it.id, asin, sku, fbaFee: null, error: String(e).slice(0, 220) });
+          }
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        res.status(200).json({ items: out, updatedAt: new Date().toISOString() });
+      } catch (e) {
+        res.status(500).json({ error: String(e).slice(0, 400) });
+      }
+      return;
+    }
 
   try {
     const token = await getAccessToken();
