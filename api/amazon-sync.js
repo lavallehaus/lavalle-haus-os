@@ -288,11 +288,14 @@ export default async function handler(req, res) {
       const period = body.period === "MONTH" ? "MONTH" : "WEEK";
       const asins = Array.isArray(body.asins) ? body.asins.filter(Boolean) : [];
       const cacheKey = "keywords_" + kind;
+      const inflKey = "kwinflight_" + kind + "_" + period;
 
-      // Serve cache unless a fresh pull is forced.
+      // Serve cached result by default. Only an explicit pull (refresh) or an active
+      // poll (reportId) is allowed to spend Amazon's strict report-request quota.
       if (!body.refresh && !body.reportId) {
         const cached = await kvGet(cacheKey);
         if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true }); return; }
+        res.status(200).json({ connected: true, idle: true }); return;
       }
 
       const { start, end } = baPeriod(period);
@@ -302,14 +305,29 @@ export default async function handler(req, res) {
       const reportOptions = { reportPeriod: period };
       if (kind === "sqp" && asins.length) reportOptions.asins = asins.join(" ");
 
-      // Reuse an in-flight report if the client is polling, else create one.
+      // Resolve a report id: an active poll id > a recent in-flight report > create a new one.
       let rid = body.reportId;
       if (!rid) {
-        const created = await spapiW(token, "/reports/2021-06-30/reports", "POST", {
-          reportType, marketplaceIds: [MARKETPLACE], dataStartTime: start, dataEndTime: end, reportOptions,
-        });
-        rid = created.reportId;
+        const infl = await kvGet(inflKey);
+        if (infl && infl.reportId && Date.now() - (infl.at || 0) < 1800000) rid = infl.reportId;
+      }
+      if (!rid) {
+        let created;
+        try {
+          created = await spapiW(token, "/reports/2021-06-30/reports", "POST", {
+            reportType, marketplaceIds: [MARKETPLACE], dataStartTime: start, dataEndTime: end, reportOptions,
+          });
+        } catch (e) {
+          const msg = String(e);
+          if (msg.indexOf("429") >= 0 || msg.indexOf("QuotaExceeded") >= 0) {
+            res.status(200).json({ connected: true, quota: true, error: "Amazon limits how often a Brand Analytics report can be requested. Wait about a minute, then pull once more — after it loads it’s cached, so you rarely need to pull again." });
+            return;
+          }
+          throw e;
+        }
+        rid = created && created.reportId;
         if (!rid) { res.status(200).json({ connected: true, error: "Amazon rejected the report request" + (created && created.errors ? ": " + JSON.stringify(created.errors).slice(0, 300) : "."), debug: created }); return; }
+        await kvSet(inflKey, { reportId: rid, at: Date.now() });
       }
 
       // Short poll (~10s) so each request returns well within the 60s function limit;
@@ -321,7 +339,8 @@ export default async function handler(req, res) {
         status = r.processingStatus;
         if (status === "DONE") { docId = r.reportDocumentId; break; }
         if (status === "FATAL" || status === "CANCELLED") {
-          res.status(200).json({ connected: true, error: "Amazon could not produce this report (" + status + "). Likely the Brand Analytics role isn’t granted to the app, or there is no data for this period.", status, reportId: rid });
+          await kvSet(inflKey, null);
+          res.status(200).json({ connected: true, error: "Amazon could not produce this report (" + status + "). Likely the Brand Analytics role isn’t granted to the app, or there is no data for this period.", status });
           return;
         }
         await sleep(3000);
@@ -334,6 +353,7 @@ export default async function handler(req, res) {
       const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(),
         debug: { count: rows.length, firstRaw: records[0] || null } };
       await kvSet(cacheKey, payload);
+      await kvSet(inflKey, null);
       res.status(200).json({ connected: true, ...payload });
     } catch (e) {
       res.status(500).json({ connected: true, error: String(e).slice(0, 500) });
