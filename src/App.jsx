@@ -17,6 +17,7 @@ import Bank from "./Bank.jsx";
 import Margins from "./Margins.jsx";
 import ActionsBoard from "./ActionsBoard.jsx";
 import Tracker from "./Tracker.jsx";
+import AmazonKeywords from "./AmazonKeywords.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -1355,6 +1356,7 @@ const pauseCount = keywords.filter(k => k.status === "pause").length;
 return (
 <div>
 <SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
+<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} />
 
 {/* Summary */}
 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
