@@ -142,6 +142,43 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Email notify (Resend) — sends an action-item notification to an assignee ──
+  if (op === "notify" && req.method === "POST") {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) { res.status(400).json({ error: "RESEND_API_KEY is not set in Vercel (Project Settings -> Environment Variables)." }); return; }
+    const b = req.body || {};
+    if (!b.to) { res.status(400).json({ error: "No recipient email." }); return; }
+    const esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+    const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+    const sev = String(b.severity || "").toUpperCase();
+    const subject = b.subject || ("Action item: " + (b.itemTitle || ""));
+    const html =
+      '<div style="font-family:Georgia,serif;color:#1a1714;max-width:560px">' +
+        '<p style="font-size:11px;letter-spacing:2px;color:#a07848;text-transform:uppercase">Lavalle Haus OS &middot; Action Item</p>' +
+        '<h2 style="font-weight:400;margin:6px 0">' + esc(b.itemTitle) + '</h2>' +
+        (b.itemDetail ? '<p style="line-height:1.5">' + esc(b.itemDetail) + '</p>' : '') +
+        (b.productName ? '<p style="color:#8c7d6b;margin:4px 0"><b>Product:</b> ' + esc(b.productName) + '</p>' : '') +
+        (sev ? '<p style="color:#8c7d6b;margin:4px 0"><b>Urgency:</b> ' + sev + '</p>' : '') +
+        (b.assignedBy ? '<p style="color:#8c7d6b;margin:4px 0">Assigned by ' + esc(b.assignedBy) + '</p>' : '') +
+        '<hr style="border:none;border-top:1px solid #c8c2b8;margin:14px 0"/>' +
+        '<p style="font-size:12px;color:#8c7d6b">Sent from Lavalle Haus OS</p>' +
+      '</div>';
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to: [b.to], subject, html }),
+      });
+      const text = await r.text();
+      if (!r.ok) { res.status(502).json({ error: "Resend " + r.status + ": " + text.slice(0, 300) }); return; }
+      let id = null; try { id = JSON.parse(text).id; } catch (e) {}
+      res.json({ sent: true, id });
+    } catch (e) {
+      res.status(500).json({ error: String(e).slice(0, 300) });
+    }
+    return;
+  }
+
   // ── App data store (unchanged) ───────────────────────────────────────────────
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
