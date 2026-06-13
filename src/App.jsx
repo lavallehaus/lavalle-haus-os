@@ -1202,7 +1202,7 @@ KEY ISSUES: Broad Match campaign burning $63/week with zero sales. Sand Wax 32oz
 Be direct, specific, actionable. No fluff.`;
 
 try {
-const res = await fetch("https://api.anthropic.com/v1/messages", {
+const res = await fetch("/api/categorize", {
 method: "POST",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify({
@@ -1317,7 +1317,7 @@ if (!aiProduct) return;
 setAiLoading(true);
 setAiResults([]);
 try {
-const res = await fetch("https://api.anthropic.com/v1/messages", {
+const res = await fetch("/api/categorize", {
 method: "POST",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify({
