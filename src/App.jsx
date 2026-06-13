@@ -1356,7 +1356,7 @@ const pauseCount = keywords.filter(k => k.status === "pause").length;
 return (
 <div>
 <SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
-<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} />
+<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: kw.product || productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} />
 
 {/* Summary */}
 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
