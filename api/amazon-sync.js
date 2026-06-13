@@ -243,6 +243,84 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ?op=pricing — buy-box & competitor pricing (Product Pricing API v0).
+    // No asins param: discovers her ASINs from FBA inventory and prices those.
+    // ?asins=B0X,B0Y: prices arbitrary ASINs (competitor watchlist).
+    // ?action=getcomp / setcomp(POST): competitor watchlist stored in Redis.
+    if (req.query && req.query.op === "pricing") {
+      const action = req.query.action || "";
+      if (action === "getcomp") {
+        const c = await kvGet("competitor_watchlist");
+        res.status(200).json({ connected: true, competitors: (c && c.list) || [] });
+        return;
+      }
+      if (action === "setcomp" && req.method === "POST") {
+        await kvSet("competitor_watchlist", { list: (req.body && req.body.competitors) || [] });
+        res.status(200).json({ ok: true });
+        return;
+      }
+      try {
+        const token = await getAccessToken();
+        let targets = [];
+        if (req.query.asins) {
+          targets = String(req.query.asins).split(",").map((a) => ({ asin: a.trim(), skus: [] })).filter((t) => t.asin);
+        } else {
+          const inv = await spapi(
+            token,
+            `/fba/inventory/v1/summaries?granularityType=Marketplace&granularityId=${MARKETPLACE}&marketplaceIds=${MARKETPLACE}`
+          );
+          const byAsin = {};
+          for (const s of (inv.payload && inv.payload.inventorySummaries) || []) {
+            if (!s.asin) continue;
+            if (!byAsin[s.asin]) byAsin[s.asin] = { asin: s.asin, skus: [] };
+            byAsin[s.asin].skus.push(s.sellerSku);
+          }
+          targets = Object.values(byAsin);
+        }
+        targets = targets.slice(0, 12);
+        const results = [];
+        for (const t of targets) {
+          try {
+            const d = await spapi(
+              token,
+              `/products/pricing/v0/items/${encodeURIComponent(t.asin)}/offers?MarketplaceId=${MARKETPLACE}&ItemCondition=New`
+            );
+            const p = d.payload || {};
+            const sum = p.Summary || {};
+            const offers = p.Offers || [];
+            const mine = offers.find((o) => o.MyOffer);
+            const bbWinner = offers.find((o) => o.IsBuyBoxWinner);
+            const num = (x) => (x === undefined || x === null ? null : Number(x));
+            const landed = (o) =>
+              o ? (num(o.ListingPrice && o.ListingPrice.Amount) || 0) + (num(o.Shipping && o.Shipping.Amount) || 0) : null;
+            const bbPrice =
+              (sum.BuyBoxPrices && sum.BuyBoxPrices[0] && num(sum.BuyBoxPrices[0].LandedPrice && sum.BuyBoxPrices[0].LandedPrice.Amount)) ??
+              landed(bbWinner);
+            const lowest =
+              (sum.LowestPrices && sum.LowestPrices[0] && num(sum.LowestPrices[0].LandedPrice && sum.LowestPrices[0].LandedPrice.Amount)) ?? null;
+            const offerCount =
+              (sum.NumberOfOffers || []).reduce((s2, n2) => s2 + (Number(n2.OfferCount) || 0), 0) || offers.length;
+            results.push({
+              asin: t.asin,
+              skus: t.skus,
+              myPrice: landed(mine),
+              buyBox: bbPrice,
+              buyBoxIsMine: !!(bbWinner && bbWinner.MyOffer) || !!(mine && mine.IsBuyBoxWinner),
+              lowest,
+              offerCount,
+            });
+          } catch (e) {
+            results.push({ asin: t.asin, skus: t.skus, error: String(e).slice(0, 160) });
+          }
+          await sleep(700);
+        }
+        res.status(200).json({ connected: true, results });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
     // ?op=sns — Subscribe & Save report flow (Reports API).
     // action=create   -> { reportId }
     // action=status   -> { processingStatus, reportDocumentId }
