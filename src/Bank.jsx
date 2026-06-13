@@ -31,7 +31,7 @@ export default function Bank({ onSaveCash }) {
 
   const loadBalances = useCallback(() => {
     setBal((b) => ({ ...b, loading: true, error: null }));
-    fetch("/api/plaid?op=balances").then((r) => r.json()).then((d) => {
+    fetch("/api/data?op=balances").then((r) => r.json()).then((d) => {
       if (d.accounts) {
         setBal({ loading: false, accounts: d.accounts, totalCash: d.totalCash || 0, connected: d.connected, updatedAt: d.updatedAt, error: null });
         if (onSaveCash) onSaveCash(d.totalCash || 0, d.updatedAt);
@@ -45,12 +45,12 @@ export default function Bank({ onSaveCash }) {
     if (!scriptReady || !window.Plaid) { alert("Plaid is still loading — try again in a second."); return; }
     setLinking(true);
     try {
-      const { link_token } = await fetch("/api/plaid?op=link_token").then((r) => r.json());
+      const { link_token } = await fetch("/api/data?op=link_token").then((r) => r.json());
       if (!link_token) { setLinking(false); alert("Could not start Plaid — check that PLAID_CLIENT_ID and PLAID_SECRET are set in Vercel."); return; }
       const handler = window.Plaid.create({
         token: link_token,
         onSuccess: async (public_token, metadata) => {
-          await fetch("/api/plaid?op=exchange", {
+          await fetch("/api/data?op=exchange", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ public_token, institution: metadata && metadata.institution ? metadata.institution.name : "Bank" }),
           });
@@ -65,7 +65,7 @@ export default function Bank({ onSaveCash }) {
 
   async function disconnect(item_id) {
     if (!window.confirm("Disconnect this bank? Balances from it will stop updating.")) return;
-    await fetch("/api/plaid?op=remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_id }) });
+    await fetch("/api/data?op=remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_id }) });
     loadBalances();
   }
 
