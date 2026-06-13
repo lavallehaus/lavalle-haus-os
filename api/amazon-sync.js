@@ -291,9 +291,13 @@ export default async function handler(req, res) {
             "main_product_image_locator", "other_product_image_locator", "purchasable_offer",
             "condition_type", "fulfillment_availability", "color", "material", "item_type_keyword",
             "number_of_items", "country_of_origin", "supplier_declared_dg_hz_regulation",
-            "batteries_required", "list_price"];
+            "batteries_required", "list_price",
+            // variation + body-care/perfume relevant
+            "variation_theme", "size_name", "scent_name", "color_name", "item_form",
+            "skin_type", "scent", "unit_count", "material_feature", "special_ingredients",
+            "ingredients", "directions", "safety_warning", "fragrance_concentration"];
           const want = Array.from(new Set([...required, ...curated])).filter((n) => props[n]);
-          const fields = want.slice(0, 40).map((name) => {
+          const fields = want.slice(0, 60).map((name) => {
             const p = props[name] || {};
             const items = p.items || {};
             const ip = items.properties || {};
