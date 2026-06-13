@@ -14,6 +14,7 @@ import Pricing from "./Pricing.jsx";
 import Listings from "./Listings.jsx";
 import VesselCreator from "./VesselCreator.jsx";
 import Bank from "./Bank.jsx";
+import Margins from "./Margins.jsx";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1813,7 +1814,7 @@ const pauseCount = campaigns.filter(c => c.status === "pause").length;
 // ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
 { id: "profit", label: "Sales", labelEs: "Ventas", subs: [
-{ id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "pricing", label: "Pricing" },{ id: "cogs", label: "COGS" },
+{ id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "pricing", label: "Pricing" },{ id: "cogs", label: "COGS" },{ id: "margins", label: "Margins" },
 { id: "bank", label: "Bank & Cash" },
 { id: "finance", label: "Finance / Cash" },
 { id: "pnl", label: "P&L / Transactions" },
@@ -1880,8 +1881,9 @@ if (tab === "profit") {
 if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
 if (activeSub === "pricing") return <Pricing products={products} />;
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
+if (activeSub === "margins") return <Margins cogs={dbState.cogs || {}} products={products} campaigns={campaigns} profitMatrix={dbState.profitMatrix || {}} data={dbState.margins || {}} onSave={(m) => { const next = { ...dbState, margins: m }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "bank") return <Bank onSaveCash={(total, updatedAt) => { const full = { ...dbState, bankCash: { total, updatedAt } }; setDbState(full); dbSave(full); }} />;
-if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} bankCash={dbState.bankCash || null} />;
+if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} bankCash={dbState.bankCash || null} margins={dbState.margins || null} />;
 if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
 return profitNode;
 }
