@@ -149,6 +149,46 @@ export default async function handler(req, res) {
   if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   const configured = Boolean(LWA_ID && LWA_SECRET && REFRESH_TOKEN);
 
+  // --- POST listing/pricing ops, hoisted above the GET/POST split so they actually run.
+  // (The GET block below still serves the read actions: listing skus/get, pricing getcomp/list.)
+  if (req.method === "POST" && req.query && req.query.op === "createlisting") {
+    if (!SELLER_ID) { res.status(400).json({ error: "AMZ_SELLER_ID is not set in Vercel." }); return; }
+    try {
+      const token = await getAccessToken();
+      const b = req.body || {};
+      const sku = b.sku, productType = b.productType, attributes = b.attributes || {};
+      if (!sku || !productType) { res.status(400).json({ error: "Missing sku or productType" }); return; }
+      const d = await spapiW(token, `/listings/2021-08-01/items/${encodeURIComponent(SELLER_ID)}/${encodeURIComponent(sku)}?marketplaceIds=${MARKETPLACE}`, "PUT", { productType, requirements: "LISTING", attributes });
+      res.status(200).json({ connected: true, status: d.status, submissionId: d.submissionId, issues: (d.issues || []).map((i) => ({ code: i.code, message: i.message, severity: i.severity, attributeNames: i.attributeNames || [] })) });
+    } catch (e) { res.status(500).json({ connected: true, error: String(e).slice(0, 500) }); }
+    return;
+  }
+  if (req.method === "POST" && req.query && req.query.op === "listing" && req.query.action === "patch") {
+    if (!SELLER_ID) { res.status(400).json({ error: "AMZ_SELLER_ID is not set in Vercel environment variables." }); return; }
+    try {
+      const token = await getAccessToken();
+      const b = req.body || {};
+      const sku = b.sku || "";
+      const productType = b.productType;
+      if (!sku || !productType) { res.status(400).json({ error: "Missing sku or productType" }); return; }
+      const patches = [];
+      const L = (value) => [{ value: String(value), marketplace_id: MARKETPLACE, language_tag: "en_US" }];
+      if (typeof b.itemName === "string" && b.itemName.length) { patches.push({ op: "replace", path: "/attributes/item_name", value: L(b.itemName) }); }
+      if (Array.isArray(b.bullets)) { patches.push({ op: "replace", path: "/attributes/bullet_point", value: b.bullets.filter((x) => x && x.trim()).map((x) => ({ value: x, marketplace_id: MARKETPLACE, language_tag: "en_US" })) }); }
+      if (typeof b.description === "string" && b.description.length) { patches.push({ op: "replace", path: "/attributes/product_description", value: L(b.description) }); }
+      if (b.price !== undefined && b.price !== null && b.price !== "" && !isNaN(Number(b.price))) { patches.push({ op: "replace", path: "/attributes/purchasable_offer", value: [{ marketplace_id: MARKETPLACE, currency: "USD", our_price: [{ schedule: [{ value_with_tax: Number(b.price) }] }] }] }); }
+      if (!patches.length) { res.status(400).json({ error: "Nothing to update" }); return; }
+      const d = await spapiW(token, `/listings/2021-08-01/items/${encodeURIComponent(SELLER_ID)}/${encodeURIComponent(sku)}?marketplaceIds=${MARKETPLACE}`, "PATCH", { productType, patches });
+      res.status(200).json({ connected: true, status: d.status, submissionId: d.submissionId, issues: (d.issues || []).map((i) => ({ code: i.code, message: i.message, severity: i.severity })) });
+    } catch (e) { res.status(500).json({ connected: true, error: String(e).slice(0, 400) }); }
+    return;
+  }
+  if (req.method === "POST" && req.query && req.query.op === "pricing" && req.query.action === "setcomp") {
+    await kvSet("competitor_watchlist", { list: (req.body && req.body.competitors) || [] });
+    res.status(200).json({ ok: true });
+    return;
+  }
+
   if (req.method === "GET") {
     if (!configured) {
       res.status(200).json({ connected: false, reason: "Missing AMZ_LWA_CLIENT_ID / AMZ_LWA_CLIENT_SECRET / AMZ_REFRESH_TOKEN env vars" });
