@@ -16,6 +16,7 @@ import VesselCreator from "./VesselCreator.jsx";
 import Bank from "./Bank.jsx";
 import Margins from "./Margins.jsx";
 import ActionsBoard from "./ActionsBoard.jsx";
+import Tracker from "./Tracker.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -1632,6 +1633,38 @@ function LoginScreen() {
   );
 }
 
+function PrivacyModal({ onClose }) {
+  const wrap = { position: "fixed", inset: 0, background: "rgba(26,23,20,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 };
+  const card = { background: "#f7f4ef", border: "1px solid #c8c2b8", borderRadius: 2, maxWidth: 680, maxHeight: "85vh", overflowY: "auto", padding: "28px 32px", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" };
+  const h = { fontFamily: "'IM Fell English', Georgia, serif", color: "#1a1714" };
+  const p = { fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.6, color: "#3a342d", margin: "8px 0" };
+  const hd = { fontFamily: "monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#a07848", marginTop: 18 };
+  return (
+    <div style={wrap} onClick={onClose}>
+      <div style={card} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Privacy Policy</h1>
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#8c7d6b", cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Refillery Haus · Last updated {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
+        <p style={p}>Refillery Haus (“we,” “us”) operates a small candle and body-care business. This policy explains what information we handle and how we protect it.</p>
+        <div style={hd}>What we collect</div>
+        <p style={p}>Our internal operating system stores business data — products, inventory, sales, advertising, supplier and team records. When you connect an account (such as a bank via Plaid, Amazon Selling Partner, or Shopify), we store the access tokens needed to read that data on your behalf. We do not collect personal information from the public through this tool.</p>
+        <div style={hd}>How it’s stored & secured</div>
+        <p style={p}>Data is stored in an encrypted, access-controlled database (Upstash Redis) and served over encrypted connections (TLS) through our hosting provider (Vercel). Access is limited to a small number of authorized team members, protected by a passcode and two-factor authentication on the underlying accounts. Account credentials and bank connections are handled server-side and, in the case of banking, by Plaid — we never see or store your online banking username or password.</p>
+        <div style={hd}>Third-party services</div>
+        <p style={p}>We rely on reputable providers to operate: Plaid (bank connections), Amazon and Shopify (commerce data), Resend (email notifications), and Upstash/Vercel (storage and hosting). Each processes data only as needed to provide its service.</p>
+        <div style={hd}>How we use it</div>
+        <p style={p}>Information is used solely to run and improve our own operations — tracking margins, inventory, and tasks, and notifying team members. We do not sell personal data, and we do not share it except as required to provide the services above or to comply with the law.</p>
+        <div style={hd}>Retention</div>
+        <p style={p}>We keep business records for as long as they’re useful to operations and review them periodically, removing what we no longer need. You may request deletion of data we hold about you.</p>
+        <div style={hd}>Contact</div>
+        <p style={p}>Questions about this policy or your data can be directed to the business owner at the contact address listed on our store.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
 const [tab, setTab] = useState("profit");
 const [sub, setSub] = useState({});
@@ -1641,6 +1674,7 @@ const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [], deletedProducts: [] });
 const [loaded, setLoaded] = useState(false);
+const [showPrivacy, setShowPrivacy] = useState(false);
 const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, ugc: {}, variantDetail: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 
 async function shopifySync() {
@@ -1916,13 +1950,13 @@ if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
 if (activeSub === "keywords") return <KeywordsTab products={products} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "meta") return <MetaAds data={dbState.metaAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, metaAds: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, googleAds: r }; dbSave(next); return next; }); }} />;
-if (activeSub === "b2b") return <ComingSoon title="B2B Ads" titleEs="Anuncios B2B" lines={["Faire promotions · Wholesale campaigns · Retail outreach", "Leads · Accounts opened · Orders · Revenue"]} />;
+if (activeSub === "b2b") return <Tracker title="B2B Ads" intro="Wholesale & retail campaigns — Faire, outreach, accounts." columns={[{ key: "channel", label: "Channel", type: "text" }, { key: "campaign", label: "Campaign", type: "text" }, { key: "spend", label: "Spend", type: "number" }, { key: "leads", label: "Leads", type: "number" }, { key: "accounts", label: "Accounts", type: "number" }, { key: "orders", label: "Orders", type: "number" }, { key: "revenue", label: "Revenue", type: "number" }]} data={dbState.b2bAds || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, b2bAds: r }; dbSave(next); return next; })} addLabel="+ Add campaign" />;
 }
 if (tab === "inventory") {
 if (activeSub === "fba") return <InventoryTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} shopify={shopify} onShopifySync={shopifySync} amazon={amazon} onAmazonSync={amazonSync} />;
 if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials={setMaterials} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
-if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
+if (activeSub === "packaging") return <Tracker title="Packaging Components" intro="Pouches, jars, bottles, labels, pumps — stock, MOQ, lead time." columns={[{ key: "component", label: "Component", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Pouch", "Jar", "Bottle", "Box", "Label", "Pump", "Lid", "Carton", "Other"] }, { key: "onHand", label: "On hand", type: "number" }, { key: "moq", label: "MOQ", type: "number" }, { key: "leadTime", label: "Lead time", type: "text" }, { key: "supplier", label: "Supplier", type: "text" }, { key: "reorderPoint", label: "Reorder pt", type: "number" }, { key: "link", label: "Buy link", type: "url" }]} data={dbState.packagingItems || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, packagingItems: r }; dbSave(next); return next; })} addLabel="+ Add component" />;
 if (activeSub === "inbound") return <FbaShipments />;
 const onListingCommit = (ev) => {
   let updated = products;
@@ -1938,9 +1972,9 @@ if (activeSub === "createlisting") return <VesselCreator onCommit={onListingComm
 if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
 }
 if (tab === "growth") {
-if (activeSub === "competitors") return <ComingSoon title="Competitor Intelligence" titleEs="Inteligencia de competidores" lines={["OSEA · Nécessaire · Josie Maran · Salt & Stone · Diptyque", "New launches · Promotions · Pricing · Packaging updates"]} />;
-if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Program" titleEs="Programa de creadores" lines={["Creator · Deliverables · Cost · Status · Revenue generated", "Cost per sale · Cost per post · ROAS"]} />;
-if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
+if (activeSub === "competitors") return <Tracker title="Competitor Intelligence" intro="Track rival launches, promos, pricing and packaging moves." columns={[{ key: "brand", label: "Brand", type: "text" }, { key: "update", label: "Update", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Launch", "Promo", "Pricing", "Packaging", "Other"] }, { key: "date", label: "Date", type: "text" }, { key: "link", label: "Link", type: "url" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.competitors || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, competitors: r }; dbSave(next); return next; })} addLabel="+ Add note" />;
+if (activeSub === "creators") return <Tracker title="Influencer / Creator Program" intro="Creators, deliverables, cost and the revenue they drive." columns={[{ key: "creator", label: "Creator", type: "text" }, { key: "handle", label: "Handle", type: "text" }, { key: "deliverables", label: "Deliverables", type: "text" }, { key: "cost", label: "Cost", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Pitched", "Confirmed", "Live", "Paid", "Done"] }, { key: "revenue", label: "Revenue", type: "number" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.creators || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, creators: r }; dbSave(next); return next; })} addLabel="+ Add creator" />;
+if (activeSub === "retail") return <Tracker title="Retail Expansion" intro="Atlas, Faire, spa accounts and independent retailers." columns={[{ key: "account", label: "Account", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Atlas", "Faire", "Spa", "Retailer", "Other"] }, { key: "location", label: "Location", type: "text" }, { key: "status", label: "Status", type: "select", options: ["Prospect", "Pitched", "Open", "Active", "Paused"] }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.retail || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, retail: r }; dbSave(next); return next; })} addLabel="+ Add account" />;
 if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
@@ -1948,7 +1982,7 @@ if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} 
 }
 if (tab === "materials") {
 if (activeSub === "priceoz") return <PriceOzTab />;
-if (activeSub === "suppliers") return <ComingSoon title="Supplier Database" titleEs="Base de proveedores" lines={["Supplier · Contact · MOQ · Lead time · Cost"]} />;
+if (activeSub === "suppliers") return <Tracker title="Supplier Database" intro="Every supplier — contact, MOQ, lead time, cost, reorder link." columns={[{ key: "name", label: "Supplier", type: "text" }, { key: "category", label: "Category", type: "text" }, { key: "contact", label: "Contact", type: "text" }, { key: "moq", label: "MOQ", type: "number" }, { key: "leadTime", label: "Lead time", type: "text" }, { key: "cost", label: "Cost", type: "number" }, { key: "link", label: "Link", type: "url" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.suppliers || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, suppliers: r }; dbSave(next); return next; })} addLabel="+ Add supplier" />;
 }
 return null;
 }
@@ -2005,6 +2039,12 @@ return (
 <div style={tab === "profit" ? {} : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
 {renderBody()}
 </div>
+<div style={{ borderTop: "1px solid #d4cfc7", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "monospace", fontSize: 10, letterSpacing: 1, color: "#a09488" }}>
+<span>© {new Date().getFullYear()} Refillery Haus</span>
+<span>·</span>
+<button onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "#a07848", cursor: "pointer", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
+</div>
+{showPrivacy && <PrivacyModal onClose={() => setShowPrivacy(false)} />}
 </div>
 );
 }
