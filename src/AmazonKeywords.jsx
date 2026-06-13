@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 // LAVALLE HAUS OS — Amazon Brand Analytics keyword panel.
 // Pulls real data through the SP-API (no upload):
@@ -14,6 +14,15 @@ const c = {
 const serif = "'IM Fell English', Georgia, serif";
 const mono = "monospace";
 const MODEL = "claude-sonnet-4-20250514";
+const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "exfoliat", "bath salt", "bath soak", "body oil", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift"];
+const STOP = ["candle", "large", "small", "with", "sand", "vanilla", "apple", "the", "and", "set", "pack", "oz"];
+function buildFilter(products) {
+  const toks = new Set(SEED);
+  (products || []).filter((p) => !p.isSample).forEach((p) => {
+    String(p.name || "").toLowerCase().split(/[^a-z]+/).forEach((w) => { if (w.length > 3 && STOP.indexOf(w) < 0) toks.add(w); });
+  });
+  return [...toks];
+}
 
 const toggle = (on) => ({
   padding: "6px 13px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono,
@@ -35,6 +44,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   const attemptsRef = useRef(0);
 
   const kind = view === "mine" ? "sqp" : "searchterms";
+  const FILTER = useMemo(() => buildFilter(products), [products]);
   const data = byKind[kind];
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
@@ -49,7 +59,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       const asins = view === "mine" ? products.filter((p) => p.asin && !p.isSample).map((p) => p.asin) : [];
       const r = await fetch("/api/amazon-sync?op=keywords", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, period, asins, refresh, reportId }),
+        body: JSON.stringify({ kind, period, asins, refresh, reportId, filter: view === "research" ? FILTER : undefined }),
       }).then((x) => x.json());
 
       if (r && r.error) { setError(r.error); setPending(false); setLoading(false); return; }
@@ -152,6 +162,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
         </table>
       </div>
 
+      <AiCurate rows={rows} products={products} onTrack={onTrack} />
       <AiExpansion products={products} topTerms={rows.slice(0, 25).map((r) => r.term)} onTrack={onTrack} />
     </div>
   );
@@ -213,6 +224,66 @@ function AiExpansion({ products = [], topTerms = [], onTrack }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiCurate({ rows = [], products = [], onTrack }) {
+  const amz = products.filter((p) => !p.isSample && (p.asin || (p.channels || []).includes("Amazon"))).map((p) => ({ id: p.id, name: p.name }));
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState("");
+  const uniqTerms = [...new Set(rows.map((r) => r.term).filter(Boolean))].slice(0, 120);
+  const nameOf = (pid) => { const f = amz.find((p) => String(p.id) === String(pid)); return f ? f.name : ""; };
+
+  async function curate() {
+    if (!uniqTerms.length) { setErr("Pull a report first."); return; }
+    if (!amz.length) { setErr("No Amazon products found to assign to."); return; }
+    setLoading(true); setErr(""); setItems(null);
+    try {
+      const catalog = amz.map((p) => p.id + ": " + p.name).join("; ");
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL, max_tokens: 1000,
+          system: `You curate Amazon search keywords for a candle and body-care brand. You receive a list of search terms and the seller's product catalog as "id: name". Return ONLY a JSON array of the terms genuinely relevant to one of these products. Drop everything unrelated (TV shows, books, electronics, other categories) entirely. Each item: { "term": string, "productId": number (best-fit catalog id), "matchType": "exact"|"phrase"|"broad", "reason": string (max 6 words) }. No markdown, no prose.`,
+          messages: [{ role: "user", content: "Catalog: " + catalog + "\n\nSearch terms: " + uniqTerms.join(", ") }],
+        }),
+      });
+      const d = await res.json();
+      const text = (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("") || "[]";
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      setItems(Array.isArray(parsed) ? parsed : []);
+    } catch (e) { setErr("Could not curate — try again."); }
+    setLoading(false);
+  }
+  const setProd = (i, pid) => setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, productId: pid } : it)));
+
+  const sel = { background: "#e5e1da", border: "1px solid " + c.line, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, fontFamily: mono };
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid " + c.line, paddingTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1, color: c.ink }}>✦ AI CURATE — keep only what's relevant, assign to a product</div>
+        <button onClick={curate} disabled={loading} style={{ ...toggle(false), borderColor: c.clay, color: c.ink, opacity: loading ? 0.5 : 1 }}>{loading ? "Sifting…" : "Sift " + uniqTerms.length + " terms"}</button>
+      </div>
+      {err && <div style={{ color: c.red, fontFamily: mono, fontSize: 10, marginTop: 6 }}>{err}</div>}
+      {items && items.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginTop: 8 }}>Nothing in this batch matched your products. Try the other report or a different week.</div>}
+      {items && items.length > 0 && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f4f1ea", border: "1px solid " + c.line, borderRadius: 1, padding: "6px 9px", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, minWidth: 140, flex: "1 1 140px" }}>{it.term}</span>
+              <select value={it.productId != null ? it.productId : ""} onChange={(e) => setProd(i, e.target.value)} style={sel}>
+                <option value="">— assign product —</option>
+                {amz.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <span style={{ fontFamily: mono, fontSize: 9, color: c.sub }}>{it.matchType || "phrase"}{it.reason ? " · " + it.reason : ""}</span>
+              <button onClick={() => onTrack && onTrack({ keyword: it.term, matchType: it.matchType || "phrase", product: nameOf(it.productId), notes: it.reason || "AI curated" })} style={{ ...toggle(false), borderColor: c.clay, color: c.clay, padding: "4px 9px" }}>＋ Track</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
