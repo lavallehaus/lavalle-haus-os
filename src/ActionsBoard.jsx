@@ -59,6 +59,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   const [draft, setDraft] = useState(null); // new manual item draft
   const [member, setMember] = useState({ name: "", email: "" });
   const [emailState, setEmailState] = useState({}); // itemId -> "sending"|"sent"|"err:..."
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
   const commit = (next) => { setPast((p) => [...p.slice(-49), state]); setFuture([]); setState(next); };
   const undo = () => { if (!past.length) return; const prev = past[past.length - 1]; setPast((p) => p.slice(0, -1)); setFuture((f) => [state, ...f].slice(0, 50)); setState(prev); };
@@ -90,6 +91,27 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
     });
   }, [state.items, filter]);
 
+  // Calendar: due dates plotted by day, sorted by urgency within each day.
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const dueByDate = useMemo(() => {
+    const m = {};
+    state.items.forEach((it) => { if (it.dueDate && isLive(it)) { (m[it.dueDate] = m[it.dueDate] || []).push(it); } });
+    Object.keys(m).forEach((k) => m[k].sort((a, b) => (SEV[a.severity] ? SEV[a.severity].rank : 1) - (SEV[b.severity] ? SEV[b.severity].rank : 1)));
+    return m;
+  }, [state.items]);
+  const calCells = useMemo(() => {
+    const startDow = new Date(calMonth.y, calMonth.m, 1).getDay();
+    const daysIn = new Date(calMonth.y, calMonth.m + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startDow; i++) cells.push(null);
+    for (let d = 1; d <= daysIn; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [calMonth]);
+  const shiftMonth = (delta) => setCalMonth((c) => { const d = new Date(c.y, c.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const todayObj = new Date(); const todayStr = todayObj.getFullYear() + "-" + pad2(todayObj.getMonth() + 1) + "-" + pad2(todayObj.getDate());
+  const monthLabel = new Date(calMonth.y, calMonth.m, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+
   const liveCount = state.items.filter(isLive).length;
   const highCount = state.items.filter((it) => isLive(it) && it.severity === "high").length;
 
@@ -99,7 +121,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   const clearResolved = () => commit({ ...state, items: state.items.filter(isLive) });
   const addManual = () => {
     if (!draft || !draft.title.trim()) { setDraft(null); return; }
-    const it = { id: uid("man"), source: "manual", title: draft.title.trim(), detail: draft.detail.trim(), severity: draft.severity, assigneeId: draft.assigneeId || null, status: "open", createdAt: new Date().toISOString() };
+    const it = { id: uid("man"), source: "manual", title: draft.title.trim(), detail: draft.detail.trim(), severity: draft.severity, assignees: draft.assigneeId ? [draft.assigneeId] : [], status: "open", createdAt: new Date().toISOString() };
     commit({ ...state, items: [it, ...state.items] }); setDraft(null);
   };
   const addMember = () => {
@@ -114,14 +136,37 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   const saveEdit = () => { if (!editVals.name.trim()) { setEditId(null); return; } commit({ ...state, team: state.team.map((t) => t.id === editId ? { ...t, name: editVals.name.trim(), email: editVals.email.trim() } : t) }); setEditId(null); };
   const toggleRecurring = (rid) => commit({ ...state, recurringChecked: { ...state.recurringChecked, [rid]: !state.recurringChecked[rid] } });
 
-  const notifyAssignee = async (it) => {
-    const m = memberById[it.assigneeId]; if (!m || !m.email) return;
+  // assignees: support multiple per task; migrate legacy single assigneeId.
+  const getAssignees = (it) => (it.assignees && it.assignees.length ? it.assignees : (it.assigneeId ? [it.assigneeId] : []));
+  const addAssignee = (id, memberId) => { if (!memberId) return; const it = state.items.find((x) => x.id === id); const cur = getAssignees(it); if (cur.includes(memberId)) return; updateItem(id, { assignees: [...cur, memberId], assigneeId: undefined }); };
+  const dropAssignee = (id, memberId) => { const it = state.items.find((x) => x.id === id); updateItem(id, { assignees: getAssignees(it).filter((a) => a !== memberId), assigneeId: undefined }); };
+  const setDue = (id, date) => updateItem(id, { dueDate: date || null });
+
+  const notifyAll = async (it) => {
+    const recips = getAssignees(it).map((aid) => memberById[aid]).filter((m) => m && m.email);
+    if (!recips.length) return;
     setEmailState((s) => ({ ...s, [it.id]: "sending" }));
-    try {
-      const d = await fetch("/api/data?op=notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: m.email, itemTitle: it.title, itemDetail: it.detail, productName: it.name, severity: it.severity }) }).then((r) => r.json());
-      if (d.sent) setEmailState((s) => ({ ...s, [it.id]: "sent" }));
-      else setEmailState((s) => ({ ...s, [it.id]: "err:" + (d.error || "failed") }));
-    } catch (e) { setEmailState((s) => ({ ...s, [it.id]: "err:" + String(e) })); }
+    let ok = 0, errMsg = null;
+    for (const m of recips) {
+      try {
+        const d = await fetch("/api/data?op=notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: m.email, itemTitle: it.title, itemDetail: it.detail, productName: it.name, severity: it.severity, dueDate: it.dueDate }) }).then((r) => r.json());
+        if (d.sent) ok += 1; else errMsg = d.error || "failed";
+      } catch (e) { errMsg = String(e); }
+    }
+    if (ok && !errMsg) setEmailState((s) => ({ ...s, [it.id]: "sent" }));
+    else if (ok) setEmailState((s) => ({ ...s, [it.id]: "err:sent " + ok + ", but: " + errMsg }));
+    else setEmailState((s) => ({ ...s, [it.id]: "err:" + errMsg }));
+  };
+
+  // due-date display helper
+  const dueInfo = (d) => {
+    if (!d) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const due = new Date(d + "T00:00:00"); const days = Math.round((due - today) / 86400000);
+    if (days < 0) return { text: "Overdue " + (-days) + "d", color: c.red };
+    if (days === 0) return { text: "Due today", color: c.red };
+    if (days <= 3) return { text: "Due in " + days + "d", color: c.clay };
+    return { text: "Due in " + days + "d", color: c.sub };
   };
 
   const Avatar = ({ m, size = 24 }) => (
@@ -143,6 +188,47 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
           <button onClick={undo} disabled={!past.length} style={{ ...btnGhost, opacity: past.length ? 1 : 0.4 }}>↶ Undo</button>
           <button onClick={redo} disabled={!future.length} style={{ ...btnGhost, opacity: future.length ? 1 : 0.4 }}>Redo ↷</button>
         </div>
+      </div>
+
+      {/* calendar — all due dates, color-coded by urgency, with assignee initials */}
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Due-date calendar</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => shiftMonth(-1)} style={btnGhost}>‹</button>
+            <span style={{ fontFamily: serif, fontSize: 15, color: c.ink, minWidth: 150, textAlign: "center" }}>{monthLabel}</span>
+            <button onClick={() => shiftMonth(1)} style={btnGhost}>›</button>
+          </span>
+          <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
+            {["high", "med", "low"].map((k) => <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: SEV[k].color, display: "inline-block" }} /><span style={{ fontFamily: sans, fontSize: 8, color: c.sub, letterSpacing: 1 }}>{SEV[k].label}</span></span>)}
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={i} style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.sub, textAlign: "center", padding: "2px 0" }}>{d}</div>)}
+          {calCells.map((d, i) => {
+            if (d == null) return <div key={i} style={{ minHeight: 64, background: "transparent" }} />;
+            const ds = calMonth.y + "-" + pad2(calMonth.m + 1) + "-" + pad2(d);
+            const items = dueByDate[ds] || [];
+            const isToday = ds === todayStr;
+            return (
+              <div key={i} style={{ minHeight: 64, border: `1px solid ${isToday ? c.clay : c.line}`, background: isToday ? "#efe7da" : "#f3f0ea", borderRadius: 2, padding: 3, overflow: "hidden" }}>
+                <div style={{ fontFamily: sans, fontSize: 9, color: isToday ? c.clay : c.sub, textAlign: "right" }}>{d}</div>
+                {items.slice(0, 3).map((it) => {
+                  const sv = SEV[it.severity] || SEV.med;
+                  const aids = getAssignees(it); const am = aids.length ? memberById[aids[0]] : null; const extra = aids.length - 1;
+                  return (
+                    <div key={it.id} title={it.title + (am ? " · " + am.name : "")} style={{ background: sv.color, color: "#fff", borderRadius: 2, padding: "1px 3px", fontSize: 8, fontFamily: sans, display: "flex", alignItems: "center", gap: 3, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden" }}>
+                      {am && <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: "50%", background: "rgba(255,255,255,0.35)", fontSize: 7, flexShrink: 0 }}>{initials(am.name)}</span>}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{(it.title.length > 12 ? it.title.slice(0, 12) + "…" : it.title)}{extra > 0 ? " +" + extra : ""}</span>
+                    </div>
+                  );
+                })}
+                {items.length > 3 && <div style={{ fontFamily: sans, fontSize: 8, color: c.sub, marginTop: 2 }}>+{items.length - 3} more</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)", marginTop: 6 }}>Set a due date on any item below and it appears here, colored by urgency with the assignee's initials.</div>
       </div>
 
       {/* summary + filters */}
@@ -210,7 +296,8 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
       {sorted.length === 0 && <div style={{ ...card, fontFamily: sans, fontSize: 12, color: c.green }}>No open action items. Nothing is quietly bleeding.</div>}
       {sorted.map((it) => {
         const sev = SEV[it.severity] || SEV.med;
-        const m = memberById[it.assigneeId];
+        const assignees = getAssignees(it);
+        const di = dueInfo(it.dueDate);
         const done = !isLive(it);
         return (
           <div key={it.id} style={{ ...card, borderLeft: `3px solid ${done ? c.line : sev.color}`, opacity: done ? 0.6 : 1, marginBottom: 8 }}>
@@ -223,6 +310,16 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                 </div>
                 <div style={{ fontFamily: serif, fontSize: 15, color: c.ink, textDecoration: done ? "line-through" : "none" }}>{it.title}</div>
                 {it.detail && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginTop: 2 }}>{it.detail}</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  {assignees.map((aid) => { const am = memberById[aid]; if (!am) return null; return (
+                    <span key={aid} title={am.email || "no email"} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#e5e1da", border: `1px solid ${c.line}`, borderRadius: 13, padding: "2px 7px 2px 2px" }}>
+                      <Avatar m={am} size={18} />
+                      <span style={{ fontFamily: sans, fontSize: 10, color: c.ink }}>{am.name.split(" ")[0]}</span>
+                      <button onClick={() => dropAssignee(it.id, aid)} title="remove" style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12, lineHeight: 1 }}>×</button>
+                    </span>
+                  ); })}
+                  {di && <span style={{ fontFamily: sans, fontSize: 10, color: di.color, letterSpacing: 1 }}>● {di.text}</span>}
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <select style={selStyle} value={it.severity} onChange={(e) => updateItem(it.id, { severity: e.target.value })}>
@@ -231,18 +328,18 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                 <select style={selStyle} value={it.status === "resolved" ? "done" : it.status} onChange={(e) => updateItem(it.id, { status: e.target.value, autoResolved: false })}>
                   {STATUS.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}
                 </select>
-                <Avatar m={m} />
-                <select style={selStyle} value={it.assigneeId || ""} onChange={(e) => updateItem(it.id, { assigneeId: e.target.value || null })}>
-                  <option value="">— assign —</option>
-                  {state.team.map((t) => <option key={t.id} value={t.id}>{t.name}{t.email ? "" : " (no email)"}</option>)}
+                <input type="date" value={it.dueDate || ""} onChange={(e) => setDue(it.id, e.target.value)} style={{ ...selStyle, color: it.dueDate ? c.ink : c.sub }} title="Due date" />
+                <select style={selStyle} value="" onChange={(e) => { addAssignee(it.id, e.target.value); e.target.value = ""; }}>
+                  <option value="">+ assign…</option>
+                  {state.team.filter((t) => !assignees.includes(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}{t.email ? "" : " (no email)"}</option>)}
                 </select>
                 {(() => {
                   const st = emailState[it.id];
-                  const canSend = !!(m && m.email);
+                  const canSend = assignees.some((aid) => { const am = memberById[aid]; return am && am.email; });
                   const err = st && st.indexOf("err:") === 0;
                   return (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <button onClick={() => notifyAssignee(it)} disabled={!canSend || st === "sending"} title={canSend ? ("Send to " + m.email) : "Assign a team member who has an email first"} style={{ ...btnGhost, color: st === "sent" ? c.green : (canSend ? c.clay : c.sub), borderColor: st === "sent" ? c.green : (canSend ? c.clay : c.line), opacity: (!canSend || st === "sending") ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent" : "✉ Send email"}</button>
+                      <button onClick={() => notifyAll(it)} disabled={!canSend || st === "sending"} title={canSend ? "Email all assignees" : "Assign a team member who has an email first"} style={{ ...btnGhost, color: st === "sent" ? c.green : (canSend ? c.clay : c.sub), borderColor: st === "sent" ? c.green : (canSend ? c.clay : c.line), opacity: (!canSend || st === "sending") ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent" : "✉ Email assignees"}</button>
                       {err && <span style={{ fontFamily: sans, fontSize: 9, color: c.red, maxWidth: 220 }}>{st.slice(4)}</span>}
                     </span>
                   );
