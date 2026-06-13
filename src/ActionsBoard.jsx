@@ -108,6 +108,10 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
     commit({ ...state, team: [...state.team, t] }); setMember({ name: "", email: "" });
   };
   const removeMember = (id) => commit({ ...state, team: state.team.filter((t) => t.id !== id), items: state.items.map((it) => it.assigneeId === id ? { ...it, assigneeId: null } : it) });
+  const [editId, setEditId] = useState(null);
+  const [editVals, setEditVals] = useState({ name: "", email: "" });
+  const startEdit = (t) => { setEditId(t.id); setEditVals({ name: t.name, email: t.email || "" }); };
+  const saveEdit = () => { if (!editVals.name.trim()) { setEditId(null); return; } commit({ ...state, team: state.team.map((t) => t.id === editId ? { ...t, name: editVals.name.trim(), email: editVals.email.trim() } : t) }); setEditId(null); };
   const toggleRecurring = (rid) => commit({ ...state, recurringChecked: { ...state.recurringChecked, [rid]: !state.recurringChecked[rid] } });
 
   const notifyAssignee = async (it) => {
@@ -153,23 +157,33 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
         {state.items.some((it) => !isLive(it)) && <button onClick={clearResolved} style={btnGhost}>Clear done</button>}
       </div>
 
-      {/* team roster */}
+      {/* team dashboard — persists automatically; powers every assign menu */}
       <div style={card}>
-        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans, marginBottom: 8 }}>Team</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-          {state.team.map((t) => (
-            <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#e5e1da", border: `1px solid ${c.line}`, borderRadius: 14, padding: "3px 8px 3px 3px" }}>
-              <Avatar m={t} size={22} />
-              <span style={{ fontFamily: serif, fontSize: 13, color: c.ink }}>{t.name}</span>
-              {t.email && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>{t.email}</span>}
-              <button onClick={() => removeMember(t.id)} style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>×</button>
-            </span>
-          ))}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <input style={{ ...input, width: 110 }} placeholder="name" value={member.name} onChange={(e) => setMember({ ...member, name: e.target.value })} />
-            <input style={{ ...input, width: 150 }} placeholder="email" value={member.email} onChange={(e) => setMember({ ...member, email: e.target.value })} />
-            <button onClick={addMember} style={{ ...btnGhost, color: c.ink }}>+ Add</button>
-          </span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Team · tag people on action items</span>
+          <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{state.team.length} member{state.team.length === 1 ? "" : "s"} · saved</span>
+        </div>
+        {state.team.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginBottom: 8 }}>No team members yet. Add someone below — they save automatically and appear in every item's assign menu.</div>}
+        {state.team.map((t) => editId === t.id ? (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+            <input style={{ ...input, width: 140 }} value={editVals.name} onChange={(e) => setEditVals({ ...editVals, name: e.target.value })} />
+            <input style={{ ...input, width: 200 }} value={editVals.email} onChange={(e) => setEditVals({ ...editVals, email: e.target.value })} />
+            <button onClick={saveEdit} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>Save</button>
+            <button onClick={() => setEditId(null)} style={btnGhost}>Cancel</button>
+          </div>
+        ) : (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: "1px solid #00000008" }}>
+            <Avatar m={t} size={26} />
+            <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, minWidth: 120 }}>{t.name}</span>
+            <span style={{ fontFamily: sans, fontSize: 11, color: t.email ? c.sub : c.red, flex: 1, minWidth: 140 }}>{t.email || "no email — can't notify"}</span>
+            <button onClick={() => startEdit(t)} style={btnGhost}>Edit</button>
+            <button onClick={() => removeMember(t.id)} style={btnGhost}>Remove</button>
+          </div>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 10, flexWrap: "wrap" }}>
+          <input style={{ ...input, width: 140 }} placeholder="name" value={member.name} onChange={(e) => setMember({ ...member, name: e.target.value })} />
+          <input style={{ ...input, width: 200 }} placeholder="email" value={member.email} onChange={(e) => setMember({ ...member, email: e.target.value })} />
+          <button onClick={addMember} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>+ Add member</button>
         </div>
       </div>
 
