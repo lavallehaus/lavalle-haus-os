@@ -90,20 +90,16 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       const d = await fetch("/api/amazon-sync?op=fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then((r) => r.json());
       if (d.error) { setFeeFetch({ loading: false, error: d.error }); return; }
       const map = { ...state.amazonFba };
-      let got = 0;
-      (d.items || []).forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; got += 1; } });
+      const filled = [], failed = [];
+      (d.items || []).forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; filled.push(it); } else { failed.push(it); } });
       setState((prev) => ({ ...prev, amazonFba: map, fbaUpdatedAt: d.updatedAt }));
-      if (got) { setFeeFetch({ loading: false, error: null }); }
+      const nameOf = (id) => { const r = (rows || []).find((x) => x.id === id); return r ? r.name : ("#" + id); };
+      if (filled.length && !failed.length) { setFeeFetch({ loading: false, error: null }); }
+      else if (!filled.length && !failed.length) { setFeeFetch({ loading: false, error: "No SKUs returned." }); }
       else {
-        const diag = (d.items || []).find((it) => it.error || (it.status && it.status !== "Success") || (it.feeTypes && it.feeTypes.length) || it.debug);
-        let msg = "Amazon returned no FBA fee.";
-        if (diag) {
-          if (diag.error) msg += ` Amazon said: ${diag.error}`;
-          else if (diag.status && diag.status !== "Success") msg += ` Status: ${diag.status}.`;
-          else if (diag.feeTypes && diag.feeTypes.length) msg += ` Fees returned: ${diag.feeTypes.join(", ")} (no FBA line).`;
-          else if (diag.debug) msg += ` [raw: ${diag.debug}]`;
-        }
-        setFeeFetch({ loading: false, error: msg });
+        const why = (it) => it.error ? it.error : (it.status && it.status !== "Success" ? it.status : (it.feeTypes && it.feeTypes.length ? ("only " + it.feeTypes.join("/")) : (it.debug ? ("raw: " + it.debug) : "no fee")));
+        const list = failed.map((it) => nameOf(it.id) + " — " + why(it)).join(" · ");
+        setFeeFetch({ loading: false, error: (filled.length ? ("Filled " + filled.length + ". ") : "") + "Couldn't price: " + list });
       }
     } catch (e) {
       setFeeFetch({ loading: false, error: String(e) });
