@@ -10,6 +10,7 @@ import MetaAds from "./MetaAds.jsx";
 import EmailRetention from "./EmailRetention.jsx";
 import FbaShipments from "./FbaShipments.jsx";
 import AmazonProfit from "./AmazonProfit.jsx";
+import Pricing from "./Pricing.jsx";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1809,7 +1810,7 @@ const pauseCount = campaigns.filter(c => c.status === "pause").length;
 // ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
 { id: "profit", label: "Sales", labelEs: "Ventas", subs: [
-{ id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "cogs", label: "COGS" },
+{ id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "pricing", label: "Pricing" },{ id: "cogs", label: "COGS" },
 { id: "finance", label: "Finance / Cash" },
 { id: "pnl", label: "P&L / Transactions" },
 ] },
@@ -1871,6 +1872,7 @@ dbSave(next);
 function renderBody() {
 if (tab === "profit") {
 if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
+if (activeSub === "pricing") return <Pricing products={products} />;
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { const next = { ...dbState, cogs: { products: cg.products, laborRate: cg.laborRate } }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} />;
 if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { const next = { ...dbState, pnl: pl }; setDbState(next); dbSave(next); }} />;
