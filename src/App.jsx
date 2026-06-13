@@ -15,6 +15,7 @@ import Listings from "./Listings.jsx";
 import VesselCreator from "./VesselCreator.jsx";
 import Bank from "./Bank.jsx";
 import Margins from "./Margins.jsx";
+import ActionsBoard from "./ActionsBoard.jsx";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1810,6 +1811,10 @@ setLoaded(true);
 
 const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
 const pauseCount = campaigns.filter(c => c.status === "pause").length;
+const _storedActions = (dbState.actionsBoard && dbState.actionsBoard.items) || [];
+const _marginFlags = (dbState.margins && dbState.margins.flags) || [];
+const _liveActions = _storedActions.filter(a => a.status !== "done" && a.status !== "resolved");
+const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severity === "high").length : _marginFlags.filter(f => f.severity === "high").length;
 
 // ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
@@ -1836,13 +1841,13 @@ const NAV = [
 { id: "createlisting", label: "Create Listing" },
 { id: "reorder", label: "Reorder List" },
 ] },
-{ id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
+{ id: "growth", label: "Growth", labelEs: "Crecimiento", alert: openHighActions || null, subs: [
 { id: "competitors", label: "Competitor Intel" },
 { id: "creators", label: "Influencer / Creator" },
 { id: "retail", label: "Retail Expansion" },
 { id: "email", label: "Email / Retention" },
 { id: "weeklynums", label: "Weekly Numbers" },
-{ id: "checklist", label: "Ops Checklist" },
+{ id: "checklist", label: "Action Items" },
 { id: "wholesale", label: "Wholesale Accounts" },
 ] },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
@@ -1926,7 +1931,7 @@ if (activeSub === "creators") return <ComingSoon title="Influencer / Creator Pro
 if (activeSub === "retail") return <ComingSoon title="Retail Expansion" titleEs="Expansión minorista" lines={["Atlas · Faire · Spa accounts · Independent retailers"]} />;
 if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { const next = { ...dbState, emailRetention: r }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "checklist") return <ChecklistTab />;
+if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={(dbState.margins && dbState.margins.flags) || []} recurring={CHECKLIST_ITEMS} onSave={(payload) => { const next = { ...dbState, actionsBoard: payload }; setDbState(next); dbSave(next); }} />;
 if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { const next = { ...dbState, wholesale: w }; setDbState(next); dbSave(next); }} />;
 }
 if (tab === "materials") {
@@ -1948,7 +1953,7 @@ return (
 <div style={{ display: "flex", gap: 8 }}>
 {[
 { label: "SKUs", value: products.length, color: "#8c7d6b" },
-{ label: "Alerts", value: criticalCount + pauseCount, color: criticalCount + pauseCount > 0 ? "#9b5e5e" : "#5a7a5a" },
+{ label: "Alerts", value: criticalCount + pauseCount + openHighActions, color: criticalCount + pauseCount + openHighActions > 0 ? "#9b5e5e" : "#5a7a5a" },
 { label: "Campaigns", value: campaigns.length, color: "#7a7a9a" },
 ].map(s => (
 <div key={s.label} style={{ textAlign: "center", padding: "7px 12px", background: "#edeae4", borderRadius: 1, border: "1px solid #3a3020" }}>
