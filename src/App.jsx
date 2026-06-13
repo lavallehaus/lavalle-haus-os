@@ -12,6 +12,7 @@ import FbaShipments from "./FbaShipments.jsx";
 import AmazonProfit from "./AmazonProfit.jsx";
 import Pricing from "./Pricing.jsx";
 import Listings from "./Listings.jsx";
+import VesselCreator from "./VesselCreator.jsx";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1829,6 +1830,7 @@ const NAV = [
 { id: "raw", label: "Raw Materials" },
 { id: "inbound", label: "FBA Shipments" },
 { id: "listings", label: "Listing Manager" },
+{ id: "createlisting", label: "Create Listing" },
 { id: "reorder", label: "Reorder List" },
 ] },
 { id: "growth", label: "Growth", labelEs: "Crecimiento", subs: [
@@ -1898,7 +1900,7 @@ if (activeSub === "raw") return <MaterialsTab materials={materials} setMaterials
 if (activeSub === "products") return <ComingSoon title="Products — Finished Sellable Goods" titleEs="Productos — Bienes terminados" lines={["Quantity on hand · Inventory value · Location (Amazon / Shopify / Atlas / Wholesale / Warehouse)", "Incoming qty · ETA · Weeks of supply · Reorder point"]} />;
 if (activeSub === "packaging") return <ComingSoon title="Packaging Components" titleEs="Componentes de empaque" lines={["Pouches · Jars · Bottles · Boxes · Labels · Pumps · Lids · Cartons", "Qty on hand · MOQ · Lead time · Supplier · Reorder point"]} />;
 if (activeSub === "inbound") return <FbaShipments />;
-if (activeSub === "listings") return <Listings products={products} dbState={dbState} onCommit={(ev) => {
+const onListingCommit = (ev) => {
   let updated = products;
   if (ev.newName && ev.sku) {
     updated = products.map(p => (p.sku || "").trim().toLowerCase() === ev.sku.trim().toLowerCase() ? { ...p, name: ev.newName } : p);
@@ -1908,7 +1910,9 @@ if (activeSub === "listings") return <Listings products={products} dbState={dbSt
   const full = { ...dbState, products: updated, listingLog };
   setDbState(full);
   dbSave(full);
-}} />;
+};
+if (activeSub === "listings") return <Listings products={products} dbState={dbState} onCommit={onListingCommit} />;
+if (activeSub === "createlisting") return <VesselCreator onCommit={onListingCommit} />;
 if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
 }
 if (tab === "growth") {
