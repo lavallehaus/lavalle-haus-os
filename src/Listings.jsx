@@ -3,7 +3,9 @@ import { useState, useEffect } from "react";
 // LAVALLE HAUS OS — Listing Manager (edit & fix existing Amazon listings)
 // Loads a listing's live content + Amazon's own issue messages, lets you edit
 // the editable fields (title, bullets, description, price) and pushes changes
-// back through the Listings Items API. Session-level Undo/Redo per house rule.
+// back through the Listings Items API. On accept it also updates the app's own
+// stored product name (so the two stores stay in sync) and writes a dated entry
+// to a persistent change log grouped by week/day. Session Undo/Redo on the draft.
 
 const c = {
   bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
@@ -17,17 +19,37 @@ const labelS = { fontSize: 9, letterSpacing: 2, textTransform: "uppercase", colo
 const btnDark = { padding: "8px 18px", fontSize: 10, fontFamily: sans, letterSpacing: 2, cursor: "pointer", borderRadius: 1, border: "1px solid #1a1714", background: "#1a1714", color: "#f7f4ef", textTransform: "uppercase" };
 const btnGhost = { padding: "6px 14px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
 
-export default function Listings({ products = [] }) {
+const FIELD_LABEL = { itemName: "title", bullets: "bullets", description: "description", price: "price" };
+
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = (d.getDay() + 6) % 7; // 0 = Monday
+  d.setDate(d.getDate() - day);
+  return d.toISOString().slice(0, 10);
+}
+function prettyWeek(mondayStr) {
+  const start = new Date(mondayStr + "T00:00:00");
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  const f = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `Week of ${f(start)} – ${f(end)}`;
+}
+function prettyDay(dayStr) {
+  return new Date(dayStr + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
+export default function Listings({ products = [], dbState = {}, onCommit }) {
   const [skuList, setSkuList] = useState({ loading: true, skus: [], error: null });
   const [sku, setSku] = useState("");
   const [manualSku, setManualSku] = useState("");
-  const [listing, setListing] = useState(null); // loaded snapshot from Amazon
-  const [draft, setDraft] = useState(null); // editable working copy
+  const [listing, setListing] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [loadState, setLoadState] = useState({ loading: false, error: null });
   const [save, setSave] = useState({ phase: "idle", result: null });
-  // Undo/Redo over the draft
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
+  const [collapsedWeeks, setCollapsedWeeks] = useState({});
+
+  const log = dbState.listingLog || [];
 
   useEffect(() => {
     fetch("/api/amazon-sync?op=listing&action=skus").then((r) => r.json()).then((d) => {
@@ -52,25 +74,10 @@ export default function Listings({ products = [] }) {
     }).catch((e) => setLoadState({ loading: false, error: String(e) }));
   }
 
-  function edit(next) {
-    setPast((p) => [...p.slice(-49), draft]);
-    setFuture([]);
-    setDraft(next);
-  }
-  function undo() {
-    if (!past.length) return;
-    setFuture((f) => [draft, ...f]);
-    setDraft(past[past.length - 1]);
-    setPast((p) => p.slice(0, -1));
-  }
-  function redo() {
-    if (!future.length) return;
-    setPast((p) => [...p, draft]);
-    setDraft(future[0]);
-    setFuture((f) => f.slice(1));
-  }
+  function edit(next) { setPast((p) => [...p.slice(-49), draft]); setFuture([]); setDraft(next); }
+  function undo() { if (!past.length) return; setFuture((f) => [draft, ...f]); setDraft(past[past.length - 1]); setPast((p) => p.slice(0, -1)); }
+  function redo() { if (!future.length) return; setPast((p) => [...p, draft]); setDraft(future[0]); setFuture((f) => f.slice(1)); }
 
-  // what actually changed vs the loaded snapshot — only those get sent
   function changedFields() {
     if (!listing || !draft) return {};
     const out = { sku: listing.sku, productType: listing.productType };
@@ -94,21 +101,46 @@ export default function Listings({ products = [] }) {
         body: JSON.stringify(changes),
       }).then((r) => r.json());
       if (d.error) { setSave({ phase: "error", result: d.error }); return; }
+
+      const hasErr = (d.issues || []).some((i) => i.severity === "ERROR");
+      const status = d.error ? "ERROR" : hasErr ? "ISSUES" : (d.status || "ACCEPTED");
+      const newName = changeKeys.includes("itemName") ? draft.itemName : null;
+      const logRecord = {
+        id: `${Date.now()}`,
+        ts: new Date().toISOString(),
+        sku: listing.sku,
+        productName: newName || listing.itemName || listing.sku,
+        fields: changeKeys.map((k) => FIELD_LABEL[k] || k),
+        status,
+        note: (d.issues || []).map((i) => i.message).join(" · ").slice(0, 240) || null,
+      };
+      if (onCommit) onCommit({ sku: listing.sku, newName, logRecord });
+
       setSave({ phase: "done", result: d });
-      // reload after a beat so the displayed snapshot reflects Amazon
-      setTimeout(() => loadListing(listing.sku), 1500);
+      setTimeout(() => loadListing(listing.sku), 4000);
     } catch (e) {
       setSave({ phase: "error", result: String(e) });
     }
   }
 
-  const sevColor = (s) => (s === "ERROR" ? c.red : s === "WARNING" ? c.clay : c.sub);
+  const sevColor = (s) => (s === "ERROR" ? c.red : s === "WARNING" || s === "ISSUES" ? c.clay : c.green);
+
+  // ── group the change log by week → day (most recent first) ──
+  const byWeek = {};
+  for (const e of log) {
+    const day = (e.ts || "").slice(0, 10);
+    if (!day) continue;
+    const wk = mondayOf(day);
+    (byWeek[wk] = byWeek[wk] || {});
+    (byWeek[wk][day] = byWeek[wk][day] || []).push(e);
+  }
+  const weeks = Object.keys(byWeek).sort().reverse();
 
   return (
     <div>
       <div style={{ marginBottom: 4 }}>
         <h1 style={{ fontFamily: serif, fontSize: 26, fontWeight: 400, color: c.ink, margin: 0 }}>Listing Manager</h1>
-        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.6)" }}>Edita y arregla listados existentes — título, viñetas, descripción y precio, directo a Amazon</div>
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.6)" }}>Edita y arregla listados existentes — los cambios se sincronizan con la app y quedan registrados por fecha</div>
       </div>
 
       <div style={card}>
@@ -136,14 +168,11 @@ export default function Listings({ products = [] }) {
 
       {listing && draft && (
         <div>
-          {/* status + issues */}
           <div style={{ ...card, borderLeft: `3px solid ${listing.issues.some((i) => i.severity === "ERROR") ? c.red : c.green}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>
-                STATUS <span style={{ color: c.ink }}>{listing.status || "—"}</span>
-                {listing.asin && <span> · ASIN {listing.asin}</span>}
-                {listing.productType && <span> · {listing.productType}</span>}
-              </div>
+            <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>
+              STATUS <span style={{ color: c.ink }}>{listing.status || "—"}</span>
+              {listing.asin && <span> · ASIN {listing.asin}</span>}
+              {listing.productType && <span> · {listing.productType}</span>}
             </div>
             {listing.issues.length === 0 ? (
               <div style={{ fontFamily: sans, fontSize: 11, color: c.green, marginTop: 6 }}>✓ No issues reported by Amazon.</div>
@@ -161,7 +190,6 @@ export default function Listings({ products = [] }) {
             )}
           </div>
 
-          {/* editor */}
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Edit fields</div>
@@ -186,9 +214,7 @@ export default function Listings({ products = [] }) {
                     style={{ color: c.red, cursor: "pointer", fontSize: 14, paddingTop: 8 }}>✕</span>
                 </div>
               ))}
-              {draft.bullets.length < 5 && (
-                <button onClick={() => edit({ ...draft, bullets: [...draft.bullets, ""] })} style={btnGhost}>＋ Add bullet</button>
-              )}
+              {draft.bullets.length < 5 && <button onClick={() => edit({ ...draft, bullets: [...draft.bullets, ""] })} style={btnGhost}>＋ Add bullet</button>}
             </div>
 
             <div style={{ marginBottom: 12 }}>
@@ -201,41 +227,76 @@ export default function Listings({ products = [] }) {
               <input style={{ ...inputS, fontFamily: sans }} value={draft.price} onChange={(e) => edit({ ...draft, price: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="—" />
             </div>
 
-            {/* change summary + push */}
             <div style={{ borderTop: `1px solid ${c.line}`, paddingTop: 10 }}>
               {changeKeys.length === 0 ? (
                 <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.55)" }}>No changes yet — edit a field above. Sin cambios aún.</div>
               ) : (
-                <div style={{ fontFamily: sans, fontSize: 11, color: c.clay, marginBottom: 8 }}>
-                  About to update: {changeKeys.map((k) => k === "itemName" ? "title" : k).join(", ")}
-                </div>
+                <div style={{ fontFamily: sans, fontSize: 11, color: c.clay, marginBottom: 8 }}>About to update: {changeKeys.map((k) => FIELD_LABEL[k] || k).join(", ")}</div>
               )}
               <button onClick={pushChanges} disabled={!changeKeys.length || save.phase === "saving"} style={{ ...btnDark, opacity: changeKeys.length && save.phase !== "saving" ? 1 : 0.4 }}>
                 {save.phase === "saving" ? "Pushing to Amazon…" : "Push changes to Amazon"}
               </button>
 
-              {save.phase === "done" && save.result && (
-                <div style={{ marginTop: 10, fontFamily: sans, fontSize: 11, color: (save.result.issues || []).some((i) => i.severity === "ERROR") ? c.clay : c.green }}>
-                  {save.result.status === "ACCEPTED" || !(save.result.issues || []).length
-                    ? "✓ Amazon accepted the change. It can take a few minutes to appear live. Reloading…"
-                    : "Amazon received it with notes:"}
+              {save.phase === "done" && (
+                <div style={{ marginTop: 10, padding: 10, background: "#e9eee9", border: `1px solid ${c.green}`, borderRadius: 1 }}>
+                  <div style={{ fontFamily: sans, fontSize: 11, color: c.green }}>
+                    ✓ Amazon accepted the change, and the app is already updated.
+                  </div>
+                  <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 4 }}>
+                    Accepted ≠ live yet: Amazon reviews edits and the change goes live on the listing automatically once approved — usually a few minutes, sometimes longer. It's logged below so you can track it.
+                    <br/>Aceptado ≠ en vivo aún: Amazon revisa los cambios y se publican automáticamente una vez aprobados — normalmente unos minutos. Queda registrado abajo.
+                  </div>
                   {(save.result.issues || []).map((iss, i) => (
-                    <div key={i} style={{ color: sevColor(iss.severity), marginTop: 4 }}>· [{iss.severity}] {iss.message}</div>
+                    <div key={i} style={{ fontFamily: sans, fontSize: 11, color: sevColor(iss.severity), marginTop: 4 }}>· [{iss.severity}] {iss.message}</div>
                   ))}
                 </div>
               )}
-              {save.phase === "error" && (
-                <div style={{ marginTop: 10, fontFamily: sans, fontSize: 11, color: c.red }}>✗ {String(save.result)}</div>
-              )}
+              {save.phase === "error" && <div style={{ marginTop: 10, fontFamily: sans, fontSize: 11, color: c.red }}>✗ {String(save.result)}</div>}
             </div>
-          </div>
-
-          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>
-            Only fields you actually change are sent — everything else is left untouched. Some categories restrict certain fields; if Amazon rejects one, its note appears above.
-            <br/>Solo se envían los campos que cambias — lo demás queda intacto. Si Amazon rechaza algo, su nota aparece arriba.
           </div>
         </div>
       )}
+
+      {/* ── CHANGE LOG ── */}
+      <div style={{ ...card, borderLeft: `3px solid ${c.clay}` }}>
+        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Change log</div>
+        <div style={{ fontSize: 10, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif, marginBottom: 8 }}>
+          Registro de cambios por semana y día — revisa aquí si un cambio de hace días no se reflejó y hay que reenviarlo
+        </div>
+        {weeks.length === 0 && <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>No changes logged yet. Pushed edits will appear here, newest first.</div>}
+        {weeks.map((wk) => {
+          const collapsed = collapsedWeeks[wk];
+          const days = Object.keys(byWeek[wk]).sort().reverse();
+          const count = days.reduce((s, d) => s + byWeek[wk][d].length, 0);
+          return (
+            <div key={wk} style={{ marginTop: 10 }}>
+              <div onClick={() => setCollapsedWeeks({ ...collapsedWeeks, [wk]: !collapsed })}
+                style={{ cursor: "pointer", fontFamily: sans, fontSize: 11, letterSpacing: 1, color: c.ink, borderBottom: `1px solid ${c.line}`, paddingBottom: 4 }}>
+                {collapsed ? "▸" : "▾"} {prettyWeek(wk)} <span style={{ color: c.sub }}>· {count} change{count !== 1 ? "s" : ""}</span>
+              </div>
+              {!collapsed && days.map((day) => (
+                <div key={day} style={{ marginTop: 6 }}>
+                  <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, color: c.sub, textTransform: "uppercase", margin: "4px 0" }}>{prettyDay(day)}</div>
+                  {byWeek[wk][day].sort((a, b) => (a.ts < b.ts ? 1 : -1)).map((e) => (
+                    <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, padding: "5px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                        <span style={{ fontFamily: serif, fontSize: 13, color: c.ink }}>{e.productName}</span>
+                        <span style={{ fontFamily: sans, fontSize: 9, color: c.sub, marginLeft: 8 }}>{new Date(e.ts).toLocaleTimeString()} · {e.fields.join(", ")}</span>
+                        {e.note && <div style={{ fontFamily: sans, fontSize: 9, color: c.clay, marginTop: 2 }}>{e.note}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, color: sevColor(e.status), border: `1px solid ${sevColor(e.status)}40`, borderRadius: 1, padding: "1px 6px" }}>{e.status}</span>
+                        <span onClick={() => { setSku(""); setManualSku(e.sku); loadListing(e.sku); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                          style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, color: c.clay, cursor: "pointer" }}>↻ RE-OPEN</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
