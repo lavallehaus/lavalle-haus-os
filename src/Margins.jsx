@@ -82,9 +82,9 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
 
   async function fetchFbaFees() {
     const items = (products || [])
-      .filter((p) => p.asin && !p.isSample)
-      .map((p) => { const r = (rows || []).find((x) => x.id === p.id); return { id: p.id, asin: p.asin, price: r ? r.price : num(p.price) }; });
-    if (!items.length) { setFeeFetch({ loading: false, error: "No ASINs to look up — add ASINs to your Amazon products first." }); return; }
+      .filter((p) => (p.sku || p.asin) && !p.isSample)
+      .map((p) => { const r = (rows || []).find((x) => x.id === p.id); return { id: p.id, asin: p.asin, sku: p.sku, price: r ? r.price : num(p.price) }; });
+    if (!items.length) { setFeeFetch({ loading: false, error: "No SKUs/ASINs to look up." }); return; }
     setFeeFetch({ loading: true, error: null });
     try {
       const d = await fetch("/api/amazon-sync?op=fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then((r) => r.json());
@@ -93,7 +93,17 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       let got = 0;
       (d.items || []).forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; got += 1; } });
       setState((prev) => ({ ...prev, amazonFba: map, fbaUpdatedAt: d.updatedAt }));
-      setFeeFetch({ loading: false, error: got ? null : "Amazon returned no FBA fees — the ASINs may not be FBA-eligible yet." });
+      if (got) { setFeeFetch({ loading: false, error: null }); }
+      else {
+        const diag = (d.items || []).find((it) => it.error || (it.status && it.status !== "Success") || (it.feeTypes && it.feeTypes.length));
+        let msg = "Amazon returned no FBA fee.";
+        if (diag) {
+          if (diag.error) msg += ` Amazon said: ${diag.error}`;
+          else if (diag.status && diag.status !== "Success") msg += ` Status: ${diag.status}.`;
+          else if (diag.feeTypes && diag.feeTypes.length) msg += ` Fees returned: ${diag.feeTypes.join(", ")} (no FBA line).`;
+        }
+        setFeeFetch({ loading: false, error: msg });
+      }
     } catch (e) {
       setFeeFetch({ loading: false, error: String(e) });
     }
