@@ -399,65 +399,11 @@ export default function PnL({ data = {}, onSave }) {
         </span>
       </div>
 
-      <div style={S.sec}>Import a statement<div style={faintEs}>Importar estado de cuenta</div></div>
+      <div style={S.sec}>Transactions<div style={faintEs}>Transacciones</div></div>
       <div style={S.panel}>
-        <div style={{ fontSize: 12.5, color: c.sub, marginBottom: 12, lineHeight: 1.5 }}>
-          Upload a <strong>PDF</strong> statement (Chase, etc.). Redacting your account number first is fine - only date, description, and amount are needed. The statement is sent to the Claude API to read and categorize.
-          <div style={faintEs}>Sube un PDF. Redactar el numero de cuenta esta bien - solo se necesitan fecha, descripcion y monto.</div>
-        </div>
-
-        {driveConnected === true && (
-          <div style={{ fontSize: 12, color: c.green, marginBottom: 10 }}>
-            Google Drive connected - statements auto-save to your Drive and bookmark themselves.
-            {driveFolderId && <a href={`https://drive.google.com/drive/folders/${driveFolderId}`} target="_blank" rel="noopener noreferrer" style={{ color: c.clay, textDecoration: "none", marginLeft: 6 }}>Open folder &gt;</a>}
-            <div style={faintEs}>Google Drive conectado - los estados se guardan y se marcan solos.</div>
-          </div>
-        )}
-        {driveConnected === false && (
-          <div style={{ marginBottom: 12 }}>
-            <a href="/api/google-auth" style={{ ...S.btnGhost, display: "inline-block", textDecoration: "none", color: c.clay, borderColor: c.clay }}>Connect Google Drive</a>
-            <div style={faintEs}>Conecta Google Drive para guardar cada estado automaticamente.</div>
-          </div>
-        )}
-
-        <input type="file" accept="application/pdf" onChange={(e) => { setErr(""); setFile(e.target.files && e.target.files[0]); }}
-          style={{ fontFamily: sans, fontSize: 13, color: c.ink, marginBottom: 12, display: "block" }} />
-
-        {dupWarn && <div style={{ fontSize: 12, color: c.yellow, marginBottom: 10 }}>This statement looks already imported - re-running will call the API again. Duplicates won't be added. - Parece ya importado.</div>}
-
-        {!confirming ? (
-          <button disabled={!file || loading} onClick={() => setConfirming(true)}
-            style={{ ...S.btn, opacity: !file || loading ? 0.45 : 1 }}>
-            {loading ? "Reading statement..." : "Categorize statement"}
-          </button>
-        ) : (
-          <div style={{ border: `1px solid ${c.gold}`, borderRadius: 3, padding: 14, background: "#fffaf2" }}>
-            <div style={{ fontSize: 13, color: c.ink, marginBottom: 4 }}>This will send the statement to the Claude API - <strong>one call</strong>, typically a few cents.</div>
-            <div style={faintEs}>Esto enviara el estado a la API de Claude - una sola llamada, normalmente unos centavos.</div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={runCategorize} style={S.btn}>Confirm &amp; run - confirmar</button>
-              <button onClick={() => setConfirming(false)} style={S.btnGhost}>Cancel - cancelar</button>
-            </div>
-          </div>
-        )}
-        {err && <div style={{ fontSize: 12.5, color: c.red, marginTop: 10 }}>Error: {err}</div>}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginTop: 14 }}>
-        <div style={{ ...S.panel, padding: "14px 16px" }}>
-          <div style={S.cap}>Last run cost</div><div style={faintEs}>Costo ultima vez</div>
-          <div style={{ fontSize: 22, marginTop: 4, color: c.ink }}>{lastRun ? cents(lastRun.cost) : "-"}</div>
-          {lastRun && <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>{lastRun.input.toLocaleString()} in / {lastRun.output.toLocaleString()} out tokens - +{lastRun.added} new</div>}
-        </div>
-        <div style={{ ...S.panel, padding: "14px 16px" }}>
-          <div style={S.cap}>Total API cost</div><div style={faintEs}>Costo total API</div>
-          <div style={{ fontSize: 22, marginTop: 4, color: c.gold }}>{cents(totalCost)}</div>
-          <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>cumulative, all statements</div>
-        </div>
-        <div style={{ ...S.panel, padding: "14px 16px" }}>
-          <div style={S.cap}>Merchant rules learned</div><div style={faintEs}>Reglas aprendidas</div>
-          <div style={{ fontSize: 22, marginTop: 4, color: c.blue }}>{Object.keys(rules).length}</div>
-          <div style={{ fontSize: 11, color: c.sub, marginTop: 2 }}>auto-applied to future statements</div>
+        <div style={{ fontSize: 12.5, color: c.sub, lineHeight: 1.5 }}>
+          Transactions now flow in automatically from your connected bank. Open <strong>Bank &amp; Cash</strong> and press <strong>&ldquo;Pull &amp; categorize transactions&rdquo;</strong> &mdash; Plaid pulls them and AI sorts them into the categories below. No PDF uploads needed.
+          <div style={faintEs}>Las transacciones llegan desde tu banco conectado. Abre <strong>Bank &amp; Cash</strong> y presiona &ldquo;Pull &amp; categorize transactions&rdquo;.</div>
         </div>
       </div>
 
