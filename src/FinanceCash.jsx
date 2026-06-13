@@ -58,7 +58,7 @@ const Metric = ({ label, labelEs, value, note, pending }) => (
   </div>
 );
 
-export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl = {}, bankCash = null }) {
+export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl = {}, bankCash = null, margins = null }) {
   // Real numbers from the P&L tab's imported statements.
   const pnlStats = useMemo(() => {
     const tx = Array.isArray(pnl.transactions) ? pnl.transactions : [];
@@ -167,8 +167,16 @@ export default function FinanceCash({ products = [], weeks = [], cogs = {}, pnl 
       {/* PENDING — accounting-dependent */}
       <div style={S.sec}>Cash &amp; Profit<div style={faintEs}>Caja y utilidad</div></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12 }}>
-        <Metric label="CM1 (after COGS)" labelEs="CM1 (tras COGS)" value="pending" pending note="needs per-SKU weekly sales mapping" />
-        <Metric label="CM2 (after ads/fees)" labelEs="CM2 (tras anuncios)" value="pending" pending note="needs sales mapping + ad/fee feeds" />
+        {margins && margins.summary && margins.summary.cm1Pct != null ? (
+          <Metric label="CM1 (after COGS)" labelEs="CM1 (tras COGS)" value={`${margins.summary.cm1Pct.toFixed(0)}%`} note="portfolio, from Margins tab" />
+        ) : (
+          <Metric label="CM1 (after COGS)" labelEs="CM1 (tras COGS)" value="see Margins tab" pending note="set up per-SKU margins" />
+        )}
+        {margins && margins.summary && margins.summary.cm2Pct != null ? (
+          <Metric label="CM2 (after ads/fees)" labelEs="CM2 (tras anuncios)" value={`${margins.summary.cm2Pct.toFixed(0)}%`} note="portfolio, from Margins tab" />
+        ) : (
+          <Metric label="CM2 (after ads/fees)" labelEs="CM2 (tras anuncios)" value="see Margins tab" pending note="add FBA fees in Margins tab" />
+        )}
         {pnlStats ? (
           <Metric label="Net profit" labelEs="Utilidad neta" value={money(pnlStats.net)}
             note={`from P&L · ${pnlStats.count} transactions · this month ${money(pnlStats.monthNet)}`} />
