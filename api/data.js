@@ -22,7 +22,7 @@ const PLAID_BASE =
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID || "";
 const PLAID_SECRET = process.env.PLAID_SECRET || "";
 const PLAID_REDIRECT_URI = process.env.PLAID_REDIRECT_URI || "";
-const PLAID_OPS = ["link_token", "exchange", "balances", "items", "remove"];
+const PLAID_OPS = ["link_token", "exchange", "balances", "transactions", "items", "remove"];
 
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
@@ -195,6 +195,34 @@ export default async function handler(req, res) {
           }
         }
         res.status(200).json({ connected: items.length > 0, accounts, totalCash, updatedAt: new Date().toISOString() });
+        return;
+      }
+      if (op === "transactions") {
+        const items = (await kvGet("plaid_items")) || [];
+        if (!items.length) { res.status(200).json({ connected: false, transactions: [] }); return; }
+        const all = [];
+        for (const it of items) {
+          try {
+            let cursor = null, has_more = true, pages = 0;
+            while (has_more && pages < 5) {
+              const d = await plaid("/transactions/sync", { access_token: it.access_token, cursor: cursor || undefined, count: 100 });
+              (d.added || []).forEach((t) => all.push(t));
+              cursor = d.next_cursor; has_more = d.has_more; pages += 1;
+            }
+          } catch (e) {
+            if (String(e).indexOf("PRODUCT_NOT_READY") >= 0) { res.status(200).json({ connected: true, pending: true, message: "Your bank is still preparing transactions. Try again in a minute." }); return; }
+          }
+        }
+        const mapped = all.map((t) => ({
+          id: "plaid_" + t.transaction_id,
+          date: t.date,
+          description: t.name || "",
+          merchant: t.merchant_name || t.name || "",
+          amount: Math.abs(Number(t.amount) || 0),
+          type: (Number(t.amount) || 0) >= 0 ? "expense" : "income",
+          plaidCategory: (t.personal_finance_category && t.personal_finance_category.primary) || "",
+        })).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 200);
+        res.status(200).json({ connected: true, transactions: mapped, count: mapped.length });
         return;
       }
       if (op === "items") {
