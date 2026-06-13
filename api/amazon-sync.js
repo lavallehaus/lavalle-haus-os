@@ -131,6 +131,64 @@ async function fetchSold30ForSku(token, sku) {
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
+// --- Brand Analytics report helpers (keyword research) ---
+function baPeriod(period) {
+  const now = new Date();
+  if (period === "MONTH") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)); // last day prev month
+    return { start: start.toISOString(), end: end.toISOString() };
+  }
+  // WEEK: most recent complete Sunday–Saturday week
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = d.getUTCDay(); // 0=Sun
+  const daysSinceSat = dow === 6 ? 7 : dow + 1;
+  const lastSat = new Date(d); lastSat.setUTCDate(d.getUTCDate() - daysSinceSat);
+  const weekStart = new Date(lastSat); weekStart.setUTCDate(lastSat.getUTCDate() - 6);
+  return { start: weekStart.toISOString(), end: lastSat.toISOString() };
+}
+async function fetchReportDoc(doc) {
+  const r = await fetch(doc.url);
+  const buf = Buffer.from(await r.arrayBuffer());
+  const out = doc.compressionAlgorithm === "GZIP" ? gunzipSync(buf) : buf;
+  return out.toString("utf-8");
+}
+function firstArray(obj) {
+  if (Array.isArray(obj)) return obj;
+  for (const k of Object.keys(obj || {})) if (Array.isArray(obj[k])) return obj[k];
+  return [];
+}
+function n(v) { const x = Number(v); return isNaN(x) ? null : x; }
+function parseSearchTerms(json) {
+  const arr = json.dataByDepartmentAndSearchTerm || json.dataBySearchTerm || firstArray(json);
+  return arr.slice(0, 250).map((r) => ({
+    term: r.searchTerm || r.SearchTerm || "",
+    rank: n(r.searchFrequencyRank != null ? r.searchFrequencyRank : r["Search Frequency Rank"]),
+    dept: r.departmentName || r.DepartmentName || "",
+    clickedAsin: r.clickedAsin || r["#1 Clicked ASIN"] || (r.clickedItemAsin1) || "",
+    clickedTitle: r.clickedItemName || r["#1 Product Title"] || (r.clickedItemTitle1) || "",
+    clickShare: n(r.clickShare != null ? r.clickShare : r["#1 Click Share"]),
+    convShare: n(r.conversionShare != null ? r.conversionShare : r["#1 Conversion Share"]),
+  })).filter((x) => x.term);
+}
+function parseSqp(json) {
+  const arr = json.dataByAsin || json.dataByDepartmentAndSearchTerm || firstArray(json);
+  return arr.slice(0, 250).map((r) => {
+    const imp = r.impressionData || r.impressions || {};
+    const clk = r.clickData || r.clicks || {};
+    const cart = r.cartAddData || r.cartAdds || {};
+    const buy = r.purchaseData || r.purchases || {};
+    return {
+      term: r.searchQuery || r.SearchQuery || r.searchTerm || "",
+      impressions: n(imp.totalCount != null ? imp.totalCount : imp.count),
+      clicks: n(clk.totalClickCount != null ? clk.totalClickCount : (clk.totalCount != null ? clk.totalCount : clk.count)),
+      cartAdds: n(cart.totalCartAddCount != null ? cart.totalCartAddCount : (cart.totalCount != null ? cart.totalCount : cart.count)),
+      purchases: n(buy.totalPurchaseCount != null ? buy.totalPurchaseCount : (buy.totalCount != null ? buy.totalCount : buy.count)),
+      asin: r.asin || "",
+    };
+  }).filter((x) => x.term);
+}
+
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
 // When APP_PASSWORD is set in Vercel, every request must carry the session
@@ -188,6 +246,67 @@ export default async function handler(req, res) {
     res.status(200).json({ ok: true });
     return;
   }
+  if (req.method === "POST" && req.query && req.query.op === "keywords") {
+    try {
+      const token = await getAccessToken();
+      const body = req.body || {};
+      const kind = body.kind === "sqp" ? "sqp" : "searchterms";
+      const period = body.period === "MONTH" ? "MONTH" : "WEEK";
+      const asins = Array.isArray(body.asins) ? body.asins.filter(Boolean) : [];
+      const cacheKey = "keywords_" + kind;
+
+      // Serve cache unless a fresh pull is forced.
+      if (!body.refresh && !body.reportId) {
+        const cached = await kvGet(cacheKey);
+        if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true }); return; }
+      }
+
+      const { start, end } = baPeriod(period);
+      const reportType = kind === "sqp"
+        ? "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT"
+        : "GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT";
+      const reportOptions = { reportPeriod: period };
+      if (kind === "sqp" && asins.length) reportOptions.asins = asins.join(" ");
+
+      // Reuse an in-flight report if the client is polling, else create one.
+      let rid = body.reportId;
+      if (!rid) {
+        const created = await spapiW(token, "/reports/2021-06-30/reports", "POST", {
+          reportType, marketplaceIds: [MARKETPLACE], dataStartTime: start, dataEndTime: end, reportOptions,
+        });
+        rid = created.reportId;
+        if (!rid) { res.status(200).json({ connected: true, error: "Amazon did not return a reportId.", debug: created }); return; }
+      }
+
+      // Poll within this invocation (~45s budget), then hand back a reportId to continue.
+      const deadline = Date.now() + 45000;
+      let docId = null, status = null;
+      while (Date.now() < deadline) {
+        const r = await spapi(token, "/reports/2021-06-30/reports/" + rid);
+        status = r.processingStatus;
+        if (status === "DONE") { docId = r.reportDocumentId; break; }
+        if (status === "FATAL" || status === "CANCELLED") {
+          res.status(200).json({ connected: true, error: "Amazon could not produce this report (" + status + "). Likely the Brand Analytics role isn’t granted to the app, or there is no data for this period.", status, reportId: rid });
+          return;
+        }
+        await sleep(4500);
+      }
+      if (!docId) { res.status(200).json({ connected: true, pending: true, reportId: rid, kind, period }); return; }
+
+      const doc = await spapi(token, "/reports/2021-06-30/documents/" + docId);
+      const text = await fetchReportDoc(doc);
+      let json; try { json = JSON.parse(text); } catch (e) { res.status(200).json({ connected: true, error: "Report was not JSON.", sample: text.slice(0, 300) }); return; }
+      const rows = kind === "sqp" ? parseSqp(json) : parseSearchTerms(json);
+      const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(),
+        debug: { topKeys: Object.keys(json || {}), count: rows.length, firstRaw: firstArray(json)[0] || null } };
+      await kvSet(cacheKey, payload);
+      res.status(200).json({ connected: true, ...payload });
+    } catch (e) {
+      res.status(500).json({ connected: true, error: String(e).slice(0, 500) });
+    }
+    return;
+  }
+
 
   if (req.method === "GET") {
     if (!configured) {
