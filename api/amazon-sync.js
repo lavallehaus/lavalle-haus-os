@@ -338,22 +338,28 @@ export default async function handler(req, res) {
         const items = (req.body && req.body.items) || [];
         const out = [];
         for (const it of items) {
-          if (!it || !it.asin) { out.push({ id: it && it.id, asin: it && it.asin, fbaFee: null, error: "no ASIN" }); continue; }
+          const sku = it && it.sku, asin = it && it.asin;
+          if (!sku && !asin) { out.push({ id: it && it.id, asin, sku, fbaFee: null, error: "no SKU/ASIN" }); continue; }
           try {
+            const useSku = Boolean(sku);
             const body = {
               FeesEstimateRequest: {
                 MarketplaceId: MARKETPLACE,
-                IdType: "ASIN",
-                IdValue: it.asin,
+                IdType: useSku ? "SellerSKU" : "ASIN",
+                IdValue: useSku ? sku : asin,
                 PriceToEstimateFees: { ListingPrice: { CurrencyCode: "USD", Amount: Number(it.price) || 0 } },
-                Identifier: String(it.id != null ? it.id : it.asin),
+                Identifier: String(it.id != null ? it.id : (sku || asin)),
                 IsAmazonFulfilled: true,
               },
             };
-            const d = await spapiW(token, `/products/fees/v0/items/${encodeURIComponent(it.asin)}/feesEstimate`, "POST", body);
+            const path = useSku
+              ? `/products/fees/v0/listings/${encodeURIComponent(sku)}/feesEstimate`
+              : `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`;
+            const d = await spapiW(token, path, "POST", body);
             const result = d && d.payload && d.payload.FeesEstimateResult;
             const status = result && result.Status;
             const details = (result && result.FeesEstimate && result.FeesEstimate.FeeDetailList) || [];
+            const feeTypes = details.map((f) => f.FeeType);
             let fba = 0, found = false;
             for (const f of details) {
               const t = f.FeeType || "";
@@ -362,9 +368,10 @@ export default async function handler(req, res) {
                 if (amt != null) { fba += Number(amt); found = true; }
               }
             }
-            out.push({ id: it.id, asin: it.asin, fbaFee: found ? Number(fba.toFixed(2)) : null, status });
+            const errMsg = result && result.Error ? (result.Error.Message || result.Error.Code) : null;
+            out.push({ id: it.id, asin, sku, fbaFee: found ? Number(fba.toFixed(2)) : null, status, feeTypes, error: errMsg });
           } catch (e) {
-            out.push({ id: it.id, asin: it.asin, fbaFee: null, error: String(e).slice(0, 200) });
+            out.push({ id: it.id, asin, sku, fbaFee: null, error: String(e).slice(0, 220) });
           }
           await new Promise((r) => setTimeout(r, 700));
         }
