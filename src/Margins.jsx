@@ -67,7 +67,10 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     returnsPct: data.returnsPct != null ? data.returnsPct : 2,
     bySku: data.bySku || {},
     adMap: data.adMap || {},
+    amazonFba: data.amazonFba || {},
+    fbaUpdatedAt: data.fbaUpdatedAt || null,
   }));
+  const [feeFetch, setFeeFetch] = useState({ loading: false, error: null });
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   function commit(next) { setPast((p) => [...p.slice(-49), state]); setFuture([]); setState(next); }
@@ -76,6 +79,25 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
   const setGlobal = (field, val) => commit({ ...state, [field]: val });
   const setSku = (id, field, val) => commit({ ...state, bySku: { ...state.bySku, [id]: { ...(state.bySku[id] || {}), [field]: val } } });
   const setAdMap = (campId, productId) => commit({ ...state, adMap: { ...state.adMap, [campId]: productId } });
+
+  async function fetchFbaFees() {
+    const items = (products || [])
+      .filter((p) => p.asin && !p.isSample)
+      .map((p) => { const r = (rows || []).find((x) => x.id === p.id); return { id: p.id, asin: p.asin, price: r ? r.price : num(p.price) }; });
+    if (!items.length) { setFeeFetch({ loading: false, error: "No ASINs to look up — add ASINs to your Amazon products first." }); return; }
+    setFeeFetch({ loading: true, error: null });
+    try {
+      const d = await fetch("/api/amazon-sync?op=fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then((r) => r.json());
+      if (d.error) { setFeeFetch({ loading: false, error: d.error }); return; }
+      const map = { ...state.amazonFba };
+      let got = 0;
+      (d.items || []).forEach((it) => { if (it.fbaFee != null) { map[it.id] = it.fbaFee; got += 1; } });
+      setState((prev) => ({ ...prev, amazonFba: map, fbaUpdatedAt: d.updatedAt }));
+      setFeeFetch({ loading: false, error: got ? null : "Amazon returned no FBA fees — the ASINs may not be FBA-eligible yet." });
+    } catch (e) {
+      setFeeFetch({ loading: false, error: String(e) });
+    }
+  }
 
   const amazonTargets = useMemo(() => products.filter((p) => (p.channels || []).includes("Amazon") || p.asin), [products]);
 
@@ -116,7 +138,10 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       const referral = price * (num(state.referralPct) / 100);
       const returns = price * (num(state.returnsPct) / 100);
       const overrideFba = sk.fbaFee !== undefined && sk.fbaFee !== "";
-      const autoFba = pm.fba != null ? pm.fba : null;
+      const amzFba = state.amazonFba[prod.id];
+      const amzSet = amzFba != null && amzFba !== "";
+      const autoFba = amzSet ? num(amzFba) : (pm.fba != null ? pm.fba : null);
+      const fbaAutoSrc = amzSet ? "amazon" : (pm.fba != null && pm.fba > 0 ? "matrix" : null);
       const fbaFee = overrideFba ? num(sk.fbaFee) : (autoFba != null && autoFba > 0 ? autoFba : null);
       const fbaIsAuto = !overrideFba && autoFba != null && autoFba > 0;
       const units = num(prod.unitsSold30);
@@ -128,7 +153,7 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
       const fbaSet = fbaFee != null;
       const cm2 = fbaSet ? cm1 - referral - returns - fbaFee - ad : null;
       const cm2pct = cm2 != null && price > 0 ? (cm2 / price) * 100 : null;
-      return { id: prod.id, name: prod.name, price, cogsU, cogsSrc, cm1, cm1pct, referral, returns, fbaFee, autoFba, fbaIsAuto, ad, adIsAuto, computedAd, mappedSpend, cm2, cm2pct, units, hasCogs: cogsU > 0 };
+      return { id: prod.id, name: prod.name, price, cogsU, cogsSrc, cm1, cm1pct, referral, returns, fbaFee, autoFba, fbaIsAuto, fbaAutoSrc, ad, adIsAuto, computedAd, mappedSpend, cm2, cm2pct, units, hasCogs: cogsU > 0 };
     }).sort((a, b) => {
       const am = a.cm2pct != null ? a.cm2pct : (a.cm1pct != null ? a.cm1pct : 999);
       const bm = b.cm2pct != null ? b.cm2pct : (b.cm1pct != null ? b.cm1pct : 999);
@@ -148,7 +173,7 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
   }, [rows]);
 
   const persistKey = JSON.stringify({ s: state, sum: summary });
-  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, summary }); /* eslint-disable-next-line */ }, [persistKey]);
+  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: state.amazonFba, fbaUpdatedAt: state.fbaUpdatedAt, summary }); /* eslint-disable-next-line */ }, [persistKey]);
 
   const losers = rows.filter((r) => r.cm2 != null && r.cm2 < 0);
   const thin = rows.filter((r) => r.cm2 != null && r.cm2 >= 0 && r.cm2pct < 15);
@@ -180,7 +205,10 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
           <input style={{ ...cellInput, width: 52, marginLeft: 6 }} value={state.referralPct} onChange={(e) => setGlobal("referralPct", e.target.value.replace(/[^0-9.]/g, ""))} /></label>
         <label style={{ fontFamily: sans, fontSize: 11, color: c.ink }}>Returns %
           <input style={{ ...cellInput, width: 52, marginLeft: 6 }} value={state.returnsPct} onChange={(e) => setGlobal("returnsPct", e.target.value.replace(/[^0-9.]/g, ""))} /></label>
-        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>FBA fee auto-pulls from Profit Matrix · ad/unit from mapped campaigns</span>
+        <button onClick={fetchFbaFees} disabled={feeFetch.loading} style={{ ...btnGhost, color: c.ink, borderColor: c.clay, opacity: feeFetch.loading ? 0.5 : 1 }}>{feeFetch.loading ? "Asking Amazon…" : "↻ Pull FBA fees from Amazon"}</button>
+        {state.fbaUpdatedAt && !feeFetch.loading && <span style={{ fontFamily: sans, fontSize: 9, color: c.green, letterSpacing: 1 }}>● updated {new Date(state.fbaUpdatedAt).toLocaleTimeString()}</span>}
+        {feeFetch.error && <span style={{ fontFamily: sans, fontSize: 10, color: c.red }}>{feeFetch.error}</span>}
+        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: "rgba(111,102,87,0.55)" }}>FBA fee: live from Amazon by ASIN (falls back to Profit Matrix) · ad/unit from mapped campaigns</span>
       </div>
 
       <div style={{ ...card, padding: 0, overflowX: "auto" }}>
@@ -206,7 +234,7 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
                 <td style={{ ...td, color: marginColor(r.cm1pct), fontWeight: "bold" }}>{pct(r.cm1pct)}</td>
                 <td style={td}>
                   <input style={cellInput} value={(state.bySku[r.id] || {}).fbaFee ?? ""} placeholder={r.autoFba != null && r.autoFba > 0 ? r.autoFba.toFixed(2) : "—"} onChange={(e) => setSku(r.id, "fbaFee", e.target.value.replace(/[^0-9.]/g, ""))} />
-                  {r.fbaIsAuto && <div style={{ fontSize: 8, color: c.green, fontFamily: sans }}>auto ${r.autoFba.toFixed(2)}</div>}
+                  {r.fbaIsAuto && <div style={{ fontSize: 8, color: c.green, fontFamily: sans }}>auto ${r.autoFba.toFixed(2)} · {r.fbaAutoSrc === "amazon" ? "Amazon" : "matrix"}</div>}
                 </td>
                 <td style={td}>
                   <input style={cellInput} value={(state.bySku[r.id] || {}).adPerUnit ?? ""} placeholder={r.computedAd != null ? r.computedAd.toFixed(2) : (r.mappedSpend > 0 ? "0 units" : "0")} onChange={(e) => setSku(r.id, "adPerUnit", e.target.value.replace(/[^0-9.]/g, ""))} />
