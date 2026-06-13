@@ -275,11 +275,12 @@ export default async function handler(req, res) {
           reportType, marketplaceIds: [MARKETPLACE], dataStartTime: start, dataEndTime: end, reportOptions,
         });
         rid = created.reportId;
-        if (!rid) { res.status(200).json({ connected: true, error: "Amazon did not return a reportId.", debug: created }); return; }
+        if (!rid) { res.status(200).json({ connected: true, error: "Amazon rejected the report request" + (created && created.errors ? ": " + JSON.stringify(created.errors).slice(0, 300) : "."), debug: created }); return; }
       }
 
-      // Poll within this invocation (~45s budget), then hand back a reportId to continue.
-      const deadline = Date.now() + 45000;
+      // Short poll (~10s) so each request returns well within the 60s function limit;
+      // the client keeps polling with the reportId until the report is ready.
+      const deadline = Date.now() + 10000;
       let docId = null, status = null;
       while (Date.now() < deadline) {
         const r = await spapi(token, "/reports/2021-06-30/reports/" + rid);
@@ -289,7 +290,7 @@ export default async function handler(req, res) {
           res.status(200).json({ connected: true, error: "Amazon could not produce this report (" + status + "). Likely the Brand Analytics role isn’t granted to the app, or there is no data for this period.", status, reportId: rid });
           return;
         }
-        await sleep(4500);
+        await sleep(3000);
       }
       if (!docId) { res.status(200).json({ connected: true, pending: true, reportId: rid, kind, period }); return; }
 
