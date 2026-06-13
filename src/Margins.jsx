@@ -179,10 +179,29 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
     return { cm1Pct: wRev > 0 ? (wCm1 / wRev) * 100 : null, cm2Pct: cm2KnownRev > 0 ? (wCm2 / cm2KnownRev) * 100 : null };
   }, [rows]);
 
-  const persistKey = JSON.stringify({ s: state, sum: summary });
-  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: state.amazonFba, fbaUpdatedAt: state.fbaUpdatedAt, summary }); /* eslint-disable-next-line */ }, [persistKey]);
+  // Flags consumed by the Action Items board (Growth → Action Items). Each has a
+  // stable key so the board can dedupe, preserve assignment, and auto-resolve.
+  const flags = useMemo(() => {
+    const f = [];
+    rows.forEach((r) => {
+      if (r.price <= 0) { f.push({ key: "price:" + r.id, productId: r.id, name: r.name, severity: "med", title: "Set a retail price for " + r.name, detail: "No price is set, so margin can't be calculated yet." }); return; }
+      if (r.units === 0 && r.mappedSpend > 0) { f.push({ key: "adwaste:" + r.id, productId: r.id, name: r.name, severity: "high", title: "Ad spend with no sales — " + r.name, detail: "$" + r.mappedSpend.toFixed(0) + "/mo in ads, 0 units sold in 30 days. Pure loss — pause or retarget." }); }
+      if (r.cm2 != null && r.cm2 < 0) {
+        const adBig = r.ad > (r.fbaFee || 0);
+        f.push({ key: "cm2neg:" + r.id, productId: r.id, name: r.name, severity: "high", title: r.name + " loses $" + Math.abs(r.cm2).toFixed(2) + "/unit after Amazon's cut", detail: "CM2 " + (r.cm2pct != null ? r.cm2pct.toFixed(0) + "%" : "") + ". Biggest lever: " + (adBig ? ("ad cost $" + r.ad.toFixed(2) + "/unit — review campaign mapping & spend") : ("FBA $" + (r.fbaFee || 0).toFixed(2) + "/unit")) + (r.hasCogs ? "" : " (COGS not yet entered, so the real loss is larger)") + "." });
+      } else if (r.cm2 != null && r.cm2pct != null && r.cm2pct < 15) {
+        f.push({ key: "thin:" + r.id, productId: r.id, name: r.name, severity: "med", title: "Thin margin on " + r.name + " (" + r.cm2pct.toFixed(0) + "% CM2)", detail: "Little cushion after Amazon fees and ads. A small cost rise or price drop turns it negative." });
+      }
+      if (!r.hasCogs && r.price > 0) { f.push({ key: "cogs:" + r.id, productId: r.id, name: r.name, severity: "low", title: "Add COGS for " + r.name, detail: "Margin is overstated until cost is entered in the COGS Builder and saved." }); }
+    });
+    return f;
+  }, [rows]);
 
-  const losers = rows.filter((r) => r.cm2 != null && r.cm2 < 0);
+  const persistKey = JSON.stringify({ s: state, sum: summary, fl: flags });
+  useEffect(() => { if (onSave) onSave({ referralPct: state.referralPct, returnsPct: state.returnsPct, bySku: state.bySku, adMap: state.adMap, amazonFba: state.amazonFba, fbaUpdatedAt: state.fbaUpdatedAt, summary, flags }); /* eslint-disable-next-line */ }, [persistKey]);
+
+  const unpriced = rows.filter((r) => r.price <= 0);
+  const losers = rows.filter((r) => r.price > 0 && r.cm2 != null && r.cm2 < 0);
   const thin = rows.filter((r) => r.cm2 != null && r.cm2 >= 0 && r.cm2pct < 15);
   const missingCogs = rows.filter((r) => !r.hasCogs);
   const missingFba = rows.filter((r) => r.fbaFee == null);
@@ -287,10 +306,11 @@ export default function Margins({ cogs = {}, products = [], campaigns = [], prof
         </div>
         {losers.length > 0 && <div style={{ fontFamily: sans, fontSize: 12, color: c.red, marginBottom: 4 }}>⚠ Losing money after Amazon's cut: {losers.map((r) => r.name).join(", ")} — every unit sold deepens the loss.</div>}
         {adNoSales.length > 0 && <div style={{ fontFamily: sans, fontSize: 12, color: c.red, marginBottom: 4 }}>⚠ Ad spend with 0 units sold (30d): {adNoSales.map((r) => r.name).join(", ")} — pure loss.</div>}
+        {unpriced.length > 0 && <div style={{ fontFamily: sans, fontSize: 12, color: c.clay, marginBottom: 4 }}>Set a price: {unpriced.map((r) => r.name).join(", ")} — no retail price yet, so margin can't be read (not a real loss).</div>}
         {thin.length > 0 && <div style={{ fontFamily: sans, fontSize: 12, color: c.clay, marginBottom: 4 }}>Thin (&lt;15% CM2): {thin.map((r) => r.name).join(", ")}.</div>}
         {missingCogs.length > 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No COGS yet (in COGS or Profit Matrix tab): {missingCogs.map((r) => r.name).join(", ")}.</div>}
         {missingFba.length > 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No FBA fee yet (set it in Profit Matrix, or type here): {missingFba.map((r) => r.name).join(", ")}.</div>}
-        {!losers.length && !thin.length && !missingFba.length && !adNoSales.length && <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>Every SKU clears a healthy CM2. Nothing is quietly bleeding.</div>}
+        {!losers.length && !thin.length && !missingFba.length && !adNoSales.length && !unpriced.length && <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>Every SKU clears a healthy CM2. Nothing is quietly bleeding.</div>}
       </div>
     </div>
   );
