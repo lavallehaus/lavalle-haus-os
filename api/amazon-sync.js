@@ -17,7 +17,7 @@ const LWA_ID = process.env.AMZ_LWA_CLIENT_ID;
 const LWA_SECRET = process.env.AMZ_LWA_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.AMZ_REFRESH_TOKEN;
 
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, createGunzip } from "node:zlib";
 
 export const maxDuration = 60; // headroom for the per-order item loop
 
@@ -147,11 +147,45 @@ function baPeriod(period) {
   const weekStart = new Date(lastSat); weekStart.setUTCDate(lastSat.getUTCDate() - 6);
   return { start: weekStart.toISOString(), end: lastSat.toISOString() };
 }
-async function fetchReportDoc(doc) {
+async function downloadReportRecords(doc, max) {
   const r = await fetch(doc.url);
   const buf = Buffer.from(await r.arrayBuffer());
-  const out = doc.compressionAlgorithm === "GZIP" ? gunzipSync(buf) : buf;
-  return out.toString("utf-8");
+  const text = doc.compressionAlgorithm === "GZIP"
+    ? await gunzipCapped(buf, 3500000)
+    : buf.toString("utf-8").slice(0, 3500000);
+  return extractRecords(text, max);
+}
+// Decompress only up to maxBytes of output, then stop — keeps memory tiny for huge reports.
+function gunzipCapped(buf, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const gz = createGunzip();
+    let out = "", stopped = false;
+    gz.on("data", (chunk) => { if (stopped) return; out += chunk.toString("utf-8"); if (out.length >= maxBytes) { stopped = true; try { gz.destroy(); } catch (e) {} resolve(out); } });
+    gz.on("end", () => { if (!stopped) resolve(out); });
+    gz.on("error", (e) => { if (stopped) resolve(out); else reject(e); });
+    gz.end(buf);
+  });
+}
+// Pull up to `max` complete record objects from the first data array, scanning by brace depth.
+// Works even if `text` is truncated mid-document.
+function extractRecords(text, max) {
+  let i = -1;
+  const m = text.search(/"data[A-Za-z]*"\s*:\s*\[/);
+  if (m >= 0) i = text.indexOf("[", m);
+  if (i < 0) i = text.indexOf("[");
+  if (i < 0) return [];
+  const recs = [];
+  const BS = String.fromCharCode(92);
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let p = i + 1; p < text.length && recs.length < max; p++) {
+    const ch = text[p];
+    if (inStr) { if (esc) esc = false; else if (ch === BS) esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "{") { if (depth === 0) start = p; depth++; }
+    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { try { recs.push(JSON.parse(text.slice(start, p + 1))); } catch (e) {} start = -1; } }
+    else if (ch === "]" && depth === 0) break;
+  }
+  return recs;
 }
 function firstArray(obj) {
   if (Array.isArray(obj)) return obj;
@@ -295,11 +329,10 @@ export default async function handler(req, res) {
       if (!docId) { res.status(200).json({ connected: true, pending: true, reportId: rid, kind, period }); return; }
 
       const doc = await spapi(token, "/reports/2021-06-30/documents/" + docId);
-      const text = await fetchReportDoc(doc);
-      let json; try { json = JSON.parse(text); } catch (e) { res.status(200).json({ connected: true, error: "Report was not JSON.", sample: text.slice(0, 300) }); return; }
-      const rows = kind === "sqp" ? parseSqp(json) : parseSearchTerms(json);
+      const records = await downloadReportRecords(doc, 300);
+      const rows = kind === "sqp" ? parseSqp(records) : parseSearchTerms(records);
       const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(),
-        debug: { topKeys: Object.keys(json || {}), count: rows.length, firstRaw: firstArray(json)[0] || null } };
+        debug: { count: rows.length, firstRaw: records[0] || null } };
       await kvSet(cacheKey, payload);
       res.status(200).json({ connected: true, ...payload });
     } catch (e) {
