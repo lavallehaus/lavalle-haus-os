@@ -48,6 +48,38 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Transaction categorize: accepts { transactions:[{id,description,merchant,amount,type}], knownMerchants }
+  // returns { transactions:[{id,merchant,type,category}] } using the fixed category list + rules.
+  if (body && Array.isArray(body.transactions)) {
+    const txns = body.transactions.slice(0, 150);
+    const knownMerchants = (body && body.knownMerchants) || {};
+    const rulesText = Object.keys(knownMerchants).length
+      ? "Known merchant rules (PREFER these categories when the merchant matches): " + JSON.stringify(knownMerchants)
+      : "No known merchant rules yet.";
+    const instr =
+      "You are a bookkeeping assistant building a P&L for a candle and body-care business. " +
+      "Categorize each bank transaction below. For EACH, return its id unchanged, a short normalized merchant name " +
+      "(e.g. 'Meta', 'USPS', 'Amazon', 'Stripe'), type ('income' for deposits/sales, 'expense' for purchases/fees), " +
+      "and a category chosen ONLY from this list: " + CATEGORIES.join(", ") + ". " + rulesText + " " +
+      "If unsure, use 'Uncategorized'. Return ONLY JSON shaped exactly: " +
+      '{"transactions":[{"id":"","merchant":"","type":"expense","category":""}]}. Transactions: ' +
+      JSON.stringify(txns.map((t) => ({ id: t.id, description: t.description, merchant: t.merchant, amount: t.amount, type: t.type })));
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 4000, messages: [{ role: "user", content: instr }] }),
+      });
+      const data = await r.json();
+      if (!r.ok) { res.status(502).json({ error: (data && data.error && data.error.message) || "Claude API error", detail: data }); return; }
+      const tb = (data.content || []).find((b) => b.type === "text");
+      let parsed = { transactions: [] };
+      if (tb && tb.text) { try { parsed = JSON.parse(tb.text.replace(/```json|```/g, "").trim()); } catch (e) {} }
+      res.status(200).json({ transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [], usage: data.usage || {} });
+    } catch (e) { res.status(500).json({ error: "Request failed: " + (e && e.message ? e.message : String(e)) }); }
+    return;
+  }
+
   const pdfBase64 = body && body.pdfBase64;
   const knownMerchants = (body && body.knownMerchants) || {};
   if (!pdfBase64) {
