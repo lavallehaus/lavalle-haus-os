@@ -71,6 +71,7 @@ export default function ReorderList({
   products = [], packaging = [], materials = [], data = {},
   onSave, onAddAction, onRemoveAction,
   amazon = {}, shopify = {}, onAmazonSync, onShopifySync,
+  restock = {}, onRestockSync,
 }) {
   const DEF = { productionLeadDays: 21, amazonInboundDays: 10, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
 
@@ -148,8 +149,26 @@ export default function ReorderList({
 
       if (channel === "amazon") {
         const a = amzInputs(p); if (!a) return;
-        const pr = project(a.onHand, a.inbound, a.sold30, prodLead + num(d.amazonInboundDays), moq);
-        out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, ...pr });
+        const sc = restock && restock.items && restock.items[p.id];
+        if (sc) {
+          const days = sc.daysOfSupply;
+          const cw = days != null ? Math.round(days / 7) : (a.sold30 > 0 ? Math.round((a.onHand / (a.sold30 / 30)) / 7) : Infinity);
+          const stockout = days != null ? addDays(today, days) : null;
+          const reorderBy = sc.recommendedShipDate ? new Date(sc.recommendedShipDate) : null;
+          let status;
+          if (num(sc.recommendedQty) > 0) status = (days != null && days <= 21) ? "now" : "soon";
+          else if (days != null && days > 120) status = "overstock";
+          else status = "healthy";
+          out.push({
+            id: "amz:" + p.id, pid: p.id, name: p.name, link, native: true, alert: sc.alert,
+            onHand: sc.available != null ? sc.available : a.onHand, inbound: sc.inbound != null ? sc.inbound : a.inbound,
+            perDay: sc.sold30 != null ? sc.sold30 / 30 : a.sold30 / 30, coverWeeks: cw, stockout, reorderBy,
+            qty: num(sc.recommendedQty), status,
+          });
+        } else {
+          const pr = project(a.onHand, a.inbound, a.sold30, prodLead + num(d.amazonInboundDays), moq);
+          out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, ...pr });
+        }
       } else if (channel === "shopify") {
         const s = shopInputs(p); if (!s) return;
         const pr = project(s.onHand, 0, s.sold30, prodLead, moq);
@@ -183,7 +202,7 @@ export default function ReorderList({
       const ta = a.reorderBy ? a.reorderBy.getTime() : Infinity, tb = b.reorderBy ? b.reorderBy.getTime() : Infinity;
       return ta - tb;
     });
-  }, [products, state, d, channel, amazon, shopify]);
+  }, [products, state, d, channel, amazon, shopify, restock]);
 
   const summary = useMemo(() => {
     const live = rows.filter((r) => r.status !== "dormant");
@@ -252,8 +271,15 @@ export default function ReorderList({
           <div style={{ fontSize: 12, color: c.sub, marginTop: 3 }}>Soonest stockout: {summary.soonest ? fmtDate(summary.soonest) : "none projected"}{channel === "all" ? " · master plan = total demand vs total network stock" : ""}</div>
         </div>
         {channel === "b2b" ? <div style={{ ...faintEs, maxWidth: 260 }}>B2B has no live feed — enter monthly velocity per SKU in ⚙. Shares Shopify's self-fulfilled stock.</div>
+          : channel === "amazon" ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+              {onAmazonSync && <button onClick={onAmazonSync} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ FBA counts"}{syncStamp ? ` · ${syncStamp}` : ""}</button>}
+              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready" || restock.status === "error")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.6 : 1 }}>{restock.status === "pending" ? "pulling… (~1 min)" : restock.status === "ready" ? `↻ SC restock · ${fmtTime(restock.syncedAt) || "synced"}` : "⤓ Pull SC restock"}</button>}
+            </div>
+          )
           : syncFn ? <button onClick={syncFn} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ resync"}{syncStamp ? ` · ${syncStamp}` : ""}</button> : null}
       </div>
+      {channel === "amazon" && restock.status === "error" && <div style={{ fontSize: 11.5, color: c.red, marginTop: -4, marginBottom: 10 }}>Seller Central restock: {restock.error}</div>}
 
       {/* Defaults */}
       <div style={{ ...S.panel, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
@@ -270,7 +296,7 @@ export default function ReorderList({
         const st = STATUS[r.status];
         const item = {
           title: `Reorder ${r.qty} units — ${r.name}${channel === "all" ? "" : " (" + activeMeta.label + ")"}`,
-          detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.`,
+          detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.${r.native ? ` Amazon's own restock recommendation${r.alert ? " — " + r.alert : ""}.` : ""}`,
           name: r.name, severity: r.status === "now" ? "high" : "med",
         };
         return (
@@ -279,7 +305,9 @@ export default function ReorderList({
               <div style={{ flex: 1, minWidth: 190 }}>
                 <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, color: "#fff", background: st.color, padding: "1px 6px", borderRadius: 2 }}>{st.label}</span>
                 {r.live && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 8, letterSpacing: 1, color: c.green }}>● LIVE</span>}
+                {r.native && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 8, letterSpacing: 1, color: c.clay }}>● SELLER CENTRAL</span>}
                 <div style={{ fontSize: 15, marginTop: 4 }}>{r.name}</div>
+                {r.native && r.alert && <div style={{ fontSize: 11, color: c.clay, marginTop: 2 }}>Amazon: {r.alert}</div>}
                 {r.breakdown && <div style={{ fontSize: 11, color: c.sub, marginTop: 3 }}>{r.breakdown.join("  ·  ")}</div>}
                 {r.shared && <div style={faintEs}>shares Shopify self-fulfilled stock</div>}
               </div>
