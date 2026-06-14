@@ -30,6 +30,36 @@ const monthLabel = (ym) => {
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 };
 
+// Category-aware relevance: a term must POSITIVELY match the product's category
+// and not hit a known false-friend (e.g. "bath mat" for bath salts).
+function categoryOf(name) {
+  const n = String(name || "").toLowerCase();
+  if (/scrub|exfoliat|polish/.test(n)) return "scrub";
+  if (/bath|salt|soak/.test(n)) return "bath";
+  if (/body\s*oil|massage/.test(n)) return "bodyoil";
+  if (/candle|wax|vessel|sand|seashell|apple|dough|botanical|beeswax/.test(n)) return "candle";
+  return "other";
+}
+const POS = {
+  candle: /candle|wax\b|fragrance|aromatherapy|melt|vessel|scent|soy|beeswax|votive|pillar/,
+  scrub: /scrub|exfoliat|polish|sugar|body\s*scrub|coffee\s*scrub|salt\s*scrub/,
+  bath: /bath\s*salt|bath\s*soak|epsom|mineral\s*soak|muscle\s*soak|salt\s*soak|bath\s*bomb|soaking\s*salt/,
+  bodyoil: /body\s*oil|massage\s*oil|skin\s*oil|bath\s*oil/,
+  other: /candle|scrub|bath|salt|oil|wax|soak/,
+};
+const NEG = {
+  candle: /holder|warmer|plug\s*in|wick\s*trimmer|snuffer|lighter|jar\s*only/,
+  scrub: /brush|glove|loofah|pad\b|machine|cleaner\b/,
+  bath: /\bmat\b|towel|rug|curtain|mirror|tile|faucet|\btub\b|robe|caddy|tray|pillow|sponge|bathroom|rack|shelf|sink/,
+  bodyoil: /diffuser|essential\s*oil\s*set|car\b|engine/,
+  other: /\bmat\b|towel|rug|holder|warmer|brush|glove/,
+};
+function relevantTerms(name, terms) {
+  const cat = categoryOf(name);
+  const pos = POS[cat] || POS.other, neg = NEG[cat] || NEG.other;
+  return terms.filter((t) => { const tl = String(t).toLowerCase(); return pos.test(tl) && !neg.test(tl); });
+}
+
 // Sparkline of frequency RANK across months. Rank is inverted (lower = better),
 // so we flip it visually: a rising line = climbing in search demand.
 function Spark({ points }) {
@@ -139,7 +169,8 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             "Input: a catalog ('id: name; id: name') and a list of REAL Amazon search terms. " +
             "For EACH product, return the real search terms CLOSEST and most relevant to it — copied VERBATIM from the list. " +
             "EVERY product must get at least 2–6 real terms. If nothing fits perfectly, assign the closest BROADER real terms instead of leaving it empty " +
-            "(e.g. a candle product → 'candles','scented candle','soy candle','home fragrance'; a scrub → 'body scrub','sugar scrub','exfoliating scrub'; bath salts → 'bath salts','bath soak'). " +
+            "(e.g. a candle product → 'candles','scented candle','soy candle','home fragrance'; a scrub → 'body scrub','sugar scrub','exfoliating scrub'; bath salts → 'bath salts','bath soak','epsom salt'). " +
+            "NEVER assign accessories or different product types: e.g. 'bath mat','bath towel','candle holder','warmer' are WRONG for bath salts / candles — exclude them. " +
             "A broad term may be given to several products when equally relevant. Use ONLY terms from the provided list — never invent terms. " +
             "Return ONLY compact JSON keyed by product id, each value an array of terms. No prose, no markdown. " +
             'Example: {"4":["spiced apple candle","apple cinnamon candle","candles"],"1":["seashell candle","coastal candle","home fragrance"]}',
@@ -237,17 +268,14 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const filled = {};
     amz.forEach((p) => {
       const arr = assign[p.id] || assign[String(p.id)] || [];
-      // keep only terms we actually have data for (guard against any invented term)
-      let real = (Array.isArray(arr) ? arr : []).filter((t) => t && have.has(String(t).toLowerCase()));
-      if (real.length < 2) {
-        // AI under-assigned — backfill with the closest REAL terms by token overlap
-        const close = closestReal(p.name, candidates).filter((t) => real.indexOf(t) < 0);
-        real = real.concat(close).slice(0, 6);
-      }
-      // de-dupe, cap
-      real = [...new Set(real.map((t) => String(t)))].slice(0, 6);
-      const ideas = real.length ? [] : fallbackIdeas(p.name); // only if Amazon truly returned nothing relevant
-      filled[p.id] = { matched: real, ideas };
+      const aiReal = (Array.isArray(arr) ? arr : []).filter((t) => t && have.has(String(t).toLowerCase()));
+      const close = closestReal(p.name, candidates);
+      // union AI picks + closeness picks, then keep only category-relevant terms
+      let pool = [...new Set([...aiReal, ...close].map((t) => String(t)))];
+      pool = relevantTerms(p.name, pool);
+      pool = [...new Set(pool)].slice(0, 14);            // generous pool; render ranks & trims
+      const ideas = pool.length ? [] : fallbackIdeas(p.name); // only if Amazon truly had nothing relevant
+      filled[p.id] = { matched: pool, ideas };
     });
     setByProduct(filled);
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
@@ -257,6 +285,23 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   function seriesFor(term) {
     const lk = term.toLowerCase();
     return months.map((m) => ({ m, rank: monthHistory[m] && monthHistory[m][lk] != null ? monthHistory[m][lk] : null }));
+  }
+  // Trend over the whole window: positive score = climbing (rank fell = more searched).
+  function trendScore(term) {
+    const s = seriesFor(term).filter((x) => x.rank != null).map((x) => x.rank);
+    if (s.length < 2) return { dir: 0, score: 0 };       // not enough data = neutral
+    const imp = s[0] - s[s.length - 1];
+    return { dir: imp > 0 ? 1 : imp < 0 ? -1 : 0, score: imp };
+  }
+  // Upward-trending first, then neutral; downward trimmed (only fill in if too few).
+  function rankByTrend(terms) {
+    const scored = terms.map((t) => ({ t, ...trendScore(t) }));
+    const up = scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score);
+    const flat = scored.filter((x) => x.dir === 0);
+    const down = scored.filter((x) => x.dir < 0).sort((a, b) => b.score - a.score); // least-bad first
+    let out = up.concat(flat);
+    if (out.length < 4) out = out.concat(down.slice(0, 4 - out.length)); // keep a few only if thin
+    return out.slice(0, 8).map((x) => x.t);
   }
   function adopt(term, pname, idea) {
     if (!onTrack) return;
@@ -336,8 +381,9 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       {/* Per-product results */}
       {byProduct && amz.map((p) => {
         const entry = byProduct[p.id] || byProduct[String(p.id)] || { matched: [], ideas: [] };
-        const matched = (entry.matched || []).filter(Boolean);
+        const matched = rankByTrend((entry.matched || []).filter(Boolean)); // upward-first, downs trimmed
         const ideas = (entry.ideas || []).filter(Boolean);
+        const upCount = matched.filter((t) => trendScore(t).dir > 0).length;
         const rows = matched.map((t) => ({ term: t, idea: false })).concat(ideas.map((t) => ({ term: t, idea: true })));
         const isOpen = open[p.id];
         return (
@@ -348,7 +394,9 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             >
               <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>{p.name}</div>
               <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
-                {matched.length} trend{matched.length === 1 ? "" : "s"}
+                {upCount ? <span style={{ color: c.green }}>▲ {upCount} rising</span> : null}
+                {upCount && matched.length ? " · " : ""}
+                {matched.length} term{matched.length === 1 ? "" : "s"}
                 {ideas.length ? " · " + ideas.length + " idea" + (ideas.length === 1 ? "" : "s") : ""} {isOpen ? "▾" : "▸"}
               </div>
             </div>
