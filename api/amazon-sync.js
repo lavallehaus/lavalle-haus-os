@@ -197,7 +197,7 @@ function firstArray(obj) {
 function n(v) { const x = Number(v); return isNaN(x) ? null : x; }
 function parseSearchTerms(json) {
   const arr = json.dataByDepartmentAndSearchTerm || json.dataBySearchTerm || firstArray(json);
-  return arr.slice(0, 250).map((r) => ({
+  return arr.slice(0, 800).map((r) => ({
     term: r.searchTerm || r.SearchTerm || "",
     rank: n(r.searchFrequencyRank != null ? r.searchFrequencyRank : r["Search Frequency Rank"]),
     dept: r.departmentName || r.DepartmentName || "",
@@ -372,7 +372,7 @@ export default async function handler(req, res) {
         predicate = (rec) => { const t = String(rec.searchTerm || "").toLowerCase(); return filterTerms.some((f) => t.indexOf(f) >= 0); };
         cap = 22000000; // keep only matches, so we can scan far deeper than the top terms
       }
-      const records = await downloadReportRecords(doc, 300, predicate, cap);
+      const records = await downloadReportRecords(doc, 1200, predicate, cap);
       const rows = kind === "sqp" ? parseSqp(records) : parseSearchTerms(records);
 
       // Maintain a rolling rank history (last 6 weeks) for trend sparklines.
