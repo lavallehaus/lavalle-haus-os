@@ -183,18 +183,25 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const total = 12;                 // this month + 11 prior
     const durations = [];
     let completed = 0;
+    const haveHist = Object.keys(monthHistory).length >= 11;
     const avg = () => (durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 165000);
     const show = (stage, monthStart) =>
       setProg({ stage, done: completed, total, monthStart, avgMs: avg(), etaMs: Math.round(avg() * (total - completed)), etaSetAt: Date.now() });
 
-    // Month 0 (current) — also returns the candidate terms.
+    // Month 0 — reuse the cached current month if we have it; only spend a fresh
+    // (slow) pull when there's nothing cached. etaMs starts null = "estimating…".
     let s0 = Date.now();
-    setProg({ stage: "This month’s search terms", done: 0, total, monthStart: s0, avgMs: 165000, etaMs: 165000 * total, etaSetAt: Date.now() });
-    const m0 = await reportCall({ weekOffset: 0, refresh: true });
-    if (m0.error) { setProg(null); setBusy(""); setErr(m0.error); return; }
+    setProg({ stage: haveHist ? "Reusing cached history…" : "This month’s search terms", done: 0, total, monthStart: s0, avgMs: haveHist ? 4000 : 165000, etaMs: null, etaSetAt: Date.now() });
+    let m0 = await reportCall({ weekOffset: 0 });                 // cache-first (no refresh)
+    let candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
+    if (!candidates.length) {                                     // nothing cached → pull fresh
+      setProg({ stage: "This month’s search terms", done: 0, total, monthStart: Date.now(), avgMs: 165000, etaMs: null, etaSetAt: Date.now() });
+      m0 = await reportCall({ weekOffset: 0, refresh: true });
+      if (m0.error) { setProg(null); setBusy(""); setErr(m0.error); return; }
+      candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
+    }
     durations.push(Date.now() - s0); completed = 1;
-    const candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
-    if (!candidates.length) { setProg(null); setBusy(""); setErr("No relevant search terms returned for this month yet."); return; }
+    if (!candidates.length) { setProg(null); setBusy(""); setErr("No relevant search terms returned yet — press Build again."); return; }
 
     // Backfill the prior 11 months (resumable — already-cached months return instantly).
     let stopped = false;
