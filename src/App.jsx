@@ -1751,7 +1751,7 @@ setRestock((s) => ({ ...s, status: "pending", error: null, startedAt }));
 const run = async () => {
 try {
 const url = "/api/amazon-sync?op=restock" + (force && polls === 0 ? "&force=1" : "");
-const d = await fetch(url, { method: "POST" }).then((r) => r.json());
+const d = await fetch(url, { method: "GET" }).then((r) => r.json());
 if (d && d.ready) {
 const items = {};
 (d.items || []).forEach((it) => { items[it.productId] = it; });
