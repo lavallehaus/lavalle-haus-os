@@ -78,6 +78,8 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
   const rows = (data && data.rows) || [];
   const reportTerms = useMemo(() => rows.map((r) => r.term).filter(Boolean), [rows]);
+  const reportInfo = useMemo(() => { const m = {}; rows.forEach((r) => { const k = (r.term || "").toLowerCase(); if (k && r.rank != null && (m[k] == null || r.rank < m[k])) m[k] = r.rank; }); return m; }, [rows]);
+  const periodLabel = data ? `${(data.dataStart || "").slice(0, 10)} – ${(data.dataEnd || "").slice(0, 10)}` : "";
   const filtered = q.trim() ? rows.filter((r) => (r.term || "").toLowerCase().includes(q.trim().toLowerCase())) : rows;
   const sorted = view === "research"
     ? [...filtered].sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9))
@@ -111,7 +113,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
           "Tip: pull data for stronger suggestions, or just generate below."}
       </div>
 
-      <ProductSuggestions products={products} reportTerms={reportTerms} onTrack={onTrack} />
+      <ProductSuggestions products={products} reportTerms={reportTerms} reportInfo={reportInfo} periodLabel={periodLabel} onTrack={onTrack} />
 
       {/* raw report, collapsed */}
       <div style={{ marginTop: 14, borderTop: `1px solid ${c.line}`, paddingTop: 10 }}>
@@ -147,7 +149,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   );
 }
 
-function ProductSuggestions({ products = [], reportTerms = [], onTrack }) {
+function ProductSuggestions({ products = [], reportTerms = [], reportInfo = {}, periodLabel = "", onTrack }) {
   const amz = products.filter((p) => !p.isSample && (p.asin || (p.channels || []).includes("Amazon"))).map((p) => ({ id: p.id, name: p.name }));
   const [loading, setLoading] = useState(false);
   const [byProduct, setByProduct] = useState(null);
@@ -220,12 +222,15 @@ function ProductSuggestions({ products = [], reportTerms = [], onTrack }) {
                     {sugg.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>No suggestions for this one.</div>}
                     {sugg.map((kw, i) => {
                       const id = p.id + "|" + kw.keyword;
-                      const searched = reportSet.has(kw.keyword.toLowerCase());
+                      const lk = kw.keyword.toLowerCase();
+                      const rank = reportInfo[lk];
+                      const searched = rank != null || reportSet.has(lk);
                       const isAdded = added[id];
                       return (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderTop: i ? "1px solid #00000008" : "none" }}>
                           <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, flex: 1 }}>{kw.keyword}</span>
-                          {searched && <span style={{ fontFamily: mono, fontSize: 8, color: c.green, border: `1px solid ${c.green}`, borderRadius: 1, padding: "1px 4px" }}>★ SEARCHED</span>}
+                          {searched && <span style={{ fontFamily: mono, fontSize: 8, color: c.green, border: `1px solid ${c.green}`, borderRadius: 1, padding: "1px 4px" }} title="Amazon search-frequency rank — lower = more searched">★ {rank != null ? "RANK #" + Number(rank).toLocaleString() : "SEARCHED"}</span>}
+                          {searched && rank != null && periodLabel && <span style={{ fontFamily: mono, fontSize: 8, color: c.sub }} title="Report period">{periodLabel}</span>}
                           <span style={chip}>{kw.matchType}</span>
                           <button onClick={() => adopt(p, kw)} disabled={isAdded} title="add to tracker" style={{ border: "none", background: "transparent", color: isAdded ? c.sub : c.clay, cursor: isAdded ? "default" : "pointer", fontSize: 17, lineHeight: 1, width: 22 }}>{isAdded ? "✓" : "＋"}</button>
                         </div>
