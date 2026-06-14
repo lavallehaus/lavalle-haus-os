@@ -299,8 +299,9 @@ export default async function handler(req, res) {
       if (!historyOnly && weekOffset === 0 && !body.refresh && !body.reportId) {
         const cached = await kvGet(cacheKey);
         const hist = (await kvGet("kwhistory")) || {};
-        if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true, history: hist }); return; }
-        res.status(200).json({ connected: true, idle: true, history: hist }); return;
+        const mhist = (await kvGet("kwhist_month")) || {};
+        if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true, history: hist, monthHistory: mhist }); return; }
+        res.status(200).json({ connected: true, idle: true, history: hist, monthHistory: mhist }); return;
       }
 
       const { start, end } = baPeriod(period, weekOffset);
@@ -308,8 +309,13 @@ export default async function handler(req, res) {
 
       // History backfill: if this week is already recorded, return it without spending quota.
       if (historyOnly && !body.refresh && !body.reportId) {
-        const hist = (await kvGet("kwhistory")) || {};
-        if (hist[weekKey]) { res.status(200).json({ connected: true, ok: true, history: hist, alreadyHave: true }); return; }
+        if (period === "MONTH") {
+          const mhist = (await kvGet("kwhist_month")) || {};
+          if (mhist[weekKey.slice(0, 7)]) { res.status(200).json({ connected: true, ok: true, monthHistory: mhist, alreadyHave: true }); return; }
+        } else {
+          const hist = (await kvGet("kwhistory")) || {};
+          if (hist[weekKey]) { res.status(200).json({ connected: true, ok: true, history: hist, alreadyHave: true }); return; }
+        }
       }
       const reportType = kind === "sqp"
         ? "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT"
@@ -371,18 +377,26 @@ export default async function handler(req, res) {
 
       // Maintain a rolling rank history (last 6 weeks) for trend sparklines.
       let history = (await kvGet("kwhistory")) || {};
+      let monthHistory = (await kvGet("kwhist_month")) || {};
       if (kind === "searchterms") {
         const ranks = {};
         rows.forEach((r) => { if (r.term && r.rank != null) { const k = r.term.toLowerCase(); if (ranks[k] == null || r.rank < ranks[k]) ranks[k] = r.rank; } });
-        history[weekKey] = ranks;
-        const wk = Object.keys(history).sort();
-        while (wk.length > 6) { delete history[wk.shift()]; }
-        await kvSet("kwhistory", history);
+        if (period === "MONTH") {
+          monthHistory[weekKey.slice(0, 7)] = ranks;
+          const mks = Object.keys(monthHistory).sort();
+          while (mks.length > 14) { delete monthHistory[mks.shift()]; }
+          await kvSet("kwhist_month", monthHistory);
+        } else {
+          history[weekKey] = ranks;
+          const wk = Object.keys(history).sort();
+          while (wk.length > 6) { delete history[wk.shift()]; }
+          await kvSet("kwhistory", history);
+        }
       }
 
-      if (historyOnly) { await kvSet(inflKey, null); res.status(200).json({ connected: true, ok: true, history, weekKey }); return; }
+      if (historyOnly) { await kvSet(inflKey, null); res.status(200).json({ connected: true, ok: true, history, monthHistory, weekKey }); return; }
 
-      const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(), history,
+      const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(), history, monthHistory,
         debug: { count: rows.length, firstRaw: records[0] || null } };
       if (weekOffset === 0) await kvSet(cacheKey, payload);
       await kvSet(inflKey, null);
