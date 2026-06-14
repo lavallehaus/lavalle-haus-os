@@ -123,31 +123,56 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     return { error: "Timed out preparing a monthly report." };
   }
 
-  // Ask the AI proxy to assign REAL terms to the product each best fits.
+  // Match real terms to products AND ensure every product gets at least one keyword.
+  // Returns { productId: { matched:[realTerm,...], ideas:[testKeyword,...] } }
   async function aiAssign(candidates) {
-    if (!amz.length || !candidates.length) return {};
+    if (!amz.length) return {};
     const catalog = amz.map((p) => p.id + ": " + p.name).join("; ");
     const terms = candidates.slice(0, 100);
     try {
       const res = await fetch("/api/categorize", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          max_tokens: 1800,
+          max_tokens: 2200,
           system:
-            "You assign REAL Amazon search terms to a candle & body-care seller's products. " +
-            "You are given a catalog ('id: name; id: name') and a list of real search terms. " +
-            "Return ONLY a compact JSON object keyed by product id; each value is an array of the terms that genuinely fit THAT product. " +
-            "Assign each term to at most one product. Drop terms that fit no product. No prose, no markdown fences. " +
-            'Example: {"4":["spiced apple candle","apple cinnamon candle"],"7":["sugar body scrub"]}',
+            "You build keyword suggestions for a candle & body-care seller, and EVERY product must end up with at least one keyword. " +
+            "Input: a catalog ('id: name; id: name') and a list of REAL Amazon search terms. " +
+            "For EACH product id, return an object with two arrays: " +
+            "'matched' = terms copied VERBATIM from the real-term list that genuinely fit that product (may be empty if none fit); " +
+            "'ideas' = your own 1–3 short lowercase buyer-style keyword phrases to test — REQUIRED whenever 'matched' is empty, otherwise []. " +
+            "Ideas must be realistic shopper searches for that exact product, e.g. a seashell vessel candle → 'seashell candle','coastal home decor candle'; a beeswax sand candle → 'sand candle','beeswax sand candle'. " +
+            "Each real term goes to at most one product. Return ONLY compact JSON keyed by product id, no markdown. " +
+            'Example: {"5":{"matched":["spiced apple candle"],"ideas":[]},"1":{"matched":[],"ideas":["seashell candle","coastal candle"]}}',
           messages: [{ role: "user", content: "Catalog: " + catalog + "\n\nReal search terms: " + terms.join(", ") }],
         }),
       }).then((x) => x.json());
       const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("") || "{}";
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       const norm = {};
-      Object.keys(parsed || {}).forEach((k) => { norm[String(k)] = Array.isArray(parsed[k]) ? parsed[k] : []; });
+      Object.keys(parsed || {}).forEach((k) => {
+        const v = parsed[k] || {};
+        norm[String(k)] = {
+          matched: Array.isArray(v.matched) ? v.matched : (Array.isArray(v) ? v : []),
+          ideas: Array.isArray(v.ideas) ? v.ideas : [],
+        };
+      });
       return norm;
     } catch (e) { return {}; }
+  }
+
+  // Deterministic last-resort keyword if the AI returns nothing for a product.
+  function fallbackIdeas(name) {
+    const n = String(name || "").toLowerCase();
+    const skip = ["the", "and", "with", "set", "pack", "oz", "16oz", "32oz", "mini", "large", "small"];
+    const words = n.split(/[^a-z]+/).filter((w) => w.length > 2 && skip.indexOf(w) < 0);
+    const base = words.slice(0, 3).join(" ").trim();
+    const out = [];
+    if (base) out.push(base);
+    if (n.indexOf("candle") >= 0 && base.indexOf("candle") < 0) {
+      const alt = (words.filter((w) => w !== "candle").slice(0, 2).join(" ") + " candle").trim();
+      if (alt && out.indexOf(alt) < 0) out.push(alt);
+    }
+    return out.length ? out.slice(0, 2) : ["lavalle haus candle"];
   }
 
   async function buildAndSuggest() {
@@ -183,7 +208,15 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
     setProg({ stage: "Sorting terms under each product", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
     const assign = await aiAssign(candidates);
-    setByProduct(assign || {});
+    const filled = {};
+    amz.forEach((p) => {
+      const a = assign[p.id] || assign[String(p.id)] || {};
+      const matched = Array.isArray(a.matched) ? a.matched : [];
+      let ideas = Array.isArray(a.ideas) ? a.ideas : [];
+      if (!matched.length && !ideas.length) ideas = fallbackIdeas(p.name); // never leave a product empty
+      filled[p.id] = { matched, ideas };
+    });
+    setByProduct(filled);
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
     setProg(null); setBusy("");
   }
@@ -192,9 +225,9 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const lk = term.toLowerCase();
     return months.map((m) => ({ m, rank: monthHistory[m] && monthHistory[m][lk] != null ? monthHistory[m][lk] : null }));
   }
-  function adopt(term, pname) {
+  function adopt(term, pname, idea) {
     if (!onTrack) return;
-    onTrack({ keyword: term, matchType: "phrase", product: pname, notes: "trending (Brand Analytics)" });
+    onTrack({ keyword: term, matchType: "phrase", product: pname, notes: idea ? "test idea (no trend data yet)" : "trending (Brand Analytics)" });
     setAdded((a) => ({ ...a, [pname + "|" + term]: true }));
   }
 
@@ -269,7 +302,10 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
       {/* Per-product results */}
       {byProduct && amz.map((p) => {
-        const terms = (byProduct[p.id] || byProduct[String(p.id)] || []).filter(Boolean);
+        const entry = byProduct[p.id] || byProduct[String(p.id)] || { matched: [], ideas: [] };
+        const matched = (entry.matched || []).filter(Boolean);
+        const ideas = (entry.ideas || []).filter(Boolean);
+        const rows = matched.map((t) => ({ term: t, idea: false })).concat(ideas.map((t) => ({ term: t, idea: true })));
         const isOpen = open[p.id];
         return (
           <div key={p.id} style={panel}>
@@ -277,65 +313,84 @@ export default function AmazonKeywords({ products = [], onTrack }) {
               onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
             >
-              <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>
-                {p.name}
-              </div>
+              <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>{p.name}</div>
               <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
-                {terms.length} term{terms.length === 1 ? "" : "s"} {isOpen ? "▾" : "▸"}
+                {matched.length} trend{matched.length === 1 ? "" : "s"}
+                {ideas.length ? " · " + ideas.length + " idea" + (ideas.length === 1 ? "" : "s") : ""} {isOpen ? "▾" : "▸"}
               </div>
             </div>
 
             {isOpen && (
-              terms.length === 0 ? (
-                <div style={{ fontSize: 12, color: c.sub, marginTop: 10 }}>
-                  No trending search terms matched this product this month.
-                </div>
-              ) : (
-                <div style={{ marginTop: 12 }}>
-                  {terms.map((t) => {
-                    const s = seriesFor(t);
-                    const valid = s.filter((x) => x.rank != null);
-                    const latest = valid.length ? valid[valid.length - 1].rank : null;
-                    const prev = valid.length >= 2 ? valid[valid.length - 2].rank : null;
-                    const delta = latest != null && prev != null ? prev - latest : null; // + = improved (rose)
-                    const isAdded = added[p.name + "|" + t];
+              <div style={{ marginTop: 12 }}>
+                {rows.map((row) => {
+                  const t = row.term;
+                  const isAdded = added[p.name + "|" + t];
+                  if (row.idea) {
                     return (
-                      <div key={t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid " + c.line, flexWrap: "wrap" }}>
+                      <div key={"idea-" + t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid " + c.line, flexWrap: "wrap" }}>
                         <div style={{ flex: "1 1 180px", minWidth: 150 }}>
                           <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
-                          <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 2 }}>
-                            {latest != null ? "rank #" + num(latest) : "unranked"}
-                            {delta != null && delta !== 0 && (
-                              <span style={{ color: delta > 0 ? c.green : c.red, marginLeft: 8 }}>
-                                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last mo
-                              </span>
-                            )}
+                          <div style={{ fontSize: 10, color: c.clay, fontFamily: mono, marginTop: 2 }}>
+                            ◇ test idea — no Amazon trend data yet
                           </div>
                         </div>
-                        <div style={{ flex: "0 0 auto" }}>
-                          <Spark points={s} />
-                          {valid.length >= 2 && (
-                            <div style={{ fontSize: 9, color: c.sub, fontFamily: mono, display: "flex", justifyContent: "space-between" }}>
-                              <span>{monthLabel(valid[0].m)}</span>
-                              <span>{monthLabel(valid[valid.length - 1].m)}</span>
-                            </div>
-                          )}
+                        <div style={{ flex: "0 0 auto", fontSize: 10, color: c.sub, fontFamily: mono, width: 132, textAlign: "center" }}>
+                          run an ad to gather data
                         </div>
                         <button
-                          onClick={() => adopt(t, p.name)}
+                          onClick={() => adopt(t, p.name, true)}
                           disabled={isAdded}
                           style={{
                             flex: "0 0 auto", padding: "6px 12px", fontSize: 11, fontFamily: mono, borderRadius: 1, cursor: isAdded ? "default" : "pointer",
-                            border: "1px solid " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
+                            border: "1px dashed " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
                           }}
                         >
-                          {isAdded ? "✓ added" : "＋ track"}
+                          {isAdded ? "✓ added" : "＋ test"}
                         </button>
                       </div>
                     );
-                  })}
-                </div>
-              )
+                  }
+                  const s = seriesFor(t);
+                  const valid = s.filter((x) => x.rank != null);
+                  const latest = valid.length ? valid[valid.length - 1].rank : null;
+                  const prev = valid.length >= 2 ? valid[valid.length - 2].rank : null;
+                  const delta = latest != null && prev != null ? prev - latest : null; // + = improved (rose)
+                  return (
+                    <div key={t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid " + c.line, flexWrap: "wrap" }}>
+                      <div style={{ flex: "1 1 180px", minWidth: 150 }}>
+                        <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
+                        <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 2 }}>
+                          {latest != null ? "rank #" + num(latest) : "unranked"}
+                          {delta != null && delta !== 0 && (
+                            <span style={{ color: delta > 0 ? c.green : c.red, marginLeft: 8 }}>
+                              {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last mo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ flex: "0 0 auto" }}>
+                        <Spark points={s} />
+                        {valid.length >= 2 && (
+                          <div style={{ fontSize: 9, color: c.sub, fontFamily: mono, display: "flex", justifyContent: "space-between" }}>
+                            <span>{monthLabel(valid[0].m)}</span>
+                            <span>{monthLabel(valid[valid.length - 1].m)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => adopt(t, p.name, false)}
+                        disabled={isAdded}
+                        style={{
+                          flex: "0 0 auto", padding: "6px 12px", fontSize: 11, fontFamily: mono, borderRadius: 1, cursor: isAdded ? "default" : "pointer",
+                          border: "1px solid " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
+                        }}
+                      >
+                        {isAdded ? "✓ added" : "＋ track"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         );
@@ -343,7 +398,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
       {byProduct && (
         <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, textAlign: "center", marginTop: 4 }}>
-          Trend = Amazon Brand Analytics search-frequency rank, monthly. Lower rank = more searched.
+          Solid line = real Brand Analytics rank (lower = more searched). ◇ test ideas have no trend data until you run an ad.
         </div>
       )}
     </div>
