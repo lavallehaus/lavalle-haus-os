@@ -879,11 +879,11 @@ export default async function handler(req, res) {
           return;
         }
 
-        // A report that sits in Amazon's queue can hang indefinitely. If the
-        // in-flight job is older than 8 minutes (or the caller forces), abandon
-        // it — cancel the dead report and start a fresh one — so we never keep
-        // polling a stuck report across reloads.
-        const JOB_STALE_MS = 8 * 60 * 1000;
+        // A report that sits in Amazon's queue can hang, but these reports also
+        // legitimately take several minutes. Only abandon a job older than ~20
+        // minutes (or on explicit force) — restarting too early cancels a report
+        // that may have been about to finish, resetting the clock.
+        const JOB_STALE_MS = 20 * 60 * 1000;
         const jobAge = job && job.startedAt ? Date.now() - new Date(job.startedAt).getTime() : Infinity;
         const abandon = force || (job && job.reportId && jobAge > JOB_STALE_MS);
         if (abandon && job && job.reportId) {
@@ -899,7 +899,7 @@ export default async function handler(req, res) {
             reportType: "GET_RESTOCK_INVENTORY_RECOMMENDATIONS_REPORT",
             marketplaceIds: [MARKETPLACE],
           });
-          if (!created.reportId) { res.status(200).json({ connected: true, error: "Amazon rejected the restock report request. The FBA Inventory role may not be granted to the app." }); return; }
+          if (!created.reportId) { res.status(200).json({ connected: true, error: "Amazon rejected the restock report request. The app may be missing the Amazon Fulfillment (or Pricing) role." }); return; }
           await kvSet("amazon_restock_job", { reportId: created.reportId, startedAt: new Date().toISOString() });
           res.status(200).json({ connected: true, pending: true, reportId: created.reportId, fresh: abandon });
           return;
@@ -910,7 +910,7 @@ export default async function handler(req, res) {
         const status = rep.processingStatus;
         if (status === "CANCELLED" || status === "FATAL") {
           await kvSet("amazon_restock_job", null);
-          res.status(200).json({ connected: true, error: "Amazon could not produce the restock report (" + status + "). Likely the FBA Inventory role isn't granted to the app, or there's no data yet.", status });
+          res.status(200).json({ connected: true, error: "Amazon could not produce the restock report (" + status + "). The app may be missing the Amazon Fulfillment / Pricing role, or there are no restock recommendations for this account yet.", status });
           return;
         }
         if (status !== "DONE") { res.status(200).json({ connected: true, pending: true, status }); return; }
@@ -954,7 +954,7 @@ export default async function handler(req, res) {
           else unmatched.push(rec);
         });
 
-        const payload = { items, unmatched, syncedAt: new Date().toISOString(), reportId };
+        const payload = { items, unmatched, syncedAt: new Date().toISOString(), reportId, rows: lines.length - 1, matched: items.length };
         await kvSet("amazon_restock", payload);
         await kvSet("amazon_restock_job", null);
         res.status(200).json({ connected: true, ready: true, ...payload });
