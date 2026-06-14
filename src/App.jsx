@@ -2001,6 +2001,7 @@ if (activeSub === "listings") return <Listings products={products} dbState={dbSt
 if (activeSub === "createlisting") return <VesselCreator onCommit={onListingCommit} />;
 if (activeSub === "reorder") return <ReorderList
 products={products} packaging={dbState.packagingItems || []} materials={materials}
+amazon={amazon} shopify={shopify} onAmazonSync={amazonSync} onShopifySync={shopifySync}
 data={dbState.reorder || {}}
 onSave={(r) => setDbState((prev) => { const next = { ...prev, reorder: r }; dbSave(next); return next; })}
 onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
