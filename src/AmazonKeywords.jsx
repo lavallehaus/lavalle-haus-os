@@ -13,7 +13,7 @@ const c = {
 const serif = "'IM Fell English', Georgia, serif";
 const mono = "monospace";
 
-const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "exfoliat", "bath salt", "bath soak", "body oil", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift"];
+const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "salt scrub", "exfoliat", "body polish", "bath salt", "bath soak", "bath salts", "epsom salt", "epsom", "soaking salt", "mineral bath", "muscle soak", "foot soak", "dead sea salt", "himalayan salt", "magnesium flakes", "bath bomb", "lavender bath", "sea salt soak", "detox bath", "body oil", "body butter", "body lotion", "shea butter", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift"];
 const STOP = ["candle", "large", "small", "with", "sand", "vanilla", "apple", "the", "and", "set", "pack", "oz"];
 function buildFilter(products) {
   const toks = new Set(SEED);
@@ -43,7 +43,7 @@ function categoryOf(name) {
 const POS = {
   candle: /candle|wax\b|fragrance|aromatherapy|melt|vessel|scent|soy|beeswax|votive|pillar/,
   scrub: /scrub|exfoliat|polish|sugar|body\s*scrub|coffee\s*scrub|salt\s*scrub/,
-  bath: /bath\s*salt|bath\s*soak|epsom|mineral\s*soak|muscle\s*soak|salt\s*soak|bath\s*bomb|soaking\s*salt/,
+  bath: /bath\s*salt|bath\s*soak|epsom|mineral\s*soak|mineral\s*bath|muscle\s*soak|salt\s*soak|bath\s*bomb|soaking\s*salt|foot\s*soak|dead\s*sea|himalayan|magnesium|sea\s*salt|detox\s*bath|salt\s*bath|spa\s*salt/,
   bodyoil: /body\s*oil|massage\s*oil|skin\s*oil|bath\s*oil/,
   other: /candle|scrub|bath|salt|oil|wax|soak/,
 };
@@ -224,7 +224,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     return out.length ? out.slice(0, 2) : ["lavalle haus candle"];
   }
 
-  async function buildAndSuggest() {
+  async function buildAndSuggest(force = false) {
     if (busy) return;
     if (!amz.length) { setErr("No Amazon products found in your catalog yet."); return; }
     setErr(""); setBusy("building");
@@ -232,18 +232,18 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const total = 12;                 // this month + 11 prior
     const durations = [];
     let completed = 0;
-    const haveHist = Object.keys(monthHistory).length >= 11;
+    const haveHist = !force && Object.keys(monthHistory).length >= 11;
     const avg = () => (durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 165000);
     const show = (stage, monthStart) =>
       setProg({ stage, done: completed, total, monthStart, avgMs: avg(), etaMs: Math.round(avg() * (total - completed)), etaSetAt: Date.now() });
 
     // Month 0 — reuse the cached current month if we have it; only spend a fresh
-    // (slow) pull when there's nothing cached. etaMs starts null = "estimating…".
+    // (slow) pull when there's nothing cached, or when force-rebuilding. etaMs null = "estimating…".
     let s0 = Date.now();
     setProg({ stage: haveHist ? "Reusing cached history…" : "This month’s search terms", done: 0, total, monthStart: s0, avgMs: haveHist ? 4000 : 165000, etaMs: null, etaSetAt: Date.now() });
-    let m0 = await reportCall({ weekOffset: 0 });                 // cache-first (no refresh)
+    let m0 = force ? { rows: [] } : await reportCall({ weekOffset: 0 }); // cache-first unless forcing
     let candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
-    if (!candidates.length) {                                     // nothing cached → pull fresh
+    if (force || !candidates.length) {                            // nothing cached, or forced → pull fresh
       setProg({ stage: "This month’s search terms", done: 0, total, monthStart: Date.now(), avgMs: 165000, etaMs: null, etaSetAt: Date.now() });
       m0 = await reportCall({ weekOffset: 0, refresh: true });
       if (m0.error) { setProg(null); setBusy(""); setErr(m0.error); return; }
@@ -252,12 +252,13 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     durations.push(Date.now() - s0); completed = 1;
     if (!candidates.length) { setProg(null); setBusy(""); setErr("No relevant search terms returned yet — press Build again."); return; }
 
-    // Backfill the prior 11 months (resumable — already-cached months return instantly).
+    // Backfill the prior 11 months. Normally cached months return instantly; when
+    // forcing, every month is re-pulled fresh with the current (widened) filter.
     let stopped = false;
     for (let o = 1; o <= 11; o++) {
       let so = Date.now();
       show("Month −" + o + " of 11", so);
-      const rr = await reportCall({ weekOffset: o, historyOnly: true });
+      const rr = await reportCall({ weekOffset: o, historyOnly: true, refresh: force });
       durations.push(Date.now() - so); completed += 1;
       if (rr.error) { stopped = true; setErr("Paused at month −" + o + " — press Build to resume where it left off."); break; }
     }
@@ -332,12 +333,21 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <button onClick={buildAndSuggest} disabled={!!busy} style={chip(true)}>
+            <button onClick={() => buildAndSuggest(false)} disabled={!!busy} style={chip(true)}>
               {byProduct ? "↻ Refresh" : "✦ Build trends & suggest"}
             </button>
             <div style={{ fontSize: 10, color: c.sub, marginTop: 6, fontFamily: mono }}>
               {built ? built + " month" + (built === 1 ? "" : "s") + " of history" : "no history yet"}
             </div>
+            {built > 0 && (
+              <button
+                onClick={() => { if (window.confirm("Re-pull all 12 months with the wider search vocabulary? This spends Amazon quota and takes a few minutes.")) buildAndSuggest(true); }}
+                disabled={!!busy}
+                style={{ marginTop: 8, padding: "4px 10px", fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono, cursor: busy ? "not-allowed" : "pointer", borderRadius: 1, border: "1px solid " + c.line, background: "transparent", color: c.sub, opacity: busy ? 0.5 : 1 }}
+              >
+                ⟳ Rebuild (re-pull)
+              </button>
+            )}
           </div>
         </div>
         {!byProduct && !prog && (
