@@ -78,7 +78,8 @@ export default function ReorderList({
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState(() => ({ settings: data.settings || {}, defaults: DEF }));
-  const [channel, setChannel] = useState("all");
+  const [channel, setChannel] = useState(() => { try { return localStorage.getItem("lh_reorder_channel") || "all"; } catch { return "all"; } });
+  useEffect(() => { try { localStorage.setItem("lh_reorder_channel", channel); } catch {} }, [channel]);
   const [open, setOpen] = useState({});
   const [sent, setSent] = useState({});
   // Live elapsed timer while the Seller Central report generates.
@@ -198,23 +199,45 @@ export default function ReorderList({
         const bv = b2bInputs(p); if (!bv) return;
         const pr = project(bv.onHand, 0, bv.sold30, prodLead, moq);
         out.push({ id: "b2b:" + p.id, pid: p.id, name: p.name, link, shared: bv.shared, ...pr });
-      } else { // all — master production plan
+      } else { // all — master production plan = SUM of each channel's separate need
         const a = amzInputs(p), s = shopInputs(p), bv = b2bInputs(p);
         if (!a && !s && !bv) return;
-        const totalSold = (a ? a.sold30 : 0) + (s ? s.sold30 : 0) + (bv ? bv.sold30 : 0);
-        const selfOnHand = s ? s.onHand : (bv ? bv.onHand : 0); // self pool counted once
+        const sc = restock && restock.items && restock.items[p.id];
+        const nativeLoaded = restock && restock.items && Object.keys(restock.items).length > 0;
+        // Amazon need: Amazon's OWN restock recommendation only — never an estimate.
+        // No recommendation = 0; not loaded yet = excluded (flagged in the breakdown).
+        const amazonNeed = a ? (sc ? num(sc.recommendedQty) : 0) : 0;
+        // Shopify + B2B draw from the same self-fulfilled pool — combine their demand against it.
+        const selfOnHand = s ? s.onHand : (bv ? bv.onHand : 0);
+        const selfSold = (s ? s.sold30 : 0) + (bv ? bv.sold30 : 0);
+        const selfNeed = (s || bv) ? project(selfOnHand, 0, selfSold, prodLead, moq).qty : 0;
+        const makeBuy = amazonNeed + selfNeed;
+        // Display columns (network totals) + earliest binding stockout / order-by.
         const totalOnHand = (a ? a.onHand : 0) + selfOnHand;
         const totalInbound = a ? a.inbound : 0;
-        const lead = a ? prodLead + num(d.amazonInboundDays) : prodLead;
-        const pr = project(totalOnHand, totalInbound, totalSold, lead, moq);
-        const aNat = a && restock && restock.items && restock.items[p.id];
+        const totalSold = (a ? a.sold30 : 0) + selfSold;
+        const perDay = totalSold / 30;
+        const coverWeeks = perDay > 0 ? Math.round((totalOnHand / perDay) / 7) : (totalOnHand > 0 ? Infinity : 0);
+        const aStock = a && a.sold30 > 0 ? addDays(today, a.onHand / (a.sold30 / 30)) : null;
+        const selfStock = (s || bv) && selfSold > 0 ? addDays(today, selfOnHand / (selfSold / 30)) : null;
+        const stockoutCands = [aStock, selfStock].filter(Boolean).map((x) => x.getTime());
+        const stockout = stockoutCands.length ? new Date(Math.min(...stockoutCands)) : null;
+        const aOrderBy = a ? (sc && sc.recommendedShipDate ? new Date(sc.recommendedShipDate) : (aStock ? addDays(aStock, -(prodLead + num(d.amazonInboundDays) + num(d.safetyDays))) : null)) : null;
+        const selfOrderBy = (s || bv) && selfStock ? addDays(selfStock, -(prodLead + num(d.safetyDays))) : null;
+        const obCands = [aOrderBy, selfOrderBy].filter(Boolean).map((x) => x.getTime());
+        const reorderBy = obCands.length ? new Date(Math.min(...obCands)) : null;
+        let status;
+        if (makeBuy > 0) status = (reorderBy && reorderBy.getTime() <= today.getTime()) ? "now" : "soon";
+        else if (perDay === 0 && totalOnHand === 0) status = "dormant";
+        else if (coverWeeks === Infinity || coverWeeks > num(d.targetWeeks) * 2) status = "overstock";
+        else status = "healthy";
+        const parts = [];
+        if (a) parts.push(sc ? `Amazon ${amazonNeed} (Amazon's #)` : nativeLoaded ? "Amazon 0 (no restock rec)" : "Amazon — (Seller Central not loaded)");
+        if (s || bv) parts.push(`Self-fulfilled ${selfNeed}`);
         out.push({
-          id: "all:" + p.id, pid: p.id, name: p.name, link, ...pr,
-          breakdown: [
-            a ? `Amazon ${a.onHand}u · ${(a.sold30 / 30).toFixed(2)}/d${aNat && num(aNat.recommendedQty) > 0 ? ` · SC send-in ${num(aNat.recommendedQty)}` : ""}` : null,
-            s ? `Shopify ${s.onHand}u · ${(s.sold30 / 30).toFixed(2)}/d` : null,
-            bv ? (bv.sold30 ? `B2B ${(bv.sold30 / 30).toFixed(2)}/d` : "B2B (no velocity set)") : null,
-          ].filter(Boolean),
+          id: "all:" + p.id, pid: p.id, name: p.name, link, combined: true,
+          onHand: totalOnHand, inbound: totalInbound, perDay, coverWeeks, stockout, reorderBy,
+          qty: makeBuy, status, breakdown: parts,
         });
       }
     });
@@ -417,7 +440,7 @@ export default function ReorderList({
       )}
 
       <div style={{ ...faintEs, marginTop: 18 }}>
-        Per-channel = where you run out (channel stock vs channel velocity). All = total demand vs total network stock → one make/buy number. Amazon lead = production + inbound-to-FBA. Reorder-by = stockout − lead − safety.
+        Per-channel = where you run out (channel stock vs channel velocity). All = the sum of each channel's separate production need (FBA + self-fulfilled), since FBA and warehouse stock are different pools. Amazon's portion is always Amazon's own restock recommendation — never an estimate. Reorder-by = stockout − lead − safety.
       </div>
     </div>
   );
