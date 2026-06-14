@@ -209,19 +209,33 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     return scored.map((x) => x.t);
   }
 
-  // Deterministic last-resort keyword if the AI returns nothing for a product.
-  function fallbackIdeas(name) {
-    const n = String(name || "").toLowerCase();
-    const skip = ["the", "and", "with", "set", "pack", "oz", "16oz", "32oz", "mini", "large", "small"];
-    const words = n.split(/[^a-z]+/).filter((w) => w.length > 2 && skip.indexOf(w) < 0);
-    const base = words.slice(0, 3).join(" ").trim();
-    const out = [];
-    if (base) out.push(base);
-    if (n.indexOf("candle") >= 0 && base.indexOf("candle") < 0) {
-      const alt = (words.filter((w) => w !== "candle").slice(0, 2).join(" ") + " candle").trim();
-      if (alt && out.indexOf(alt) < 0) out.push(alt);
-    }
-    return out.length ? out.slice(0, 2) : ["lavalle haus candle"];
+  // Smart keyword suggestions for products Amazon has no trend data on yet.
+  // Returns the real category search phrases a shopper would type (not the product name).
+  async function aiSuggest(prods) {
+    if (!prods.length) return {};
+    const list = prods.map((p) => p.id + ": " + p.name).join("; ");
+    try {
+      const res = await fetch("/api/categorize", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          max_tokens: 1400,
+          system:
+            "You suggest high-intent Amazon buyer search keywords for candle & body-care products. " +
+            "For EACH product id given, return 5–7 realistic lowercase search phrases a shopper would actually type to find that product on Amazon — the real CATEGORY terms. " +
+            "Do NOT echo the literal product name and NEVER include descriptor words like 'unscented'. " +
+            "Example — 'Bath Salts Unscented' → ['bath salts','epsom salt','epsom bath soak','muscle soak','mineral bath salt','soaking salts','bath soak']. " +
+            "Example — 'Sugar Scrub' → ['sugar scrub','body scrub','exfoliating scrub','sugar body scrub']. " +
+            "No brand names, no markdown. Return ONLY JSON keyed by product id, each value an array of phrases. " +
+            'Example: {"6":["bath salts","epsom salt","epsom bath soak","muscle soak","mineral bath salt"]}',
+          messages: [{ role: "user", content: "Products: " + list }],
+        }),
+      }).then((x) => x.json());
+      const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("") || "{}";
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const norm = {};
+      Object.keys(parsed || {}).forEach((k) => { norm[String(k)] = Array.isArray(parsed[k]) ? parsed[k] : []; });
+      return norm;
+    } catch (e) { return {}; }
   }
 
   async function buildAndSuggest(force = false) {
@@ -275,9 +289,15 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       let pool = [...new Set([...aiReal, ...close].map((t) => String(t)))];
       pool = relevantTerms(p.name, pool);
       pool = [...new Set(pool)].slice(0, 14);            // generous pool; render ranks & trims
-      const ideas = pool.length ? [] : fallbackIdeas(p.name); // only if Amazon truly had nothing relevant
-      filled[p.id] = { matched: pool, ideas };
+      filled[p.id] = { matched: pool, ideas: [] };
     });
+    // For products Amazon surfaced no relevant terms for, suggest real category keywords.
+    const empties = amz.filter((p) => !(filled[p.id].matched || []).length);
+    if (empties.length) {
+      setProg({ stage: "Suggesting keywords for low-data products", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
+      const sugg = await aiSuggest(empties);
+      empties.forEach((p) => { filled[p.id].ideas = (sugg[p.id] || sugg[String(p.id)] || []).filter(Boolean).slice(0, 7); });
+    }
     setByProduct(filled);
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
     setProg(null); setBusy("");
@@ -400,7 +420,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
               <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
                 {matched.length
                   ? <span style={{ color: c.green }}>▲ {matched.length} rising</span>
-                  : (ideas.length ? ideas.length + " idea" + (ideas.length === 1 ? "" : "s") : "no rising terms")}
+                  : (ideas.length ? ideas.length + " suggested" : "no rising terms")}
                 {" "}{isOpen ? "▾" : "▸"}
               </div>
             </div>
@@ -408,8 +428,10 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             {isOpen && (
               <div style={{ marginTop: 12 }}>
                 {rows.length === 0 && (
-                  <div style={{ fontSize: 12, color: c.sub, marginTop: 4 }}>
-                    No rising search terms for this product right now — its relevant terms are flat or declining this month.
+                  <div style={{ fontSize: 12, color: c.sub, marginTop: 4, lineHeight: 1.5 }}>
+                    {(entry.matched || []).filter(Boolean).length > 0
+                      ? "No rising search terms right now — this product’s relevant terms are flat or declining this month."
+                      : "No Amazon search data for this product yet — it’s a low-search item, so there’s nothing real to suggest until demand picks up. This is the data telling you the truth, not a bug."}
                   </div>
                 )}
                 {rows.map((row) => {
@@ -421,21 +443,21 @@ export default function AmazonKeywords({ products = [], onTrack }) {
                         <div style={{ flex: "1 1 180px", minWidth: 150 }}>
                           <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
                           <div style={{ fontSize: 10, color: c.clay, fontFamily: mono, marginTop: 2 }}>
-                            ◇ test idea — no Amazon trend data yet
+                            ◆ suggested category keyword
                           </div>
                         </div>
                         <div style={{ flex: "0 0 auto", fontSize: 10, color: c.sub, fontFamily: mono, width: 132, textAlign: "center" }}>
-                          run an ad to gather data
+                          no trend data yet
                         </div>
                         <button
                           onClick={() => adopt(t, p.name, true)}
                           disabled={isAdded}
                           style={{
                             flex: "0 0 auto", padding: "6px 12px", fontSize: 11, fontFamily: mono, borderRadius: 1, cursor: isAdded ? "default" : "pointer",
-                            border: "1px dashed " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
+                            border: "1px solid " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
                           }}
                         >
-                          {isAdded ? "✓ added" : "＋ test"}
+                          {isAdded ? "✓ added" : "＋ track"}
                         </button>
                       </div>
                     );
