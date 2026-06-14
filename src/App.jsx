@@ -1745,8 +1745,9 @@ setAmazon(s => ({ ...s, syncing: false }));
 // ── SELLER CENTRAL NATIVE RESTOCK (on-demand; report is rate-limited) ──
 const [restock, setRestock] = useState({ items: {}, syncedAt: null, status: "idle", error: null });
 function restockSync(force) {
+const startedAt = Date.now();
 let polls = 0;
-setRestock((s) => ({ ...s, status: "pending", error: null }));
+setRestock((s) => ({ ...s, status: "pending", error: null, startedAt }));
 const run = async () => {
 try {
 const url = "/api/amazon-sync?op=restock" + (force && polls === 0 ? "&force=1" : "");
@@ -1754,13 +1755,13 @@ const d = await fetch(url, { method: "POST" }).then((r) => r.json());
 if (d && d.ready) {
 const items = {};
 (d.items || []).forEach((it) => { items[it.productId] = it; });
-setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null });
+setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null, startedAt: null });
 setDbState((prev) => { const next = { ...prev, amazonRestock: { items, syncedAt: d.syncedAt } }; dbSave(next); return next; });
 return;
 }
 if (d && d.error) { setRestock((s) => ({ ...s, status: "error", error: d.error })); return; }
 polls += 1;
-if (polls > 14) { setRestock((s) => ({ ...s, status: "error", error: "Amazon is still generating the report — try again in a minute." })); return; }
+if (polls > 48) { setRestock((s) => ({ ...s, status: "timeout", error: null })); return; } // ~5 min; resume keeps the same in-flight report
 setTimeout(run, 6000);
 } catch (e) { setRestock((s) => ({ ...s, status: "error", error: "Connection error." })); }
 };
@@ -1769,6 +1770,12 @@ run();
 
 // ── AUTO-FETCH SHOPIFY + AMAZON ON LOAD ──
 useEffect(() => { shopifySync(); amazonSync(); }, []);
+
+// Auto-pull Seller Central restock once data has loaded — no button required.
+// The backend serves a 12h cache instantly and only regenerates (in the
+// background) when stale, so this is cheap on every load.
+const restockAutoRef = useRef(false);
+useEffect(() => { if (!loaded || restockAutoRef.current) return; restockAutoRef.current = true; restockSync(); }, [loaded]);
 
 // ── APP LOCK state: any API 401 anywhere flips this and shows the login ──
 const [locked, setLocked] = useState(false);
@@ -1963,6 +1970,14 @@ return (
 );
 }
 
+// Live restock status/timer, but fall back to the persisted pull for items +
+// timestamp so the page is never blank while a background refresh runs.
+const restockMerged = {
+...restock,
+items: (restock.items && Object.keys(restock.items).length) ? restock.items : ((dbState.amazonRestock || {}).items || {}),
+syncedAt: restock.syncedAt || (dbState.amazonRestock || {}).syncedAt || null,
+};
+
 const profitNode = (
 <ProfitMatrix
 data={dbState.profitMatrix || {}}
@@ -1995,7 +2010,7 @@ return <AICoo
 products={products} campaigns={campaigns} weeks={weeks} materials={materials}
 cogs={dbState.cogs || {}} profitMatrix={dbState.profitMatrix || {}}
 marginsSettings={dbState.margins || {}} bankCash={dbState.bankCash || null}
-restock={(restock.items && Object.keys(restock.items).length) ? restock : (dbState.amazonRestock || { items: {} })} onRestockSync={restockSync}
+restock={restockMerged} onRestockSync={restockSync}
 actionsBoard={dbState.actionsBoard || {}}
 onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
 onRemoveAction={(id) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: (board.items || []).filter((x) => x.id !== id) } }; dbSave(next); return next; })}
@@ -2028,7 +2043,7 @@ if (activeSub === "createlisting") return <VesselCreator onCommit={onListingComm
 if (activeSub === "reorder") return <ReorderList
 products={products} packaging={dbState.packagingItems || []} materials={materials}
 amazon={amazon} shopify={shopify} onAmazonSync={amazonSync} onShopifySync={shopifySync}
-restock={restock} onRestockSync={restockSync}
+restock={restockMerged} onRestockSync={restockSync}
 data={dbState.reorder || {}}
 onSave={(r) => setDbState((prev) => { const next = { ...prev, reorder: r }; dbSave(next); return next; })}
 onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
