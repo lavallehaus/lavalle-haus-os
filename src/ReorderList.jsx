@@ -331,18 +331,21 @@ export default function ReorderList({
             {channel === "all" && <span style={{ color: c.sub }}>FBA <Fresh at={amazon && amazon.syncedAt} pending={amazon && amazon.syncing} /> · Shopify <Fresh at={shopify && shopify.syncedAt} pending={shopify && shopify.syncing} /> · SC restock <Fresh at={restock && restock.syncedAt} pending={restock.status === "pending"} /></span>}
             {channel === "b2b" && <span style={{ color: c.sub }}>manually entered — no live feed</span>}
           </div>
+          {channel === "amazon" && restock.status === "ready" && restock.matched === 0 && restock.rows > 0 && <div style={{ fontSize: 11.5, marginTop: 4, color: c.amber }}>Amazon returned {restock.rows} row{restock.rows === 1 ? "" : "s"} but none matched your SKUs — the SKU map may need updating.</div>}
+          {channel === "amazon" && restock.status === "ready" && restock.rows === 0 && <div style={{ fontSize: 11.5, marginTop: 4, color: c.sub }}>Amazon's restock report came back empty — it only lists SKUs it has recommendations for.</div>}
         </div>
         {channel === "b2b" ? <div style={{ ...faintEs, maxWidth: 260 }}>B2B has no live feed — enter monthly velocity per SKU in ⚙. Shares Shopify's self-fulfilled stock.</div>
           : channel === "amazon" ? (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
               {onAmazonSync && <button onClick={onAmazonSync} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing… (~15s)" : "⟳ FBA counts"}{syncStamp ? ` · ${syncStamp}` : ""}</button>}
-              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready" || restock.status === "timeout")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.7 : 1 }}>{restock.status === "pending" ? `updating… ${elapsedTxt}` : restock.status === "timeout" ? "↻ start fresh pull" : restock.status === "ready" ? "↻ Refresh SC" : (restock.syncedAt ? "↻ Refresh SC" : "⤓ Pull SC now")}</button>}
+              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.7 : 1 }}>{restock.status === "pending" ? `updating… ${elapsedTxt}${restock.statusDetail ? " · " + restock.statusDetail : ""}` : restock.status === "timeout" ? "↻ keep waiting" : restock.status === "ready" ? "↻ Refresh SC" : (restock.syncedAt ? "↻ Refresh SC" : "⤓ Pull SC now")}</button>}
+              {onRestockSync && restock.status === "timeout" && <button onClick={() => onRestockSync(true)} style={S.ghost}>start fresh report</button>}
             </div>
           )
           : syncFn ? <button onClick={syncFn} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ resync"}{syncStamp ? ` · ${syncStamp}` : ""}</button> : null}
       </div>
-      {channel === "amazon" && restock.status === "pending" && <div style={{ fontSize: 11.5, color: c.sub, marginTop: -4, marginBottom: 10 }}>Asking Amazon to generate the restock report — usually 1–3 minutes. Elapsed {elapsedTxt}. You can keep working; it fills in when ready.</div>}
-      {channel === "amazon" && restock.status === "timeout" && <div style={{ fontSize: 11.5, color: c.amber, marginTop: -4, marginBottom: 10 }}>Amazon's report is taking unusually long. Click "↻ start fresh pull" to cancel it and request a new one. (A stuck report is auto-abandoned after ~8 min.)</div>}
+      {channel === "amazon" && restock.status === "pending" && <div style={{ fontSize: 11.5, color: c.sub, marginTop: -4, marginBottom: 10 }}>Amazon is generating the restock report{restock.statusDetail ? ` — status: ${restock.statusDetail}` : ""}. These can take several minutes. Elapsed {elapsedTxt}. You can keep working; it fills in when ready.</div>}
+      {channel === "amazon" && restock.status === "timeout" && <div style={{ fontSize: 11.5, color: c.amber, marginTop: -4, marginBottom: 10 }}>Still generating after ~10 min. Restock reports can be slow on small accounts. <b>"↻ keep waiting"</b> resumes the same report (recommended). Only use <b>"start fresh report"</b> if it's been stuck a long time — that cancels and restarts the clock.</div>}
       {channel === "amazon" && restock.status === "error" && <div style={{ fontSize: 11.5, color: c.red, marginTop: -4, marginBottom: 10 }}>Seller Central restock: {restock.error}</div>}
 
       {/* Defaults */}
