@@ -231,9 +231,10 @@ export default function ReorderList({
         else if (perDay === 0 && totalOnHand === 0) status = "dormant";
         else if (coverWeeks === Infinity || coverWeeks > num(d.targetWeeks) * 2) status = "overstock";
         else status = "healthy";
-        const parts = [];
-        if (a) parts.push(sc ? `Amazon ${amazonNeed} (Amazon's #)` : nativeLoaded ? "Amazon 0 (no restock rec)" : "Amazon — (Seller Central not loaded)");
-        if (s || bv) parts.push(`Self-fulfilled ${selfNeed}`);
+        const segs = [];
+        if (a) segs.push(sc ? `Amazon ${amazonNeed} (Amazon's #)` : nativeLoaded ? "Amazon 0 (no restock rec)" : "Amazon — (SC not loaded)");
+        if (s || bv) segs.push(`self-fulfilled ${selfNeed}`);
+        const parts = [segs.join("  +  ") + `  =  make ${makeBuy}`];
         out.push({
           id: "all:" + p.id, pid: p.id, name: p.name, link, combined: true,
           onHand: totalOnHand, inbound: totalInbound, perDay, coverWeeks, stockout, reorderBy,
@@ -335,13 +336,13 @@ export default function ReorderList({
           : channel === "amazon" ? (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
               {onAmazonSync && <button onClick={onAmazonSync} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing… (~15s)" : "⟳ FBA counts"}{syncStamp ? ` · ${syncStamp}` : ""}</button>}
-              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.7 : 1 }}>{restock.status === "pending" ? `updating… ${elapsedTxt}` : restock.status === "timeout" ? "↻ keep waiting" : restock.status === "ready" ? "↻ Refresh SC" : (restock.syncedAt ? "↻ Refresh SC" : "⤓ Pull SC now")}</button>}
+              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready" || restock.status === "timeout")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.7 : 1 }}>{restock.status === "pending" ? `updating… ${elapsedTxt}` : restock.status === "timeout" ? "↻ start fresh pull" : restock.status === "ready" ? "↻ Refresh SC" : (restock.syncedAt ? "↻ Refresh SC" : "⤓ Pull SC now")}</button>}
             </div>
           )
           : syncFn ? <button onClick={syncFn} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ resync"}{syncStamp ? ` · ${syncStamp}` : ""}</button> : null}
       </div>
       {channel === "amazon" && restock.status === "pending" && <div style={{ fontSize: 11.5, color: c.sub, marginTop: -4, marginBottom: 10 }}>Asking Amazon to generate the restock report — usually 1–3 minutes. Elapsed {elapsedTxt}. You can keep working; it fills in when ready.</div>}
-      {channel === "amazon" && restock.status === "timeout" && <div style={{ fontSize: 11.5, color: c.amber, marginTop: -4, marginBottom: 10 }}>Amazon is still generating the report (these can take a few minutes). Click "↻ keep waiting" to resume — it picks up the same report, not a new one.</div>}
+      {channel === "amazon" && restock.status === "timeout" && <div style={{ fontSize: 11.5, color: c.amber, marginTop: -4, marginBottom: 10 }}>Amazon's report is taking unusually long. Click "↻ start fresh pull" to cancel it and request a new one. (A stuck report is auto-abandoned after ~8 min.)</div>}
       {channel === "amazon" && restock.status === "error" && <div style={{ fontSize: 11.5, color: c.red, marginTop: -4, marginBottom: 10 }}>Seller Central restock: {restock.error}</div>}
 
       {/* Defaults */}
@@ -357,7 +358,7 @@ export default function ReorderList({
       {/* Rows */}
       {rows.filter((r) => r.status !== "dormant").length === 0 && (
         channel === "amazon" && !(restock && restock.items && Object.keys(restock.items).length > 0)
-          ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub, lineHeight: 1.5 }}>Amazon's recommendations haven't loaded — they pull automatically on load. If this persists, hit ↻ Refresh SC (top right). No AI estimate is shown here, by design.</div>
+          ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub, lineHeight: 1.5 }}>Amazon's recommendations haven't loaded — they pull automatically on load. If this persists, use the Seller Central button (top right) to pull or start a fresh report. No AI estimate is shown here, by design.</div>
           : <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder on this channel. · Nada que reordenar en este canal.</div>
       )}
       {rows.filter((r) => r.status !== "dormant").map((r) => {
