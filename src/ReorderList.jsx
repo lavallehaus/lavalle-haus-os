@@ -73,7 +73,7 @@ export default function ReorderList({
   amazon = {}, shopify = {}, onAmazonSync, onShopifySync,
   restock = {}, onRestockSync,
 }) {
-  const DEF = { productionLeadDays: 21, amazonInboundDays: 14, targetWeeks: 8, safetyDays: 7, minSendIn: 12, ...(data.defaults || {}) };
+  const DEF = { productionLeadDays: 21, amazonInboundDays: 14, targetWeeks: 12, safetyDays: 7, minSendIn: 12, ...(data.defaults || {}) };
 
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -155,6 +155,7 @@ export default function ReorderList({
       if (channel === "amazon") {
         const a = amzInputs(p); if (!a) return;
         const sc = restock && restock.items && restock.items[p.id];
+        const nativeLoaded = restock && restock.items && Object.keys(restock.items).length > 0;
         if (sc) {
           const days = sc.daysOfSupply;
           const cw = days != null ? Math.round(days / 7) : (a.sold30 > 0 ? Math.round((a.onHand / (a.sold30 / 30)) / 7) : Infinity);
@@ -174,11 +175,21 @@ export default function ReorderList({
             reorderBy: shipBy, shipBy, startProdBy, recQty: num(sc.recommendedQty),
             qty: num(sc.recommendedQty), status,
           });
-        } else {
-          const pr = project(a.onHand, a.inbound, a.sold30, prodLead + num(d.amazonInboundDays), moq);
-          if (pr.qty > 0) pr.qty = Math.max(pr.qty, num(d.minSendIn), moq); // never suggest a trivial FBA shipment
-          out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, estimate: true, ...pr });
+        } else if (nativeLoaded) {
+          // Amazon's report loaded but has no recommendation for this SKU.
+          // Show it from Amazon's own live counts — no AI estimate, send-in 0.
+          const perDay = a.sold30 / 30;
+          const cw = perDay > 0 ? Math.round((a.onHand / perDay) / 7) : (a.onHand > 0 ? Infinity : 0);
+          out.push({
+            id: "amz:" + p.id, pid: p.id, name: p.name, link, native: true, noRec: true,
+            onHand: a.onHand, inbound: a.inbound, perDay, coverWeeks: cw,
+            stockout: perDay > 0 ? addDays(today, a.onHand / perDay) : null,
+            reorderBy: null, shipBy: null, startProdBy: null, recQty: 0, qty: 0,
+            status: a.onHand === 0 ? "out" : "healthy",
+          });
         }
+        // If Amazon's report hasn't loaded at all, show nothing here (an
+        // "awaiting Amazon" panel renders below) — never an AI estimate.
       } else if (channel === "shopify") {
         const s = shopInputs(p); if (!s) return;
         const pr = project(s.onHand, 0, s.sold30, prodLead, moq);
@@ -317,12 +328,15 @@ export default function ReorderList({
         <label style={{ fontSize: 12 }}>Amazon receive + distribute (days) <input style={S.input} type="number" value={d.amazonInboundDays} onChange={(e) => setDefault("amazonInboundDays", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Target cover (weeks) <input style={S.input} type="number" value={d.targetWeeks} onChange={(e) => setDefault("targetWeeks", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Safety (days) <input style={S.input} type="number" value={d.safetyDays} onChange={(e) => setDefault("safetyDays", e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Min FBA send-in (units) <input style={S.input} type="number" value={d.minSendIn} onChange={(e) => setDefault("minSendIn", e.target.value)} /></label>
-        <div style={{ ...faintEs, flexBasis: "100%" }}>Amazon SKUs lead = production + ship-to-FBA + Amazon's receive/distribute time (shipments often route through multiple FCs — allow ~2 weeks). Estimated send-in never drops below the min above; Amazon's own pull ignores it. · El lead de Amazon suma producción + envío + recepción/distribución (~2 semanas). La estimación nunca baja del mínimo.</div>
+        <div style={{ ...faintEs, flexBasis: "100%" }}>The Amazon channel shows Amazon's own restock pull only — no AI estimate. These defaults drive the All / Shopify / B2B estimates and the "start production by" back-calc; Amazon receive/distribute often runs ~2 weeks across multiple FCs. · El canal Amazon muestra solo la recomendación de Amazon; estos valores rigen las estimaciones de Todos / Shopify / B2B.</div>
       </div>
 
       {/* Rows */}
-      {rows.filter((r) => r.status !== "dormant").length === 0 && <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder on this channel. · Nada que reordenar en este canal.</div>}
+      {rows.filter((r) => r.status !== "dormant").length === 0 && (
+        channel === "amazon" && !(restock && restock.items && Object.keys(restock.items).length > 0)
+          ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub, lineHeight: 1.5 }}>Amazon's recommendations haven't loaded — they pull automatically on load. If this persists, hit ↻ Refresh SC (top right). No AI estimate is shown here, by design.</div>
+          : <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder on this channel. · Nada que reordenar en este canal.</div>
+      )}
       {rows.filter((r) => r.status !== "dormant").map((r) => {
         const st = STATUS[r.status];
         const item = {
@@ -348,18 +362,17 @@ export default function ReorderList({
                 <div><div style={S.cap}>Cover</div><div style={{ fontSize: 14 }}>{r.coverWeeks === Infinity ? "∞" : r.coverWeeks + "w"}</div></div>
                 <div><div style={S.cap}>Stockout</div><div style={{ fontSize: 14 }}>{fmtDate(r.stockout)}</div></div>
                 <div><div style={S.cap}>Order by</div><div style={{ fontSize: 14, color: r.status === "now" ? c.red : c.ink }}>{r.status === "now" ? "now" : fmtDate(r.reorderBy)}</div></div>
-                <div><div style={S.cap}>{channel === "all" ? "Make / buy" : channel === "amazon" ? "Send to FBA" : "Reorder qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
+                <div><div style={S.cap}>{channel === "all" ? "Make / buy" : channel === "amazon" ? "Send to FBA" : "Reorder qty"}</div><div style={{ fontSize: 16, color: r.qty > 0 ? c.clay : c.sub }}>{r.qty > 0 ? r.qty : 0}</div></div>
               </div>
             </div>
             {r.native && (
               <div style={{ marginTop: 8, padding: "8px 11px", background: "#a0784812", border: `1px solid ${c.line}`, borderRadius: 2, fontSize: 12.5 }}>
                 {num(r.recQty) > 0
                   ? <span><b style={{ color: c.clay }}>Amazon recommends sending in {r.recQty} units</b>{r.shipBy ? ` — ship to FBA by ${fmtDate(r.shipBy)}` : ""}{r.startProdBy ? `, so start production by ${fmtDate(r.startProdBy)}` : ""}.</span>
-                  : <span style={{ color: c.sub }}>Amazon isn't recommending a replenishment right now.</span>}
+                  : r.noRec
+                    ? <span style={{ color: c.sub }}>Not in Amazon's restock report — Amazon isn't asking for a send-in.</span>
+                    : <span style={{ color: c.sub }}>Amazon isn't recommending a send-in right now.</span>}
               </div>
-            )}
-            {channel === "amazon" && !r.native && (
-              <div style={{ marginTop: 6, fontSize: 11, color: c.sub, fontStyle: "italic" }}>Estimated from live counts — pull Seller Central (top right) for Amazon's own recommended send-in qty. Order-by already allows production + ship-to-FBA + Amazon receive/distribute + safety.</div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))} style={S.ghost}>⚙ {open[r.id] ? "close" : "settings"}</button>
