@@ -112,6 +112,7 @@ const ScoreBadge = ({ score }) => {
 export default function AICoo({
   products = [], campaigns = [], weeks = [], materials = [], cogs = {},
   profitMatrix = {}, marginsSettings = {}, bankCash = null, actionsBoard = {},
+  restock = {}, onRestockSync,
   onAddAction, onRemoveAction,
 }) {
   // local map: cardId -> action-item id (so a sent card shows "Undo")
@@ -121,6 +122,24 @@ export default function AICoo({
     () => buildMarginsModel({ cogs, products, campaigns, profitMatrix, settings: marginsSettings }),
     [cogs, products, campaigns, profitMatrix, marginsSettings]
   );
+
+  // Prefer Seller Central's native days-of-supply for Amazon SKUs when present.
+  const nativeItems = (restock && restock.items) || {};
+  const usingNative = Object.keys(nativeItems).length > 0;
+  const coverOf = (p) => {
+    const nat = nativeItems[p.id];
+    if (nat && nat.daysOfSupply != null) return { weeks: Math.round(num(nat.daysOfSupply) / 7), days: num(nat.daysOfSupply), src: "amazon", rec: num(nat.recommendedQty), alert: nat.alert || null, available: nat.available != null ? num(nat.available) : num(p.available), sold30: nat.sold30 != null ? num(nat.sold30) : num(p.unitsSold30) };
+    return { weeks: weeksCover(p.available, p.unitsSold30), days: null, src: "internal", rec: 0, alert: null, available: num(p.available), sold30: num(p.unitsSold30) };
+  };
+  const statusOf = (p) => {
+    if (p.status === "inbound") return "inbound";
+    const ci = coverOf(p);
+    if (ci.available === 0) return "out";
+    if (ci.src === "amazon" && ci.rec > 0) return "low";
+    if (ci.weeks < 6) return "low";
+    if (ci.weeks > 50 && ci.sold30 < 3) return "slow";
+    return "ok";
+  };
 
   const brief = useMemo(() => {
     const wk = weeks[0] || null, prev = weeks[1] || null;
@@ -132,11 +151,11 @@ export default function AICoo({
 
     const counts = { out: 0, low: 0, slow: 0, inbound: 0, ok: 0 };
     const active = products.filter((p) => !p.isSample);
-    active.forEach((p) => { counts[invStatus(p)] = (counts[invStatus(p)] || 0) + 1; });
-    const lowOrOut = active.filter((p) => ["out", "low"].includes(invStatus(p)));
-    const slow = active.filter((p) => invStatus(p) === "slow");
-    const inbound = active.filter((p) => invStatus(p) === "inbound");
-    const sellersOut = active.filter((p) => invStatus(p) === "out" && num(p.unitsSold30) > 0);
+    active.forEach((p) => { counts[statusOf(p)] = (counts[statusOf(p)] || 0) + 1; });
+    const lowOrOut = active.filter((p) => ["out", "low"].includes(statusOf(p)));
+    const slow = active.filter((p) => statusOf(p) === "slow");
+    const inbound = active.filter((p) => statusOf(p) === "inbound");
+    const sellersOut = active.filter((p) => statusOf(p) === "out" && coverOf(p).sold30 > 0);
 
     const spend7 = campaigns.reduce((s, x) => s + num(x.spend7d), 0);
     const sales7 = campaigns.reduce((s, x) => s + num(x.sales7d), 0);
@@ -186,29 +205,34 @@ export default function AICoo({
     }));
 
     // Stockouts / low stock of SKUs that actually sell.
-    sellersOut.forEach((p) => cards.push({
+    sellersOut.forEach((p) => { const ci = coverOf(p); cards.push({
       id: "out:" + p.id, name: p.name,
-      obs: `${p.name}: out of stock${num(p.inbound) ? `, ${p.inbound} inbound` : ", nothing inbound"} — was selling ${num(p.unitsSold30)}/mo.`,
+      obs: `${p.name}: out of stock${num(p.inbound) ? `, ${p.inbound} inbound` : ", nothing inbound"} — was selling ${ci.sold30}/mo.`,
       cause: "Sales velocity outran available stock.",
-      rec: num(p.inbound) ? "Time a restock campaign to the inbound arrival." : "Place a reorder today to stop lost sales and rank slippage.",
-      outcome: "Protect ranking and recover lost sales.", conf: 82, impact: 5, effort: 2, time: "1–4 wks", flagSev: "high",
-    }));
-    lowOrOut.filter((p) => invStatus(p) === "low").forEach((p) => cards.push({
-      id: "low:" + p.id, name: p.name,
-      obs: `${p.name}: ${weeksCover(p.available, p.unitsSold30)} weeks of cover at ${num(p.unitsSold30)}/mo${num(p.inbound) ? `, ${p.inbound} inbound` : ""}.`,
-      cause: "Stock is running down faster than it's being replaced.",
-      rec: "Schedule a reorder now so it lands before stockout.",
-      outcome: "Avoid a stockout and the ranking reset that follows.", conf: 78, impact: 4, effort: 2, time: "1–4 wks", flagSev: "med",
-    }));
+      rec: ci.src === "amazon" && ci.rec > 0 ? `Ship ${ci.rec} units to FBA (Amazon's recommendation) to stop lost sales and rank slippage.` : (num(p.inbound) ? "Time a restock campaign to the inbound arrival." : "Place a reorder today to stop lost sales and rank slippage."),
+      outcome: "Protect ranking and recover lost sales.", conf: 84, impact: 5, effort: 2, time: "1–4 wks", flagSev: "high",
+    }); });
+    lowOrOut.filter((p) => statusOf(p) === "low").forEach((p) => { const ci = coverOf(p);
+      const isAmz = ci.src === "amazon";
+      cards.push({
+        id: "low:" + p.id, name: p.name,
+        obs: isAmz
+          ? `${p.name}: Seller Central shows ${ci.days} days of supply${ci.alert ? ` — "${ci.alert}"` : ""}${ci.rec > 0 ? `, Amazon recommends ${ci.rec} units` : ""}.`
+          : `${p.name}: ${ci.weeks} weeks of cover at ${ci.sold30}/mo${num(p.inbound) ? `, ${p.inbound} inbound` : ""}.`,
+        cause: "Stock is running down faster than it's being replaced.",
+        rec: isAmz && ci.rec > 0 ? `Ship ${ci.rec} units to FBA (Amazon's restock recommendation).` : "Schedule a reorder now so it lands before stockout.",
+        outcome: "Avoid a stockout and the ranking reset that follows.", conf: isAmz ? 88 : 78, impact: 4, effort: 2, time: "1–4 wks", flagSev: "med",
+      });
+    });
 
     // Overstock / slow movers tying up cash.
-    slow.forEach((p) => cards.push({
+    slow.forEach((p) => { const ci = coverOf(p); cards.push({
       id: "slow:" + p.id, name: p.name,
-      obs: `${p.name}: ~${weeksCover(p.available, p.unitsSold30)} weeks of cover at ${num(p.unitsSold30)} units/mo.`,
+      obs: ci.src === "amazon" ? `${p.name}: Seller Central shows ${ci.days} days of supply — well over target.` : `${p.name}: ~${ci.weeks} weeks of cover at ${ci.sold30} units/mo.`,
       cause: "Overstock — demand is below the quantity on hand.",
       rec: "Pause ads on this SKU and run a promo or bundle to free trapped cash.",
-      outcome: `Recover cash tied up in ${num(p.available)} units.`, conf: 80, impact: 3, effort: 3, time: "1–3 mo", flagSev: "med",
-    }));
+      outcome: `Recover cash tied up in ${ci.available} units.`, conf: 80, impact: 3, effort: 3, time: "1–3 mo", flagSev: "med",
+    }); });
 
     // Scale a profitable, budget-constrained winner.
     if (bestCamp && num(bestCamp.roas) >= 2) cards.push({
@@ -240,21 +264,21 @@ export default function AICoo({
     const risks = [];
     (model.flags || []).filter((f) => f.severity === "high").forEach((f) => risks.push(f.title + "."));
     if (!haveAdwasteFlag && bleeders.length) risks.push(`${bleeders.length} ad campaign${bleeders.length > 1 ? "s" : ""} spending with little or no return.`);
-    sellersOut.forEach((p) => risks.push(`${p.name} is out of stock — was selling ${num(p.unitsSold30)}/mo.`));
+    sellersOut.forEach((p) => risks.push(`${p.name} is out of stock — was selling ${coverOf(p).sold30}/mo.`));
     if (slow.length) risks.push(`${slow.length} SKU${slow.length > 1 ? "s" : ""} overstocked — cash sitting in slow inventory.`);
     if (tacos > 0.25) risks.push(`TACOS at ${(tacos * 100).toFixed(0)}% — ad spend is eating a large share of revenue.`);
 
     const opps = [];
     if (bestCamp && num(bestCamp.roas) >= 2) opps.push(`Scale "${bestCamp.name}" — ROAS ${num(bestCamp.roas).toFixed(2)}× has room to grow.`);
     inbound.filter((p) => num(p.inbound) > 0).forEach((p) => opps.push(`${p.name} restock inbound (${p.inbound} units) — line up launch campaigns.`));
-    lowOrOut.filter((p) => num(p.unitsSold30) >= 8).forEach((p) => opps.push(`${p.name} is a fast seller running low — secure stock to protect momentum.`));
+    lowOrOut.filter((p) => coverOf(p).sold30 >= 8).forEach((p) => opps.push(`${p.name} is a fast seller running low — secure stock to protect momentum.`));
     if (shopifyCm != null && amazonCm != null && shopifyCm > amazonCm + 5) opps.push(`Shopify carries the richer margin (${shopifyCm.toFixed(0)}% vs ${amazonCm.toFixed(0)}% CM2) — push more demand there.`);
 
     return {
       wk, revenue, revDelta, adSpend, tacos, counts, active, spend7, sales7, blendedRoas, bleeders,
-      summary, amazonCm, shopifyCm, cards, risks: risks.slice(0, 3), opps: opps.slice(0, 3),
+      summary, amazonCm, shopifyCm, cards, risks: risks.slice(0, 3), opps: opps.slice(0, 3), usingNative,
     };
-  }, [products, campaigns, weeks, model]);
+  }, [products, campaigns, weeks, model, restock]);
 
   // ── COO Scorecard (0–100 across six categories) ──
   const scorecard = useMemo(() => {
@@ -273,8 +297,8 @@ export default function AICoo({
     if (b.active.length) {
       let s = 82;
       b.active.forEach((p) => {
-        const st = invStatus(p);
-        if (st === "out" && num(p.unitsSold30) > 0) s -= 18;
+        const st = statusOf(p);
+        if (st === "out" && coverOf(p).sold30 > 0) s -= 18;
         else if (st === "low") s -= 10;
         else if (st === "slow") s -= 6;
         else if (st === "ok") s += 2;
@@ -320,7 +344,7 @@ export default function AICoo({
     const known = cats.filter((x) => x.v != null);
     const overall = known.length ? clamp(known.reduce((s, x) => s + x.v, 0) / known.length) : null;
     return { cats, overall };
-  }, [brief, model, actionsBoard]);
+  }, [brief, model, actionsBoard, restock]);
 
   const b = brief;
   const invSummary = `${b.counts.out} out · ${b.counts.low} low · ${b.counts.slow} slow · ${b.counts.ok} healthy`;
@@ -355,6 +379,16 @@ export default function AICoo({
         <h1 style={S.h1}>AI COO — Weekly Brief</h1><div style={faintEs}>Director de operaciones AI — resumen semanal</div>
         <div style={S.sub}>Week of {currentMonday()} — what matters, and the highest-impact moves.</div>
         <div style={faintEs}>Semana del {currentMonday()} — lo que importa y las acciones de mayor impacto.</div>
+      </div>
+
+      {/* Seller Central native restock status */}
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: sans, fontSize: 11.5, color: b.usingNative ? c.clay : c.sub }}>
+          {b.usingNative
+            ? `Amazon stockouts from Seller Central${restock && restock.syncedAt ? " · synced " + new Date(restock.syncedAt).toLocaleDateString() : ""}`
+            : "Amazon stockouts use our projection — pull Seller Central for Amazon's own days-of-supply."}
+        </span>
+        {onRestockSync && <button onClick={() => onRestockSync(!!b.usingNative)} style={{ background: "transparent", border: `1px solid ${c.gold}`, color: c.gold, borderRadius: 2, padding: "4px 10px", cursor: "pointer", fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" }}>{b.usingNative ? "↻ Refresh SC" : "⤓ Pull Seller Central"}</button>}
       </div>
 
       {/* COO SCORECARD */}
