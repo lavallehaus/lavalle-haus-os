@@ -116,7 +116,7 @@ function Spark({ points }) {
   );
 }
 
-export default function AmazonKeywords({ products = [], onTrack }) {
+export default function AmazonKeywords({ products = [], onTrack, onAddProduct }) {
   const FILTER = useMemo(() => buildFilter(products), [products]);
   const amz = useMemo(
     () => (products || []).filter((p) => !p.isSample && (p.asin || (p.channels || []).indexOf("Amazon") >= 0)).map((p) => ({ id: String(p.id), name: p.name })),
@@ -131,6 +131,17 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   const [added, setAdded] = useState({});
   const [prog, setProg] = useState(null); // { stage, done, total, monthStart, avgMs, etaMs, etaSetAt }
   const [nowTs, setNowTs] = useState(Date.now());
+  const [newName, setNewName] = useState("");
+  const [addedMsg, setAddedMsg] = useState("");
+
+  function doAdd() {
+    const nm = newName.trim();
+    if (!nm || !onAddProduct) return;
+    onAddProduct(nm);
+    setNewName("");
+    setAddedMsg("✓ Added “" + nm + "” to your catalog. Press Refresh above to pull keyword suggestions for it.");
+    setTimeout(() => setAddedMsg(""), 9000);
+  }
 
   const months = useMemo(() => Object.keys(monthHistory).sort(), [monthHistory]);
 
@@ -325,12 +336,22 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       pool = [...new Set(pool)].slice(0, 14);            // generous pool; render ranks & trims
       filled[p.id] = { matched: pool, ideas: [] };
     });
-    // For products Amazon surfaced no relevant terms for, suggest real category keywords.
-    const empties = amz.filter((p) => !(filled[p.id].matched || []).length);
-    if (empties.length) {
-      setProg({ stage: "Suggesting keywords for low-data products", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
-      const sugg = await aiSuggest(empties);
-      empties.forEach((p) => { filled[p.id].ideas = (sugg[p.id] || sugg[String(p.id)] || []).filter(Boolean).slice(0, 7); });
+    // Suggest category/angle keywords when Amazon's data is empty OR one-dimensional
+    // (a product that has angles like seashell/dough-bowl but whose real terms miss them).
+    const needSugg = amz.filter((p) => {
+      const m = filled[p.id].matched || [];
+      if (!m.length) return true;
+      const ang = angleRegex(p.name);
+      return !!(ang && !m.some((t) => ang.test(String(t).toLowerCase())));
+    });
+    if (needSugg.length) {
+      setProg({ stage: "Adding angle & long-tail keyword ideas", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
+      const sugg = await aiSuggest(needSugg);
+      needSugg.forEach((p) => {
+        const have = new Set((filled[p.id].matched || []).map((t) => String(t).toLowerCase()));
+        filled[p.id].ideas = (sugg[p.id] || sugg[String(p.id)] || [])
+          .filter((t) => t && !have.has(String(t).toLowerCase())).slice(0, 6);
+      });
     }
     setByProduct(filled);
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
@@ -348,10 +369,12 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const imp = s[0] - s[s.length - 1];
     return { dir: imp > 0 ? 1 : imp < 0 ? -1 : 0, score: imp };
   }
-  // Only genuinely rising terms (improved over the whole window). Nothing flat or down.
+  // Rising first, then stable/new (for angle + long-tail variety). Only declining is dropped.
   function rankByTrend(terms) {
     const scored = terms.map((t) => ({ t, ...trendScore(t) }));
-    return scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score).slice(0, 8).map((x) => x.t);
+    const up = scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score);
+    const flat = scored.filter((x) => x.dir === 0);
+    return up.concat(flat).slice(0, 9).map((x) => x.t);
   }
   function adopt(term, pname, idea) {
     if (!onTrack) return;
@@ -386,21 +409,31 @@ export default function AmazonKeywords({ products = [], onTrack }) {
               A rising green line means the term is climbing in search demand.
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "right", maxWidth: 280 }}>
             <button onClick={() => buildAndSuggest(false)} disabled={!!busy} style={chip(true)}>
               {byProduct ? "↻ Refresh" : "✦ Build trends & suggest"}
             </button>
+            <div style={{ fontSize: 10, color: c.sub, marginTop: 5, lineHeight: 1.4 }}>
+              {byProduct
+                ? "Fast (seconds). Reuses your saved 12 months and just re-checks this month. Use this day to day."
+                : "First-time setup. Pulls 12 months from Amazon — takes a few minutes, then it’s cached."}
+            </div>
             <div style={{ fontSize: 10, color: c.sub, marginTop: 6, fontFamily: mono }}>
-              {built ? built + " month" + (built === 1 ? "" : "s") + " of history" : "no history yet"}
+              {built ? built + " month" + (built === 1 ? "" : "s") + " of history saved" : "no history yet"}
             </div>
             {built > 0 && (
-              <button
-                onClick={() => { if (window.confirm("Re-pull all 12 months with the wider search vocabulary? This spends Amazon quota and takes a few minutes.")) buildAndSuggest(true); }}
-                disabled={!!busy}
-                style={{ marginTop: 8, padding: "4px 10px", fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono, cursor: busy ? "not-allowed" : "pointer", borderRadius: 1, border: "1px solid " + c.line, background: "transparent", color: c.sub, opacity: busy ? 0.5 : 1 }}
-              >
-                ⟳ Rebuild (re-pull)
-              </button>
+              <div style={{ marginTop: 10, borderTop: "1px dashed " + c.line, paddingTop: 10 }}>
+                <button
+                  onClick={() => { if (window.confirm("Re-pull all 12 months fresh from Amazon? This is only needed after a keyword settings change. It uses Amazon quota and takes a few minutes.")) buildAndSuggest(true); }}
+                  disabled={!!busy}
+                  style={{ padding: "4px 10px", fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono, cursor: busy ? "not-allowed" : "pointer", borderRadius: 1, border: "1px solid " + c.line, background: "transparent", color: c.sub, opacity: busy ? 0.5 : 1 }}
+                >
+                  ⟳ Rebuild (re-pull)
+                </button>
+                <div style={{ fontSize: 10, color: c.sub, marginTop: 5, lineHeight: 1.4 }}>
+                  Slow (several minutes). Throws away saved data and re-pulls all 12 months fresh. Only needed after the keyword setup changes — not for normal use.
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -442,6 +475,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
         const entry = byProduct[p.id] || byProduct[String(p.id)] || { matched: [], ideas: [] };
         const matched = rankByTrend((entry.matched || []).filter(Boolean)); // only rising terms
         const ideas = (entry.ideas || []).filter(Boolean);
+        const risingN = matched.filter((t) => trendScore(t).dir > 0).length;
         const rows = matched.map((t) => ({ term: t, idea: false })).concat(ideas.map((t) => ({ term: t, idea: true })));
         const isOpen = open[p.id];
         return (
@@ -452,9 +486,10 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             >
               <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>{p.name}</div>
               <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
-                {matched.length
-                  ? <span style={{ color: c.green }}>▲ {matched.length} rising</span>
-                  : (ideas.length ? ideas.length + " suggested" : "no rising terms")}
+                {risingN ? <span style={{ color: c.green }}>▲ {risingN} rising</span> : null}
+                {risingN && (matched.length - risingN) ? " · " + (matched.length - risingN) + " stable" : ""}
+                {!matched.length && ideas.length ? ideas.length + " suggested" : (ideas.length ? " · " + ideas.length + " angle ideas" : "")}
+                {!matched.length && !ideas.length ? "no terms" : ""}
                 {" "}{isOpen ? "▾" : "▸"}
               </div>
             </div>
@@ -545,8 +580,40 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       })}
 
       {byProduct && (
-        <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, textAlign: "center", marginTop: 4 }}>
-          Solid line = real Brand Analytics rank (lower = more searched). ◇ test ideas have no trend data until you run an ad.
+        <div style={{ fontSize: 10, color: c.sub, lineHeight: 1.7, marginTop: 4, padding: "12px 14px", background: c.card, border: "1px solid " + c.line, borderRadius: 2 }}>
+          <div style={{ fontFamily: serif, fontSize: 13, color: c.ink, marginBottom: 5 }}>How to read this</div>
+          <span style={{ color: c.green }}>▲ rising</span> = climbing in Amazon searches (good).{" "}
+          <b>stable</b> = steady demand.{" "}
+          <span style={{ color: c.red }}>broad · competitive</span> = high-volume term, crowded & pricier in ads.{" "}
+          <span style={{ color: c.green }}>long-tail · lower cost</span> = niche term, cheaper clicks, buyers closer to purchasing — often the smartest place to start.{" "}
+          <span style={{ color: c.clay }}>◆ suggested category keyword</span> = a relevant keyword Amazon has no trend data on yet (run an ad to start gathering it). The little graph is real 12-month search-rank history; lower rank number = more searched.
+        </div>
+      )}
+
+      {onAddProduct && (
+        <div style={{ ...panel, marginTop: 14 }}>
+          <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>Add a product to research</div>
+          <div style={{ fontSize: 12, color: c.sub, marginTop: 4, marginBottom: 12, lineHeight: 1.5 }}>
+            Launching something new — body oil, body lotion, a new candle? Add it here and it joins your product
+            catalog everywhere in the app (Inventory included). Then press <b>Refresh</b> above to pull keyword suggestions for it.
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") doAdd(); }}
+              placeholder="e.g. Lavender Body Oil"
+              style={{ flex: "1 1 220px", minWidth: 180, padding: "9px 12px", fontSize: 13, fontFamily: serif, color: c.ink, background: "#fff", border: "1px solid " + c.line, borderRadius: 1, outline: "none" }}
+            />
+            <button
+              onClick={doAdd}
+              disabled={!newName.trim()}
+              style={{ padding: "9px 16px", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono, cursor: newName.trim() ? "pointer" : "not-allowed", borderRadius: 1, border: "1px solid " + c.clay, background: newName.trim() ? c.clay : "transparent", color: newName.trim() ? "#fff" : c.sub, opacity: newName.trim() ? 1 : 0.6 }}
+            >
+              ＋ Add product
+            </button>
+          </div>
+          {addedMsg && <div style={{ fontSize: 11, color: c.green, marginTop: 8, fontFamily: mono }}>{addedMsg}</div>}
         </div>
       )}
     </div>
