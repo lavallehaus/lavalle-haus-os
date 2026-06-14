@@ -53,7 +53,8 @@ function anglesFor(name) {
 function angleRegex(name) {
   const a = anglesFor(name);
   if (!a.length) return null;
-  return new RegExp(a.map((w) => w.replace(/\s+/g, "\\s*")).join("|"));
+  const alts = a.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")).join("|");
+  return new RegExp("\\b(" + alts + ")s?\\b"); // whole-word (+ optional plural); "vase" won't match "vaseline"
 }
 
 // Category-aware relevance: a term must POSITIVELY match the product's category
@@ -68,14 +69,14 @@ function categoryOf(name) {
 }
 const POS = {
   candle: /candle|wax\b|fragrance|aromatherapy|melt|vessel|scent|soy|beeswax|votive|pillar/,
-  scrub: /scrub|exfoliat|polish|sugar|body\s*scrub|coffee\s*scrub|salt\s*scrub/,
+  scrub: /sugar\s*scrub|body\s*scrub|salt\s*scrub|coffee\s*scrub|foot\s*scrub|lip\s*scrub|hand\s*scrub|face\s*scrub|body\s*polish|exfoliat/,
   bath: /bath\s*salt|bath\s*soak|epsom|mineral\s*soak|mineral\s*bath|muscle\s*soak|salt\s*soak|bath\s*bomb|soaking\s*salt|foot\s*soak|dead\s*sea|himalayan|magnesium|sea\s*salt|detox\s*bath|salt\s*bath|spa\s*salt/,
   bodyoil: /body\s*oil|massage\s*oil|skin\s*oil|bath\s*oil/,
   other: /candle|scrub|bath|salt|oil|wax|soak/,
 };
 const NEG = {
   candle: /holder|warmer|plug\s*in|wick\s*trimmer|snuffer|lighter|jar\s*only/,
-  scrub: /brush|glove|loofah|pad\b|machine|cleaner\b/,
+  scrub: /daddy|pants|uniform|nurse|\bmedical\b|sponge|\bdish|toilet|\bbrush\b|glove|loofah|\bpad\b|machine|cleaner|candy|\bdrink\b|monster|brown\s*sugar|sugar\s*free|zero\s*sugar|raw\s*sugar|cane\s*sugar|powdered\s*sugar|scrubs\s*for|free\s*candy/,
   bath: /\bmat\b|towel|rug|curtain|mirror|tile|faucet|\btub\b|robe|caddy|tray|pillow|sponge|bathroom|rack|shelf|sink/,
   bodyoil: /diffuser|essential\s*oil\s*set|car\b|engine/,
   other: /\bmat\b|towel|rug|holder|warmer|brush|glove/,
@@ -340,7 +341,7 @@ export default function AmazonKeywords({ products = [], onTrack, onAddProduct })
     // (a product that has angles like seashell/dough-bowl but whose real terms miss them).
     const needSugg = amz.filter((p) => {
       const m = filled[p.id].matched || [];
-      if (!m.length) return true;
+      if (m.length < 2) return true;                 // empty or barely-there → suggest
       const ang = angleRegex(p.name);
       return !!(ang && !m.some((t) => ang.test(String(t).toLowerCase())));
     });
