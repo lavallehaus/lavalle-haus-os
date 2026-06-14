@@ -293,12 +293,10 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const imp = s[0] - s[s.length - 1];
     return { dir: imp > 0 ? 1 : imp < 0 ? -1 : 0, score: imp };
   }
-  // Upward-trending first, then neutral/new. Downward terms are dropped entirely.
+  // Only genuinely rising terms (improved over the whole window). Nothing flat or down.
   function rankByTrend(terms) {
     const scored = terms.map((t) => ({ t, ...trendScore(t) }));
-    const up = scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score);
-    const flat = scored.filter((x) => x.dir === 0);
-    return up.concat(flat).slice(0, 8).map((x) => x.t);
+    return scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score).slice(0, 8).map((x) => x.t);
   }
   function adopt(term, pname, idea) {
     if (!onTrack) return;
@@ -378,9 +376,8 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       {/* Per-product results */}
       {byProduct && amz.map((p) => {
         const entry = byProduct[p.id] || byProduct[String(p.id)] || { matched: [], ideas: [] };
-        const matched = rankByTrend((entry.matched || []).filter(Boolean)); // upward-first, downs trimmed
+        const matched = rankByTrend((entry.matched || []).filter(Boolean)); // only rising terms
         const ideas = (entry.ideas || []).filter(Boolean);
-        const upCount = matched.filter((t) => trendScore(t).dir > 0).length;
         const rows = matched.map((t) => ({ term: t, idea: false })).concat(ideas.map((t) => ({ term: t, idea: true })));
         const isOpen = open[p.id];
         return (
@@ -391,10 +388,10 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             >
               <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>{p.name}</div>
               <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
-                {upCount ? <span style={{ color: c.green }}>▲ {upCount} rising</span> : null}
-                {upCount && matched.length ? " · " : ""}
-                {matched.length} term{matched.length === 1 ? "" : "s"}
-                {ideas.length ? " · " + ideas.length + " idea" + (ideas.length === 1 ? "" : "s") : ""} {isOpen ? "▾" : "▸"}
+                {matched.length
+                  ? <span style={{ color: c.green }}>▲ {matched.length} rising</span>
+                  : (ideas.length ? ideas.length + " idea" + (ideas.length === 1 ? "" : "s") : "no rising terms")}
+                {" "}{isOpen ? "▾" : "▸"}
               </div>
             </div>
 
@@ -436,17 +433,18 @@ export default function AmazonKeywords({ products = [], onTrack }) {
                   const s = seriesFor(t);
                   const valid = s.filter((x) => x.rank != null);
                   const latest = valid.length ? valid[valid.length - 1].rank : null;
-                  const prev = valid.length >= 2 ? valid[valid.length - 2].rank : null;
-                  const delta = latest != null && prev != null ? prev - latest : null; // + = improved (rose)
+                  const firstR = valid.length ? valid[0].rank : null;
+                  const rise = firstR != null && latest != null ? firstR - latest : null; // + = climbed over window
+                  const span = valid.length;
                   return (
                     <div key={t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid " + c.line, flexWrap: "wrap" }}>
                       <div style={{ flex: "1 1 180px", minWidth: 150 }}>
                         <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
                         <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 2 }}>
                           {latest != null ? "rank #" + num(latest) : "unranked"}
-                          {delta != null && delta !== 0 && (
-                            <span style={{ color: delta > 0 ? c.green : c.red, marginLeft: 8 }}>
-                              {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last mo
+                          {rise != null && rise > 0 && (
+                            <span style={{ color: c.green, marginLeft: 8 }}>
+                              ▲ climbed {Math.abs(rise).toLocaleString()} over {span}mo
                             </span>
                           )}
                         </div>
