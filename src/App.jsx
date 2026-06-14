@@ -1873,9 +1873,8 @@ const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severit
 const NAV = [
 { id: "profit", label: "Sales", labelEs: "Ventas", subs: [
 { id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "pricing", label: "Pricing" },{ id: "cogs", label: "COGS" },{ id: "margins", label: "Margins" },
-{ id: "bank", label: "Bank & Cash" },
-{ id: "finance", label: "Finance / Cash" },
-{ id: "pnl", label: "P&L / Transactions" },
+{ id: "finances", label: "Finances" },
+{ id: "finance", label: "Cash Runway" },
 ] },
 { id: "ads", label: "Ads", labelEs: "Anuncios", alert: pauseCount ? `${pauseCount}!` : null, subs: [
 { id: "ppc", label: "Amazon PPC" },
@@ -1938,9 +1937,14 @@ if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
 if (activeSub === "pricing") return <Pricing products={products} />;
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { setDbState((prev) => { const next = { ...prev, cogs: { products: cg.products, laborRate: cg.laborRate } }; dbSave(next); return next; }); }} />;
 if (activeSub === "margins") return <Margins cogs={dbState.cogs || {}} products={products} campaigns={campaigns} profitMatrix={dbState.profitMatrix || {}} data={dbState.margins || {}} onSave={(m) => { setDbState((prev) => { const next = { ...prev, margins: m }; dbSave(next); return next; }); }} onFbaFees={(map, updatedAt) => { setDbState((prev) => { const next = { ...prev, margins: { ...(prev.margins || {}), amazonFba: { ...((prev.margins || {}).amazonFba || {}), ...map }, fbaUpdatedAt: updatedAt } }; dbSave(next); return next; }); }} />;
-if (activeSub === "bank") return <Bank pnl={dbState.pnl || {}} onSavePnl={(pp) => { setDbState((prev) => { const full = { ...prev, pnl: pp }; dbSave(full); return full; }); }} onSaveCash={(total, updatedAt) => { setDbState((prev) => { const full = { ...prev, bankCash: { total, updatedAt } }; dbSave(full); return full; }); }} />;
+if (activeSub === "finances" || activeSub === "bank" || activeSub === "pnl") return (
+<div>
+<Bank pnl={dbState.pnl || {}} onSavePnl={(pp) => { setDbState((prev) => { const full = { ...prev, pnl: pp }; dbSave(full); return full; }); }} onSaveCash={(total, updatedAt) => { setDbState((prev) => { const full = { ...prev, bankCash: { total, updatedAt } }; dbSave(full); return full; }); }} />
+<div style={{ height: 28 }} />
+<PnL data={dbState.pnl || {}} onSave={(pl) => { setDbState((prev) => { const next = { ...prev, pnl: pl }; dbSave(next); return next; }); }} />
+</div>
+);
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} bankCash={dbState.bankCash || null} margins={dbState.margins || null} />;
-if (activeSub === "pnl") return <PnL data={dbState.pnl || {}} onSave={(pl) => { setDbState((prev) => { const next = { ...prev, pnl: pl }; dbSave(next); return next; }); }} />;
 return profitNode;
 }
 if (tab === "roadmap") return <RoadmapTab />;
