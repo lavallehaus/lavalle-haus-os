@@ -2,21 +2,26 @@ import { useState, useMemo } from "react";
 
 /* ============================================================================
    LAVALLE HAUS OS — REORDER LIST (Inventory → Reorder List)
-   Turns "you're going to stock out" into "order THIS many units, from THIS
-   supplier, by THIS date." Three sections:
-     1) Finished goods — velocity engine. Per-SKU: units/day → days of cover →
-        stockout date → reorder-by date (stockout − lead time − safety) →
-        suggested order qty (target weeks of cover, minus on-hand + inbound,
-        rounded up to MOQ).
-     2) Packaging — flagged when on-hand ≤ reorder point.
-     3) Raw materials — flagged by status (out / reorder).
-   Per-SKU lead time, target cover, MOQ and supplier link are editable and
-   saved; global defaults sit at the top. Full Undo/Redo on every change.
-   Each line can be sent to Action Items (with inline undo).
+   Channel-segmented reorder + stockout planning.
 
-     <ReorderList products={...} packaging={...} materials={...}
-                  data={dbState.reorder||{}} onSave={fn}
-                  onAddAction={fn} onRemoveAction={fn} />
+   MODEL
+   • Amazon FBA and Shopify are separate physical stock pools (the app syncs
+     each live, with 30-day velocity). B2B shares the self-fulfilled pool with
+     Shopify; its velocity is entered per-SKU (no live feed).
+   • PER-CHANNEL views (Amazon / Shopify / B2B) answer "where will I run out?"
+     — stockout is channel-specific (FBA can be empty while Shopify is flush).
+   • ALL CHANNELS view is the master production plan: total demand across every
+     channel vs. total network inventory → one "make/buy this many" number.
+
+   Per-SKU lead time, target cover, MOQ, supplier link and B2B velocity are
+   editable and saved; global defaults sit at the top (Amazon carries an extra
+   inbound-to-FBA buffer self-fulfilled channels don't). Full Undo/Redo. Each
+   line sends to Action Items (inline undo). Packaging + raw materials feed the
+   production plan and show in the All view.
+
+   Live Amazon = live FBA counts + live velocity; the projection uses the same
+   logic Seller Central does. Pulling SC's NATIVE restock numbers is a backend
+   follow-up (Restock Recommendations report in amazon-sync.js).
    ========================================================================== */
 
 const c = {
@@ -34,7 +39,7 @@ const money = (n) => "$" + num(n).toLocaleString("en-US", { maximumFractionDigit
 const S = {
   wrap: { fontFamily: serif, color: c.ink, maxWidth: 1100, margin: "0 auto" },
   h1: { fontSize: 27, fontWeight: 400, margin: 0 },
-  sec: { fontSize: 17, fontWeight: 400, margin: "26px 0 10px", borderBottom: `1px solid ${c.line}`, paddingBottom: 7 },
+  sec: { fontSize: 17, fontWeight: 400, margin: "24px 0 10px", borderBottom: `1px solid ${c.line}`, paddingBottom: 7 },
   panel: { background: c.panel, border: `1px solid ${c.line}`, borderRadius: 3, padding: 14, marginBottom: 10 },
   cap: { fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub },
   btn: { background: "transparent", border: `1px solid ${c.clay}`, color: c.clay, borderRadius: 2, padding: "5px 11px", cursor: "pointer", fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" },
@@ -50,21 +55,31 @@ const STATUS = {
   dormant: { label: "NO SALES YET", color: c.sub, rank: 4 },
 };
 
+const CHANNELS = [
+  { id: "all", label: "All Channels", es: "Todos los canales" },
+  { id: "amazon", label: "Amazon (FBA)", es: "Amazon" },
+  { id: "shopify", label: "Shopify", es: "Shopify" },
+  { id: "b2b", label: "B2B / Wholesale", es: "B2B / Mayoreo" },
+];
+
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const fmtDate = (d) => (d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—");
+const fmtTime = (s) => { if (!s) return null; try { return new Date(s).toLocaleString("en-US", { hour: "numeric", minute: "2-digit" }); } catch { return null; } };
 
 export default function ReorderList({
   products = [], packaging = [], materials = [], data = {},
   onSave, onAddAction, onRemoveAction,
+  amazon = {}, shopify = {}, onAmazonSync, onShopifySync,
 }) {
-  const DEF = { leadTimeDays: 21, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
+  const DEF = { productionLeadDays: 21, amazonInboundDays: 10, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
 
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState(() => ({ settings: data.settings || {}, defaults: DEF }));
-  const [open, setOpen] = useState({}); // rowId -> settings panel open
-  const [sent, setSent] = useState({}); // rowId -> action-item id
+  const [channel, setChannel] = useState("all");
+  const [open, setOpen] = useState({});
+  const [sent, setSent] = useState({});
 
   const commit = (next) => { setPast((p) => [...p.slice(-49), state]); setFuture([]); setState(next); if (onSave) onSave(next); };
   const undo = () => { if (!past.length) return; const prev = past[past.length - 1]; setPast((p) => p.slice(0, -1)); setFuture((f) => [state, ...f].slice(0, 50)); setState(prev); if (onSave) onSave(prev); };
@@ -76,54 +91,112 @@ export default function ReorderList({
 
   const today = startOfToday();
 
-  // ── Finished-goods reorder engine ──
+  // ── Per-channel raw inputs for a product (or null if not on that channel) ──
+  const amzInputs = (p) => {
+    const live = amazon && amazon.items && amazon.items[p.id];
+    const onAmazon = (p.channels || []).includes("Amazon") || !!live;
+    if (!onAmazon) return null;
+    const onHand = live ? num(live.fba) : num(p.available);
+    const inbound = live ? num(live.inbound) : num(p.inbound);
+    const sold30 = amazon && amazon.sold && amazon.sold[p.id] != null ? num(amazon.sold[p.id]) : num(p.unitsSold30);
+    return { onHand, inbound, sold30, live: !!live };
+  };
+  const shopInputs = (p) => {
+    if (!(p.channels || []).includes("Shopify")) return null;
+    const qty = shopify && shopify.items && shopify.items[p.id] != null ? num(shopify.items[p.id]) : null;
+    const sold = shopify && shopify.sold && shopify.sold[p.id] != null ? num(shopify.sold[p.id]) : null;
+    return { onHand: qty == null ? 0 : qty, inbound: 0, sold30: sold == null ? 0 : sold, live: qty != null };
+  };
+  const b2bInputs = (p) => {
+    if (!(p.channels || []).includes("B2B")) return null;
+    const set = state.settings[p.id] || {};
+    const shop = shopInputs(p); // B2B shares the self-fulfilled (Shopify) pool
+    const onHand = shop ? shop.onHand : num(set.b2bOnHand);
+    return { onHand, inbound: 0, sold30: num(set.b2bSold30), shared: !!shop };
+  };
+
+  // ── Generic projection ──
+  const project = (onHand, inbound, sold30, leadDays, moq) => {
+    const target = num(d.targetWeeks), safety = num(d.safetyDays);
+    const perDay = sold30 / 30;
+    const coverDays = perDay > 0 ? Math.round(onHand / perDay) : (onHand > 0 ? Infinity : 0);
+    const coverWeeks = coverDays === Infinity ? Infinity : Math.round(coverDays / 7);
+    const stockout = perDay > 0 ? addDays(today, onHand / perDay) : null;
+    const reorderBy = stockout ? addDays(stockout, -(leadDays + safety)) : null;
+    const orderUpTo = Math.ceil(target * 7 * perDay);
+    let qty = Math.max(0, orderUpTo - (onHand + inbound));
+    if (qty > 0 && moq) qty = Math.max(qty, moq);
+    let status;
+    if (perDay === 0 && onHand === 0 && inbound === 0) status = "dormant";
+    else if (perDay === 0) status = onHand > 0 ? "overstock" : "dormant";
+    else if (onHand + inbound > orderUpTo * 2) status = "overstock";
+    else if (qty <= 0) status = "healthy";
+    else if (reorderBy && reorderBy.getTime() <= today.getTime()) status = "now";
+    else status = "soon";
+    return { perDay, coverWeeks, stockout, reorderBy, qty, status, onHand, inbound };
+  };
+
+  // ── Build rows for the active channel ──
   const rows = useMemo(() => {
-    return products.filter((p) => !p.isSample).map((p) => {
+    const out = [];
+    products.filter((p) => !p.isSample).forEach((p) => {
       const set = state.settings[p.id] || {};
-      const lead = set.leadTimeDays != null && set.leadTimeDays !== "" ? num(set.leadTimeDays) : num(d.leadTimeDays);
-      const target = set.targetWeeks != null && set.targetWeeks !== "" ? num(set.targetWeeks) : num(d.targetWeeks);
       const moq = num(set.moq);
+      const leadOverride = set.leadTimeDays != null && set.leadTimeDays !== "" ? num(set.leadTimeDays) : null;
+      const prodLead = leadOverride != null ? leadOverride : num(d.productionLeadDays);
       const link = set.supplierLink || "";
-      const perDay = num(p.unitsSold30) / 30;
-      const available = num(p.available);
-      const inbound = num(p.inbound);
-      const onHandInbound = available + inbound;
-      const coverDays = perDay > 0 ? Math.round(available / perDay) : (available > 0 ? Infinity : 0);
-      const coverWeeks = coverDays === Infinity ? Infinity : Math.round(coverDays / 7);
-      const stockout = perDay > 0 ? addDays(today, available / perDay) : null;
-      const reorderBy = stockout ? addDays(stockout, -(lead + num(d.safetyDays))) : null;
-      const orderUpTo = Math.ceil(target * 7 * perDay);
-      let qty = Math.max(0, orderUpTo - onHandInbound);
-      if (qty > 0 && moq) qty = Math.max(qty, moq);
 
-      let status;
-      if (perDay === 0 && available === 0 && inbound === 0) status = "dormant";
-      else if (perDay === 0) status = available > 0 ? "overstock" : "dormant";
-      else if (perDay > 0 && onHandInbound > orderUpTo * 2) status = "overstock";
-      else if (qty <= 0) status = "healthy";
-      else if (reorderBy && reorderBy.getTime() <= today.getTime()) status = "now";
-      else status = "soon";
-
-      return { id: "fg:" + p.id, pid: p.id, name: p.name, available, inbound, perDay, coverWeeks, stockout, reorderBy, qty, lead, target, moq, link, status, channels: p.channels || [] };
-    }).sort((a, b) => {
+      if (channel === "amazon") {
+        const a = amzInputs(p); if (!a) return;
+        const pr = project(a.onHand, a.inbound, a.sold30, prodLead + num(d.amazonInboundDays), moq);
+        out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, ...pr });
+      } else if (channel === "shopify") {
+        const s = shopInputs(p); if (!s) return;
+        const pr = project(s.onHand, 0, s.sold30, prodLead, moq);
+        out.push({ id: "shp:" + p.id, pid: p.id, name: p.name, link, live: s.live, ...pr });
+      } else if (channel === "b2b") {
+        const bv = b2bInputs(p); if (!bv) return;
+        const pr = project(bv.onHand, 0, bv.sold30, prodLead, moq);
+        out.push({ id: "b2b:" + p.id, pid: p.id, name: p.name, link, shared: bv.shared, ...pr });
+      } else { // all — master production plan
+        const a = amzInputs(p), s = shopInputs(p), bv = b2bInputs(p);
+        if (!a && !s && !bv) return;
+        const totalSold = (a ? a.sold30 : 0) + (s ? s.sold30 : 0) + (bv ? bv.sold30 : 0);
+        const selfOnHand = s ? s.onHand : (bv ? bv.onHand : 0); // self pool counted once
+        const totalOnHand = (a ? a.onHand : 0) + selfOnHand;
+        const totalInbound = a ? a.inbound : 0;
+        const lead = a ? prodLead + num(d.amazonInboundDays) : prodLead;
+        const pr = project(totalOnHand, totalInbound, totalSold, lead, moq);
+        out.push({
+          id: "all:" + p.id, pid: p.id, name: p.name, link, ...pr,
+          breakdown: [
+            a ? `Amazon ${a.onHand}u · ${(a.sold30 / 30).toFixed(2)}/d` : null,
+            s ? `Shopify ${s.onHand}u · ${(s.sold30 / 30).toFixed(2)}/d` : null,
+            bv ? (bv.sold30 ? `B2B ${(bv.sold30 / 30).toFixed(2)}/d` : "B2B (no velocity set)") : null,
+          ].filter(Boolean),
+        });
+      }
+    });
+    return out.sort((a, b) => {
       const ra = STATUS[a.status].rank, rb = STATUS[b.status].rank;
       if (ra !== rb) return ra - rb;
       const ta = a.reorderBy ? a.reorderBy.getTime() : Infinity, tb = b.reorderBy ? b.reorderBy.getTime() : Infinity;
       return ta - tb;
     });
-  }, [products, state, d]);
+  }, [products, state, d, channel, amazon, shopify]);
+
+  const summary = useMemo(() => {
+    const live = rows.filter((r) => r.status !== "dormant");
+    const k = { now: 0, soon: 0, overstock: 0, healthy: 0 };
+    let soonest = null;
+    live.forEach((r) => { if (k[r.status] != null) k[r.status] += 1; if (r.stockout && (!soonest || r.stockout < soonest)) soonest = r.stockout; });
+    return { ...k, soonest, total: live.length };
+  }, [rows]);
 
   const pkgFlags = useMemo(() => packaging.filter((p) => num(p.reorderPoint) > 0 && num(p.onHand) <= num(p.reorderPoint))
-    .map((p, i) => ({ id: "pkg:" + (p.id || i), name: p.component || "Packaging item", onHand: num(p.onHand), rp: num(p.reorderPoint), moq: num(p.moq), supplier: p.supplier || "", link: p.link || "", qty: num(p.moq) || Math.max(1, num(p.reorderPoint) * 2 - num(p.onHand)) })), [packaging]);
-
+    .map((p, i) => ({ id: "pkg:" + (p.id || i), name: p.component || "Packaging item", onHand: num(p.onHand), rp: num(p.reorderPoint), supplier: p.supplier || "", link: p.link || "", qty: num(p.moq) || Math.max(1, num(p.reorderPoint) * 2 - num(p.onHand)) })), [packaging]);
   const rawFlags = useMemo(() => materials.filter((m) => m.status === "out" || m.status === "reorder")
     .map((m) => ({ id: "raw:" + m.id, name: m.name, status: m.status, note: m.note || "", link: m.buyLink || "", cost: m.estCost })), [materials]);
-
-  const counts = useMemo(() => {
-    const k = { now: 0, soon: 0, overstock: 0 };
-    rows.forEach((r) => { if (k[r.status] != null) k[r.status] += 1; });
-    return { ...k, pkg: pkgFlags.length, raw: rawFlags.length };
-  }, [rows, pkgFlags, rawFlags]);
 
   function send(row, item) {
     if (!onAddAction) return;
@@ -131,11 +204,7 @@ export default function ReorderList({
     onAddAction({ id, source: "coo", ...item, assigneeId: null, status: "open", createdAt: new Date().toISOString() });
     setSent((s) => ({ ...s, [row.id]: id }));
   }
-  function unsend(row) {
-    const id = sent[row.id];
-    if (id && onRemoveAction) onRemoveAction(id);
-    setSent((s) => { const n = { ...s }; delete n[row.id]; return n; });
-  }
+  function unsend(row) { const id = sent[row.id]; if (id && onRemoveAction) onRemoveAction(id); setSent((s) => { const n = { ...s }; delete n[row.id]; return n; }); }
 
   const SendCell = ({ row, item }) => {
     if (!onAddAction) return null;
@@ -143,18 +212,19 @@ export default function ReorderList({
       ? <span style={{ fontFamily: mono, fontSize: 9.5, color: c.green }}>✓ sent · <button onClick={() => unsend(row)} style={{ background: "none", border: "none", color: c.clay, cursor: "pointer", fontFamily: mono, fontSize: 9.5, textDecoration: "underline", padding: 0 }}>undo</button></span>
       : <button onClick={() => send(row, item)} style={S.btn}>→ Action Item</button>;
   };
-
   const LinkBtn = ({ href }) => href ? <a href={href} target="_blank" rel="noreferrer" style={{ ...S.ghost, textDecoration: "none", display: "inline-block" }}>↗ Buy</a> : null;
+
+  const activeMeta = CHANNELS.find((x) => x.id === channel);
+  const syncStamp = channel === "amazon" ? fmtTime(amazon && amazon.syncedAt) : channel === "shopify" ? fmtTime(shopify && shopify.syncedAt) : null;
+  const syncFn = channel === "amazon" ? onAmazonSync : channel === "shopify" ? onShopifySync : null;
+  const syncing = channel === "amazon" ? (amazon && amazon.syncing) : channel === "shopify" ? (shopify && shopify.syncing) : false;
 
   return (
     <div style={S.wrap}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
           <h1 style={S.h1}>Reorder List</h1>
-          <div style={faintEs}>Lista de reorden — qué pedir, cuánto y para cuándo</div>
-          <div style={{ fontSize: 13, color: c.sub, marginTop: 6 }}>
-            <span style={{ color: c.red }}>{counts.now} reorder now</span> · <span style={{ color: c.amber }}>{counts.soon} soon</span> · <span style={{ color: c.slate }}>{counts.overstock} overstock</span> · {counts.pkg} packaging · {counts.raw} materials
-          </div>
+          <div style={faintEs}>Lista de reorden — por canal y plan maestro</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={undo} disabled={!past.length} style={{ ...S.ghost, opacity: past.length ? 1 : 0.4, cursor: past.length ? "pointer" : "not-allowed" }}>↶ Undo</button>
@@ -162,47 +232,77 @@ export default function ReorderList({
         </div>
       </div>
 
-      {/* Global defaults */}
-      <div style={{ ...S.panel, marginTop: 14, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={S.cap}>Defaults</span>
-        <label style={{ fontSize: 12, color: c.ink }}>Lead time (days) <input style={S.input} type="number" value={d.leadTimeDays} onChange={(e) => setDefault("leadTimeDays", e.target.value)} /></label>
-        <label style={{ fontSize: 12, color: c.ink }}>Target cover (weeks) <input style={S.input} type="number" value={d.targetWeeks} onChange={(e) => setDefault("targetWeeks", e.target.value)} /></label>
-        <label style={{ fontSize: 12, color: c.ink }}>Safety buffer (days) <input style={S.input} type="number" value={d.safetyDays} onChange={(e) => setDefault("safetyDays", e.target.value)} /></label>
-        <span style={{ ...faintEs, flexBasis: "100%" }}>Per-SKU overrides live in each row's ⚙. · Los ajustes por SKU están en ⚙ de cada fila.</span>
+      {/* Channel selector */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+        {CHANNELS.map((ch) => (
+          <button key={ch.id} onClick={() => setChannel(ch.id)}
+            style={{ background: channel === ch.id ? c.ink : "transparent", color: channel === ch.id ? c.bg : c.sub, border: `1px solid ${channel === ch.id ? c.ink : c.line}`, borderRadius: 2, padding: "6px 13px", cursor: "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+            {ch.label}
+          </button>
+        ))}
       </div>
 
-      {/* Finished goods */}
-      <div style={S.sec}>Finished Goods<div style={faintEs}>Bienes terminados</div></div>
-      {rows.filter((r) => r.status !== "dormant").length === 0 && <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder. Stock is healthy. · Nada que reordenar.</div>}
+      {/* Stockout summary banner */}
+      <div style={{ ...S.panel, marginTop: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, alignItems: "center", borderLeft: `3px solid ${summary.now ? c.red : summary.soon ? c.amber : c.green}` }}>
+        <div>
+          <div style={S.cap}>{activeMeta.label} · stockout summary</div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            <span style={{ color: c.red }}>{summary.now} reorder now</span> · <span style={{ color: c.amber }}>{summary.soon} soon</span> · <span style={{ color: c.slate }}>{summary.overstock} overstock</span> · <span style={{ color: c.green }}>{summary.healthy} healthy</span>
+          </div>
+          <div style={{ fontSize: 12, color: c.sub, marginTop: 3 }}>Soonest stockout: {summary.soonest ? fmtDate(summary.soonest) : "none projected"}{channel === "all" ? " · master plan = total demand vs total network stock" : ""}</div>
+        </div>
+        {channel === "b2b" ? <div style={{ ...faintEs, maxWidth: 260 }}>B2B has no live feed — enter monthly velocity per SKU in ⚙. Shares Shopify's self-fulfilled stock.</div>
+          : syncFn ? <button onClick={syncFn} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ resync"}{syncStamp ? ` · ${syncStamp}` : ""}</button> : null}
+      </div>
+
+      {/* Defaults */}
+      <div style={{ ...S.panel, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={S.cap}>Defaults</span>
+        <label style={{ fontSize: 12 }}>Production lead (days) <input style={S.input} type="number" value={d.productionLeadDays} onChange={(e) => setDefault("productionLeadDays", e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Amazon inbound (days) <input style={S.input} type="number" value={d.amazonInboundDays} onChange={(e) => setDefault("amazonInboundDays", e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Target cover (weeks) <input style={S.input} type="number" value={d.targetWeeks} onChange={(e) => setDefault("targetWeeks", e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Safety (days) <input style={S.input} type="number" value={d.safetyDays} onChange={(e) => setDefault("safetyDays", e.target.value)} /></label>
+      </div>
+
+      {/* Rows */}
+      {rows.filter((r) => r.status !== "dormant").length === 0 && <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder on this channel. · Nada que reordenar en este canal.</div>}
       {rows.filter((r) => r.status !== "dormant").map((r) => {
         const st = STATUS[r.status];
+        const item = {
+          title: `Reorder ${r.qty} units — ${r.name}${channel === "all" ? "" : " (" + activeMeta.label + ")"}`,
+          detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.`,
+          name: r.name, severity: r.status === "now" ? "high" : "med",
+        };
         return (
           <div key={r.id} style={{ ...S.panel, borderLeft: `3px solid ${st.color}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ flex: 1, minWidth: 190 }}>
                 <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, color: "#fff", background: st.color, padding: "1px 6px", borderRadius: 2 }}>{st.label}</span>
+                {r.live && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 8, letterSpacing: 1, color: c.green }}>● LIVE</span>}
                 <div style={{ fontSize: 15, marginTop: 4 }}>{r.name}</div>
-                <div style={{ fontSize: 11.5, color: c.sub, marginTop: 2 }}>{(r.channels || []).join(" · ")}</div>
+                {r.breakdown && <div style={{ fontSize: 11, color: c.sub, marginTop: 3 }}>{r.breakdown.join("  ·  ")}</div>}
+                {r.shared && <div style={faintEs}>shares Shopify self-fulfilled stock</div>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))", gap: 10, flex: 2, minWidth: 280 }}>
-                <div><div style={S.cap}>On hand</div><div style={{ fontSize: 14 }}>{r.available}{r.inbound ? ` +${r.inbound}` : ""}</div></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(86px, 1fr))", gap: 10, flex: 2, minWidth: 270 }}>
+                <div><div style={S.cap}>On hand</div><div style={{ fontSize: 14 }}>{r.onHand}{r.inbound ? ` +${r.inbound}` : ""}</div></div>
                 <div><div style={S.cap}>Velocity</div><div style={{ fontSize: 14 }}>{r.perDay > 0 ? `${r.perDay.toFixed(2)}/day` : "—"}</div></div>
                 <div><div style={S.cap}>Cover</div><div style={{ fontSize: 14 }}>{r.coverWeeks === Infinity ? "∞" : r.coverWeeks + "w"}</div></div>
                 <div><div style={S.cap}>Stockout</div><div style={{ fontSize: 14 }}>{fmtDate(r.stockout)}</div></div>
                 <div><div style={S.cap}>Order by</div><div style={{ fontSize: 14, color: r.status === "now" ? c.red : c.ink }}>{r.status === "now" ? "now" : fmtDate(r.reorderBy)}</div></div>
-                <div><div style={S.cap}>Order qty</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
+                <div><div style={S.cap}>{channel === "all" ? "Make/buy" : "Order qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))} style={S.ghost}>⚙ {open[r.id] ? "close" : "settings"}</button>
               <LinkBtn href={r.link} />
-              {r.qty > 0 && <SendCell row={r} item={{ title: `Reorder ${r.qty} units — ${r.name}`, detail: `On hand ${r.available}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w cover). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)} · lead ${r.lead}d.`, name: r.name, severity: r.status === "now" ? "high" : "med" }} />}
+              {r.qty > 0 && <SendCell row={r} item={item} />}
             </div>
             {open[r.id] && (
               <div style={{ display: "flex", gap: 14, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${c.lineSoft}`, flexWrap: "wrap", alignItems: "center" }}>
-                <label style={{ fontSize: 11.5, color: c.sub }}>Lead days <input style={S.input} type="number" placeholder={String(d.leadTimeDays)} value={(state.settings[r.pid] || {}).leadTimeDays ?? ""} onChange={(e) => setSetting(r.pid, "leadTimeDays", e.target.value)} /></label>
+                <label style={{ fontSize: 11.5, color: c.sub }}>Lead days <input style={S.input} type="number" placeholder={String(d.productionLeadDays)} value={(state.settings[r.pid] || {}).leadTimeDays ?? ""} onChange={(e) => setSetting(r.pid, "leadTimeDays", e.target.value)} /></label>
                 <label style={{ fontSize: 11.5, color: c.sub }}>Target wks <input style={S.input} type="number" placeholder={String(d.targetWeeks)} value={(state.settings[r.pid] || {}).targetWeeks ?? ""} onChange={(e) => setSetting(r.pid, "targetWeeks", e.target.value)} /></label>
                 <label style={{ fontSize: 11.5, color: c.sub }}>MOQ <input style={S.input} type="number" value={(state.settings[r.pid] || {}).moq ?? ""} onChange={(e) => setSetting(r.pid, "moq", e.target.value)} /></label>
+                <label style={{ fontSize: 11.5, color: c.sub }}>B2B units/mo <input style={S.input} type="number" value={(state.settings[r.pid] || {}).b2bSold30 ?? ""} onChange={(e) => setSetting(r.pid, "b2bSold30", e.target.value)} /></label>
                 <label style={{ fontSize: 11.5, color: c.sub }}>Supplier link <input style={{ ...S.input, width: 220 }} type="url" placeholder="https://…" value={(state.settings[r.pid] || {}).supplierLink ?? ""} onChange={(e) => setSetting(r.pid, "supplierLink", e.target.value)} /></label>
               </div>
             )}
@@ -210,44 +310,32 @@ export default function ReorderList({
         );
       })}
 
-      {/* Packaging */}
-      <div style={S.sec}>Packaging Below Reorder Point<div style={faintEs}>Empaque bajo el punto de reorden</div></div>
-      {pkgFlags.length === 0 ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub }}>No packaging below reorder point. · Sin empaque por debajo del punto.</div>
-        : pkgFlags.map((p) => (
-          <div key={p.id} style={{ ...S.panel, borderLeft: `3px solid ${c.amber}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontSize: 14 }}>{p.name}</div>
-              <div style={{ fontSize: 11.5, color: c.sub }}>{p.onHand} on hand · reorder pt {p.rp}{p.supplier ? ` · ${p.supplier}` : ""}</div>
-            </div>
-            <div style={{ fontSize: 13, color: c.clay }}>order {p.qty}</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <LinkBtn href={p.link} />
-              <SendCell row={p} item={{ title: `Reorder packaging — ${p.name}`, detail: `${p.onHand} on hand, reorder point ${p.rp}. Suggested order ${p.qty}${p.supplier ? " from " + p.supplier : ""}.`, name: p.name, severity: "med" }} />
-            </div>
-          </div>
-        ))}
-
-      {/* Raw materials */}
-      <div style={S.sec}>Raw Materials Flagged<div style={faintEs}>Materias primas marcadas</div></div>
-      {rawFlags.length === 0 ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub }}>No materials flagged. · Sin materiales marcados.</div>
-        : rawFlags.map((m) => (
-          <div key={m.id} style={{ ...S.panel, borderLeft: `3px solid ${m.status === "out" ? c.red : c.amber}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, color: "#fff", background: m.status === "out" ? c.red : c.amber, padding: "1px 6px", borderRadius: 2 }}>{m.status === "out" ? "OUT" : "REORDER"}</span>
-              <div style={{ fontSize: 14, marginTop: 4 }}>{m.name}</div>
-              {m.note && <div style={{ fontSize: 11.5, color: c.sub }}>{m.note}</div>}
-            </div>
-            {m.cost != null && m.cost !== "" && <div style={{ fontSize: 12, color: c.sub }}>~{money(m.cost)}</div>}
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <LinkBtn href={m.link} />
-              <SendCell row={m} item={{ title: `Reorder material — ${m.name}`, detail: `${m.status === "out" ? "Out of stock" : "Flagged for reorder"}.${m.note ? " " + m.note : ""}`, name: m.name, severity: m.status === "out" ? "high" : "med" }} />
-            </div>
-          </div>
-        ))}
+      {/* Packaging + raw materials feed production — shown in All view */}
+      {channel === "all" && (
+        <>
+          <div style={S.sec}>Packaging Below Reorder Point<div style={faintEs}>Empaque bajo el punto de reorden</div></div>
+          {pkgFlags.length === 0 ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub }}>None below reorder point.</div>
+            : pkgFlags.map((p) => (
+              <div key={p.id} style={{ ...S.panel, borderLeft: `3px solid ${c.amber}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ flex: 1, minWidth: 180 }}><div style={{ fontSize: 14 }}>{p.name}</div><div style={{ fontSize: 11.5, color: c.sub }}>{p.onHand} on hand · reorder pt {p.rp}{p.supplier ? ` · ${p.supplier}` : ""}</div></div>
+                <div style={{ fontSize: 13, color: c.clay }}>order {p.qty}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}><LinkBtn href={p.link} /><SendCell row={p} item={{ title: `Reorder packaging — ${p.name}`, detail: `${p.onHand} on hand, reorder point ${p.rp}. Suggested order ${p.qty}.`, name: p.name, severity: "med" }} /></div>
+              </div>
+            ))}
+          <div style={S.sec}>Raw Materials Flagged<div style={faintEs}>Materias primas marcadas</div></div>
+          {rawFlags.length === 0 ? <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.sub }}>None flagged.</div>
+            : rawFlags.map((m) => (
+              <div key={m.id} style={{ ...S.panel, borderLeft: `3px solid ${m.status === "out" ? c.red : c.amber}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ flex: 1, minWidth: 180 }}><span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, color: "#fff", background: m.status === "out" ? c.red : c.amber, padding: "1px 6px", borderRadius: 2 }}>{m.status === "out" ? "OUT" : "REORDER"}</span><div style={{ fontSize: 14, marginTop: 4 }}>{m.name}</div>{m.note && <div style={{ fontSize: 11.5, color: c.sub }}>{m.note}</div>}</div>
+                {m.cost != null && m.cost !== "" && <div style={{ fontSize: 12, color: c.sub }}>~{money(m.cost)}</div>}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}><LinkBtn href={m.link} /><SendCell row={m} item={{ title: `Reorder material — ${m.name}`, detail: `${m.status === "out" ? "Out of stock" : "Flagged for reorder"}.${m.note ? " " + m.note : ""}`, name: m.name, severity: m.status === "out" ? "high" : "med" }} /></div>
+              </div>
+            ))}
+        </>
+      )}
 
       <div style={{ ...faintEs, marginTop: 18 }}>
-        Order qty = target weeks of cover × weekly velocity − (on hand + inbound), rounded up to MOQ. Reorder-by = stockout date − lead time − safety buffer.
-        <div>Cantidad = semanas objetivo × velocidad − (en mano + en camino), redondeado al MOQ.</div>
+        Per-channel = where you run out (channel stock vs channel velocity). All = total demand vs total network stock → one make/buy number. Amazon lead = production + inbound-to-FBA. Reorder-by = stockout − lead − safety.
       </div>
     </div>
   );
