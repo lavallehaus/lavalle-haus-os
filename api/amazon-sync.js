@@ -132,18 +132,19 @@ async function fetchSold30ForSku(token, sku) {
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 // --- Brand Analytics report helpers (keyword research) ---
-function baPeriod(period) {
+function baPeriod(period, offset) {
+  const off = Number(offset) || 0;
   const now = new Date();
   if (period === "MONTH") {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)); // last day prev month
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1 - off, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - off, 0)); // last day of that month
     return { start: start.toISOString(), end: end.toISOString() };
   }
-  // WEEK: most recent complete Sunday–Saturday week
+  // WEEK: most recent complete Sunday–Saturday week, shifted back `off` weeks
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const dow = d.getUTCDay(); // 0=Sun
   const daysSinceSat = dow === 6 ? 7 : dow + 1;
-  const lastSat = new Date(d); lastSat.setUTCDate(d.getUTCDate() - daysSinceSat);
+  const lastSat = new Date(d); lastSat.setUTCDate(d.getUTCDate() - daysSinceSat - off * 7);
   const weekStart = new Date(lastSat); weekStart.setUTCDate(lastSat.getUTCDate() - 6);
   return { start: weekStart.toISOString(), end: lastSat.toISOString() };
 }
@@ -288,18 +289,28 @@ export default async function handler(req, res) {
       const kind = body.kind === "sqp" ? "sqp" : "searchterms";
       const period = body.period === "MONTH" ? "MONTH" : "WEEK";
       const asins = Array.isArray(body.asins) ? body.asins.filter(Boolean) : [];
+      const weekOffset = Number(body.weekOffset) || 0;
+      const historyOnly = !!body.historyOnly;
       const cacheKey = "keywords_" + kind;
-      const inflKey = "kwinflight_" + kind + "_" + period;
+      const inflKey = "kwinflight_" + kind + "_" + period + "_" + weekOffset;
 
-      // Serve cached result by default. Only an explicit pull (refresh) or an active
-      // poll (reportId) is allowed to spend Amazon's strict report-request quota.
-      if (!body.refresh && !body.reportId) {
+      // Serve cached result by default for the live view. Only an explicit pull (refresh)
+      // or an active poll (reportId) spends Amazon's strict report-request quota.
+      if (!historyOnly && weekOffset === 0 && !body.refresh && !body.reportId) {
         const cached = await kvGet(cacheKey);
-        if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true }); return; }
-        res.status(200).json({ connected: true, idle: true }); return;
+        const hist = (await kvGet("kwhistory")) || {};
+        if (cached && cached.rows) { res.status(200).json({ connected: true, ...cached, cached: true, history: hist }); return; }
+        res.status(200).json({ connected: true, idle: true, history: hist }); return;
       }
 
-      const { start, end } = baPeriod(period);
+      const { start, end } = baPeriod(period, weekOffset);
+      const weekKey = start.slice(0, 10);
+
+      // History backfill: if this week is already recorded, return it without spending quota.
+      if (historyOnly && !body.refresh && !body.reportId) {
+        const hist = (await kvGet("kwhistory")) || {};
+        if (hist[weekKey]) { res.status(200).json({ connected: true, ok: true, history: hist, alreadyHave: true }); return; }
+      }
       const reportType = kind === "sqp"
         ? "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT"
         : "GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT";
@@ -357,9 +368,23 @@ export default async function handler(req, res) {
       }
       const records = await downloadReportRecords(doc, 300, predicate, cap);
       const rows = kind === "sqp" ? parseSqp(records) : parseSearchTerms(records);
-      const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(),
+
+      // Maintain a rolling rank history (last 6 weeks) for trend sparklines.
+      let history = (await kvGet("kwhistory")) || {};
+      if (kind === "searchterms") {
+        const ranks = {};
+        rows.forEach((r) => { if (r.term && r.rank != null) { const k = r.term.toLowerCase(); if (ranks[k] == null || r.rank < ranks[k]) ranks[k] = r.rank; } });
+        history[weekKey] = ranks;
+        const wk = Object.keys(history).sort();
+        while (wk.length > 6) { delete history[wk.shift()]; }
+        await kvSet("kwhistory", history);
+      }
+
+      if (historyOnly) { await kvSet(inflKey, null); res.status(200).json({ connected: true, ok: true, history, weekKey }); return; }
+
+      const payload = { rows, kind, period, dataStart: start, dataEnd: end, updatedAt: new Date().toISOString(), history,
         debug: { count: rows.length, firstRaw: records[0] || null } };
-      await kvSet(cacheKey, payload);
+      if (weekOffset === 0) await kvSet(cacheKey, payload);
       await kvSet(inflKey, null);
       res.status(200).json({ connected: true, ...payload });
     } catch (e) {
