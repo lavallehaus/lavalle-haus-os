@@ -1965,7 +1965,14 @@ return profitNode;
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
 if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} />;
-return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials={materials} cogs={dbState.cogs || {}} />;
+return <AICoo
+products={products} campaigns={campaigns} weeks={weeks} materials={materials}
+cogs={dbState.cogs || {}} profitMatrix={dbState.profitMatrix || {}}
+marginsSettings={dbState.margins || {}} bankCash={dbState.bankCash || null}
+actionsBoard={dbState.actionsBoard || {}}
+onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
+onRemoveAction={(id) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: (board.items || []).filter((x) => x.id !== id) } }; dbSave(next); return next; })}
+/>;
 }
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
