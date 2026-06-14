@@ -73,7 +73,7 @@ export default function ReorderList({
   amazon = {}, shopify = {}, onAmazonSync, onShopifySync,
   restock = {}, onRestockSync,
 }) {
-  const DEF = { productionLeadDays: 21, amazonInboundDays: 10, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
+  const DEF = { productionLeadDays: 21, amazonInboundDays: 14, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
 
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -154,7 +154,10 @@ export default function ReorderList({
           const days = sc.daysOfSupply;
           const cw = days != null ? Math.round(days / 7) : (a.sold30 > 0 ? Math.round((a.onHand / (a.sold30 / 30)) / 7) : Infinity);
           const stockout = days != null ? addDays(today, days) : null;
-          const reorderBy = sc.recommendedShipDate ? new Date(sc.recommendedShipDate) : null;
+          const shipBy = sc.recommendedShipDate ? new Date(sc.recommendedShipDate) : null;
+          // Amazon's ship-by date is when stock must LEAVE for FBA. To hit it,
+          // production has to start prodLead days earlier.
+          const startProdBy = shipBy ? addDays(shipBy, -prodLead) : null;
           let status;
           if (num(sc.recommendedQty) > 0) status = (days != null && days <= 21) ? "now" : "soon";
           else if (days != null && days > 120) status = "overstock";
@@ -162,7 +165,8 @@ export default function ReorderList({
           out.push({
             id: "amz:" + p.id, pid: p.id, name: p.name, link, native: true, alert: sc.alert,
             onHand: sc.available != null ? sc.available : a.onHand, inbound: sc.inbound != null ? sc.inbound : a.inbound,
-            perDay: sc.sold30 != null ? sc.sold30 / 30 : a.sold30 / 30, coverWeeks: cw, stockout, reorderBy,
+            perDay: sc.sold30 != null ? sc.sold30 / 30 : a.sold30 / 30, coverWeeks: cw, stockout,
+            reorderBy: shipBy, shipBy, startProdBy, recQty: num(sc.recommendedQty),
             qty: num(sc.recommendedQty), status,
           });
         } else {
@@ -186,10 +190,11 @@ export default function ReorderList({
         const totalInbound = a ? a.inbound : 0;
         const lead = a ? prodLead + num(d.amazonInboundDays) : prodLead;
         const pr = project(totalOnHand, totalInbound, totalSold, lead, moq);
+        const aNat = a && restock && restock.items && restock.items[p.id];
         out.push({
           id: "all:" + p.id, pid: p.id, name: p.name, link, ...pr,
           breakdown: [
-            a ? `Amazon ${a.onHand}u · ${(a.sold30 / 30).toFixed(2)}/d` : null,
+            a ? `Amazon ${a.onHand}u · ${(a.sold30 / 30).toFixed(2)}/d${aNat && num(aNat.recommendedQty) > 0 ? ` · SC send-in ${num(aNat.recommendedQty)}` : ""}` : null,
             s ? `Shopify ${s.onHand}u · ${(s.sold30 / 30).toFixed(2)}/d` : null,
             bv ? (bv.sold30 ? `B2B ${(bv.sold30 / 30).toFixed(2)}/d` : "B2B (no velocity set)") : null,
           ].filter(Boolean),
@@ -285,9 +290,10 @@ export default function ReorderList({
       <div style={{ ...S.panel, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <span style={S.cap}>Defaults</span>
         <label style={{ fontSize: 12 }}>Production lead (days) <input style={S.input} type="number" value={d.productionLeadDays} onChange={(e) => setDefault("productionLeadDays", e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Amazon inbound (days) <input style={S.input} type="number" value={d.amazonInboundDays} onChange={(e) => setDefault("amazonInboundDays", e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Amazon receive + distribute (days) <input style={S.input} type="number" value={d.amazonInboundDays} onChange={(e) => setDefault("amazonInboundDays", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Target cover (weeks) <input style={S.input} type="number" value={d.targetWeeks} onChange={(e) => setDefault("targetWeeks", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Safety (days) <input style={S.input} type="number" value={d.safetyDays} onChange={(e) => setDefault("safetyDays", e.target.value)} /></label>
+        <div style={{ ...faintEs, flexBasis: "100%" }}>Amazon SKUs lead = production + ship-to-FBA + Amazon's receive/distribute time (shipments often route through multiple FCs — allow ~2 weeks). · El lead de Amazon suma producción + envío a FBA + recepción/distribución de Amazon (~2 semanas).</div>
       </div>
 
       {/* Rows */}
@@ -296,7 +302,7 @@ export default function ReorderList({
         const st = STATUS[r.status];
         const item = {
           title: `Reorder ${r.qty} units — ${r.name}${channel === "all" ? "" : " (" + activeMeta.label + ")"}`,
-          detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.${r.native ? ` Amazon's own restock recommendation${r.alert ? " — " + r.alert : ""}.` : ""}`,
+          detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.${r.native ? ` Amazon recommends sending in ${r.recQty} units${r.shipBy ? ", ship to FBA by " + fmtDate(r.shipBy) : ""}${r.startProdBy ? ", start production by " + fmtDate(r.startProdBy) : ""}${r.alert ? " (" + r.alert + ")" : ""}.` : ""}`,
           name: r.name, severity: r.status === "now" ? "high" : "med",
         };
         return (
@@ -317,9 +323,19 @@ export default function ReorderList({
                 <div><div style={S.cap}>Cover</div><div style={{ fontSize: 14 }}>{r.coverWeeks === Infinity ? "∞" : r.coverWeeks + "w"}</div></div>
                 <div><div style={S.cap}>Stockout</div><div style={{ fontSize: 14 }}>{fmtDate(r.stockout)}</div></div>
                 <div><div style={S.cap}>Order by</div><div style={{ fontSize: 14, color: r.status === "now" ? c.red : c.ink }}>{r.status === "now" ? "now" : fmtDate(r.reorderBy)}</div></div>
-                <div><div style={S.cap}>{channel === "all" ? "Make/buy" : "Order qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
+                <div><div style={S.cap}>{channel === "all" ? "Make/buy" : r.native ? "Amazon send-in" : "Order qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
               </div>
             </div>
+            {r.native && (
+              <div style={{ marginTop: 8, padding: "8px 11px", background: "#a0784812", border: `1px solid ${c.line}`, borderRadius: 2, fontSize: 12.5 }}>
+                {num(r.recQty) > 0
+                  ? <span><b style={{ color: c.clay }}>Amazon recommends sending in {r.recQty} units</b>{r.shipBy ? ` — ship to FBA by ${fmtDate(r.shipBy)}` : ""}{r.startProdBy ? `, so start production by ${fmtDate(r.startProdBy)}` : ""}.</span>
+                  : <span style={{ color: c.sub }}>Amazon isn't recommending a replenishment right now.</span>}
+              </div>
+            )}
+            {channel === "amazon" && !r.native && (
+              <div style={{ marginTop: 6, fontSize: 11, color: c.sub, fontStyle: "italic" }}>Estimated from live counts — pull Seller Central (top right) for Amazon's own recommended send-in qty. Order-by already allows production + ship-to-FBA + Amazon receive/distribute + safety.</div>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))} style={S.ghost}>⚙ {open[r.id] ? "close" : "settings"}</button>
               <LinkBtn href={r.link} />
