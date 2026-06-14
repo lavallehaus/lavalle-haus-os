@@ -857,6 +857,101 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ?op=restock — Seller Central's NATIVE restock recommendations
+    // (GET_RESTOCK_INVENTORY_RECOMMENDATIONS_REPORT). Days of supply, the
+    // recommended replenishment quantity and recommended ship date come from
+    // Amazon itself, not our projection. Self-orchestrating create→poll→
+    // download: the client calls this repeatedly until { ready:true }.
+    //   pending  -> report still generating (call again in a few seconds)
+    //   ready    -> { items:[{productId, daysOfSupply, recommendedQty,
+    //                recommendedShipDate, alert, available, inbound, sold30}],
+    //                unmatched, syncedAt }
+    if (req.query && req.query.op === "restock") {
+      try {
+        const token = await getAccessToken();
+        const force = req.query.force === "1";
+        const cached = await kvGet("amazon_restock");
+        const job = await kvGet("amazon_restock_job");
+
+        // Serve a fresh cache (< 12h) unless forced — restock reports are rate-limited.
+        if (!force && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 12 * 3600000) {
+          res.status(200).json({ connected: true, ready: true, cached: true, items: cached.items || [], unmatched: cached.unmatched || [], syncedAt: cached.syncedAt });
+          return;
+        }
+
+        // No in-flight job (or forced): create a fresh report and return its id.
+        let reportId = job && job.reportId;
+        if (force || !reportId) {
+          const created = await spapiW(token, "/reports/2021-06-30/reports", "POST", {
+            reportType: "GET_RESTOCK_INVENTORY_RECOMMENDATIONS_REPORT",
+            marketplaceIds: [MARKETPLACE],
+          });
+          if (!created.reportId) { res.status(200).json({ connected: true, error: "Amazon rejected the restock report request. The FBA Inventory role may not be granted to the app." }); return; }
+          await kvSet("amazon_restock_job", { reportId: created.reportId, startedAt: new Date().toISOString() });
+          res.status(200).json({ connected: true, pending: true, reportId: created.reportId });
+          return;
+        }
+
+        // Poll the in-flight report.
+        const rep = await spapi(token, "/reports/2021-06-30/reports/" + encodeURIComponent(reportId));
+        const status = rep.processingStatus;
+        if (status === "CANCELLED" || status === "FATAL") {
+          await kvSet("amazon_restock_job", null);
+          res.status(200).json({ connected: true, error: "Amazon could not produce the restock report (" + status + "). Likely the FBA Inventory role isn't granted to the app, or there's no data yet.", status });
+          return;
+        }
+        if (status !== "DONE") { res.status(200).json({ connected: true, pending: true, status }); return; }
+
+        // DONE — download + parse the TSV, then map SKU -> app product id.
+        const meta = await spapi(token, "/reports/2021-06-30/documents/" + encodeURIComponent(rep.reportDocumentId));
+        const docR = await fetch(meta.url);
+        const buf = Buffer.from(await docR.arrayBuffer());
+        const text = (meta.compressionAlgorithm === "GZIP" ? gunzipSync(buf) : buf).toString("utf8");
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        const headers = (lines[0] || "").split("\t").map((h) => h.trim().toLowerCase());
+        const idx = (...names) => { for (const nm of names) { const i = headers.findIndex((h) => h.indexOf(nm) >= 0); if (i >= 0) return i; } return -1; };
+        const iSku = idx("merchant sku", "seller sku", "sku");
+        const iAsin = idx("asin");
+        const iName = idx("product name", "title");
+        const iAvail = idx("available");
+        const iInbound = idx("inbound");
+        const iDays = idx("days of supply", "days of cover");
+        const iRecQty = idx("recommended replenishment", "recommended units", "replenishment qty", "recommended ship qty");
+        const iShipDate = idx("recommended ship date", "ship date");
+        const iAlert = idx("alert", "recommended action");
+        const iSold30 = idx("units sold last 30", "sales last 30", "units sold");
+
+        const items = []; const unmatched = [];
+        lines.slice(1).forEach((l) => {
+          const cells = l.split("\t");
+          const g = (i) => (i >= 0 && cells[i] != null ? String(cells[i]).trim() : "");
+          const sku = g(iSku);
+          if (!sku) return;
+          const rec = {
+            sku, asin: g(iAsin), name: g(iName),
+            available: n(g(iAvail)), inbound: n(g(iInbound)),
+            daysOfSupply: n(g(iDays)),
+            recommendedQty: n(g(iRecQty)),
+            recommendedShipDate: g(iShipDate) || null,
+            alert: g(iAlert) || null,
+            sold30: n(g(iSold30)),
+          };
+          const pid = SKU_MAP[sku.toLowerCase()];
+          if (pid != null) items.push({ productId: pid, ...rec });
+          else unmatched.push(rec);
+        });
+
+        const payload = { items, unmatched, syncedAt: new Date().toISOString(), reportId };
+        await kvSet("amazon_restock", payload);
+        await kvSet("amazon_restock_job", null);
+        res.status(200).json({ connected: true, ready: true, ...payload });
+        return;
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
     // ?op=netseries — settled net profit bucketed by posting MONTH over the
     // trailing 12 months (Finances API). Frontend rolls months into quarters
     // or years. Buckets by PostedDate, so the figures are real settled money.
