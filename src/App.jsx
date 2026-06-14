@@ -1755,6 +1755,7 @@ if (d && d.ready) {
 const items = {};
 (d.items || []).forEach((it) => { items[it.productId] = it; });
 setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null });
+setDbState((prev) => { const next = { ...prev, amazonRestock: { items, syncedAt: d.syncedAt } }; dbSave(next); return next; });
 return;
 }
 if (d && d.error) { setRestock((s) => ({ ...s, status: "error", error: d.error })); return; }
@@ -1994,6 +1995,7 @@ return <AICoo
 products={products} campaigns={campaigns} weeks={weeks} materials={materials}
 cogs={dbState.cogs || {}} profitMatrix={dbState.profitMatrix || {}}
 marginsSettings={dbState.margins || {}} bankCash={dbState.bankCash || null}
+restock={(restock.items && Object.keys(restock.items).length) ? restock : (dbState.amazonRestock || { items: {} })} onRestockSync={restockSync}
 actionsBoard={dbState.actionsBoard || {}}
 onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
 onRemoveAction={(id) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: (board.items || []).filter((x) => x.id !== id) } }; dbSave(next); return next; })}
