@@ -1742,6 +1742,30 @@ setAmazon(s => ({ ...s, syncing: false }));
 }
 }
 
+// ── SELLER CENTRAL NATIVE RESTOCK (on-demand; report is rate-limited) ──
+const [restock, setRestock] = useState({ items: {}, syncedAt: null, status: "idle", error: null });
+function restockSync(force) {
+let polls = 0;
+setRestock((s) => ({ ...s, status: "pending", error: null }));
+const run = async () => {
+try {
+const url = "/api/amazon-sync?op=restock" + (force && polls === 0 ? "&force=1" : "");
+const d = await fetch(url, { method: "POST" }).then((r) => r.json());
+if (d && d.ready) {
+const items = {};
+(d.items || []).forEach((it) => { items[it.productId] = it; });
+setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null });
+return;
+}
+if (d && d.error) { setRestock((s) => ({ ...s, status: "error", error: d.error })); return; }
+polls += 1;
+if (polls > 14) { setRestock((s) => ({ ...s, status: "error", error: "Amazon is still generating the report — try again in a minute." })); return; }
+setTimeout(run, 6000);
+} catch (e) { setRestock((s) => ({ ...s, status: "error", error: "Connection error." })); }
+};
+run();
+}
+
 // ── AUTO-FETCH SHOPIFY + AMAZON ON LOAD ──
 useEffect(() => { shopifySync(); amazonSync(); }, []);
 
@@ -2002,6 +2026,7 @@ if (activeSub === "createlisting") return <VesselCreator onCommit={onListingComm
 if (activeSub === "reorder") return <ReorderList
 products={products} packaging={dbState.packagingItems || []} materials={materials}
 amazon={amazon} shopify={shopify} onAmazonSync={amazonSync} onShopifySync={shopifySync}
+restock={restock} onRestockSync={restockSync}
 data={dbState.reorder || {}}
 onSave={(r) => setDbState((prev) => { const next = { ...prev, reorder: r }; dbSave(next); return next; })}
 onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
