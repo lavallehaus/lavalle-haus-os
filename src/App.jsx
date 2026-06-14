@@ -1755,13 +1755,14 @@ const d = await fetch(url, { method: "POST" }).then((r) => r.json());
 if (d && d.ready) {
 const items = {};
 (d.items || []).forEach((it) => { items[it.productId] = it; });
-setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null, startedAt: null });
+setRestock({ items, syncedAt: d.syncedAt, status: "ready", error: null, startedAt: null, statusDetail: null, rows: d.rows, matched: d.matched });
 setDbState((prev) => { const next = { ...prev, amazonRestock: { items, syncedAt: d.syncedAt } }; dbSave(next); return next; });
 return;
 }
 if (d && d.error) { setRestock((s) => ({ ...s, status: "error", error: d.error })); return; }
+if (d && d.status) setRestock((s) => (s.status === "pending" ? { ...s, statusDetail: d.status } : s));
 polls += 1;
-if (polls > 48) { setRestock((s) => ({ ...s, status: "timeout", error: null })); return; } // ~5 min; resume keeps the same in-flight report
+if (polls > 100) { setRestock((s) => ({ ...s, status: "timeout", error: null })); return; } // ~10 min; resume keeps the same in-flight report
 setTimeout(run, 6000);
 } catch (e) { setRestock((s) => ({ ...s, status: "error", error: "Connection error." })); }
 };
