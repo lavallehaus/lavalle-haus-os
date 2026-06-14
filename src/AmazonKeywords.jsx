@@ -123,26 +123,26 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     return { error: "Timed out preparing a monthly report." };
   }
 
-  // Match real terms to products AND ensure every product gets at least one keyword.
-  // Returns { productId: { matched:[realTerm,...], ideas:[testKeyword,...] } }
+  // Keyword research: assign each product its CLOSEST real search terms (verbatim).
+  // Returns { productId: [realTerm,...] } — real terms only, broad matches allowed.
   async function aiAssign(candidates) {
-    if (!amz.length) return {};
+    if (!amz.length || !candidates.length) return {};
     const catalog = amz.map((p) => p.id + ": " + p.name).join("; ");
-    const terms = candidates.slice(0, 100);
+    const terms = candidates.slice(0, 110);
     try {
       const res = await fetch("/api/categorize", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           max_tokens: 2200,
           system:
-            "You build keyword suggestions for a candle & body-care seller, and EVERY product must end up with at least one keyword. " +
+            "You are doing Amazon keyword research for a candle & body-care seller. " +
             "Input: a catalog ('id: name; id: name') and a list of REAL Amazon search terms. " +
-            "For EACH product id, return an object with two arrays: " +
-            "'matched' = terms copied VERBATIM from the real-term list that genuinely fit that product (may be empty if none fit); " +
-            "'ideas' = your own 1–3 short lowercase buyer-style keyword phrases to test — REQUIRED whenever 'matched' is empty, otherwise []. " +
-            "Ideas must be realistic shopper searches for that exact product, e.g. a seashell vessel candle → 'seashell candle','coastal home decor candle'; a beeswax sand candle → 'sand candle','beeswax sand candle'. " +
-            "Each real term goes to at most one product. Return ONLY compact JSON keyed by product id, no markdown. " +
-            'Example: {"5":{"matched":["spiced apple candle"],"ideas":[]},"1":{"matched":[],"ideas":["seashell candle","coastal candle"]}}',
+            "For EACH product, return the real search terms CLOSEST and most relevant to it — copied VERBATIM from the list. " +
+            "EVERY product must get at least 2–6 real terms. If nothing fits perfectly, assign the closest BROADER real terms instead of leaving it empty " +
+            "(e.g. a candle product → 'candles','scented candle','soy candle','home fragrance'; a scrub → 'body scrub','sugar scrub','exfoliating scrub'; bath salts → 'bath salts','bath soak'). " +
+            "A broad term may be given to several products when equally relevant. Use ONLY terms from the provided list — never invent terms. " +
+            "Return ONLY compact JSON keyed by product id, each value an array of terms. No prose, no markdown. " +
+            'Example: {"4":["spiced apple candle","apple cinnamon candle","candles"],"1":["seashell candle","coastal candle","home fragrance"]}',
           messages: [{ role: "user", content: "Catalog: " + catalog + "\n\nReal search terms: " + terms.join(", ") }],
         }),
       }).then((x) => x.json());
@@ -150,14 +150,32 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       const norm = {};
       Object.keys(parsed || {}).forEach((k) => {
-        const v = parsed[k] || {};
-        norm[String(k)] = {
-          matched: Array.isArray(v.matched) ? v.matched : (Array.isArray(v) ? v : []),
-          ideas: Array.isArray(v.ideas) ? v.ideas : [],
-        };
+        const v = parsed[k];
+        norm[String(k)] = Array.isArray(v) ? v : (v && Array.isArray(v.matched) ? v.matched : []);
       });
       return norm;
     } catch (e) { return {}; }
+  }
+
+  // Client-side closeness ranking — used if the AI omits a product, so it still
+  // gets the closest REAL terms (graphed) rather than a made-up idea.
+  function closestReal(name, candidates) {
+    const n = String(name || "").toLowerCase();
+    const ntok = new Set(n.split(/[^a-z]+/).filter((w) => w.length > 2));
+    const isScrub = /scrub/.test(n);
+    const isBath = /bath|salt/.test(n);
+    const isCandle = /candle|wax|vessel|sand|seashell|apple|dough|botanical/.test(n);
+    const scored = candidates.map((t) => {
+      const tl = t.toLowerCase();
+      const ttok = tl.split(/[^a-z]+/).filter(Boolean);
+      let s = 0;
+      ttok.forEach((w) => { if (ntok.has(w)) s += 3; });
+      if (isScrub && /scrub|exfoliat|polish|body/.test(tl)) s += 2;
+      if (isBath && /bath|salt|soak|spa/.test(tl)) s += 2;
+      if (isCandle && /candle|wax|fragrance|aromatherapy|melt|vessel/.test(tl)) s += 2;
+      return { t, s };
+    }).filter((x) => x.s > 0).sort((a, b) => b.s - a.s);
+    return scored.map((x) => x.t);
   }
 
   // Deterministic last-resort keyword if the AI returns nothing for a product.
@@ -215,13 +233,21 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
     setProg({ stage: "Sorting terms under each product", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
     const assign = await aiAssign(candidates);
+    const have = new Set(candidates.map((x) => x.toLowerCase()));
     const filled = {};
     amz.forEach((p) => {
-      const a = assign[p.id] || assign[String(p.id)] || {};
-      const matched = Array.isArray(a.matched) ? a.matched : [];
-      let ideas = Array.isArray(a.ideas) ? a.ideas : [];
-      if (!matched.length && !ideas.length) ideas = fallbackIdeas(p.name); // never leave a product empty
-      filled[p.id] = { matched, ideas };
+      const arr = assign[p.id] || assign[String(p.id)] || [];
+      // keep only terms we actually have data for (guard against any invented term)
+      let real = (Array.isArray(arr) ? arr : []).filter((t) => t && have.has(String(t).toLowerCase()));
+      if (real.length < 2) {
+        // AI under-assigned — backfill with the closest REAL terms by token overlap
+        const close = closestReal(p.name, candidates).filter((t) => real.indexOf(t) < 0);
+        real = real.concat(close).slice(0, 6);
+      }
+      // de-dupe, cap
+      real = [...new Set(real.map((t) => String(t)))].slice(0, 6);
+      const ideas = real.length ? [] : fallbackIdeas(p.name); // only if Amazon truly returned nothing relevant
+      filled[p.id] = { matched: real, ideas };
     });
     setByProduct(filled);
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
