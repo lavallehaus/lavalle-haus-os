@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 
-// LAVALLE HAUS OS — Amazon keyword workbench.
-// Product-first: your Amazon products are the list; AI suggests keywords under each,
-// grounded in real Brand Analytics search terms when available. ＋ adopts a keyword
-// into the manual tracker, already assigned to that product.
-// The raw Brand Analytics report is still pullable, but collapsed out of the way.
+// LAVALLE HAUS OS — Amazon keyword trends, by product.
+// Option A: suggestions are REAL Amazon Brand Analytics search terms, assigned to the
+// product they fit, each with a 12-month monthly trend sparkline (real frequency-rank
+// history — lower rank = more searched). ＋ adopts a term into the manual tracker,
+// already tagged to that product. No invented keywords; every graph is real data.
 
 const c = {
   ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8", green: "#5a7a5a",
@@ -12,7 +12,6 @@ const c = {
 };
 const serif = "'IM Fell English', Georgia, serif";
 const mono = "monospace";
-const MODEL = "claude-sonnet-4-20250514";
 
 const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "exfoliat", "bath salt", "bath soak", "body oil", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift"];
 const STOP = ["candle", "large", "small", "with", "sand", "vanilla", "apple", "the", "and", "set", "pack", "oz"];
@@ -24,277 +23,275 @@ function buildFilter(products) {
   return [...toks];
 }
 
-const toggle = (on) => ({
-  padding: "6px 13px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono,
-  cursor: "pointer", borderRadius: 1, border: `1px solid ${on ? c.clay : c.line}`,
-  background: on ? c.clay : "transparent", color: on ? "#fff" : c.sub,
-});
-const pct = (v) => (v == null ? "—" : (v <= 1 ? (v * 100).toFixed(1) : Number(v).toFixed(1)) + "%");
 const num = (v) => (v == null || v === "" ? "—" : Number(v).toLocaleString());
+const wait = (ms) => new Promise((z) => setTimeout(z, ms));
+const monthLabel = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+};
 
-export default function AmazonKeywords({ products = [], onTrack }) {
-  const [view, setView] = useState("research");
-  const [period, setPeriod] = useState("WEEK");
-  const [byKind, setByKind] = useState({ searchterms: null, sqp: null });
-  const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [q, setQ] = useState("");
-  const [showRaw, setShowRaw] = useState(false);
-  const [history, setHistory] = useState({});
-  const [building, setBuilding] = useState("");
-  const pollRef = useRef(null);
-  const attemptsRef = useRef(0);
-
-  const kind = view === "mine" ? "sqp" : "searchterms";
-  const FILTER = useMemo(() => buildFilter(products), [products]);
-  const data = byKind[kind];
-
-  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
-  useEffect(() => { pull({ refresh: false, silent: true }); /* eslint-disable-next-line */ }, [view, period]);
-
-  async function pull({ refresh = false, reportId = null, silent = false } = {}) {
-    if (pollRef.current) { clearTimeout(pollRef.current); pollRef.current = null; }
-    setError("");
-    if (!silent || refresh || reportId) setLoading(true);
-    try {
-      const asins = view === "mine" ? products.filter((p) => p.asin && !p.isSample).map((p) => p.asin) : [];
-      const r = await fetch("/api/amazon-sync?op=keywords", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, period, asins, refresh, reportId, filter: view === "research" ? FILTER : undefined }),
-      }).then((x) => x.json());
-
-      if (r && r.error) { setError(r.error); setPending(false); setLoading(false); return; }
-      if (r && r.pending) {
-        attemptsRef.current += 1;
-        if (attemptsRef.current > 20) { setPending(false); setLoading(false); setError("Amazon is taking unusually long. Try again in a few minutes."); return; }
-        setPending(true);
-        pollRef.current = setTimeout(() => pull({ reportId: r.reportId }), 12000);
-        return;
-      }
-      if (r && r.history) setHistory(r.history);
-      if (r && r.rows) setByKind((prev) => ({ ...prev, [r.kind || kind]: r }));
-      attemptsRef.current = 0;
-      setPending(false); setLoading(false);
-    } catch (e) { setError(String(e).slice(0, 200)); setPending(false); setLoading(false); }
-  }
-
-  async function buildHistory() {
-    if (building) return;
-    for (let off = 1; off <= 3; off++) {
-      setBuilding(`Building history… week -${off}`);
-      let done = false, tries = 0, reportId = null;
-      while (!done && tries < 10) {
-        try {
-          const r = await fetch("/api/amazon-sync?op=keywords", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ kind: "searchterms", period, weekOffset: off, historyOnly: true, filter: FILTER, reportId }),
-          }).then((x) => x.json());
-          if (r && r.history) setHistory(r.history);
-          if (r && r.pending) { reportId = r.reportId; await new Promise((z) => setTimeout(z, 11000)); tries += 1; continue; }
-          if (r && r.quota) { setBuilding(`Rate-limited, waiting… week -${off}`); await new Promise((z) => setTimeout(z, 60000)); tries += 1; continue; }
-          done = true;
-        } catch (e) { done = true; }
-      }
-    }
-    setBuilding("");
-  }
-
-  const rows = (data && data.rows) || [];
-  const reportTerms = useMemo(() => rows.map((r) => r.term).filter(Boolean), [rows]);
-  const reportInfo = useMemo(() => { const m = {}; rows.forEach((r) => { const k = (r.term || "").toLowerCase(); if (k && r.rank != null && (m[k] == null || r.rank < m[k])) m[k] = r.rank; }); return m; }, [rows]);
-  const periodLabel = data ? `${(data.dataStart || "").slice(0, 10)} – ${(data.dataEnd || "").slice(0, 10)}` : "";
-  const filtered = q.trim() ? rows.filter((r) => (r.term || "").toLowerCase().includes(q.trim().toLowerCase())) : rows;
-  const sorted = view === "research"
-    ? [...filtered].sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9))
-    : [...filtered].sort((a, b) => (b.purchases || 0) - (a.purchases || 0) || (b.impressions || 0) - (a.impressions || 0));
-
-  const th = { fontFamily: mono, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub, padding: "6px 8px", textAlign: "left", borderBottom: `1px solid ${c.line}`, whiteSpace: "nowrap" };
-  const td = { padding: "5px 8px", borderBottom: "1px solid #00000008", fontFamily: serif, fontSize: 13, color: c.ink };
-  const tdR = { ...td, textAlign: "right", fontFamily: mono, fontSize: 12 };
-
+// Sparkline of frequency RANK across months. Rank is inverted (lower = better),
+// so we flip it visually: a rising line = climbing in search demand.
+function Spark({ points }) {
+  const valid = points.filter((p) => p.rank != null);
+  if (valid.length < 2) return <span style={{ fontSize: 10, color: c.sub, fontFamily: mono }}>no trend yet</span>;
+  const W = 132, H = 30, pad = 3;
+  const ranks = valid.map((p) => p.rank);
+  const lo = Math.min(...ranks), hi = Math.max(...ranks);
+  const span = hi - lo || 1;
+  const step = valid.length > 1 ? (W - pad * 2) / (valid.length - 1) : 0;
+  // invert: best (low) rank -> top of chart
+  const xy = valid.map((p, i) => {
+    const x = pad + i * step;
+    const y = pad + ((p.rank - lo) / span) * (H - pad * 2);
+    return [x, y];
+  });
+  const path = xy.map((p) => p.join(",")).join(" ");
+  const last = xy[xy.length - 1];
+  const first = valid[0].rank, lastR = valid[valid.length - 1].rank;
+  const up = lastR < first; // rank went DOWN numerically = MORE searched = up
+  const col = up ? c.green : c.red;
   return (
-    <div style={{ background: c.card, border: `1px solid ${c.line}`, borderRadius: 2, padding: "16px 18px", marginBottom: 22 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontFamily: serif, fontSize: 20, color: c.ink }}>Keyword Suggestions by Product</div>
-          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: "rgba(111,102,87,0.65)" }}>Grounded in real Amazon search data · Basado en datos reales de Amazon</div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontFamily: mono, fontSize: 8.5, color: c.sub, letterSpacing: 1 }}>DATA</span>
-          <button onClick={() => setView("research")} style={toggle(view === "research")}>Market</button>
-          <button onClick={() => setView("mine")} style={toggle(view === "mine")}>My Sales</button>
-          <button onClick={() => pull({ refresh: true })} disabled={loading || pending} style={{ ...toggle(false), borderColor: c.clay, color: c.ink, opacity: (loading || pending) ? 0.5 : 1 }}>
-            {loading || pending ? "Pulling…" : "↻ Pull"}
-          </button>
-        </div>
-      </div>
-
-      <div style={{ fontFamily: mono, fontSize: 10, color: c.sub, margin: "8px 0 4px" }}>
-        {pending ? "Amazon is preparing the report…" :
-          error ? <span style={{ color: c.red }}>{error}</span> :
-          data ? `${reportTerms.length} relevant search terms loaded${data.cached ? " · cached" : ""}` :
-          "Tip: pull data for stronger suggestions, or just generate below."}
-      </div>
-
-      {Object.keys(history).length < 2 ? (
-        <div style={{ background: "#f3ece2", border: `1px solid ${c.clay}`, borderRadius: 2, padding: "10px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ fontFamily: serif, fontSize: 12.5, color: c.ink, flex: "1 1 220px" }}>📈 Trend graphs appear once there are a few weeks of data. Build it once — takes ~2–3 minutes and pauses if Amazon rate-limits.</div>
-          <button onClick={buildHistory} disabled={!!building} style={{ ...toggle(false), borderColor: c.clay, color: "#fff", background: c.clay, opacity: building ? 0.6 : 1 }}>{building ? building : "Build trend history"}</button>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 8 }}>
-          <button onClick={buildHistory} disabled={!!building} style={{ background: "none", border: "none", color: c.clay, cursor: building ? "default" : "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, padding: 0 }}>{building ? building : "↟ Extend trend history"}</button>
-        </div>
-      )}
-
-      <ProductSuggestions products={products} reportTerms={reportTerms} reportInfo={reportInfo} periodLabel={periodLabel} history={history} onTrack={onTrack} />
-
-      {/* raw report, collapsed */}
-      <div style={{ marginTop: 14, borderTop: `1px solid ${c.line}`, paddingTop: 10 }}>
-        <button onClick={() => setShowRaw(!showRaw)} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, padding: 0 }}>
-          {showRaw ? "▾" : "▸"} Raw Amazon report{data ? ` (${reportTerms.length} terms)` : ""}
-        </button>
-        {showRaw && (
-          <div style={{ marginTop: 8 }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="filter terms…" style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "5px 8px", borderRadius: 1, fontFamily: serif, width: 150, marginBottom: 8 }} />
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 540 }}>
-                <thead>
-                  {view === "research" ? (
-                    <tr><th style={th}>Search term</th><th style={{ ...th, textAlign: "right" }}>Freq rank</th><th style={th}>Top clicked</th><th style={{ ...th, textAlign: "right" }}>Click %</th><th style={{ ...th, textAlign: "right" }}>Conv %</th></tr>
-                  ) : (
-                    <tr><th style={th}>Query</th><th style={{ ...th, textAlign: "right" }}>Impr</th><th style={{ ...th, textAlign: "right" }}>Clicks</th><th style={{ ...th, textAlign: "right" }}>Purch</th><th style={{ ...th, textAlign: "right" }}>CVR</th></tr>
-                  )}
-                </thead>
-                <tbody>
-                  {sorted.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", fontStyle: "italic", color: c.sub, padding: 14 }}>{data ? "No terms." : "Pull data to populate."}</td></tr>}
-                  {sorted.slice(0, 200).map((r, i) => view === "research" ? (
-                    <tr key={i}><td style={td}>{r.term}</td><td style={tdR}>{r.rank == null ? "—" : "#" + num(r.rank)}</td><td style={{ ...td, fontSize: 11, color: c.sub, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.clickedTitle || r.clickedAsin || "—"}</td><td style={tdR}>{pct(r.clickShare)}</td><td style={tdR}>{pct(r.convShare)}</td></tr>
-                  ) : (
-                    <tr key={i}><td style={td}>{r.term}</td><td style={tdR}>{num(r.impressions)}</td><td style={tdR}>{num(r.clicks)}</td><td style={tdR}>{num(r.purchases)}</td><td style={tdR}>{r.clicks ? ((r.purchases || 0) / r.clicks * 100).toFixed(1) + "%" : "—"}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+    <svg width={W} height={H} style={{ display: "block" }}>
+      <polyline points={path} fill="none" stroke={col} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.4" fill={col} />
+    </svg>
   );
 }
 
-function Spark({ series }) {
-  if (!series || series.length < 2) return null;
-  const ranks = series.map((s) => s.rank);
-  const min = Math.min(...ranks), max = Math.max(...ranks);
-  const w = 46, h = 14, n = series.length;
-  const x = (i) => (n === 1 ? w / 2 : (i / (n - 1)) * w);
-  const y = (r) => (max === min ? h / 2 : h - ((max - r) / (max - min)) * (h - 3) - 1.5);
-  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.rank).toFixed(1)}`).join(" ");
-  const up = series[n - 1].rank < series[n - 2].rank;
-  const flat = series[n - 1].rank === series[n - 2].rank;
-  const col = flat ? "#8c7d6b" : up ? "#5a7a5a" : "#9b5e5e";
-  return <svg width={w} height={h} style={{ display: "inline-block", verticalAlign: "middle" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="1.3" /></svg>;
-}
+export default function AmazonKeywords({ products = [], onTrack }) {
+  const FILTER = useMemo(() => buildFilter(products), [products]);
+  const amz = useMemo(
+    () => (products || []).filter((p) => !p.isSample && (p.asin || (p.channels || []).indexOf("Amazon") >= 0)).map((p) => ({ id: String(p.id), name: p.name })),
+    [products]
+  );
 
-function ProductSuggestions({ products = [], reportTerms = [], reportInfo = {}, periodLabel = "", history = {}, onTrack }) {
-  const weekKeys = Object.keys(history).sort();
-  const amz = products.filter((p) => !p.isSample && (p.asin || (p.channels || []).includes("Amazon"))).map((p) => ({ id: p.id, name: p.name }));
-  const [loading, setLoading] = useState(false);
-  const [byProduct, setByProduct] = useState(null);
+  const [monthHistory, setMonthHistory] = useState({});
+  const [byProduct, setByProduct] = useState(null);   // { productId: [term,...] }
+  const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [open, setOpen] = useState({});
   const [added, setAdded] = useState({});
 
-  const reportSet = useMemo(() => new Set(reportTerms.map((t) => String(t).toLowerCase())), [reportTerms]);
+  const months = useMemo(() => Object.keys(monthHistory).sort(), [monthHistory]);
 
-  async function suggest() {
-    if (!amz.length) { setErr("No Amazon products found."); return; }
-    setLoading(true); setErr(""); setByProduct(null);
+  // On mount: load whatever monthly history is already cached (no quota spent).
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/amazon-sync?op=keywords", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "searchterms", period: "MONTH" }),
+        }).then((x) => x.json());
+        if (r && r.monthHistory) setMonthHistory(r.monthHistory);
+      } catch (e) { /* offline / not configured — fine */ }
+    })();
+  }, []);
+
+  // One report pull (monthly), handling pending-poll and rate-limit waits.
+  async function reportCall(extra) {
+    let reportId = null, tries = 0;
+    while (tries < 16) {
+      let r;
+      try {
+        r = await fetch("/api/amazon-sync?op=keywords", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "searchterms", period: "MONTH", filter: FILTER, reportId, ...extra }),
+        }).then((x) => x.json());
+      } catch (e) { return { error: String(e).slice(0, 160) }; }
+      if (r && r.monthHistory) setMonthHistory(r.monthHistory);
+      if (r && r.pending) { reportId = r.reportId; await wait(11000); tries++; continue; }
+      if (r && r.quota) { setBusy("Amazon rate-limit — pausing a minute…"); await wait(60000); tries++; continue; }
+      return r || {};
+    }
+    return { error: "Timed out preparing a monthly report." };
+  }
+
+  // Ask the AI proxy to assign REAL terms to the product each best fits.
+  async function aiAssign(candidates) {
+    if (!amz.length || !candidates.length) return {};
+    const catalog = amz.map((p) => p.id + ": " + p.name).join("; ");
+    const terms = candidates.slice(0, 100);
     try {
-      const catalog = amz.map((p) => p.id + ": " + p.name).join("; ");
-      const real = reportTerms.slice(0, 120).join(", ");
       const res = await fetch("/api/categorize", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: MODEL, max_tokens: 1000,
-          system: `You are an Amazon PPC strategist for a candle and body-care brand. For EACH product in the catalog, suggest up to 6 high-intent Amazon search keywords a shopper would type to buy THAT product. Strongly prefer the provided real customer search terms when they fit a product; otherwise use your own buyer-intent terms. Return ONLY a compact JSON object keyed by product id; each value is an array of strings "keyword|m" where m is e (exact), p (phrase) or b (broad). No markdown, no prose. Example: {"4":["spiced apple candle|e","apple cinnamon candle|p"]}`,
-          messages: [{ role: "user", content: "Catalog: " + catalog + (real ? "\n\nReal customer search terms to prefer: " + real : "") }],
+          max_tokens: 1800,
+          system:
+            "You assign REAL Amazon search terms to a candle & body-care seller's products. " +
+            "You are given a catalog ('id: name; id: name') and a list of real search terms. " +
+            "Return ONLY a compact JSON object keyed by product id; each value is an array of the terms that genuinely fit THAT product. " +
+            "Assign each term to at most one product. Drop terms that fit no product. No prose, no markdown fences. " +
+            'Example: {"4":["spiced apple candle","apple cinnamon candle"],"7":["sugar body scrub"]}',
+          messages: [{ role: "user", content: "Catalog: " + catalog + "\n\nReal search terms: " + terms.join(", ") }],
         }),
-      });
-      const d = await res.json();
-      const text = (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("") || "{}";
-      const obj = JSON.parse(text.replace(/```json|```/g, "").trim());
-      const out = {};
-      Object.keys(obj || {}).forEach((k) => {
-        out[k] = (obj[k] || []).map((sgg) => { const parts = String(sgg).split("|"); const m = (parts[1] || "").trim().toLowerCase(); return { keyword: (parts[0] || "").trim(), matchType: m === "e" ? "exact" : m === "b" ? "broad" : "phrase" }; }).filter((x) => x.keyword);
-      });
-      setByProduct(out);
-      const o = {}; amz.forEach((p) => { o[p.id] = true; }); setOpen(o);
-    } catch (e) { setErr("Could not generate — try again."); }
-    setLoading(false);
+      }).then((x) => x.json());
+      const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("") || "{}";
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const norm = {};
+      Object.keys(parsed || {}).forEach((k) => { norm[String(k)] = Array.isArray(parsed[k]) ? parsed[k] : []; });
+      return norm;
+    } catch (e) { return {}; }
   }
 
-  function adopt(prod, kw) {
-    onTrack && onTrack({ keyword: kw.keyword, matchType: kw.matchType, product: prod.name, notes: reportSet.has(kw.keyword.toLowerCase()) ? "searched on Amazon" : "AI suggested" });
-    setAdded((a) => ({ ...a, [prod.id + "|" + kw.keyword]: true }));
+  async function buildAndSuggest() {
+    if (busy) return;
+    if (!amz.length) { setErr("No Amazon products found in your catalog yet."); return; }
+    setErr(""); setBusy("Pulling this month’s search terms…");
+    const m0 = await reportCall({ weekOffset: 0, refresh: true });
+    if (m0.error) { setBusy(""); setErr(m0.error); return; }
+    const candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
+    if (!candidates.length) { setBusy(""); setErr("No relevant search terms returned for this month yet."); return; }
+
+    // Backfill the prior 11 months (resumable — already-cached months return instantly).
+    for (let o = 1; o <= 11; o++) {
+      setBusy("Building 12-month history… month −" + o + " of 11");
+      const rr = await reportCall({ weekOffset: o, historyOnly: true });
+      if (rr.error) break;
+    }
+
+    setBusy("Assigning trending terms to your products…");
+    const assign = await aiAssign(candidates);
+    setByProduct(assign || {});
+    const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
+    setBusy("");
   }
 
-  const chip = { fontFamily: mono, fontSize: 8.5, color: c.sub, letterSpacing: 0.5 };
+  function seriesFor(term) {
+    const lk = term.toLowerCase();
+    return months.map((m) => ({ m, rank: monthHistory[m] && monthHistory[m][lk] != null ? monthHistory[m][lk] : null }));
+  }
+  function adopt(term, pname) {
+    if (!onTrack) return;
+    onTrack({ keyword: term, matchType: "phrase", product: pname, notes: "trending (Brand Analytics)" });
+    setAdded((a) => ({ ...a, [pname + "|" + term]: true }));
+  }
+
+  const panel = { background: c.card, border: "1px solid " + c.line, borderRadius: 2, padding: 18, marginBottom: 14 };
+  const chip = (on) => ({
+    padding: "9px 16px", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: mono,
+    cursor: busy ? "not-allowed" : "pointer", borderRadius: 1, border: "1px solid " + (on ? c.clay : c.line),
+    background: on ? c.clay : "transparent", color: on ? "#fff" : c.sub, opacity: busy ? 0.6 : 1,
+  });
+
+  const built = months.length;
 
   return (
-    <div style={{ marginTop: 6 }}>
-      <button onClick={suggest} disabled={loading} style={{ ...toggle(false), borderColor: c.green, color: c.green, opacity: loading ? 0.5 : 1, padding: "7px 14px" }}>
-        {loading ? "Thinking…" : (byProduct ? "↻ Regenerate suggestions" : "✦ Suggest keywords for my products")}
-      </button>
-      {err && <div style={{ color: c.red, fontFamily: mono, fontSize: 10, marginTop: 6 }}>{err}</div>}
-
-      {!byProduct && !loading && (
-        <div style={{ marginTop: 10, fontFamily: serif, fontStyle: "italic", fontSize: 12.5, color: c.sub }}>
-          {amz.length ? `${amz.length} Amazon products ready. Generate to get keyword ideas under each one.` : "No Amazon products found in your catalog."}
+    <div>
+      {/* Header / build */}
+      <div style={panel}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontFamily: serif, fontSize: 22, color: c.ink }}>Keyword trends, by product</div>
+            <div style={{ fontSize: 12, color: c.sub, marginTop: 4, maxWidth: 520 }}>
+              Real Amazon search terms, grouped under the product they fit — each with a 12-month trend.
+              A rising green line means the term is climbing in search demand.
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <button onClick={buildAndSuggest} disabled={!!busy} style={chip(true)}>
+              {byProduct ? "↻ Refresh" : "✦ Build trends & suggest"}
+            </button>
+            <div style={{ fontSize: 10, color: c.sub, marginTop: 6, fontFamily: mono }}>
+              {built ? built + " month" + (built === 1 ? "" : "s") + " of history" : "no history yet"}
+            </div>
+          </div>
         </div>
-      )}
+        {!byProduct && !busy && (
+          <div style={{ fontSize: 11, color: c.sub, marginTop: 12, borderTop: "1px solid " + c.line, paddingTop: 10 }}>
+            First build pulls ~12 monthly reports from Amazon and is paced for their rate limit, so it can take a
+            few minutes. It’s one-time — months are cached permanently and the build resumes where it left off.
+          </div>
+        )}
+        {busy && (
+          <div style={{ fontSize: 12, color: c.clay, marginTop: 12, fontFamily: mono, borderTop: "1px solid " + c.line, paddingTop: 10 }}>
+            ◷ {busy}
+          </div>
+        )}
+        {err && (
+          <div style={{ fontSize: 12, color: c.red, marginTop: 12, fontFamily: mono, borderTop: "1px solid " + c.line, paddingTop: 10 }}>
+            {err}
+          </div>
+        )}
+      </div>
+
+      {/* Per-product results */}
+      {byProduct && amz.map((p) => {
+        const terms = (byProduct[p.id] || byProduct[String(p.id)] || []).filter(Boolean);
+        const isOpen = open[p.id];
+        return (
+          <div key={p.id} style={panel}>
+            <div
+              onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+            >
+              <div style={{ fontFamily: serif, fontSize: 17, color: c.ink }}>
+                {p.name}
+              </div>
+              <div style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
+                {terms.length} term{terms.length === 1 ? "" : "s"} {isOpen ? "▾" : "▸"}
+              </div>
+            </div>
+
+            {isOpen && (
+              terms.length === 0 ? (
+                <div style={{ fontSize: 12, color: c.sub, marginTop: 10 }}>
+                  No trending search terms matched this product this month.
+                </div>
+              ) : (
+                <div style={{ marginTop: 12 }}>
+                  {terms.map((t) => {
+                    const s = seriesFor(t);
+                    const valid = s.filter((x) => x.rank != null);
+                    const latest = valid.length ? valid[valid.length - 1].rank : null;
+                    const prev = valid.length >= 2 ? valid[valid.length - 2].rank : null;
+                    const delta = latest != null && prev != null ? prev - latest : null; // + = improved (rose)
+                    const isAdded = added[p.name + "|" + t];
+                    return (
+                      <div key={t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid " + c.line, flexWrap: "wrap" }}>
+                        <div style={{ flex: "1 1 180px", minWidth: 150 }}>
+                          <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
+                          <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 2 }}>
+                            {latest != null ? "rank #" + num(latest) : "unranked"}
+                            {delta != null && delta !== 0 && (
+                              <span style={{ color: delta > 0 ? c.green : c.red, marginLeft: 8 }}>
+                                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last mo
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ flex: "0 0 auto" }}>
+                          <Spark points={s} />
+                          {valid.length >= 2 && (
+                            <div style={{ fontSize: 9, color: c.sub, fontFamily: mono, display: "flex", justifyContent: "space-between" }}>
+                              <span>{monthLabel(valid[0].m)}</span>
+                              <span>{monthLabel(valid[valid.length - 1].m)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => adopt(t, p.name)}
+                          disabled={isAdded}
+                          style={{
+                            flex: "0 0 auto", padding: "6px 12px", fontSize: 11, fontFamily: mono, borderRadius: 1, cursor: isAdded ? "default" : "pointer",
+                            border: "1px solid " + (isAdded ? c.green : c.clay), background: isAdded ? c.green : "transparent", color: isAdded ? "#fff" : c.clay,
+                          }}
+                        >
+                          {isAdded ? "✓ added" : "＋ track"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            )}
+          </div>
+        );
+      })}
 
       {byProduct && (
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-          {amz.map((p) => {
-            const sugg = byProduct[p.id] || byProduct[String(p.id)] || [];
-            const isOpen = open[p.id];
-            return (
-              <div key={p.id} style={{ border: `1px solid ${c.line}`, borderRadius: 1, background: "#f4f1ea", overflow: "hidden" }}>
-                <button onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))} style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: serif, fontSize: 15, color: c.ink }}>{isOpen ? "▾" : "▸"}&nbsp; {p.name}</span>
-                  <span style={chip}>{sugg.length} keyword{sugg.length === 1 ? "" : "s"}</span>
-                </button>
-                {isOpen && (
-                  <div style={{ padding: "2px 12px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
-                    {sugg.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>No suggestions for this one.</div>}
-                    {sugg.map((kw, i) => {
-                      const id = p.id + "|" + kw.keyword;
-                      const lk = kw.keyword.toLowerCase();
-                      const rank = reportInfo[lk];
-                      const searched = rank != null || reportSet.has(lk);
-                      const series = weekKeys.map((w) => ({ w, rank: history[w] && history[w][lk] })).filter((sx) => sx.rank != null);
-                      const trend = series.length >= 2 ? series[series.length - 1].rank - series[series.length - 2].rank : null;
-                      const isAdded = added[id];
-                      return (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderTop: i ? "1px solid #00000008" : "none" }}>
-                          <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, flex: 1 }}>{kw.keyword}</span>
-                          {searched && <span style={{ fontFamily: mono, fontSize: 8, color: c.green, border: `1px solid ${c.green}`, borderRadius: 1, padding: "1px 4px" }} title="Amazon search-frequency rank — lower = more searched">★ {rank != null ? "RANK #" + Number(rank).toLocaleString() : "SEARCHED"}</span>}
-                          {searched && rank != null && periodLabel && <span style={{ fontFamily: mono, fontSize: 8, color: c.sub }} title="Report period">{periodLabel}</span>}
-                          {series.length >= 2 && <Spark series={series} />}
-                          {trend != null && <span style={{ fontFamily: mono, fontSize: 9, color: trend < 0 ? c.green : trend > 0 ? c.red : c.sub }} title="Rank change vs previous week (up = more searched)">{trend < 0 ? "▲" : trend > 0 ? "▼" : "–"} {Math.abs(trend).toLocaleString()}</span>}
-                          <span style={chip}>{kw.matchType}</span>
-                          <button onClick={() => adopt(p, kw)} disabled={isAdded} title="add to tracker" style={{ border: "none", background: "transparent", color: isAdded ? c.sub : c.clay, cursor: isAdded ? "default" : "pointer", fontSize: 17, lineHeight: 1, width: 22 }}>{isAdded ? "✓" : "＋"}</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, textAlign: "center", marginTop: 4 }}>
+          Trend = Amazon Brand Analytics search-frequency rank, monthly. Lower rank = more searched.
         </div>
       )}
     </div>
