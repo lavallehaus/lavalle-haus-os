@@ -1275,7 +1275,7 @@ phrase: "#a07848",
 broad: "#9b5e5e",
 };
 
-function KeywordsTab({ products, dbState, setDbState }) {
+function KeywordsTab({ products, setProducts, dbState, setDbState }) {
 const [keywords, setKeywords] = useState(() => (dbState && dbState.keywords && dbState.keywords.length ? dbState.keywords : INITIAL_KEYWORDS));
 const [filter, setFilter] = useState("all");
 const [adding, setAdding] = useState(false);
@@ -1284,6 +1284,16 @@ const [draft, setDraft] = useState({});
 const [aiProduct, setAiProduct] = useState("");
 const [aiResults, setAiResults] = useState([]);
 const [aiLoading, setAiLoading] = useState(false);
+const [newProd, setNewProd] = useState("");
+
+function addProduct(name) {
+  const nm = String(name || "").trim();
+  if (!nm) return;
+  const np = { id: Date.now(), name: nm, sku: "", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "planning", notes: "Added for keyword research" };
+  const updated = [...products, np];
+  setProducts(updated);
+  setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full); return full; });
+}
 
 const kwFirst = useRef(true);
 useEffect(() => {
@@ -1356,7 +1366,7 @@ const pauseCount = keywords.filter(k => k.status === "pause").length;
 return (
 <div>
 <SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
-<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: kw.product || productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} onAddProduct={(name) => { const np = { id: Date.now(), name, sku: "", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "planning", notes: "Added for keyword research" }; const updated = [...products, np]; setProducts(updated); setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full); return full; }); }} />
+<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: kw.product || productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} onAddProduct={addProduct} />
 
 {/* Summary */}
 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
@@ -1518,6 +1528,11 @@ style={{ width: "100%", background: "#e5e1da", border: "1px solid #4a3f2a", padd
 Select a product and click Generate — AI will suggest 12 high-intent keywords based on your product type and category. Click any keyword to add it to your tracker.
 </div>
 </Card>
+<div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+<input value={newProd} onChange={e => setNewProd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { addProduct(newProd); setNewProd(""); } }} placeholder="Add a new product (e.g. Lavender Body Oil)" style={{ flex: 1, minWidth: 200, background: "#fff", border: "1px solid #c8c2b8", padding: "8px 12px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }} />
+<button onClick={() => { addProduct(newProd); setNewProd(""); }} disabled={!newProd.trim()} style={{ background: newProd.trim() ? "#a07848" : "#d4cfc7", color: newProd.trim() ? "#fff" : "#a09488", border: "none", padding: "8px 20px", cursor: newProd.trim() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>+ Add product</button>
+</div>
+<div style={{ fontSize: 11, color: "#8c7d6b", marginBottom: 16, fontStyle: "italic" }}>Adds it to your catalog and the dropdown below — for body oil, lotion, or any new launch.</div>
 <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
 <select value={aiProduct} onChange={e => setAiProduct(e.target.value)}
 style={{ flex: 1, minWidth: 200, background: "#e5e1da", border: "1px solid #4a3f2a", padding: "8px 12px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }}>
@@ -1954,7 +1969,7 @@ return <AICoo products={products} campaigns={campaigns} weeks={weeks} materials=
 }
 if (tab === "ads") {
 if (activeSub === "ppc") return <AdsTab campaigns={campaigns} />;
-if (activeSub === "keywords") return <KeywordsTab products={products} dbState={dbState} setDbState={setDbState} />;
+if (activeSub === "keywords") return <KeywordsTab products={products} setProducts={setProducts} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "meta") return <MetaAds data={dbState.metaAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, metaAds: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "google") return <GoogleAds data={dbState.googleAds || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, googleAds: r }; dbSave(next); return next; }); }} />;
 if (activeSub === "b2b") return <Tracker title="B2B Ads" intro="Wholesale & retail campaigns — Faire, outreach, accounts." columns={[{ key: "channel", label: "Channel", type: "text" }, { key: "campaign", label: "Campaign", type: "text" }, { key: "spend", label: "Spend", type: "number" }, { key: "leads", label: "Leads", type: "number" }, { key: "accounts", label: "Accounts", type: "number" }, { key: "orders", label: "Orders", type: "number" }, { key: "revenue", label: "Revenue", type: "number" }]} data={dbState.b2bAds || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, b2bAds: r }; dbSave(next); return next; })} addLabel="+ Add campaign" />;
