@@ -137,11 +137,16 @@ export default function AmazonKeywords({ products = [], onTrack }) {
           "Tip: pull data for stronger suggestions, or just generate below."}
       </div>
 
-      <div style={{ marginBottom: 8 }}>
-        <button onClick={buildHistory} disabled={!!building} style={{ background: "none", border: "none", color: c.clay, cursor: building ? "default" : "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, padding: 0 }}>
-          {building ? building : (Object.keys(history).length >= 2 ? "↟ Extend trend history" : "↟ Build 4-week trend history (one-time, ~couple min)")}
-        </button>
-      </div>
+      {Object.keys(history).length < 2 ? (
+        <div style={{ background: "#f3ece2", border: `1px solid ${c.clay}`, borderRadius: 2, padding: "10px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontFamily: serif, fontSize: 12.5, color: c.ink, flex: "1 1 220px" }}>📈 Trend graphs appear once there are a few weeks of data. Build it once — takes ~2–3 minutes and pauses if Amazon rate-limits.</div>
+          <button onClick={buildHistory} disabled={!!building} style={{ ...toggle(false), borderColor: c.clay, color: "#fff", background: c.clay, opacity: building ? 0.6 : 1 }}>{building ? building : "Build trend history"}</button>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 8 }}>
+          <button onClick={buildHistory} disabled={!!building} style={{ background: "none", border: "none", color: c.clay, cursor: building ? "default" : "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, padding: 0 }}>{building ? building : "↟ Extend trend history"}</button>
+        </div>
+      )}
 
       <ProductSuggestions products={products} reportTerms={reportTerms} reportInfo={reportInfo} periodLabel={periodLabel} history={history} onTrack={onTrack} />
 
