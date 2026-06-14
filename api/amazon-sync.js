@@ -871,7 +871,7 @@ export default async function handler(req, res) {
         const token = await getAccessToken();
         const force = req.query.force === "1";
         const cached = await kvGet("amazon_restock");
-        const job = await kvGet("amazon_restock_job");
+        let job = await kvGet("amazon_restock_job");
 
         // Serve a fresh cache (< 12h) unless forced — restock reports are rate-limited.
         if (!force && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 12 * 3600000) {
@@ -879,16 +879,29 @@ export default async function handler(req, res) {
           return;
         }
 
-        // No in-flight job (or forced): create a fresh report and return its id.
+        // A report that sits in Amazon's queue can hang indefinitely. If the
+        // in-flight job is older than 8 minutes (or the caller forces), abandon
+        // it — cancel the dead report and start a fresh one — so we never keep
+        // polling a stuck report across reloads.
+        const JOB_STALE_MS = 8 * 60 * 1000;
+        const jobAge = job && job.startedAt ? Date.now() - new Date(job.startedAt).getTime() : Infinity;
+        const abandon = force || (job && job.reportId && jobAge > JOB_STALE_MS);
+        if (abandon && job && job.reportId) {
+          try { await spapiW(token, "/reports/2021-06-30/reports/" + encodeURIComponent(job.reportId), "DELETE"); } catch (_) {}
+          await kvSet("amazon_restock_job", null);
+          job = null;
+        }
+
+        // No in-flight job (or just abandoned): create a fresh report and return its id.
         let reportId = job && job.reportId;
-        if (force || !reportId) {
+        if (!reportId) {
           const created = await spapiW(token, "/reports/2021-06-30/reports", "POST", {
             reportType: "GET_RESTOCK_INVENTORY_RECOMMENDATIONS_REPORT",
             marketplaceIds: [MARKETPLACE],
           });
           if (!created.reportId) { res.status(200).json({ connected: true, error: "Amazon rejected the restock report request. The FBA Inventory role may not be granted to the app." }); return; }
           await kvSet("amazon_restock_job", { reportId: created.reportId, startedAt: new Date().toISOString() });
-          res.status(200).json({ connected: true, pending: true, reportId: created.reportId });
+          res.status(200).json({ connected: true, pending: true, reportId: created.reportId, fresh: abandon });
           return;
         }
 
