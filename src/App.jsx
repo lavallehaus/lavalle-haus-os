@@ -18,6 +18,7 @@ import Margins from "./Margins.jsx";
 import ActionsBoard from "./ActionsBoard.jsx";
 import Tracker from "./Tracker.jsx";
 import AmazonKeywords from "./AmazonKeywords.jsx";
+import ReorderList from "./ReorderList.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -1998,7 +1999,13 @@ const onListingCommit = (ev) => {
 };
 if (activeSub === "listings") return <Listings products={products} dbState={dbState} onCommit={onListingCommit} />;
 if (activeSub === "createlisting") return <VesselCreator onCommit={onListingCommit} />;
-if (activeSub === "reorder") return <ComingSoon title="Reorder List — Auto-generated" titleEs="Lista de reorden — automática" lines={["Pulls from FBA · Products · Packaging · Raw Materials", "Item · Current qty · Reorder point · Suggested order qty"]} />;
+if (activeSub === "reorder") return <ReorderList
+products={products} packaging={dbState.packagingItems || []} materials={materials}
+data={dbState.reorder || {}}
+onSave={(r) => setDbState((prev) => { const next = { ...prev, reorder: r }; dbSave(next); return next; })}
+onAddAction={(item) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: [item, ...(board.items || [])] } }; dbSave(next); return next; })}
+onRemoveAction={(id) => setDbState((prev) => { const board = prev.actionsBoard || { items: [], team: [] }; const next = { ...prev, actionsBoard: { ...board, items: (board.items || []).filter((x) => x.id !== id) } }; dbSave(next); return next; })}
+/>;
 }
 if (tab === "growth") {
 if (activeSub === "competitors") return <Tracker title="Competitor Intelligence" intro="Track rival launches, promos, pricing and packaging moves." columns={[{ key: "brand", label: "Brand", type: "text" }, { key: "update", label: "Update", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Launch", "Promo", "Pricing", "Packaging", "Other"] }, { key: "date", label: "Date", type: "text" }, { key: "link", label: "Link", type: "url" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.competitors || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, competitors: r }; dbSave(next); return next; })} addLabel="+ Add note" />;
