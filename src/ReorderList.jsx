@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 /* ============================================================================
    LAVALLE HAUS OS — REORDER LIST (Inventory → Reorder List)
@@ -73,7 +73,7 @@ export default function ReorderList({
   amazon = {}, shopify = {}, onAmazonSync, onShopifySync,
   restock = {}, onRestockSync,
 }) {
-  const DEF = { productionLeadDays: 21, amazonInboundDays: 14, targetWeeks: 8, safetyDays: 7, ...(data.defaults || {}) };
+  const DEF = { productionLeadDays: 21, amazonInboundDays: 14, targetWeeks: 8, safetyDays: 7, minSendIn: 12, ...(data.defaults || {}) };
 
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -81,6 +81,11 @@ export default function ReorderList({
   const [channel, setChannel] = useState("all");
   const [open, setOpen] = useState({});
   const [sent, setSent] = useState({});
+  // Live elapsed timer while the Seller Central report generates.
+  const [, setTick] = useState(0);
+  useEffect(() => { if (restock.status !== "pending") return; const t = setInterval(() => setTick((x) => x + 1), 1000); return () => clearInterval(t); }, [restock.status]);
+  const elapsedSec = restock.startedAt ? Math.floor((Date.now() - restock.startedAt) / 1000) : 0;
+  const elapsedTxt = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
 
   const commit = (next) => { setPast((p) => [...p.slice(-49), state]); setFuture([]); setState(next); if (onSave) onSave(next); };
   const undo = () => { if (!past.length) return; const prev = past[past.length - 1]; setPast((p) => p.slice(0, -1)); setFuture((f) => [state, ...f].slice(0, 50)); setState(prev); if (onSave) onSave(prev); };
@@ -171,7 +176,8 @@ export default function ReorderList({
           });
         } else {
           const pr = project(a.onHand, a.inbound, a.sold30, prodLead + num(d.amazonInboundDays), moq);
-          out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, ...pr });
+          if (pr.qty > 0) pr.qty = Math.max(pr.qty, num(d.minSendIn), moq); // never suggest a trivial FBA shipment
+          out.push({ id: "amz:" + p.id, pid: p.id, name: p.name, link, live: a.live, estimate: true, ...pr });
         }
       } else if (channel === "shopify") {
         const s = shopInputs(p); if (!s) return;
@@ -238,6 +244,16 @@ export default function ReorderList({
   };
   const LinkBtn = ({ href }) => href ? <a href={href} target="_blank" rel="noreferrer" style={{ ...S.ghost, textDecoration: "none", display: "inline-block" }}>↗ Buy</a> : null;
 
+  // Obvious freshness stamp — green if recent, amber/red as it ages.
+  const Fresh = ({ at, pending }) => {
+    if (pending) return <span style={{ color: c.clay }}>updating…</span>;
+    if (!at) return <span style={{ color: c.red }}>never synced</span>;
+    const ms = Date.now() - new Date(at).getTime();
+    const color = ms < 24 * 3600000 ? c.green : ms < 72 * 3600000 ? c.amber : c.red;
+    const txt = ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))}m ago` : ms < 86400000 ? `${Math.round(ms / 3600000)}h ago` : `${Math.round(ms / 86400000)}d ago`;
+    return <span style={{ color }}>updated {txt}</span>;
+  };
+
   const activeMeta = CHANNELS.find((x) => x.id === channel);
   const syncStamp = channel === "amazon" ? fmtTime(amazon && amazon.syncedAt) : channel === "shopify" ? fmtTime(shopify && shopify.syncedAt) : null;
   const syncFn = channel === "amazon" ? onAmazonSync : channel === "shopify" ? onShopifySync : null;
@@ -274,16 +290,24 @@ export default function ReorderList({
             <span style={{ color: c.red }}>{summary.now} reorder now</span> · <span style={{ color: c.amber }}>{summary.soon} soon</span> · <span style={{ color: c.slate }}>{summary.overstock} overstock</span> · <span style={{ color: c.green }}>{summary.healthy} healthy</span>
           </div>
           <div style={{ fontSize: 12, color: c.sub, marginTop: 3 }}>Soonest stockout: {summary.soonest ? fmtDate(summary.soonest) : "none projected"}{channel === "all" ? " · master plan = total demand vs total network stock" : ""}</div>
+          <div style={{ fontSize: 11.5, marginTop: 4, fontFamily: mono, letterSpacing: 0.3 }}>
+            {channel === "amazon" && <span style={{ color: c.sub }}>FBA counts <Fresh at={amazon && amazon.syncedAt} pending={amazon && amazon.syncing} /> · Seller Central <Fresh at={restock && restock.syncedAt} pending={restock.status === "pending"} /></span>}
+            {channel === "shopify" && <span style={{ color: c.sub }}>Shopify <Fresh at={shopify && shopify.syncedAt} pending={shopify && shopify.syncing} /></span>}
+            {channel === "all" && <span style={{ color: c.sub }}>FBA <Fresh at={amazon && amazon.syncedAt} pending={amazon && amazon.syncing} /> · Shopify <Fresh at={shopify && shopify.syncedAt} pending={shopify && shopify.syncing} /> · SC restock <Fresh at={restock && restock.syncedAt} pending={restock.status === "pending"} /></span>}
+            {channel === "b2b" && <span style={{ color: c.sub }}>manually entered — no live feed</span>}
+          </div>
         </div>
         {channel === "b2b" ? <div style={{ ...faintEs, maxWidth: 260 }}>B2B has no live feed — enter monthly velocity per SKU in ⚙. Shares Shopify's self-fulfilled stock.</div>
           : channel === "amazon" ? (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
-              {onAmazonSync && <button onClick={onAmazonSync} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ FBA counts"}{syncStamp ? ` · ${syncStamp}` : ""}</button>}
-              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready" || restock.status === "error")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.6 : 1 }}>{restock.status === "pending" ? "pulling… (~1 min)" : restock.status === "ready" ? `↻ SC restock · ${fmtTime(restock.syncedAt) || "synced"}` : "⤓ Pull SC restock"}</button>}
+              {onAmazonSync && <button onClick={onAmazonSync} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing… (~15s)" : "⟳ FBA counts"}{syncStamp ? ` · ${syncStamp}` : ""}</button>}
+              {onRestockSync && <button onClick={() => onRestockSync(restock.status === "ready")} disabled={restock.status === "pending"} style={{ ...S.btn, opacity: restock.status === "pending" ? 0.7 : 1 }}>{restock.status === "pending" ? `updating… ${elapsedTxt}` : restock.status === "timeout" ? "↻ keep waiting" : restock.status === "ready" ? "↻ Refresh SC" : (restock.syncedAt ? "↻ Refresh SC" : "⤓ Pull SC now")}</button>}
             </div>
           )
           : syncFn ? <button onClick={syncFn} disabled={syncing} style={{ ...S.ghost, opacity: syncing ? 0.5 : 1 }}>{syncing ? "syncing…" : "⟳ resync"}{syncStamp ? ` · ${syncStamp}` : ""}</button> : null}
       </div>
+      {channel === "amazon" && restock.status === "pending" && <div style={{ fontSize: 11.5, color: c.sub, marginTop: -4, marginBottom: 10 }}>Asking Amazon to generate the restock report — usually 1–3 minutes. Elapsed {elapsedTxt}. You can keep working; it fills in when ready.</div>}
+      {channel === "amazon" && restock.status === "timeout" && <div style={{ fontSize: 11.5, color: c.amber, marginTop: -4, marginBottom: 10 }}>Amazon is still generating the report (these can take a few minutes). Click "↻ keep waiting" to resume — it picks up the same report, not a new one.</div>}
       {channel === "amazon" && restock.status === "error" && <div style={{ fontSize: 11.5, color: c.red, marginTop: -4, marginBottom: 10 }}>Seller Central restock: {restock.error}</div>}
 
       {/* Defaults */}
@@ -293,7 +317,8 @@ export default function ReorderList({
         <label style={{ fontSize: 12 }}>Amazon receive + distribute (days) <input style={S.input} type="number" value={d.amazonInboundDays} onChange={(e) => setDefault("amazonInboundDays", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Target cover (weeks) <input style={S.input} type="number" value={d.targetWeeks} onChange={(e) => setDefault("targetWeeks", e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Safety (days) <input style={S.input} type="number" value={d.safetyDays} onChange={(e) => setDefault("safetyDays", e.target.value)} /></label>
-        <div style={{ ...faintEs, flexBasis: "100%" }}>Amazon SKUs lead = production + ship-to-FBA + Amazon's receive/distribute time (shipments often route through multiple FCs — allow ~2 weeks). · El lead de Amazon suma producción + envío a FBA + recepción/distribución de Amazon (~2 semanas).</div>
+        <label style={{ fontSize: 12 }}>Min FBA send-in (units) <input style={S.input} type="number" value={d.minSendIn} onChange={(e) => setDefault("minSendIn", e.target.value)} /></label>
+        <div style={{ ...faintEs, flexBasis: "100%" }}>Amazon SKUs lead = production + ship-to-FBA + Amazon's receive/distribute time (shipments often route through multiple FCs — allow ~2 weeks). Estimated send-in never drops below the min above; Amazon's own pull ignores it. · El lead de Amazon suma producción + envío + recepción/distribución (~2 semanas). La estimación nunca baja del mínimo.</div>
       </div>
 
       {/* Rows */}
