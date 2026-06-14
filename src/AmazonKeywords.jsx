@@ -41,6 +41,8 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [showRaw, setShowRaw] = useState(false);
+  const [history, setHistory] = useState({});
+  const [building, setBuilding] = useState("");
   const pollRef = useRef(null);
   const attemptsRef = useRef(0);
 
@@ -70,10 +72,32 @@ export default function AmazonKeywords({ products = [], onTrack }) {
         pollRef.current = setTimeout(() => pull({ reportId: r.reportId }), 12000);
         return;
       }
+      if (r && r.history) setHistory(r.history);
       if (r && r.rows) setByKind((prev) => ({ ...prev, [r.kind || kind]: r }));
       attemptsRef.current = 0;
       setPending(false); setLoading(false);
     } catch (e) { setError(String(e).slice(0, 200)); setPending(false); setLoading(false); }
+  }
+
+  async function buildHistory() {
+    if (building) return;
+    for (let off = 1; off <= 3; off++) {
+      setBuilding(`Building history… week -${off}`);
+      let done = false, tries = 0, reportId = null;
+      while (!done && tries < 10) {
+        try {
+          const r = await fetch("/api/amazon-sync?op=keywords", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind: "searchterms", period, weekOffset: off, historyOnly: true, filter: FILTER, reportId }),
+          }).then((x) => x.json());
+          if (r && r.history) setHistory(r.history);
+          if (r && r.pending) { reportId = r.reportId; await new Promise((z) => setTimeout(z, 11000)); tries += 1; continue; }
+          if (r && r.quota) { setBuilding(`Rate-limited, waiting… week -${off}`); await new Promise((z) => setTimeout(z, 60000)); tries += 1; continue; }
+          done = true;
+        } catch (e) { done = true; }
+      }
+    }
+    setBuilding("");
   }
 
   const rows = (data && data.rows) || [];
@@ -113,7 +137,13 @@ export default function AmazonKeywords({ products = [], onTrack }) {
           "Tip: pull data for stronger suggestions, or just generate below."}
       </div>
 
-      <ProductSuggestions products={products} reportTerms={reportTerms} reportInfo={reportInfo} periodLabel={periodLabel} onTrack={onTrack} />
+      <div style={{ marginBottom: 8 }}>
+        <button onClick={buildHistory} disabled={!!building} style={{ background: "none", border: "none", color: c.clay, cursor: building ? "default" : "pointer", fontFamily: mono, fontSize: 10, letterSpacing: 1, padding: 0 }}>
+          {building ? building : (Object.keys(history).length >= 2 ? "↟ Extend trend history" : "↟ Build 4-week trend history (one-time, ~couple min)")}
+        </button>
+      </div>
+
+      <ProductSuggestions products={products} reportTerms={reportTerms} reportInfo={reportInfo} periodLabel={periodLabel} history={history} onTrack={onTrack} />
 
       {/* raw report, collapsed */}
       <div style={{ marginTop: 14, borderTop: `1px solid ${c.line}`, paddingTop: 10 }}>
@@ -149,7 +179,22 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   );
 }
 
-function ProductSuggestions({ products = [], reportTerms = [], reportInfo = {}, periodLabel = "", onTrack }) {
+function Spark({ series }) {
+  if (!series || series.length < 2) return null;
+  const ranks = series.map((s) => s.rank);
+  const min = Math.min(...ranks), max = Math.max(...ranks);
+  const w = 46, h = 14, n = series.length;
+  const x = (i) => (n === 1 ? w / 2 : (i / (n - 1)) * w);
+  const y = (r) => (max === min ? h / 2 : h - ((max - r) / (max - min)) * (h - 3) - 1.5);
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.rank).toFixed(1)}`).join(" ");
+  const up = series[n - 1].rank < series[n - 2].rank;
+  const flat = series[n - 1].rank === series[n - 2].rank;
+  const col = flat ? "#8c7d6b" : up ? "#5a7a5a" : "#9b5e5e";
+  return <svg width={w} height={h} style={{ display: "inline-block", verticalAlign: "middle" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="1.3" /></svg>;
+}
+
+function ProductSuggestions({ products = [], reportTerms = [], reportInfo = {}, periodLabel = "", history = {}, onTrack }) {
+  const weekKeys = Object.keys(history).sort();
   const amz = products.filter((p) => !p.isSample && (p.asin || (p.channels || []).includes("Amazon"))).map((p) => ({ id: p.id, name: p.name }));
   const [loading, setLoading] = useState(false);
   const [byProduct, setByProduct] = useState(null);
@@ -225,12 +270,16 @@ function ProductSuggestions({ products = [], reportTerms = [], reportInfo = {}, 
                       const lk = kw.keyword.toLowerCase();
                       const rank = reportInfo[lk];
                       const searched = rank != null || reportSet.has(lk);
+                      const series = weekKeys.map((w) => ({ w, rank: history[w] && history[w][lk] })).filter((sx) => sx.rank != null);
+                      const trend = series.length >= 2 ? series[series.length - 1].rank - series[series.length - 2].rank : null;
                       const isAdded = added[id];
                       return (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderTop: i ? "1px solid #00000008" : "none" }}>
                           <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, flex: 1 }}>{kw.keyword}</span>
                           {searched && <span style={{ fontFamily: mono, fontSize: 8, color: c.green, border: `1px solid ${c.green}`, borderRadius: 1, padding: "1px 4px" }} title="Amazon search-frequency rank — lower = more searched">★ {rank != null ? "RANK #" + Number(rank).toLocaleString() : "SEARCHED"}</span>}
                           {searched && rank != null && periodLabel && <span style={{ fontFamily: mono, fontSize: 8, color: c.sub }} title="Report period">{periodLabel}</span>}
+                          {series.length >= 2 && <Spark series={series} />}
+                          {trend != null && <span style={{ fontFamily: mono, fontSize: 9, color: trend < 0 ? c.green : trend > 0 ? c.red : c.sub }} title="Rank change vs previous week (up = more searched)">{trend < 0 ? "▲" : trend > 0 ? "▼" : "–"} {Math.abs(trend).toLocaleString()}</span>}
                           <span style={chip}>{kw.matchType}</span>
                           <button onClick={() => adopt(p, kw)} disabled={isAdded} title="add to tracker" style={{ border: "none", background: "transparent", color: isAdded ? c.sub : c.clay, cursor: isAdded ? "default" : "pointer", fontSize: 17, lineHeight: 1, width: 22 }}>{isAdded ? "✓" : "＋"}</button>
                         </div>
