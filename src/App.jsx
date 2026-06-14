@@ -1356,7 +1356,7 @@ const pauseCount = keywords.filter(k => k.status === "pause").length;
 return (
 <div>
 <SectionTitle>Keyword Tracker · Amazon PPC</SectionTitle>
-<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: kw.product || productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} />
+<AmazonKeywords products={products} onTrack={(kw) => setKeywords(prev => [{ id: Date.now() + Math.floor(Math.random() * 999), product: kw.product || productNames[0] || "", keyword: kw.keyword, matchType: kw.matchType || "exact", spend: 0, clicks: 0, orders: 0, acos: null, status: "test", notes: kw.notes || "" }, ...prev])} onAddProduct={(name) => { const np = { id: Date.now(), name, sku: "", asin: "", available: 0, inbound: 0, unitsSold30: 0, price: 0, channels: ["Amazon"], status: "planning", notes: "Added for keyword research" }; const updated = [...products, np]; setProducts(updated); setDbState((prev) => { const full = { ...prev, products: updated }; dbSave(full); return full; }); }} />
 
 {/* Summary */}
 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
