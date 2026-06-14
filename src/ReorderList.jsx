@@ -48,6 +48,7 @@ const S = {
 };
 
 const STATUS = {
+  out: { label: "OUT OF STOCK", color: c.red, rank: 0 },
   now: { label: "REORDER NOW", color: c.red, rank: 0 },
   soon: { label: "REORDER SOON", color: c.amber, rank: 1 },
   overstock: { label: "OVERSTOCK · DELAY", color: c.slate, rank: 3 },
@@ -243,7 +244,7 @@ export default function ReorderList({
       }
     });
     return out.sort((a, b) => {
-      const ra = STATUS[a.status].rank, rb = STATUS[b.status].rank;
+      const ra = (STATUS[a.status] || STATUS.healthy).rank, rb = (STATUS[b.status] || STATUS.healthy).rank;
       if (ra !== rb) return ra - rb;
       const ta = a.reorderBy ? a.reorderBy.getTime() : Infinity, tb = b.reorderBy ? b.reorderBy.getTime() : Infinity;
       return ta - tb;
@@ -254,7 +255,7 @@ export default function ReorderList({
     const live = rows.filter((r) => r.status !== "dormant");
     const k = { now: 0, soon: 0, overstock: 0, healthy: 0 };
     let soonest = null;
-    live.forEach((r) => { if (k[r.status] != null) k[r.status] += 1; if (r.stockout && (!soonest || r.stockout < soonest)) soonest = r.stockout; });
+    live.forEach((r) => { const key = r.status === "out" ? "now" : r.status; if (k[key] != null) k[key] += 1; if (r.stockout && (!soonest || r.stockout < soonest)) soonest = r.stockout; });
     return { ...k, soonest, total: live.length };
   }, [rows]);
 
@@ -365,7 +366,7 @@ export default function ReorderList({
           : <div style={{ ...S.panel, fontFamily: mono, fontSize: 12, color: c.green }}>Nothing to reorder on this channel. · Nada que reordenar en este canal.</div>
       )}
       {rows.filter((r) => r.status !== "dormant").map((r) => {
-        const st = STATUS[r.status];
+        const st = STATUS[r.status] || STATUS.healthy;
         const item = {
           title: channel === "amazon" ? `Send ${r.qty} units to FBA — ${r.name}` : channel === "all" ? `Produce / buy ${r.qty} units — ${r.name}` : `Reorder ${r.qty} units — ${r.name} (${activeMeta.label})`,
           detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.${r.native ? ` Amazon recommends sending in ${r.recQty} units${r.shipBy ? ", ship to FBA by " + fmtDate(r.shipBy) : ""}${r.startProdBy ? ", start production by " + fmtDate(r.startProdBy) : ""}${r.alert ? " (" + r.alert + ")" : ""}.` : ""}`,
