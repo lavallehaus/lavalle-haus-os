@@ -532,7 +532,7 @@ return (
 style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: "1px solid #4a3f2a", borderRadius: 1, padding: "5px 8px", color: "#1a1714", fontSize: 13, fontFamily: "'IM Fell English', Georgia, serif" }} />
 </div>
 <div style={{ display: "flex", gap: 8 }}>
-{[["available", "On Hand"], ["inbound", "Inbound"], ["unitsSold30", "Sold/30d"], ["minStock", "Min Stock"]].map(([f, l]) => (
+{[["available", "On Hand"], ["inbound", "Inbound to FBA"], ["unitsSold30", "Sold last 30d"], ["minStock", "Reorder at"]].map(([f, l]) => (
 <div key={f}>
 <div style={{ fontSize: 9, color: "#a09488", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
@@ -568,7 +568,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#e5e1da", border: 
 </div>
 </div>
 ) : (
-<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[...(amazonInfo(p, amazon) ? [["FBA", amazonInfo(p, amazon).fba], ["Inbound", amazonInfo(p, amazon).inbound]] : [["On Hand", p.available], ["Inbound", p.inbound]]), ["Sold/30d", effectiveSold(p, shopify, amazon)], ["Min", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
+<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[...(amazonInfo(p, amazon) ? [["In FBA", amazonInfo(p, amazon).fba], ["Inbound to FBA", amazonInfo(p, amazon).inbound]] : [["On Hand", p.available], ["Inbound to FBA", p.inbound]]), ["Sold 30d", effectiveSold(p, shopify, amazon)], ["Reorder at", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1714", fontFamily: "monospace" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
