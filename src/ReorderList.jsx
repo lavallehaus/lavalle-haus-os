@@ -326,7 +326,7 @@ export default function ReorderList({
       {rows.filter((r) => r.status !== "dormant").map((r) => {
         const st = STATUS[r.status];
         const item = {
-          title: `Reorder ${r.qty} units — ${r.name}${channel === "all" ? "" : " (" + activeMeta.label + ")"}`,
+          title: channel === "amazon" ? `Send ${r.qty} units to FBA — ${r.name}` : channel === "all" ? `Produce / buy ${r.qty} units — ${r.name}` : `Reorder ${r.qty} units — ${r.name} (${activeMeta.label})`,
           detail: `On hand ${r.onHand}${r.inbound ? " +" + r.inbound + " inbound" : ""}, selling ${(r.perDay * 30).toFixed(0)}/mo (~${r.coverWeeks === Infinity ? "∞" : r.coverWeeks}w). ${r.status === "now" ? "Order now" : "Order by " + fmtDate(r.reorderBy)}.${r.native ? ` Amazon recommends sending in ${r.recQty} units${r.shipBy ? ", ship to FBA by " + fmtDate(r.shipBy) : ""}${r.startProdBy ? ", start production by " + fmtDate(r.startProdBy) : ""}${r.alert ? " (" + r.alert + ")" : ""}.` : ""}`,
           name: r.name, severity: r.status === "now" ? "high" : "med",
         };
@@ -348,7 +348,7 @@ export default function ReorderList({
                 <div><div style={S.cap}>Cover</div><div style={{ fontSize: 14 }}>{r.coverWeeks === Infinity ? "∞" : r.coverWeeks + "w"}</div></div>
                 <div><div style={S.cap}>Stockout</div><div style={{ fontSize: 14 }}>{fmtDate(r.stockout)}</div></div>
                 <div><div style={S.cap}>Order by</div><div style={{ fontSize: 14, color: r.status === "now" ? c.red : c.ink }}>{r.status === "now" ? "now" : fmtDate(r.reorderBy)}</div></div>
-                <div><div style={S.cap}>{channel === "all" ? "Make/buy" : r.native ? "Amazon send-in" : "Order qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
+                <div><div style={S.cap}>{channel === "all" ? "Make / buy" : channel === "amazon" ? "Send to FBA" : "Reorder qty"}</div><div style={{ fontSize: 16, color: c.clay }}>{r.qty > 0 ? r.qty : "—"}</div></div>
               </div>
             </div>
             {r.native && (
