@@ -72,8 +72,24 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   const [err, setErr] = useState("");
   const [open, setOpen] = useState({});
   const [added, setAdded] = useState({});
+  const [prog, setProg] = useState(null); // { stage, done, total, monthStart, avgMs, etaMs, etaSetAt }
+  const [nowTs, setNowTs] = useState(Date.now());
 
   const months = useMemo(() => Object.keys(monthHistory).sort(), [monthHistory]);
+
+  // 1s ticker so the progress bar + ETA count down smoothly between month updates.
+  useEffect(() => {
+    if (!prog) return;
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [prog]);
+
+  const fmtDur = (ms) => {
+    if (ms == null) return "—";
+    const s = Math.max(0, Math.round(ms / 1000));
+    const m = Math.floor(s / 60);
+    return (m > 0 ? m + "m " : "") + String(s % 60).padStart(m > 0 ? 2 : 1, "0") + "s";
+  };
 
   // On mount: load whatever monthly history is already cached (no quota spent).
   useEffect(() => {
@@ -101,7 +117,7 @@ export default function AmazonKeywords({ products = [], onTrack }) {
       } catch (e) { return { error: String(e).slice(0, 160) }; }
       if (r && r.monthHistory) setMonthHistory(r.monthHistory);
       if (r && r.pending) { reportId = r.reportId; await wait(11000); tries++; continue; }
-      if (r && r.quota) { setBusy("Amazon rate-limit — pausing a minute…"); await wait(60000); tries++; continue; }
+      if (r && r.quota) { setProg((p) => (p ? { ...p, stage: "Amazon rate-limit — pausing 60s", etaMs: (p.etaMs || 0) + 60000, etaSetAt: Date.now() } : p)); await wait(60000); tries++; continue; }
       return r || {};
     }
     return { error: "Timed out preparing a monthly report." };
@@ -137,24 +153,39 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   async function buildAndSuggest() {
     if (busy) return;
     if (!amz.length) { setErr("No Amazon products found in your catalog yet."); return; }
-    setErr(""); setBusy("Pulling this month’s search terms…");
+    setErr(""); setBusy("building");
+
+    const total = 12;                 // this month + 11 prior
+    const durations = [];
+    let completed = 0;
+    const avg = () => (durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 165000);
+    const show = (stage, monthStart) =>
+      setProg({ stage, done: completed, total, monthStart, avgMs: avg(), etaMs: Math.round(avg() * (total - completed)), etaSetAt: Date.now() });
+
+    // Month 0 (current) — also returns the candidate terms.
+    let s0 = Date.now();
+    setProg({ stage: "This month’s search terms", done: 0, total, monthStart: s0, avgMs: 165000, etaMs: 165000 * total, etaSetAt: Date.now() });
     const m0 = await reportCall({ weekOffset: 0, refresh: true });
-    if (m0.error) { setBusy(""); setErr(m0.error); return; }
+    if (m0.error) { setProg(null); setBusy(""); setErr(m0.error); return; }
+    durations.push(Date.now() - s0); completed = 1;
     const candidates = (m0.rows || []).map((r) => r.term).filter(Boolean);
-    if (!candidates.length) { setBusy(""); setErr("No relevant search terms returned for this month yet."); return; }
+    if (!candidates.length) { setProg(null); setBusy(""); setErr("No relevant search terms returned for this month yet."); return; }
 
     // Backfill the prior 11 months (resumable — already-cached months return instantly).
+    let stopped = false;
     for (let o = 1; o <= 11; o++) {
-      setBusy("Building 12-month history… month −" + o + " of 11");
+      let so = Date.now();
+      show("Month −" + o + " of 11", so);
       const rr = await reportCall({ weekOffset: o, historyOnly: true });
-      if (rr.error) break;
+      durations.push(Date.now() - so); completed += 1;
+      if (rr.error) { stopped = true; setErr("Paused at month −" + o + " — press Build to resume where it left off."); break; }
     }
 
-    setBusy("Assigning trending terms to your products…");
+    setProg({ stage: "Sorting terms under each product", done: total, total, monthStart: Date.now(), avgMs: avg(), etaMs: 0, etaSetAt: Date.now() });
     const assign = await aiAssign(candidates);
     setByProduct(assign || {});
     const o2 = {}; amz.forEach((p) => { o2[p.id] = true; }); setOpen(o2);
-    setBusy("");
+    setProg(null); setBusy("");
   }
 
   function seriesFor(term) {
@@ -175,6 +206,12 @@ export default function AmazonKeywords({ products = [], onTrack }) {
   });
 
   const built = months.length;
+
+  // Live progress derivations (recompute each ticker tick via nowTs).
+  const partial = prog && prog.avgMs ? Math.min(0.97, (nowTs - prog.monthStart) / prog.avgMs) : 0;
+  const frac = prog ? Math.min(1, (prog.done + partial) / prog.total) : 0;
+  const remainMs = prog && prog.etaMs != null ? Math.max(0, prog.etaMs - (nowTs - prog.etaSetAt)) : null;
+  const monthNo = prog ? Math.min(prog.done + 1, prog.total) : 0;
 
   return (
     <div>
@@ -197,15 +234,30 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             </div>
           </div>
         </div>
-        {!byProduct && !busy && (
+        {!byProduct && !prog && (
           <div style={{ fontSize: 11, color: c.sub, marginTop: 12, borderTop: "1px solid " + c.line, paddingTop: 10 }}>
             First build pulls ~12 monthly reports from Amazon and is paced for their rate limit, so it can take a
             few minutes. It’s one-time — months are cached permanently and the build resumes where it left off.
           </div>
         )}
-        {busy && (
-          <div style={{ fontSize: 12, color: c.clay, marginTop: 12, fontFamily: mono, borderTop: "1px solid " + c.line, paddingTop: 10 }}>
-            ◷ {busy}
+        {prog && (
+          <div style={{ marginTop: 14, borderTop: "1px solid " + c.line, paddingTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+              <span style={{ fontSize: 12, color: c.clay, fontFamily: mono }}>◷ {prog.stage}</span>
+              <span style={{ fontSize: 11, color: c.sub, fontFamily: mono }}>
+                {prog.done >= prog.total ? "finalizing" : "month " + monthNo + " of " + prog.total}
+              </span>
+            </div>
+            <div style={{ height: 9, background: "#e2ddd3", borderRadius: 5, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: (frac * 100).toFixed(1) + "%", background: c.clay, borderRadius: 5, transition: "width 0.6s ease" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 7 }}>
+              <span>{Math.round(frac * 100)}% complete</span>
+              <span>{remainMs != null ? "~" + fmtDur(remainMs) + " left" : "estimating…"}</span>
+            </div>
+            <div style={{ fontSize: 10, color: c.sub, marginTop: 6 }}>
+              You can leave this running. If it stops, press Build again — it resumes where it left off.
+            </div>
           </div>
         )}
         {err && (
