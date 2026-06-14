@@ -13,7 +13,7 @@ const c = {
 const serif = "'IM Fell English', Georgia, serif";
 const mono = "monospace";
 
-const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "salt scrub", "exfoliat", "body polish", "bath salt", "bath soak", "bath salts", "epsom salt", "epsom", "soaking salt", "mineral bath", "muscle soak", "foot soak", "dead sea salt", "himalayan salt", "magnesium flakes", "bath bomb", "lavender bath", "sea salt soak", "detox bath", "body oil", "body butter", "body lotion", "shea butter", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift"];
+const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "harvest", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "salt scrub", "exfoliat", "body polish", "bath salt", "bath soak", "bath salts", "epsom salt", "epsom", "soaking salt", "mineral bath", "muscle soak", "foot soak", "dead sea salt", "himalayan salt", "magnesium flakes", "bath bomb", "lavender bath", "sea salt soak", "detox bath", "body oil", "body butter", "body lotion", "shea butter", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift", "vase", "vessel", "home decor", "coastal decor", "beach decor", "nautical decor", "ocean decor", "centerpiece", "table centerpiece", "farmhouse decor", "rustic decor", "boho decor", "decorative bowl", "shelf decor", "mantel decor", "coastal", "nautical"];
 const STOP = ["candle", "large", "small", "with", "sand", "vanilla", "apple", "the", "and", "set", "pack", "oz"];
 function buildFilter(products) {
   const toks = new Set(SEED);
@@ -29,9 +29,35 @@ const monthLabel = (ym) => {
   const [y, m] = ym.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 };
+// Search-frequency rank → PPC competition tier. Lower rank = more searched = pricier & crowded.
+function tierOf(rank) {
+  if (rank == null) return null;
+  if (rank <= 2000) return { label: "broad · competitive", color: c.red };
+  if (rank <= 50000) return { label: "moderate", color: c.sub };
+  return { label: "long-tail · lower cost", color: c.green };
+}
+
+// Per-product "angles" — the different ways a shopper might search for THIS item
+// beyond its base category (a seashell candle is also a vase / coastal decor / vessel).
+function anglesFor(name) {
+  const n = String(name || "").toLowerCase();
+  const a = [];
+  if (/seashell|shell/.test(n)) a.push("seashell", "shell", "coastal", "beach", "nautical", "ocean", "vessel", "vase", "home decor", "coastal decor", "beach decor", "centerpiece");
+  if (/dough\s*bowl/.test(n)) a.push("dough bowl", "farmhouse", "rustic", "centerpiece", "table decor", "vessel", "decorative bowl", "home decor");
+  if (/vessel/.test(n)) a.push("vessel", "vase", "home decor", "decorative", "centerpiece");
+  if (/sand/.test(n)) a.push("sand candle", "beach", "coastal", "sand wax");
+  if (/apple|spiced/.test(n)) a.push("apple", "spiced apple", "fall", "autumn", "harvest", "cinnamon", "pumpkin");
+  if (/dough|bowl|vessel|seashell|shell/.test(n)) a.push("decor");
+  return a;
+}
+function angleRegex(name) {
+  const a = anglesFor(name);
+  if (!a.length) return null;
+  return new RegExp(a.map((w) => w.replace(/\s+/g, "\\s*")).join("|"));
+}
 
 // Category-aware relevance: a term must POSITIVELY match the product's category
-// and not hit a known false-friend (e.g. "bath mat" for bath salts).
+// OR one of its angles, and not hit a known false-friend (e.g. "bath mat").
 function categoryOf(name) {
   const n = String(name || "").toLowerCase();
   if (/scrub|exfoliat|polish/.test(n)) return "scrub";
@@ -57,7 +83,8 @@ const NEG = {
 function relevantTerms(name, terms) {
   const cat = categoryOf(name);
   const pos = POS[cat] || POS.other, neg = NEG[cat] || NEG.other;
-  return terms.filter((t) => { const tl = String(t).toLowerCase(); return pos.test(tl) && !neg.test(tl); });
+  const ang = angleRegex(name);
+  return terms.filter((t) => { const tl = String(t).toLowerCase(); return (pos.test(tl) || (ang && ang.test(tl))) && !neg.test(tl); });
 }
 
 // Sparkline of frequency RANK across months. Rank is inverted (lower = better),
@@ -168,9 +195,12 @@ export default function AmazonKeywords({ products = [], onTrack }) {
             "You are doing Amazon keyword research for a candle & body-care seller. " +
             "Input: a catalog ('id: name; id: name') and a list of REAL Amazon search terms. " +
             "For EACH product, return the real search terms CLOSEST and most relevant to it — copied VERBATIM from the list. " +
+            "Give a VARIED mix per product across its different buyer angles — do NOT assign the same generic words to every product. " +
+            "A decorative vessel candle (e.g. seashell or dough bowl) should ALSO get decor angles like 'vase','home decor','coastal decor','centerpiece', not only 'candle'. " +
+            "Include BOTH broad head terms AND specific long-tail phrases when present. " +
             "EVERY product must get at least 2–6 real terms. If nothing fits perfectly, assign the closest BROADER real terms instead of leaving it empty " +
-            "(e.g. a candle product → 'candles','scented candle','soy candle','home fragrance'; a scrub → 'body scrub','sugar scrub','exfoliating scrub'; bath salts → 'bath salts','bath soak','epsom salt'). " +
-            "NEVER assign accessories or different product types: e.g. 'bath mat','bath towel','candle holder','warmer' are WRONG for bath salts / candles — exclude them. " +
+            "(e.g. a candle product → 'soy candle','scented candle','home fragrance'; a scrub → 'body scrub','sugar scrub','exfoliating scrub'; bath salts → 'bath salts','bath soak','epsom salt'). " +
+            "NEVER assign accessories or different product types: e.g. 'bath mat','bath towel','candle holder','warmer' are WRONG — exclude them. " +
             "A broad term may be given to several products when equally relevant. Use ONLY terms from the provided list — never invent terms. " +
             "Return ONLY compact JSON keyed by product id, each value an array of terms. No prose, no markdown. " +
             'Example: {"4":["spiced apple candle","apple cinnamon candle","candles"],"1":["seashell candle","coastal candle","home fragrance"]}',
@@ -196,11 +226,13 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const isScrub = /scrub/.test(n);
     const isBath = /bath|salt/.test(n);
     const isCandle = /candle|wax|vessel|sand|seashell|apple|dough|botanical/.test(n);
+    const ang = angleRegex(name);
     const scored = candidates.map((t) => {
       const tl = t.toLowerCase();
       const ttok = tl.split(/[^a-z]+/).filter(Boolean);
       let s = 0;
       ttok.forEach((w) => { if (ntok.has(w)) s += 3; });
+      if (ang && ang.test(tl)) s += 3;                 // matches one of this product's angles
       if (isScrub && /scrub|exfoliat|polish|body/.test(tl)) s += 2;
       if (isBath && /bath|salt|soak|spa/.test(tl)) s += 2;
       if (isCandle && /candle|wax|fragrance|aromatherapy|melt|vessel/.test(tl)) s += 2;
@@ -221,10 +253,12 @@ export default function AmazonKeywords({ products = [], onTrack }) {
           max_tokens: 1400,
           system:
             "You suggest high-intent Amazon buyer search keywords for candle & body-care products. " +
-            "For EACH product id given, return 5–7 realistic lowercase search phrases a shopper would actually type to find that product on Amazon — the real CATEGORY terms. " +
+            "For EACH product id given, return 6–8 realistic lowercase search phrases a shopper would actually type — the real CATEGORY terms. " +
+            "Return a MIX of breadth: 2–3 broad head terms AND 4–5 specific long-tail phrases (long-tail convert cheaper and are less crowded in ads). " +
+            "Span the product's DIFFERENT buyer angles, not one repeated theme — a decorative vessel candle is also a vase / coastal or beach decor / centerpiece / nautical piece. " +
             "Do NOT echo the literal product name and NEVER include descriptor words like 'unscented'. " +
+            "Example — 'SeaShell Vessel Candle' → ['seashell candle','coastal decor','beach home decor','nautical candle','vase candle','coastal centerpiece','ocean themed decor']. " +
             "Example — 'Bath Salts Unscented' → ['bath salts','epsom salt','epsom bath soak','muscle soak','mineral bath salt','soaking salts','bath soak']. " +
-            "Example — 'Sugar Scrub' → ['sugar scrub','body scrub','exfoliating scrub','sugar body scrub']. " +
             "No brand names, no markdown. Return ONLY JSON keyed by product id, each value an array of phrases. " +
             'Example: {"6":["bath salts","epsom salt","epsom bath soak","muscle soak","mineral bath salt"]}',
           messages: [{ role: "user", content: "Products: " + list }],
@@ -474,8 +508,9 @@ export default function AmazonKeywords({ products = [], onTrack }) {
                         <div style={{ fontSize: 13, color: c.ink }}>{t}</div>
                         <div style={{ fontSize: 10, color: c.sub, fontFamily: mono, marginTop: 2 }}>
                           {latest != null ? "rank #" + num(latest) : "unranked"}
+                          {tierOf(latest) && <span style={{ color: tierOf(latest).color, marginLeft: 6 }}>· {tierOf(latest).label}</span>}
                           {rise != null && rise > 0 && (
-                            <span style={{ color: c.green, marginLeft: 8 }}>
+                            <span style={{ color: c.green, marginLeft: 6 }}>
                               ▲ climbed {Math.abs(rise).toLocaleString()} over {span}mo
                             </span>
                           )}
