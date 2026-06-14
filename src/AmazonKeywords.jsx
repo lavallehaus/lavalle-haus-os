@@ -293,15 +293,12 @@ export default function AmazonKeywords({ products = [], onTrack }) {
     const imp = s[0] - s[s.length - 1];
     return { dir: imp > 0 ? 1 : imp < 0 ? -1 : 0, score: imp };
   }
-  // Upward-trending first, then neutral; downward trimmed (only fill in if too few).
+  // Upward-trending first, then neutral/new. Downward terms are dropped entirely.
   function rankByTrend(terms) {
     const scored = terms.map((t) => ({ t, ...trendScore(t) }));
     const up = scored.filter((x) => x.dir > 0).sort((a, b) => b.score - a.score);
     const flat = scored.filter((x) => x.dir === 0);
-    const down = scored.filter((x) => x.dir < 0).sort((a, b) => b.score - a.score); // least-bad first
-    let out = up.concat(flat);
-    if (out.length < 4) out = out.concat(down.slice(0, 4 - out.length)); // keep a few only if thin
-    return out.slice(0, 8).map((x) => x.t);
+    return up.concat(flat).slice(0, 8).map((x) => x.t);
   }
   function adopt(term, pname, idea) {
     if (!onTrack) return;
@@ -403,6 +400,11 @@ export default function AmazonKeywords({ products = [], onTrack }) {
 
             {isOpen && (
               <div style={{ marginTop: 12 }}>
+                {rows.length === 0 && (
+                  <div style={{ fontSize: 12, color: c.sub, marginTop: 4 }}>
+                    No rising search terms for this product right now — its relevant terms are flat or declining this month.
+                  </div>
+                )}
                 {rows.map((row) => {
                   const t = row.term;
                   const isAdded = added[p.name + "|" + t];
