@@ -522,12 +522,29 @@ export default async function handler(req, res) {
     // Seller Central. Cached 1h. Net = gross (Sales API has no refund line).
     if (req.query && req.query.op === "sales") {
       try {
+        const token = await getAccessToken();
+        const dsx = /^\d{4}-\d{2}-\d{2}$/;
+        // Custom range: ?op=sales&start=YYYY-MM-DD&end=YYYY-MM-DD -> single total
+        if (dsx.test(req.query.start || "") && dsx.test(req.query.end || "")) {
+          const startIso = `${req.query.start}T00:00:00Z`;
+          const endIso = `${req.query.end}T23:59:59Z`;
+          const interval = `${startIso}--${endIso}`;
+          const d = await spapi(token, `/sales/v1/orderMetrics?marketplaceIds=${MARKETPLACE}&interval=${encodeURIComponent(interval)}&granularity=Day`);
+          const range = { gross: 0, net: 0, units: 0, orders: 0, start: req.query.start, end: req.query.end };
+          (d.payload || []).forEach((row) => {
+            range.gross += row.totalSales ? Number(row.totalSales.amount) || 0 : 0;
+            range.units += Number(row.unitCount) || 0;
+            range.orders += Number(row.orderCount) || 0;
+          });
+          range.gross = Math.round(range.gross * 100) / 100; range.net = range.gross;
+          res.status(200).json({ connected: true, range });
+          return;
+        }
         const cached = await kvGet("amazon_sales");
         if (!req.query.refresh && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 3600000) {
           res.status(200).json({ connected: true, cached: true, ...cached });
           return;
         }
-        const token = await getAccessToken();
         const tz = "America/Los_Angeles";
         const partsInTz = (date) => { const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }); const p = {}; f.formatToParts(date).forEach((x) => { p[x.type] = x.value; }); return p; };
         const ymd = (dt) => dt.toISOString().slice(0, 10);
