@@ -156,6 +156,82 @@ function resolveId(pkey, vkey) {
   return TITLE_MAP[pkey] !== undefined ? TITLE_MAP[pkey] : null;
 }
 
+// Per-period GROSS & NET sales (+ units) from paid, non-cancelled orders,
+// bucketed in the STORE's own timezone so totals line up with the Shopify
+// Analytics dashboard. Gross = pre-discount product subtotal; Net = after
+// discounts and returns, before tax & shipping (Shopify's "Net sales").
+async function fetchSalesByPeriod(shop, token) {
+  let tz = "America/Los_Angeles";
+  try {
+    const sd = await gql(shop, token, `{ shop { ianaTimezone } }`, {});
+    if (sd && sd.shop && sd.shop.ianaTimezone) tz = sd.shop.ianaTimezone;
+  } catch (_) {}
+
+  const partsInTz = (date) => {
+    const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" });
+    const p = {}; f.formatToParts(date).forEach((x) => { p[x.type] = x.value; });
+    return p;
+  };
+  const ymd = (dt) => dt.toISOString().slice(0, 10);
+  const addDays = (dt, n) => new Date(dt.getTime() + n * 86400000);
+
+  const P = partsInTz(new Date());
+  const today = new Date(`${P.year}-${P.month}-${P.day}T12:00:00Z`); // noon-UTC anchor of the LOCAL date (DST-safe for date math)
+  const wd = ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 })[P.weekday] || 0;
+  const weekStart = addDays(today, -wd);            // Sunday of the current week (Shopify default)
+  const lastWeekStart = addDays(weekStart, -7);
+  const lastWeekEnd = addDays(weekStart, -1);
+  const fourWeekStart = addDays(today, -27);        // trailing 28 days
+  const qMonth = [0, 0, 0, 3, 3, 3, 6, 6, 6, 9, 9, 9][Number(P.month) - 1];
+  const qtdStart = new Date(`${P.year}-${String(qMonth + 1).padStart(2, "0")}-01T12:00:00Z`);
+  const ytdStart = new Date(`${P.year}-01-01T12:00:00Z`);
+
+  const blank = () => ({ gross: 0, net: 0, units: 0, orders: 0 });
+  const out = { thisWeek: blank(), lastWeek: blank(), last4: blank(), qtd: blank(), ytd: blank(), tz, weekStart: ymd(weekStart) };
+
+  const query = `
+    query Sales($after: String, $q: String!) {
+      orders(first: 100, after: $after, query: $q) {
+        pageInfo { hasNextPage endCursor }
+        edges { node {
+          createdAt
+          currentSubtotalPriceSet { shopMoney { amount } }
+          totalDiscountsSet { shopMoney { amount } }
+          lineItems(first: 50) { edges { node { quantity } } }
+        } }
+      }
+    }`;
+  const q = `created_at:>=${ymd(ytdStart)} AND financial_status:paid AND -status:cancelled`;
+  let after = null;
+  for (let i = 0; i < 40; i++) {
+    const data = await gql(shop, token, query, { after, q });
+    const conn = data.orders;
+    for (const edge of conn.edges) {
+      const node = edge.node;
+      const net = parseFloat(node.currentSubtotalPriceSet && node.currentSubtotalPriceSet.shopMoney && node.currentSubtotalPriceSet.shopMoney.amount) || 0;
+      const disc = parseFloat(node.totalDiscountsSet && node.totalDiscountsSet.shopMoney && node.totalDiscountsSet.shopMoney.amount) || 0;
+      const gross = net + disc; // pre-discount subtotal
+      let units = 0;
+      for (const li of ((node.lineItems && node.lineItems.edges) || [])) units += Number(li.node.quantity) || 0;
+      const op = partsInTz(new Date(node.createdAt));
+      const ods = `${op.year}-${op.month}-${op.day}`;
+      const add = (b) => { b.gross += gross; b.net += net; b.units += units; b.orders += 1; };
+      if (ods >= ymd(weekStart)) add(out.thisWeek);
+      if (ods >= ymd(lastWeekStart) && ods <= ymd(lastWeekEnd)) add(out.lastWeek);
+      if (ods >= ymd(fourWeekStart)) add(out.last4);
+      if (ods >= ymd(qtdStart)) add(out.qtd);
+      add(out.ytd);
+    }
+    if (!conn.pageInfo.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  for (const k of ["thisWeek", "lastWeek", "last4", "qtd", "ytd"]) {
+    out[k].gross = Math.round(out[k].gross * 100) / 100;
+    out[k].net = Math.round(out[k].net * 100) / 100;
+  }
+  return out;
+}
+
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
 // When APP_PASSWORD is set in Vercel, every request must carry the session
@@ -193,6 +269,22 @@ export default async function handler(req, res) {
         res.status(200).json({ shop: auth.shop, productCount: tree.length, tree });
       } catch (e) {
         res.status(500).json({ error: String(e).slice(0, 300) });
+      }
+      return;
+    }
+    if (req.query && req.query.op === "sales") {
+      try {
+        const cached = await kvGet("shopify_sales");
+        if (!req.query.refresh && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 3600000) {
+          res.status(200).json({ connected: true, cached: true, ...cached });
+          return;
+        }
+        const periods = await fetchSalesByPeriod(auth.shop, auth.accessToken);
+        const payload = { periods, syncedAt: new Date().toISOString() };
+        await kvSet("shopify_sales", payload);
+        res.status(200).json({ connected: true, ...payload });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 300) });
       }
       return;
     }
