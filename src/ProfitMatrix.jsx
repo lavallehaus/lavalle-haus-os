@@ -634,7 +634,7 @@ function KeepScorecard({ product:p, period, defaultChannel, keepData, onField, o
 /* ============================================================================
    MAIN
    ========================================================================== */
-export default function ProfitMatrix({ data, onSave }) {
+export default function ProfitMatrix({ data, onSave, liveSales }) {
   const [eprods, setEprods] = useState(() => normalize(data && data.products));
   const [opex, setOpex] = useState(() => (data && data.opex && data.opex.length ? data.opex : SEED_OPEX).map((o)=>({ ...o })));
   const [adj, setAdjState] = useState(() => ({ revenue:0, gross:0, net:0, netAfterAds:0, marketing:0, inventory:0, ...(data && data.profitAdjustments) }));
@@ -643,6 +643,7 @@ export default function ProfitMatrix({ data, onSave }) {
   const setAssignee = (key, patch) => { setAssignees((a)=>({ ...a, [key]:{ ...(a[key]||{}), ...patch } })); setDirty(true); };
   const [channel, setChannel] = useState("all");
   const [period, setPeriod] = useState("current");
+  const [salesMetric, setSalesMetric] = useState("net"); // net | gross — drives the live Sales-by-Period chart
   const [open, setOpen] = useState(null);
   const [auditMetric, setAuditMetric] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -747,21 +748,40 @@ export default function ProfitMatrix({ data, onSave }) {
     return { cur:f("current"), prv:f("previous") };
   }, [eprods, opex, channel]);
 
+  // Live per-period sales from the real Shopify/Amazon feeds (passed in as
+  // liveSales). Falls back to the seeded model only when a channel has no feed.
+  const PERIOD_KEY = { current: "thisWeek", previous: "lastWeek", last4: "last4", qtd: "qtd", ytd: "ytd" };
+  const liveRev = (ch, per) => {
+    const key = PERIOD_KEY[per]; if (!key) return null;
+    const pick = (feed) => (feed && feed.periods && feed.periods[key] ? num(feed.periods[key][salesMetric]) : null);
+    if (ch === "shopify") return pick(liveSales && liveSales.shopify);
+    if (ch === "amazon") return pick(liveSales && liveSales.amazon);
+    if (ch === "all") {
+      const s = pick(liveSales && liveSales.shopify), a = pick(liveSales && liveSales.amazon);
+      if (s == null && a == null) return null;
+      return (s || 0) + (a || 0);
+    }
+    return null; // b2b: no live feed
+  };
+  const liveOn = liveRev(channel, "current") != null || liveRev(channel, "ytd") != null;
+  const livePartial = channel === "all" && !(liveSales && liveSales.amazon); // Shopify live but Amazon not wired yet
+
   const series = useMemo(() => {
-    const rev = (per)=> eprods.filter(p=>channel==="all"||p.channels.includes(channel)).reduce((s,p)=>s+metrics(p,channel,per).revenue,0);
-    const wk = { current:1, previous:1, last4:4, qtd:13, ytd:52 };
+    const seedRev = (per) => eprods.filter(p => channel === "all" || p.channels.includes(channel)).reduce((s, p) => s + metrics(p, channel, per).revenue, 0);
+    const rev = (per) => { const lv = liveRev(channel, per); return lv != null ? lv : seedRev(per); };
     const order = [
-      { id:"ytd", label:"Year", labelEs:"Año" },
-      { id:"qtd", label:"Quarter", labelEs:"Trim." },
-      { id:"last4", label:"4 Weeks", labelEs:"4 sem" },
-      { id:"previous", label:"Last Wk", labelEs:"Sem. pas." },
-      { id:"current", label:"This Wk", labelEs:"Esta sem." },
+      { id: "ytd", label: "Year", labelEs: "Año" },
+      { id: "qtd", label: "Quarter", labelEs: "Trim." },
+      { id: "last4", label: "4 Weeks", labelEs: "4 sem" },
+      { id: "previous", label: "Last Wk", labelEs: "Sem. pas." },
+      { id: "current", label: "This Wk", labelEs: "Esta sem." },
     ];
-    const pts = order.map(o=>{ const total=rev(o.id); return { ...o, total, rate: total/wk[o.id] }; });
-    const cur=rev("current"), prev=rev("previous");
-    const wowPct = prev>0 ? (cur-prev)/prev : (cur>0?1:0);
-    return { pts, cur, prev, wowPct };
-  }, [eprods, channel]);
+    // rate = actual sales for the window (period totals), not a weekly run-rate
+    const pts = order.map(o => { const total = rev(o.id); return { ...o, total, rate: total }; });
+    const cur = rev("current"), prev = rev("previous");
+    const wowPct = prev > 0 ? (cur - prev) / prev : (cur > 0 ? 1 : 0);
+    return { pts, cur, prev, wowPct, live: liveOn };
+  }, [eprods, channel, salesMetric, liveSales]);
 
   const recs = useMemo(() => {
     const out=[];
@@ -878,7 +898,11 @@ export default function ProfitMatrix({ data, onSave }) {
         <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>creates it on the {channel==="all"?"Shopify":CHANNELS.find(x=>x.id===channel)?.label} tab — fill in details next</span>
       </div>
 
-      <div style={S.sec}>Sales Pace by Period <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— weekly run-rate, oldest window to newest</span><div style={faintEs}>Ritmo de ventas por período — promedio semanal, de la ventana más amplia a la más reciente</div></div>
+      <div style={S.sec}>Sales by Period <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— actual {salesMetric==="net"?"net":"gross"} sales per window</span><div style={faintEs}>Ventas por período — ventas {salesMetric==="net"?"netas":"brutas"} reales por ventana</div></div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+        <button style={pBtn(salesMetric==="net")} onClick={()=>setSalesMetric("net")}>Net Sales</button>
+        <button style={pBtn(salesMetric==="gross")} onClick={()=>setSalesMetric("gross")}>Gross Sales</button>
+      </div>
       {(() => {
         const pts = series.pts; const W=600, H=190, padL=14, padR=14, padT=26, padB=34;
         const innerW=W-padL-padR, innerH=H-padT-padB;
@@ -904,8 +928,8 @@ export default function ProfitMatrix({ data, onSave }) {
               </g>);
             })}
           </svg>
-          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>Sales are <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{word}</b>: this week's pace is {money(series.cur)}/wk, {trendEn} ({money(series.prev)}/wk). The 4-week, quarter and year bars reflect that weekly pace projected across each window.</div>
-          <div style={{ ...faintEs, fontSize:11.5 }}>Las ventas están <b>{wordEs}</b>: el ritmo de esta semana es {money(series.cur)}/sem, {trendEs} ({money(series.prev)}/sem). Las barras de 4 semanas, trimestre y año reflejan ese ritmo semanal proyectado en cada ventana.</div>
+          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>{salesMetric==="net"?"Net":"Gross"} sales this week: <b>{money(series.cur)}</b>, <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{trendEn}</b> ({money(series.prev)} last week). Bars show actual sales in each window.{series.live?"":" Showing the seeded estimate — connect live sales to replace it."}{livePartial?" Amazon live sales are coming next — this currently reflects Shopify only.":""}</div>
+          <div style={{ ...faintEs, fontSize:11.5 }}>Ventas {salesMetric==="net"?"netas":"brutas"} de esta semana: {money(series.cur)}, {trendEs} ({money(series.prev)} la semana pasada). Las barras muestran ventas reales por ventana.{livePartial?" Las ventas en vivo de Amazon vienen pronto — esto refleja solo Shopify.":""}</div>
         </div>);
       })()}
 
