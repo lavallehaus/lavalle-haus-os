@@ -1697,6 +1697,8 @@ const [showPrivacy, setShowPrivacy] = useState(false);
 const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, ugc: {}, variantDetail: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 const [shopifySales, setShopifySales] = useState(null);
 async function fetchShopifySales() { try { const r = await fetch("/api/shopify-sync?op=sales").then((x) => x.json()); if (r && r.periods) setShopifySales(r); } catch (e) {} }
+const [amazonSales, setAmazonSales] = useState(null);
+async function fetchAmazonSales() { try { const r = await fetch("/api/amazon-sync?op=sales").then((x) => x.json()); if (r && r.periods) setAmazonSales(r); } catch (e) {} }
 
 async function shopifySync() {
 setShopify(s => ({ ...s, syncing: true }));
@@ -1772,7 +1774,7 @@ run();
 }
 
 // ── AUTO-FETCH SHOPIFY + AMAZON ON LOAD ──
-useEffect(() => { shopifySync(); amazonSync(); fetchShopifySales(); }, []);
+useEffect(() => { shopifySync(); amazonSync(); fetchShopifySales(); fetchAmazonSales(); }, []);
 
 // Auto-pull Seller Central restock once data has loaded — no button required.
 // The backend serves a 12h cache instantly and only regenerates (in the
@@ -1984,7 +1986,7 @@ syncedAt: restock.syncedAt || (dbState.amazonRestock || {}).syncedAt || null,
 const profitNode = (
 <ProfitMatrix
 data={dbState.profitMatrix || {}}
-liveSales={{ shopify: shopifySales }}
+liveSales={{ shopify: shopifySales, amazon: amazonSales }}
 onSave={(pm) => {
 setDbState((prev) => { const next = { ...prev, profitMatrix: { products: pm.products, opex: pm.opex, keep: pm.keep, assignees: pm.assignees, profitAdjustments: pm.adjustments, profitManual: pm.manual } }; dbSave(next); return next; });
 }}
