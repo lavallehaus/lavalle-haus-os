@@ -517,6 +517,55 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ?op=sales — Amazon ordered-product-sales per period (this week, last week,
+    // last 4 weeks, QTD, YTD) from the Sales API, bucketed in US Pacific to match
+    // Seller Central. Cached 1h. Net = gross (Sales API has no refund line).
+    if (req.query && req.query.op === "sales") {
+      try {
+        const cached = await kvGet("amazon_sales");
+        if (!req.query.refresh && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 3600000) {
+          res.status(200).json({ connected: true, cached: true, ...cached });
+          return;
+        }
+        const token = await getAccessToken();
+        const tz = "America/Los_Angeles";
+        const partsInTz = (date) => { const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }); const p = {}; f.formatToParts(date).forEach((x) => { p[x.type] = x.value; }); return p; };
+        const ymd = (dt) => dt.toISOString().slice(0, 10);
+        const addDays = (dt, n) => new Date(dt.getTime() + n * 86400000);
+        const P = partsInTz(new Date());
+        const today = new Date(`${P.year}-${P.month}-${P.day}T12:00:00Z`);
+        const wd = ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 })[P.weekday] || 0;
+        const weekStart = addDays(today, -wd), lastWeekStart = addDays(weekStart, -7), lastWeekEnd = addDays(weekStart, -1), fourWeekStart = addDays(today, -27);
+        const qMonth = [0, 0, 0, 3, 3, 3, 6, 6, 6, 9, 9, 9][Number(P.month) - 1];
+        const qtdStart = new Date(`${P.year}-${String(qMonth + 1).padStart(2, "0")}-01T12:00:00Z`);
+        const ytdStart = new Date(`${P.year}-01-01T12:00:00Z`);
+        const startIso = `${P.year}-01-01T00:00:00Z`;
+        const endIso = new Date().toISOString().slice(0, 19) + "Z";
+        const interval = `${startIso}--${endIso}`;
+        const d = await spapi(token, `/sales/v1/orderMetrics?marketplaceIds=${MARKETPLACE}&interval=${encodeURIComponent(interval)}&granularity=Day`);
+        const blank = () => ({ gross: 0, net: 0, units: 0, orders: 0 });
+        const out = { thisWeek: blank(), lastWeek: blank(), last4: blank(), qtd: blank(), ytd: blank(), tz, weekStart: ymd(weekStart) };
+        (d.payload || []).forEach((row) => {
+          const ds = (row.interval || "").slice(0, 10);
+          const sales = row.totalSales ? Number(row.totalSales.amount) || 0 : 0;
+          const units = Number(row.unitCount) || 0, orders = Number(row.orderCount) || 0;
+          const add = (b) => { b.gross += sales; b.net += sales; b.units += units; b.orders += orders; };
+          if (ds >= ymd(weekStart)) add(out.thisWeek);
+          if (ds >= ymd(lastWeekStart) && ds <= ymd(lastWeekEnd)) add(out.lastWeek);
+          if (ds >= ymd(fourWeekStart)) add(out.last4);
+          if (ds >= ymd(qtdStart)) add(out.qtd);
+          add(out.ytd);
+        });
+        for (const k of ["thisWeek", "lastWeek", "last4", "qtd", "ytd"]) { out[k].gross = Math.round(out[k].gross * 100) / 100; out[k].net = out[k].gross; }
+        const payload = { periods: out, syncedAt: new Date().toISOString() };
+        await kvSet("amazon_sales", payload);
+        res.status(200).json({ connected: true, ...payload });
+      } catch (e) {
+        res.status(500).json({ connected: true, error: String(e).slice(0, 400) });
+      }
+      return;
+    }
+
     // ?op=producttype — Product Type Definitions API. Grounds the creator in
     // Amazon's real schema instead of guessed fields.
     //   action=search&keywords=candle holder -> candidate product types
