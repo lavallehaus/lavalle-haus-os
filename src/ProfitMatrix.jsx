@@ -925,22 +925,25 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
         const trendEs = wp>0.03?`subió ${pct(Math.abs(wp))} vs la semana pasada`:wp<-0.03?`bajó ${pct(Math.abs(wp))} vs la semana pasada`:"casi sin cambio vs la semana pasada";
         const word = wp>0.03?"growing":wp<-0.03?"declining":"steady";
         const wordEs = wp>0.03?"creciendo":wp<-0.03?"cayendo":"estable";
+        const selPt = pts.find(p=>p.id===period) || pts[pts.length-1];
+        const selLabel = (PERIODS.find(p=>p.id===period)||{}).label || "";
+        const selLabelEs = { current:"esta semana", previous:"la semana pasada", last4:"últimas 4 semanas", qtd:"trimestre a la fecha", ytd:"año a la fecha" }[period] || "";
         return (
         <div style={{ ...S.panel }}>
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth:760, display:"block", margin:"0 auto" }}>
             <line x1={padL} y1={padT+innerH} x2={W-padR} y2={padT+innerH} stroke={c.line} strokeWidth="1" />
             <polyline fill="none" stroke={c.clay} strokeWidth="1.5" strokeDasharray="3 3" points={pts.map((p,i)=>`${xOf(i)},${yOf(p.rate)}`).join(" ")} />
-            {pts.map((p,i)=>{ const isNow=p.id==="current"; const bh=(p.rate/max)*innerH; const y=padT+innerH-bh;
+            {pts.map((p,i)=>{ const isSel=p.id===period; const bh=(p.rate/max)*innerH; const y=padT+innerH-bh;
               return (<g key={p.id}>
-                <rect x={xOf(i)-bw/2} y={y} width={bw} height={Math.max(bh,1)} rx="2" fill={isNow?c.gold:c.sage} opacity={isNow?1:0.8} />
-                <text x={xOf(i)} y={y-7} textAnchor="middle" fontFamily={sans} fontSize="11" fill={c.ink}>{money(p.rate)}</text>
-                <text x={xOf(i)} y={padT+innerH+15} textAnchor="middle" fontFamily={sans} fontSize="10.5" fill={c.sub}>{p.label}</text>
+                <rect x={xOf(i)-bw/2} y={y} width={bw} height={Math.max(bh,1)} rx="2" fill={isSel?c.gold:c.sage} opacity={isSel?1:0.5} />
+                <text x={xOf(i)} y={y-7} textAnchor="middle" fontFamily={sans} fontSize={isSel?13:11} fontWeight={isSel?700:400} fill={isSel?c.ink:c.sub}>{money(p.rate)}</text>
+                <text x={xOf(i)} y={padT+innerH+15} textAnchor="middle" fontFamily={sans} fontSize="10.5" fontWeight={isSel?700:400} fill={isSel?c.ink:c.sub}>{p.label}</text>
                 <text x={xOf(i)} y={padT+innerH+28} textAnchor="middle" fontFamily={sans} fontSize="9" fontStyle="italic" fill="rgba(111,102,87,0.6)">{p.labelEs}</text>
               </g>);
             })}
           </svg>
-          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>{salesMetric==="net"?"Net":"Gross"} sales this week: <b>{money(series.cur)}</b>, <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{trendEn}</b> ({money(series.prev)} last week). Bars show actual sales in each window.{series.live?"":" Showing the seeded estimate — connect live sales to replace it."}{livePartial?" Amazon live sales are coming next — this currently reflects Shopify only.":""}{shopifyLimited && (channel==="shopify"||channel==="all")?" ⚠ Quarter & Year reflect only Shopify's last ~60 days — grant read_all_orders for full history.":""}</div>
-          <div style={{ ...faintEs, fontSize:11.5 }}>Ventas {salesMetric==="net"?"netas":"brutas"} de esta semana: {money(series.cur)}, {trendEs} ({money(series.prev)} la semana pasada). Las barras muestran ventas reales por ventana.{livePartial?" Las ventas en vivo de Amazon vienen pronto — esto refleja solo Shopify.":""}</div>
+          <div style={{ fontSize:14, lineHeight:1.5, marginTop:10, color:c.ink }}><b>{selLabel}</b> — {salesMetric==="net"?"net":"gross"} sales <b>{money(selPt.rate)}</b>{period==="current"?<> · <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{trendEn}</b> ({money(series.prev)} last week)</>:null}. The highlighted bar is your selected window.{series.live?"":" Showing the seeded estimate — connect live sales to replace it."}{livePartial?" Amazon live sales coming next — currently Shopify only.":""}{shopifyLimited && (channel==="shopify"||channel==="all")?" ⚠ Quarter & Year reflect only Shopify's last ~60 days — grant read_all_orders for full history.":""}</div>
+          <div style={{ ...faintEs, fontSize:11.5 }}>{selLabelEs} — ventas {salesMetric==="net"?"netas":"brutas"} {money(selPt.rate)}. La barra resaltada es la ventana seleccionada.{livePartial?" Ventas en vivo de Amazon vienen pronto — solo Shopify.":""}</div>
         </div>);
       })()}
 
