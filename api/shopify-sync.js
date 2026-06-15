@@ -188,6 +188,7 @@ async function fetchSalesByPeriod(shop, token) {
 
   const blank = () => ({ gross: 0, net: 0, units: 0, orders: 0 });
   const out = { thisWeek: blank(), lastWeek: blank(), last4: blank(), qtd: blank(), ytd: blank(), tz, weekStart: ymd(weekStart) };
+  let oldest = null;
 
   const query = `
     query Sales($after: String, $q: String!) {
@@ -214,6 +215,7 @@ async function fetchSalesByPeriod(shop, token) {
       let units = 0;
       for (const li of ((node.lineItems && node.lineItems.edges) || [])) units += Number(li.node.quantity) || 0;
       const op = partsInTz(new Date(node.createdAt));
+      if (node.createdAt && (!oldest || node.createdAt < oldest)) oldest = node.createdAt;
       const ods = `${op.year}-${op.month}-${op.day}`;
       const add = (b) => { b.gross += gross; b.net += net; b.units += units; b.orders += 1; };
       if (ods >= ymd(weekStart)) add(out.thisWeek);
@@ -229,6 +231,59 @@ async function fetchSalesByPeriod(shop, token) {
     out[k].gross = Math.round(out[k].gross * 100) / 100;
     out[k].net = Math.round(out[k].net * 100) / 100;
   }
+  // If the oldest order we can see is within ~60 days, the store almost
+  // certainly lacks read_all_orders and older history is being withheld —
+  // so Quarter/Year are truncated. Resolves itself once the scope is granted.
+  out.limited = oldest ? (Date.now() - new Date(oldest).getTime()) < 62 * 86400000 : true;
+  out.oldestOrder = oldest;
+  return out;
+}
+
+
+// Custom date-range sales total (any start/end). Same money basis as the
+// per-period feed: net = subtotal after discounts/returns, gross = pre-discount.
+async function fetchSalesRange(shop, token, startYmd, endYmd) {
+  let tz = "America/Los_Angeles";
+  try { const sd = await gql(shop, token, `{ shop { ianaTimezone } }`, {}); if (sd && sd.shop && sd.shop.ianaTimezone) tz = sd.shop.ianaTimezone; } catch (_) {}
+  const partsInTz = (date) => { const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); const p = {}; f.formatToParts(date).forEach((x) => { p[x.type] = x.value; }); return p; };
+  const out = { gross: 0, net: 0, units: 0, orders: 0, start: startYmd, end: endYmd, tz };
+  let oldest = null;
+  const query = `
+    query Sales($after: String, $q: String!) {
+      orders(first: 100, after: $after, query: $q) {
+        pageInfo { hasNextPage endCursor }
+        edges { node {
+          createdAt
+          currentSubtotalPriceSet { shopMoney { amount } }
+          totalDiscountsSet { shopMoney { amount } }
+          lineItems(first: 50) { edges { node { quantity } } }
+        } }
+      }
+    }`;
+  const q = `created_at:>=${startYmd} AND created_at:<=${endYmd}T23:59:59 AND financial_status:paid AND -status:cancelled`;
+  let after = null;
+  for (let i = 0; i < 60; i++) {
+    const data = await gql(shop, token, query, { after, q });
+    const conn = data.orders; if (!conn) break;
+    for (const edge of conn.edges) {
+      const node = edge.node;
+      const net = parseFloat(node.currentSubtotalPriceSet && node.currentSubtotalPriceSet.shopMoney && node.currentSubtotalPriceSet.shopMoney.amount) || 0;
+      const disc = parseFloat(node.totalDiscountsSet && node.totalDiscountsSet.shopMoney && node.totalDiscountsSet.shopMoney.amount) || 0;
+      const gross = net + disc;
+      let units = 0; for (const li of ((node.lineItems && node.lineItems.edges) || [])) units += Number(li.node.quantity) || 0;
+      const op = partsInTz(new Date(node.createdAt)); const ods = `${op.year}-${op.month}-${op.day}`;
+      if (node.createdAt && (!oldest || node.createdAt < oldest)) oldest = node.createdAt;
+      if (ods >= startYmd && ods <= endYmd) { out.gross += gross; out.net += net; out.units += units; out.orders += 1; }
+    }
+    if (!conn.pageInfo.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  out.gross = Math.round(out.gross * 100) / 100;
+  out.net = Math.round(out.net * 100) / 100;
+  // Shopify withholds orders older than ~60 days without read_all_orders — warn
+  // when the requested start reaches past that window.
+  out.beyondWindow = (Date.now() - Date.parse(startYmd + "T00:00:00Z")) > 58 * 86400000;
+  out.oldestOrder = oldest;
   return out;
 }
 
@@ -274,6 +329,13 @@ export default async function handler(req, res) {
     }
     if (req.query && req.query.op === "sales") {
       try {
+        const ds = /^\d{4}-\d{2}-\d{2}$/;
+        // Custom range: ?op=sales&start=YYYY-MM-DD&end=YYYY-MM-DD
+        if (ds.test(req.query.start || "") && ds.test(req.query.end || "")) {
+          const range = await fetchSalesRange(auth.shop, auth.accessToken, req.query.start, req.query.end);
+          res.status(200).json({ connected: true, range });
+          return;
+        }
         const cached = await kvGet("shopify_sales");
         if (!req.query.refresh && cached && cached.syncedAt && (Date.now() - new Date(cached.syncedAt).getTime()) < 3600000) {
           res.status(200).json({ connected: true, cached: true, ...cached });
