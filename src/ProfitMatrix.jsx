@@ -765,6 +765,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
   };
   const liveOn = liveRev(channel, "current") != null || liveRev(channel, "ytd") != null;
   const livePartial = channel === "all" && !(liveSales && liveSales.amazon); // Shopify live but Amazon not wired yet
+  const shopifyLimited = !!(liveSales && liveSales.shopify && liveSales.shopify.periods && liveSales.shopify.periods.limited);
 
   const series = useMemo(() => {
     const seedRev = (per) => eprods.filter(p => channel === "all" || p.channels.includes(channel)).reduce((s, p) => s + metrics(p, channel, per).revenue, 0);
@@ -870,8 +871,18 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
       </div>
     );
   };
-  const dv = { revenue:ex.revenue+num(adj.revenue)+manualSum("revenue",channel), gross:ex.gross+num(adj.gross)+manualSum("gross",channel), net:ex.net+num(adj.net)+manualSum("net",channel),
-    netAfterAds:ex.netAfterAds+num(adj.netAfterAds)+manualSum("netAfterAds",channel), marketing:ex.marketing+num(adj.marketing)+manualSum("marketing",channel), inventory:ex.invValue+num(adj.inventory)+manualSum("inventory",channel) };
+  // Dashboard tiles: use live sales for the SELECTED period/channel when available.
+  // Revenue is live; profit tiles scale to live sales at the modeled margin (until
+  // per-product live units land), so the period buttons move real numbers.
+  const liveSelRev = liveRev(channel, period);
+  const liveScale = (liveSelRev != null && ex.revenue > 0) ? (liveSelRev / ex.revenue) : null;
+  const dv = {
+    revenue: liveSelRev != null ? liveSelRev : ex.revenue + num(adj.revenue) + manualSum("revenue", channel),
+    gross: liveScale != null ? Math.round(ex.gross * liveScale) : ex.gross + num(adj.gross) + manualSum("gross", channel),
+    net: liveScale != null ? Math.round(ex.net * liveScale) : ex.net + num(adj.net) + manualSum("net", channel),
+    netAfterAds: liveScale != null ? Math.round(ex.netAfterAds * liveScale) : ex.netAfterAds + num(adj.netAfterAds) + manualSum("netAfterAds", channel),
+    marketing: ex.marketing + num(adj.marketing) + manualSum("marketing", channel), inventory: ex.invValue + num(adj.inventory) + manualSum("inventory", channel) };
+  const dvLive = liveSelRev != null;
 
   const drawer = () => {
     if (!auditMetric) return null;
@@ -928,15 +939,15 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
               </g>);
             })}
           </svg>
-          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>{salesMetric==="net"?"Net":"Gross"} sales this week: <b>{money(series.cur)}</b>, <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{trendEn}</b> ({money(series.prev)} last week). Bars show actual sales in each window.{series.live?"":" Showing the seeded estimate — connect live sales to replace it."}{livePartial?" Amazon live sales are coming next — this currently reflects Shopify only.":""}</div>
+          <div style={{ fontSize:13.5, lineHeight:1.5, marginTop:10, color:c.ink }}>{salesMetric==="net"?"Net":"Gross"} sales this week: <b>{money(series.cur)}</b>, <b style={{ color:word==="declining"?c.red:word==="growing"?c.green:c.sub }}>{trendEn}</b> ({money(series.prev)} last week). Bars show actual sales in each window.{series.live?"":" Showing the seeded estimate — connect live sales to replace it."}{livePartial?" Amazon live sales are coming next — this currently reflects Shopify only.":""}{shopifyLimited && (channel==="shopify"||channel==="all")?" ⚠ Quarter & Year reflect only Shopify's last ~60 days — grant read_all_orders for full history.":""}</div>
           <div style={{ ...faintEs, fontSize:11.5 }}>Ventas {salesMetric==="net"?"netas":"brutas"} de esta semana: {money(series.cur)}, {trendEs} ({money(series.prev)} la semana pasada). Las barras muestran ventas reales por ventana.{livePartial?" Las ventas en vivo de Amazon vienen pronto — esto refleja solo Shopify.":""}</div>
         </div>);
       })()}
 
-      <div style={S.sec}>Executive Dashboard <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— tap any tile to audit its line items</span><div style={faintEs}>Panel ejecutivo — toca cualquier tarjeta para auditar sus partidas</div></div>
+      <div style={S.sec}>Executive Dashboard <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— {dvLive?"revenue is live; profit is modeled margin on live sales":"tap any tile to audit its line items"}</span><div style={faintEs}>Panel ejecutivo — {dvLive?"el ingreso es real; la ganancia es margen modelado sobre ventas reales":"toca cualquier tarjeta para auditar sus partidas"}</div></div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(165px, 1fr))", gap:12 }}>
         <KPI k="revenue" label="Revenue" labelEs="Ingreso" value={money(dv.revenue)} big />
-        <KPI k="gross" label="Gross Profit" labelEs="Ganancia bruta" value={money(dv.gross)} note={ex.revenue?pct(dv.gross/ex.revenue)+" margin":""} />
+        <KPI k="gross" label="Gross Profit" labelEs="Ganancia bruta" value={money(dv.gross)} note={dv.revenue?pct(dv.gross/dv.revenue)+" margin":""} />
         <KPI k="net" label="Net Profit" labelEs="Ganancia neta" value={money(dv.net)} note="before ads & marketing" />
         <KPI k="netAfterAds" label="Net After Ads" labelEs="Neto tras anuncios" level={marginLevel} value={money(dv.netAfterAds)} note={<Delta now={wow.cur} prev={wow.prv} />} big />
         <KPI k="marketing" label="Weekly Marketing" labelEs="Marketing semanal" level={tacosLevel} value={money(dv.marketing)} note={"TACOS "+pct(tacos)} />
