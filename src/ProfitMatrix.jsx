@@ -644,6 +644,25 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
   const [channel, setChannel] = useState("all");
   const [period, setPeriod] = useState("current");
   const [salesMetric, setSalesMetric] = useState("net"); // net | gross — drives the live Sales-by-Period chart
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const agoYmd = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const [rangeStart, setRangeStart] = useState(agoYmd(29));
+  const [rangeEnd, setRangeEnd] = useState(todayYmd);
+  const [rangeData, setRangeData] = useState(null); // { shopify:{...}|null, amazon:{...}|null }
+  const [rangeLoading, setRangeLoading] = useState(false);
+  const [rangeErr, setRangeErr] = useState(null);
+  async function applyRange() {
+    if (!rangeStart || !rangeEnd || rangeStart > rangeEnd) { setRangeErr("Start date must be on or before end date."); return; }
+    setRangeErr(null); setRangeLoading(true);
+    try {
+      const [sh, az] = await Promise.all([
+        fetch(`/api/shopify-sync?op=sales&start=${rangeStart}&end=${rangeEnd}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/amazon-sync?op=sales&start=${rangeStart}&end=${rangeEnd}`).then((r) => r.json()).catch(() => null),
+      ]);
+      setRangeData({ shopify: (sh && sh.range) || null, amazon: (az && az.range) || null });
+    } catch (e) { setRangeErr(String(e).slice(0, 200)); }
+    setRangeLoading(false);
+  }
   const [open, setOpen] = useState(null);
   const [auditMetric, setAuditMetric] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -908,6 +927,52 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
         <button onClick={quickAdd} style={{ fontFamily:sans, fontSize:13, cursor:"pointer", padding:"8px 18px", borderRadius:2, border:`1px solid ${c.ink}`, background:c.ink, color:c.bg }}>Add</button>
         <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>creates it on the {channel==="all"?"Shopify":CHANNELS.find(x=>x.id===channel)?.label} tab — fill in details next</span>
       </div>
+
+      <div style={S.sec}>Custom Date Range <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— pick any start &amp; end date, like Shopify</span><div style={faintEs}>Rango de fechas personalizado — elige inicio y fin</div></div>
+      <div style={{ ...S.panel, display:"flex", flexWrap:"wrap", gap:14, alignItems:"flex-end" }}>
+        <div>
+          <div style={S.label}>From <span style={faintEs}>Desde</span></div>
+          <input type="date" value={rangeStart} max={rangeEnd||todayYmd} onChange={(e)=>setRangeStart(e.target.value)}
+            style={{ fontFamily:sans, fontSize:13.5, padding:"7px 10px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink }} />
+        </div>
+        <div>
+          <div style={S.label}>To <span style={faintEs}>Hasta</span></div>
+          <input type="date" value={rangeEnd} min={rangeStart} max={todayYmd} onChange={(e)=>setRangeEnd(e.target.value)}
+            style={{ fontFamily:sans, fontSize:13.5, padding:"7px 10px", border:`1px solid ${c.line}`, borderRadius:2, background:c.panel, color:c.ink }} />
+        </div>
+        <button onClick={applyRange} disabled={rangeLoading}
+          style={{ fontFamily:sans, fontSize:13, cursor:rangeLoading?"default":"pointer", padding:"8px 20px", borderRadius:2, border:`1px solid ${c.ink}`, background:rangeLoading?c.sub:c.ink, color:c.bg }}>{rangeLoading?"Loading…":"Apply"}</button>
+        {[["Last 7 days",7],["Last 30 days",30],["Last 90 days",90]].map(([lab,n])=>(
+          <button key={lab} onClick={()=>{ setRangeStart(agoYmd(n-1)); setRangeEnd(todayYmd); }}
+            style={{ fontFamily:sans, fontSize:12, cursor:"pointer", padding:"6px 12px", borderRadius:2, border:`1px solid ${c.line}`, background:"transparent", color:c.sub }}>{lab}</button>
+        ))}
+      </div>
+      {rangeErr && <div style={{ fontSize:12.5, color:c.red, marginTop:8 }}>{rangeErr}</div>}
+      {rangeData && (() => {
+        const sh = rangeData.shopify, az = rangeData.amazon;
+        const sumCh = { gross:(sh?sh.gross:0)+(az?az.gross:0), net:(sh?sh.net:0)+(az?az.net:0), units:(sh?sh.units:0)+(az?az.units:0), orders:(sh?sh.orders:0)+(az?az.orders:0) };
+        const r = channel==="shopify"?sh : channel==="amazon"?az : channel==="all"?((sh||az)?sumCh:null) : null;
+        const chLab = channel==="all"?"All Channels":channel==="b2b"?"B2B / Wholesale":channel==="amazon"?"Amazon":"Shopify";
+        const Stat = ({ label, labelEs, value }) => (
+          <div><div style={{ fontSize:10.5, letterSpacing:0.5, color:c.sub, textTransform:"uppercase" }}>{label}</div><div style={{ ...faintEs, marginTop:0 }}>{labelEs}</div><div style={{ fontSize:23, marginTop:3, lineHeight:1.1 }}>{value}</div></div>
+        );
+        if (channel==="b2b") return <div style={{ ...S.panel, marginTop:10, fontSize:13, color:c.sub }}>No live sales feed for B2B / Wholesale yet — this range needs Shopify or Amazon.<div style={faintEs}>Aún no hay feed en vivo para B2B.</div></div>;
+        if (!r) return <div style={{ ...S.panel, marginTop:10, fontSize:13, color:c.sub }}>No {chLab} sales found in {rangeStart} → {rangeEnd}.<div style={faintEs}>Sin ventas en este rango.</div></div>;
+        return (
+          <div style={{ ...S.panel, marginTop:10 }}>
+            <div style={S.label}>{chLab} · {rangeStart} → {rangeEnd}</div>
+            <div style={{ display:"flex", gap:30, flexWrap:"wrap", marginTop:10 }}>
+              <Stat label="Gross sales" labelEs="Ventas brutas" value={money(r.gross)} />
+              <Stat label="Net sales" labelEs="Ventas netas" value={money(r.net)} />
+              <Stat label="Units" labelEs="Unidades" value={r.units} />
+              <Stat label="Orders" labelEs="Pedidos" value={r.orders} />
+            </div>
+            {channel==="all" && <div style={{ fontSize:12.5, color:c.sub, marginTop:10 }}>Shopify {money(sh?sh[salesMetric]:0)} + Amazon {money(az?az[salesMetric]:0)} = <b>{money(sumCh[salesMetric])}</b> ({salesMetric} sales).</div>}
+            {(channel==="amazon"||channel==="all") && az && <div style={{ ...faintEs, fontSize:11.5, marginTop:4 }}>Amazon net = gross until refunds are wired; last 1–2 days may still be finalizing.</div>}
+            {sh && sh.beyondWindow && (channel==="shopify"||channel==="all") && <div style={{ fontSize:12, color:c.gold, marginTop:8 }}>⚠ Shopify returns only ~60 days of history without read_all_orders — Shopify dates older than that in this range may be missing.</div>}
+          </div>
+        );
+      })()}
 
       <div style={S.sec}>Sales by Period <span style={{ fontSize:12, color:c.sub, fontStyle:"italic" }}>— actual {salesMetric==="net"?"net":"gross"} sales per window</span><div style={faintEs}>Ventas por período — ventas {salesMetric==="net"?"netas":"brutas"} reales por ventana</div></div>
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
