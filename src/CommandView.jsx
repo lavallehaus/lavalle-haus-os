@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrainCanvas, BRAIN_THEMES, timeGreeting, PurposeDropdown } from "./BusinessBrain.jsx";
-import { ASK_SUGGESTIONS, HEALTH_PURPOSE } from "./businessBrain.js";
+import { BrainCanvas, BRAIN_THEMES, timeGreeting } from "./BusinessBrain.jsx";
+import { ASK_SUGGESTIONS } from "./businessBrain.js";
 
 // LAVALLE HAUS OS — Command View
 // The immersive, touch-friendly layer over the Business Brain, for large
@@ -137,7 +137,7 @@ function speak(text, enabled, lang = "en") {
   } catch (e) {}
 }
 
-export default function CommandView({ model, themeId, onToggleTheme, onExit, onNavigate, onAsk }) {
+export default function CommandView({ model, themeId, onToggleTheme, onExit, onNavigate, onAsk, embedded = false }) {
   const t = BRAIN_THEMES[themeId] || BRAIN_THEMES.day;
   const [selected, setSelected] = useState(null);
   const [clock, setClock] = useState(() => new Date());
@@ -262,7 +262,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   const node = selected && selected !== "health" ? model.nodes.find((n) => n.id === selected) : null;
   const suggestions = ASK_SUGGESTIONS[selected] || ASK_SUGGESTIONS.default;
   const bgCss = (BACKGROUNDS[bg] || BACKGROUNDS.travertine)[themeId] || BACKGROUNDS.travertine.day;
-  const canvasH = Math.max(460, Math.min(760, typeof window !== "undefined" ? window.innerHeight - 210 : 560));
+  const canvasH = Math.max(430, Math.min(760, typeof window !== "undefined" ? window.innerHeight - (embedded ? 340 : 210) : 560));
 
   const nodeStat = (id) => model.nodes.find((n) => n.id === id);
   const stats = [
@@ -275,7 +275,9 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   ];
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: bgCss, color: t.ink, overflowY: "auto" }}>
+    <div style={embedded
+      ? { position: "relative", minHeight: "calc(100vh - 132px)", background: bgCss, color: t.ink, overflow: "hidden" }
+      : { position: "fixed", inset: 0, zIndex: 200, background: bgCss, color: t.ink, overflowY: "auto" }}>
       {/* atmosphere: fine dot grid + vignette */}
       <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: `radial-gradient(${t.ring || t.line} 0.8px, transparent 0.8px)`, backgroundSize: "34px 34px", opacity: themeId === "night" ? 0.5 : 0.55, maskImage: "radial-gradient(ellipse at 50% 42%, black 30%, transparent 78%)", WebkitMaskImage: "radial-gradient(ellipse at 50% 42%, black 30%, transparent 78%)" }} />
       <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", background: themeId === "night" ? "radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,0.35) 100%)" : "radial-gradient(ellipse at 50% 45%, transparent 60%, rgba(26,26,26,0.05) 100%)" }} />
@@ -310,8 +312,8 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
             {Object.entries(BACKGROUNDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           <button onClick={onToggleTheme} style={tbBtn(t)}>{themeId === "day" ? "◐ Night" : "◑ Day"}</button>
-          <button onClick={() => onNavigate({ tab: "profit" })} style={tbBtn(t)}>Standard Dashboard</button>
-          <button onClick={onExit} style={{ ...tbBtn(t), background: t.ink, color: t.bg, borderColor: t.ink }}>Exit Command View</button>
+          {!embedded && <button onClick={() => onNavigate({ tab: "profit" })} style={tbBtn(t)}>Standard Dashboard</button>}
+          {!embedded && <button onClick={onExit} style={{ ...tbBtn(t), background: t.ink, color: t.bg, borderColor: t.ink }}>Exit Command View</button>}
         </div>
       </div>
 
@@ -368,7 +370,6 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
               <div>
                 <PanelHeader title="Executive Brief" t={t} onClose={() => setSelected(null)} />
                 <div style={{ fontFamily: serif, fontSize: 40, marginTop: 8 }}>{model.healthScore} <span style={{ fontSize: 17, fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
-                <PurposeDropdown purpose={HEALTH_PURPOSE} t={t} />
                 {briefing && <StewardBrief brief={brief} t={t} chat={chats.health || []} busy={chatBusy} onAsk={(qq) => askSteward("health", qq)} areaLabel={lang === "es" ? "el negocio" : "the business"} lang={lang} />}
                 {model.insights.map((ins) => (
                   <div key={ins.id} style={{ padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
@@ -384,7 +385,6 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 4, color: node.status === "improving" ? t.green : node.status === "declining" ? t.red : t.sub }}>
                   Status: {node.status}{node.change ? " · " + node.change : ""}
                 </div>
-                <PurposeDropdown purpose={node.purpose} t={t} />
                 {briefing && <StewardBrief brief={brief} t={t} chat={chats[node.id] || []} busy={chatBusy} onAsk={(qq) => askSteward(node.id, qq)} areaLabel={node.label} lang={lang} />}
                 {[["What happened", node.summary.what], ["Why it matters", node.summary.why], ["What to do next", node.summary.next]].map(([h, body]) => (
                   <div key={h} style={{ marginTop: 16 }}>
@@ -404,7 +404,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
                 )}
                 <div style={{ marginTop: 16 }}>
                   {suggestions.map((s) => (
-                    <button key={s} onClick={() => onAsk(s)} style={{ display: "inline-block", background: "transparent", border: `1px solid ${t.line}`, borderRadius: 1, color: t.sub, fontFamily: serif, fontStyle: "italic", fontSize: 12, padding: "6px 12px", margin: "0 6px 6px 0", cursor: "pointer" }}>{s}</button>
+                    <button key={s} onClick={() => { if (!briefing) setBriefing(true); askSteward(node.id, s); }} style={{ display: "inline-block", background: "transparent", border: `1px solid ${t.line}`, borderRadius: 1, color: t.sub, fontFamily: serif, fontStyle: "italic", fontSize: 12, padding: "6px 12px", margin: "0 6px 6px 0", cursor: "pointer" }}>{s}</button>
                   ))}
                 </div>
                 <button onClick={() => onNavigate(node.nav)} style={panelBtn(t)}>View Full Dashboard</button>

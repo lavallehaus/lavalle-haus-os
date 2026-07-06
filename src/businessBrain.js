@@ -50,7 +50,7 @@ export function buildBrainModel(ctx) {
     shopifySales = null, amazonSales = null,
     bankCash = null, pnl = {}, actionsBoard = {},
     wholesale = [], accountHealth = null, cashRunwayWeeks = null,
-    marginsSummary = null,
+    marginsSummary = null, metaAds = [],
   } = ctx;
 
   const sellable = products.filter((p) => !p.isSample);
@@ -82,6 +82,20 @@ export function buildBrainModel(ctx) {
   const blendedRoas = spend7 > 0 ? adSales7 / spend7 : null;
   const blendedCpa = buys7 > 0 ? spend7 / buys7 : null;
   const cm2Pct = marginsSummary && marginsSummary.cm2Pct != null ? marginsSummary.cm2Pct : null;
+  const cm1Pct = marginsSummary && marginsSummary.cm1Pct != null ? marginsSummary.cm1Pct : null;
+  // Meta (from the Meta Ads tracker) + the all-channel blend
+  const metaSpend = metaAds.reduce((s, a) => s + num(a.spend), 0);
+  const metaRev = metaAds.reduce((s, a) => s + num(a.revenue), 0);
+  const metaBuys = metaAds.reduce((s, a) => s + num(a.purchases), 0);
+  const metaRoas = metaSpend > 0 ? metaRev / metaSpend : null;
+  const metaCpa = metaBuys > 0 ? metaSpend / metaBuys : null;
+  const allSpend = adSpend30 + metaSpend;
+  const allAdRev = adSales7 * (30 / 7) + metaRev;
+  const allRoas = allSpend > 0 && (blendedRoas != null || metaRoas != null) ? allAdRev / allSpend : null;
+  // Wholesale: what's actually secured vs in the pipeline
+  const wsActive = wholesale.filter((a) => a.status === "active").length;
+  const wsLeads = wholesale.filter((a) => a.status === "lead").length;
+  const wsOpp = wholesale.reduce((s, a) => s + num(a.oppValue), 0);
 
   const items = (actionsBoard.items || []).filter((it) => it.status !== "done" && it.status !== "resolved");
   const team = actionsBoard.team || [];
@@ -143,6 +157,13 @@ export function buildBrainModel(ctx) {
       status: wowPct == null ? "steady" : wowPct >= 0 ? "improving" : "declining",
       change: changeLabel(wowPct),
       nav: { tab: "profit", sub: "matrix" },
+      rotate: [
+        { key: "shopify", label: "Shopify", value: shopNow != null ? money(shopNow) + " wk" : "Syncing…", metric: null },
+        { key: "amazon", label: "Amazon", value: amzNow != null ? money(amzNow) + " wk" : "Syncing…", metric: null },
+        { key: "wholesale", label: "Wholesale", value: wsActive ? wsActive + " active" : "Building", metric: wsOpp ? money(wsOpp) + " opportunity" : null },
+        { key: "tiktokshop", label: "TikTok Shop", value: "Connect", metric: null },
+        { key: "all", label: "All channels", value: revNow != null ? money(revNow) + " wk" : (rev28 ? money(rev28) + " /28d" : "—"), metric: changeLabel(wowPct) },
+      ],
       summary: {
         what: revNow != null ? "This week " + money(revNow) + " across channels (Shopify " + (shopNow != null ? money(shopNow) : "—") + ", Amazon " + (amzNow != null ? money(amzNow) : "—") + ")." : "Live sales feeds connect here as Shopify and Amazon sync.",
         why: wowPct != null ? "Week-over-week " + (wowPct >= 0 ? "growth" : "decline") + " of " + Math.abs(wowPct) + "% vs " + money(revPrev) + " last week." : "Trailing 28 days: " + money(rev28) + ".",
@@ -167,6 +188,12 @@ export function buildBrainModel(ctx) {
       status: paused.length ? "declining" : (blendedRoas != null && blendedRoas >= 2 ? "improving" : "steady"),
       change: blendedRoas != null ? "ROAS " + blendedRoas.toFixed(2) + (blendedCpa != null ? " · CPA " + money(blendedCpa) : "") : (paused.length ? paused.length + " to pause" : null),
       nav: { tab: "ads", sub: "ppc" },
+      rotate: [
+        { key: "amazon", label: "Amazon Ads", value: adSpend30 ? money(adSpend30) + " /mo" : "—", metric: blendedRoas != null ? "ROAS " + blendedRoas.toFixed(2) + (blendedCpa != null ? " · CPA " + money(blendedCpa) : "") : null, tone: blendedRoas != null && blendedRoas < 1.5 ? "risk" : null },
+        { key: "meta", label: "Meta Ads", value: metaSpend ? money(metaSpend) + " tracked" : "Connect", metric: metaRoas != null ? "ROAS " + metaRoas.toFixed(2) + (metaCpa != null ? " · CPA " + money(metaCpa) : "") : null, tone: metaRoas != null && metaRoas < 1.5 ? "risk" : null },
+        { key: "tiktok", label: "TikTok Ads", value: "Connect", metric: null },
+        { key: "all", label: "All channels", value: allSpend ? money(allSpend) + " /mo" : "—", metric: allRoas != null ? "ROAS " + allRoas.toFixed(2) : null, tone: allRoas != null && allRoas < 1.5 ? "risk" : null },
+      ],
       summary: {
         what: campaigns.length + " Amazon campaigns, ~" + money(adSpend30) + "/month in spend" + (blendedRoas != null ? " · blended ROAS " + blendedRoas.toFixed(2) : "") + (blendedCpa != null ? " · cost per order " + money(blendedCpa) + "." : "."),
         why: paused.length ? paused.length + " campaign" + (paused.length > 1 ? "s have" : " has") + " spend with no sales — pure loss until paused." : bestCampaign ? "Top ROAS " + num(bestCampaign.roas).toFixed(2) + " (" + bestCampaign.name + ")." : "No standout performance signals this week.",
@@ -176,7 +203,8 @@ export function buildBrainModel(ctx) {
         { id: "mkt-roas", label: "Blended ROAS", value: blendedRoas != null ? blendedRoas.toFixed(2) : "—", tone: blendedRoas != null && blendedRoas < 1.5 ? "risk" : null, nav: { tab: "ads", sub: "ppc" } },
         { id: "mkt-cpa", label: "Cost per order (CPA)", value: blendedCpa != null ? money(blendedCpa) : "—", nav: { tab: "ads", sub: "ppc" } },
         { id: "mkt-ppc", label: "Amazon PPC", value: campaigns.length + " campaigns" + (paused.length ? " · " + paused.length + " to pause" : ""), tone: paused.length ? "risk" : null, nav: { tab: "ads", sub: "ppc" } },
-        { id: "mkt-meta", label: "Meta / Shopify", value: "Connect", nav: { tab: "ads", sub: "meta" } },
+        { id: "mkt-meta", label: "Meta Ads", value: metaSpend ? money(metaSpend) + (metaRoas != null ? " · ROAS " + metaRoas.toFixed(2) : "") : "Connect", tone: metaRoas != null && metaRoas < 1 ? "risk" : null, nav: { tab: "ads", sub: "meta" } },
+        { id: "mkt-tiktok", label: "TikTok Ads", value: "Connect", nav: { tab: "ads", sub: "meta" } },
       ],
     },
     {
@@ -203,7 +231,7 @@ export function buildBrainModel(ctx) {
       id: "finance", label: "Profit & Cash",
       purpose: {
         q: "Do we keep any of it?",
-        body: "Revenue is money in — this bubble is what survives. Blended margin (CM2) is what's left of each sale after Amazon fees, ads and product cost; margin flags are products leaking money; cash is what's actually in the bank.",
+        body: "Revenue is money in — this bubble is what survives. Gross margin is what's left after product cost only; net margin is what's left after fees, ads AND product cost; margin flags are products leaking money; cash is what's actually in the bank.",
         qEs: "¿Nos queda algo?",
         bodyEs: "El margen combinado después de comisiones, anuncios y costo del producto, los productos que pierden dinero, y el efectivo en el banco.",
       },
@@ -211,13 +239,20 @@ export function buildBrainModel(ctx) {
       status: (cm2Pct != null && cm2Pct < 15) || (cashRunwayWeeks != null && cashRunwayWeeks < 8) || highFlags.length ? "declining" : "steady",
       change: cash ? money(cash) + " cash" : (highFlags.length ? highFlags.length + " margin flags" : null),
       nav: { tab: "profit", sub: "finances" },
+      rotate: [
+        { key: "gross", label: "Gross margin", value: cm1Pct != null ? Math.round(cm1Pct) + "%" : "Enter COGS", metric: "after product cost" },
+        { key: "net", label: "Net margin", value: cm2Pct != null ? Math.round(cm2Pct) + "%" : "Enter COGS", metric: "after fees + ads", tone: cm2Pct != null && cm2Pct < 15 ? "risk" : null },
+        { key: "flags", label: "Margin flags", value: highFlags.length ? highFlags.length + " to fix" : "None", metric: null, tone: highFlags.length ? "risk" : null },
+        { key: "cash", label: "Cash", value: cash ? money(cash) : "Connect bank", metric: cashRunwayWeeks != null ? Math.round(cashRunwayWeeks) + " wk runway" : null },
+      ],
       summary: {
         what: (cm2Pct != null ? "Blended margin after Amazon fees and ads (CM2) is " + Math.round(cm2Pct) + "%. " : "Margin computes as COGS are entered in the COGS Builder. ") + (cash ? "Cash position " + money(cash) + (cashRunwayWeeks != null ? " · ~" + Math.round(cashRunwayWeeks) + " weeks of runway." : ".") : "Bank not connected — cash position unknown."),
         why: highFlags.length ? highFlags.length + " product" + (highFlags.length > 1 ? "s are" : " is") + " losing money or bleeding ad spend — profit leaks before cash ever lands." : (cm2Pct != null && cm2Pct < 15 ? "Under 15% blended margin leaves no cushion after operating costs." : "Revenue means nothing until it survives fees, ads and COGS."),
         next: highFlags.length ? "Open Margins — fix the flagged products first; they are the fastest profit recovery." : (cash ? "Review Cash Runway before approving inventory purchases or ad increases." : "Connect the bank (Plaid) in Finances so cash and runway track automatically."),
       },
       children: [
-        { id: "fin-margin", label: "Blended margin (CM2)", value: cm2Pct != null ? Math.round(cm2Pct) + "%" : "Enter COGS", tone: cm2Pct != null && cm2Pct < 15 ? "risk" : null, nav: { tab: "profit", sub: "margins" } },
+        { id: "fin-gross", label: "Gross margin — after product cost", value: cm1Pct != null ? Math.round(cm1Pct) + "%" : "Enter COGS", nav: { tab: "profit", sub: "margins" } },
+        { id: "fin-net", label: "Net margin — after fees + ads", value: cm2Pct != null ? Math.round(cm2Pct) + "%" : "Enter COGS", tone: cm2Pct != null && cm2Pct < 15 ? "risk" : null, nav: { tab: "profit", sub: "margins" } },
         { id: "fin-flags", label: "Margin flags", value: highFlags.length ? highFlags.length + " to fix" : "None", tone: highFlags.length ? "risk" : null, nav: { tab: "growth", sub: "checklist" } },
         { id: "fin-cash", label: "Cash position", value: cash ? money(cash) : "Connect bank", nav: { tab: "profit", sub: "finance" } },
         { id: "fin-pnl", label: "P&L", value: null, nav: { tab: "profit", sub: "finances" } },
@@ -274,17 +309,17 @@ export function buildBrainModel(ctx) {
         qEs: "¿Crece el canal mayorista?",
         bodyEs: "Cuentas de mayoreo y la gestión de 239 tiendas; cada cuenta es ingreso recurrente sin gasto publicitario.",
       },
-      value: wholesale.length ? wholesale.length + " accounts" : "Building",
-      status: "steady",
-      change: null,
+      value: wsActive ? wsActive + " active account" + (wsActive === 1 ? "" : "s") : "0 secured",
+      status: wsActive ? "improving" : "steady",
+      change: wsLeads ? wsLeads + " lead" + (wsLeads === 1 ? "" : "s") + (wsOpp ? " · " + money(wsOpp) + " opp" : "") : (wsOpp ? money(wsOpp) + " opportunity" : null),
       nav: { tab: "growth", sub: "wholesale" },
       summary: {
-        what: wholesale.length ? wholesale.length + " wholesale account" + (wholesale.length === 1 ? "" : "s") + " tracked, with the 239-store outreach underway." : "The B2B engine: 239 stores mapped for outreach, three-email cadence per store.",
+        what: wsActive ? wsActive + " account" + (wsActive === 1 ? "" : "s") + " actively secured" + (wsLeads ? ", " + wsLeads + " lead" + (wsLeads === 1 ? "" : "s") + " in the pipeline" : "") + (wsOpp ? " · " + money(wsOpp) + " in opportunity value" : "") + ". The 239-store outreach is underway." : "No accounts secured yet. The B2B engine: 239 stores mapped for outreach, three-email cadence per store" + (wsLeads ? " · " + wsLeads + " lead" + (wsLeads === 1 ? "" : "s") + " working" : "") + ".",
         why: "Wholesale accounts compound — each one is repeat revenue with zero ad spend.",
         next: "Work the Outreach Timeline — the follow-up emails win the accounts.",
       },
       children: [
-        { id: "gr-accounts", label: "Accounts", value: wholesale.length ? wholesale.length + " active" : "None yet", nav: { tab: "growth", sub: "wholesale" } },
+        { id: "gr-accounts", label: "Accounts secured", value: wsActive ? wsActive + " active" + (wsLeads ? " · " + wsLeads + " leads" : "") : "None yet", nav: { tab: "growth", sub: "wholesale" } },
         { id: "gr-outreach", label: "Retail Outreach", value: "239 stores", nav: { tab: "growth", sub: "wholesale" } },
         { id: "gr-timeline", label: "Outreach Timeline", value: "3-email cadence", nav: { tab: "growth", sub: "wholesale" } },
       ],

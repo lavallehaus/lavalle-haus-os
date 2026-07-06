@@ -49,6 +49,8 @@ const MOTION_CSS = `
 @keyframes bbBreathe { 0%,100% { box-shadow: 0 0 0 0 var(--bb-halo), 0 8px 30px rgba(0,0,0,0.08); } 50% { box-shadow: 0 0 0 18px transparent, 0 8px 30px rgba(0,0,0,0.08); } }
 @keyframes bbRipple { 0% { transform: translate(-50%,-50%) scale(1); opacity: 0.45; } 100% { transform: translate(-50%,-50%) scale(1.45); opacity: 0; } }
 @keyframes bbTwinkle { 0%,100% { opacity: 0.12; } 50% { opacity: 0.45; } }
+@keyframes bbFadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.bb-rot { animation: bbFadeUp 0.5s ease; }
 @keyframes bbSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .bb-node, .bb-center, .bb-ripple, .bb-syn, .bb-orbit { animation: none !important; }
@@ -101,6 +103,39 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
   const resetView = () => { viewRef.current = { x: 0, y: 0, z: 1 }; applyView(); };
   const onSelectRef = useRef(onSelect);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+
+  // purpose card — opened by the ▾ under a bubble's text, right on the map
+  const [purposePop, setPurposePop] = useState(null); // {id, purpose, x, y, above}
+  const popRef = useRef(setPurposePop);
+  useEffect(() => { popRef.current = setPurposePop; });
+  const selectNode = (id) => { setPurposePop(null); onSelect && onSelect(id); };
+
+  // channel rotation — bubbles with a `rotate` list tick through their channels
+  const [rotTick, setRotTick] = useState(0);
+  const rotReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  useEffect(() => {
+    if (rotReduced || !model.nodes.some((n) => n.rotate && n.rotate.length)) return;
+    const iv = setInterval(() => setRotTick((x) => x + 1), 3800);
+    return () => clearInterval(iv);
+  }, [model, rotReduced]);
+  const rotEntry = (n) => {
+    if (!n.rotate || !n.rotate.length) return null;
+    if (rotReduced) return n.rotate[n.rotate.length - 1]; // hold on "All" when motion is reduced
+    return n.rotate[rotTick % n.rotate.length];
+  };
+  const togglePurpose = (e, id, purpose) => {
+    if (!purpose) return;
+    const wrapR = wrapRef.current.getBoundingClientRect();
+    const btn = e.target.closest("button");
+    const br = btn.getBoundingClientRect();
+    const above = br.top - wrapR.top > (height * 0.55);
+    setPurposePop((p) => (p && p.id === id ? null : {
+      id, purpose,
+      x: br.left - wrapR.left + br.width / 2,
+      y: above ? br.top - wrapR.top - 6 : br.bottom - wrapR.top + 6,
+      above,
+    }));
+  };
   useEffect(() => {
     if (!pannable) return;
     const wrap = wrapRef.current;
@@ -109,7 +144,8 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     let start = null;   // one-finger drag origin {x, y, vx, vy}
     let pinch = null;   // two-finger base {d, z, mx, my, vx, vy}
     let lastTap = 0;
-    let tapTarget = null; // node/center the gesture started on — taps select it directly
+    let tapTarget = null;  // node/center the gesture started on — taps select it directly
+    let purposeTap = null; // the ▾ arrow — taps open the purpose card instead
     const clampView = (v) => {
       v.z = Math.min(2.4, Math.max(0.6, v.z));
       const lim = Math.max(wrap.clientWidth, wrap.clientHeight) * 0.6 * v.z;
@@ -122,7 +158,9 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
       const v = viewRef.current;
       if (pointers.size === 1) {
         start = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y };
-        tapTarget = e.target && e.target.closest ? e.target.closest("[data-bb-id]") : null;
+        const pt = e.target && e.target.closest ? e.target.closest("[data-bb-purpose]") : null;
+        purposeTap = pt;
+        tapTarget = pt ? null : (e.target && e.target.closest ? e.target.closest("[data-bb-id]") : null);
       }
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
@@ -159,13 +197,18 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           lastTap = now;
           // a clean tap on a node selects it directly — no reliance on the
           // browser synthesizing a click while the node is drifting
-          if (tapTarget && onSelectRef.current) {
-            onSelectRef.current(tapTarget.getAttribute("data-bb-id"));
+          if (purposeTap) {
+            purposeTap.click();
             movedRef.current = true; // swallow the native click that may follow
+          } else if (tapTarget && onSelectRef.current) {
+            popRef.current(null);
+            onSelectRef.current(tapTarget.getAttribute("data-bb-id"));
+            movedRef.current = true;
           }
         }
         start = null;
         tapTarget = null;
+        purposeTap = null;
         setTimeout(() => { movedRef.current = false; }, 120);
       }
     };
@@ -370,8 +413,8 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
         <button
           className="bb-center"
           data-bb-id="health"
-          onClick={() => onSelect && onSelect("health")}
-          onTouchEnd={(e) => { if (!movedRef.current) { e.preventDefault(); onSelect && onSelect("health"); } }}
+          onClick={() => selectNode("health")}
+          onTouchEnd={(e) => { if (!movedRef.current) { if (e.target.closest && e.target.closest("[data-bb-purpose]")) return; e.preventDefault(); selectNode("health"); } }}
           aria-label={"Business Health " + model.healthScore + ", " + model.status}
           style={{
             position: "absolute", left: cx, top: cy, transform: "translate(-50%,-50%)",
@@ -387,6 +430,9 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           <div style={{ fontFamily: sans, fontSize: 8 * scale + 1, letterSpacing: 1, color: t.sub, marginTop: 5 }}>
             {model.opportunities} opportunities · {model.risks} risk{model.risks === 1 ? "" : "s"}
           </div>
+          <div data-bb-purpose="health" title="What this measures · Qué mide"
+            onClick={(e) => { e.stopPropagation(); togglePurpose(e, "health", HEALTH_PURPOSE); }}
+            style={{ fontSize: 11 * scale, color: t.accent, marginTop: 3, lineHeight: 1, padding: "2px 10px" }}>▾</div>
         </button>
 
         {/* major nodes */}
@@ -396,8 +442,8 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
             className="bb-node"
             data-bb-id={n.id}
             ref={(el) => (nodeRefs.current[i] = el)}
-            onClick={() => onSelect && onSelect(n.id)}
-            onTouchEnd={(e) => { if (!movedRef.current) { e.preventDefault(); onSelect && onSelect(n.id); } }}
+            onClick={() => selectNode(n.id)}
+            onTouchEnd={(e) => { if (!movedRef.current) { if (e.target.closest && e.target.closest("[data-bb-purpose]")) return; e.preventDefault(); selectNode(n.id); } }}
             onMouseEnter={() => { hoverRef.current = i; }}
             onMouseLeave={() => { hoverRef.current = -1; }}
             aria-label={n.label + (n.value ? ", " + n.value : "")}
@@ -412,11 +458,52 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
               boxShadow: t.nodeShadow || "0 4px 18px rgba(0,0,0,0.06)",
             }}>
             <div style={{ fontFamily: serif, fontWeight: 400, fontSize: 14 * scale + 1, letterSpacing: 0.3, color: t.ink }}>{n.label}</div>
-            {n.value && <div style={{ fontFamily: sans, fontSize: 9 * scale + 0.5, letterSpacing: 1.2, textTransform: "uppercase", color: t.sub, marginTop: 3 }}>{n.value}</div>}
-            {n.change && <div style={{ fontFamily: sans, fontSize: 9 * scale, letterSpacing: 0.8, color: toneOf(n.status), marginTop: 1.5 }}>{n.change}</div>}
+            {(() => {
+              const r = rotEntry(n);
+              if (r) return (
+                <div key={r.key} className="bb-rot" style={{ textAlign: "center" }}>
+                  <div style={{ fontFamily: sans, fontSize: 8 * scale + 0.5, letterSpacing: 1.8, textTransform: "uppercase", color: t.accent, marginTop: 3 }}>{r.label}</div>
+                  <div style={{ fontFamily: sans, fontSize: 9 * scale + 0.5, letterSpacing: 1.2, textTransform: "uppercase", color: t.sub, marginTop: 2 }}>{r.value}</div>
+                  {r.metric && <div style={{ fontFamily: sans, fontSize: 8.5 * scale, letterSpacing: 0.8, color: r.tone === "risk" ? t.red : t.sub, marginTop: 1.5 }}>{r.metric}</div>}
+                </div>
+              );
+              return (
+                <>
+                  {n.value && <div style={{ fontFamily: sans, fontSize: 9 * scale + 0.5, letterSpacing: 1.2, textTransform: "uppercase", color: t.sub, marginTop: 3 }}>{n.value}</div>}
+                  {n.change && <div style={{ fontFamily: sans, fontSize: 9 * scale, letterSpacing: 0.8, color: toneOf(n.status), marginTop: 1.5 }}>{n.change}</div>}
+                </>
+              );
+            })()}
+            {n.purpose && (
+              <div data-bb-purpose={n.id} title="What this measures · Qué mide"
+                onClick={(e) => { e.stopPropagation(); togglePurpose(e, n.id, n.purpose); }}
+                style={{ fontSize: 10 * scale + 1, color: t.accent, marginTop: 2, lineHeight: 1, padding: "2px 10px" }}>▾</div>
+            )}
           </button>
         ))}
       </div>
+
+      {/* the purpose card — opens from the ▾ on a bubble, right on the map */}
+      {purposePop && purposePop.purpose && (
+        <div style={{
+          position: "absolute", left: Math.max(160, Math.min(w - 160, purposePop.x)), top: purposePop.y,
+          transform: purposePop.above ? "translate(-50%, -100%)" : "translateX(-50%)",
+          zIndex: 9, width: "min(300px, 84vw)", textAlign: "left",
+          background: t.card, border: `1px solid ${t.line}`, borderLeft: `2px solid ${t.brass}`,
+          borderRadius: 1, padding: "12px 14px", boxShadow: "0 16px 44px rgba(0,0,0,0.16)",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ fontFamily: sans, fontSize: 14, color: t.ink }}>{purposePop.purpose.q}</div>
+            <button onClick={() => setPurposePop(null)} aria-label="Close" style={{ background: "none", border: "none", color: t.sub, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+          </div>
+          <div style={{ fontFamily: sans, fontSize: 12, lineHeight: 1.6, color: t.sub, marginTop: 4 }}>{purposePop.purpose.body}</div>
+          {purposePop.purpose.qEs && (
+            <div style={{ fontFamily: sans, fontStyle: "italic", fontSize: 11.5, lineHeight: 1.55, color: t.sub, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+              <span style={{ color: t.ink }}>{purposePop.purpose.qEs}</span> {purposePop.purpose.bodyEs}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* reset chip appears once the view is panned/zoomed */}
       {pannable && transformed && (
@@ -477,7 +564,6 @@ function NodeDrawer({ node, model, theme: t, onClose, onNavigate, onAsk }) {
         {isHealth ? (
           <div>
             <div style={{ fontFamily: serif, fontSize: 15, color: t.ink, margin: "10px 0 2px" }}>Business Health {model.healthScore} — <span style={{ fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
-            <PurposeDropdown purpose={HEALTH_PURPOSE} t={t} />
             {model.healthNotes.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: t.sub, marginTop: 8 }}>No open deductions. The house is in order.</div>}
             {model.healthNotes.map((x, i) => (
               <div key={i} style={{ display: "flex", gap: 10, padding: "9px 0", borderBottom: `1px solid ${t.line}` }}>
@@ -502,7 +588,6 @@ function NodeDrawer({ node, model, theme: t, onClose, onNavigate, onAsk }) {
             <div style={{ fontFamily: sans, fontSize: 10, color: toneOf(n.status), letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>
               Status: {n.status}{n.change ? " · " + n.change : ""}
             </div>
-            <PurposeDropdown purpose={n.purpose} t={t} />
             {[["What happened", n.summary.what], ["Why it matters", n.summary.why], ["What to do next", n.summary.next]].map(([h, body]) => (
               <div key={h} style={{ marginTop: 14 }}>
                 <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{h}</div>

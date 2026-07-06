@@ -1854,7 +1854,9 @@ function RetentionModal({ onClose }) {
 }
 
 export default function App() {
-const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
+// The Business Brain home is ALWAYS the first screen — the saved tab only
+// survives in-session; a fresh open lands home, like a storefront.
+const [tab, setTab] = useState("brain");
 // Business Brain theme (day/night) + Command View overlay
 const [brainTheme, setBrainTheme] = useState(() => { try { return localStorage.getItem("lh_theme") || "day"; } catch { return "day"; } });
 useEffect(() => { try { localStorage.setItem("lh_theme", brainTheme); } catch {} }, [brainTheme]);
@@ -2113,6 +2115,7 @@ wholesale: dbState.wholesale || [],
 accountHealth: dbState.amazonAccountHealth || null,
 cashRunwayWeeks: null,
 marginsSummary: _marginsModel.summary || null,
+metaAds: dbState.metaAds || [],
 });
 const goTo = (nav) => {
 if (!nav) return;
@@ -2200,6 +2203,9 @@ setDbState((prev) => { const next = { ...prev, profitMatrix: { products: pm.prod
 
 function renderBody() {
 if (tab === "brain") {
+// Home IS the Command View experience, living under the main-tab header —
+// like a storefront homepage. Narrow screens get the vertical summary.
+if (typeof window !== "undefined" && window.innerWidth < 760) {
 return (
 <BusinessBrain
 model={brainModel}
@@ -2207,6 +2213,18 @@ themeId={brainTheme}
 onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
 onNavigate={goTo}
 onOpenCommand={() => setCommandView(true)}
+onAsk={askChief}
+/>
+);
+}
+return (
+<CommandView
+embedded
+model={brainModel}
+themeId={brainTheme}
+onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
+onExit={() => {}}
+onNavigate={goTo}
 onAsk={askChief}
 />
 );
@@ -2310,10 +2328,11 @@ if (locked) return <LoginScreen />;
 return (
 <div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-<div>
+<button onClick={() => { setCommandView(false); setTab("brain"); }} title="Home — Business Brain"
+style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
 <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
 <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
-</div>
+</button>
 <div style={{ display: "flex", gap: 8 }}>
 {[
 { label: "SKUs", value: products.length, color: "#71716C" },
