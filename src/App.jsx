@@ -1725,27 +1725,52 @@ This section now has its permanent home. We'll build it out in an upcoming phase
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
+function finishLogin(d) {
+  localStorage.setItem("lh_token", d.token);
+  try {
+    localStorage.setItem("lh_user", JSON.stringify(d.user || {}));
+    if (d.user && d.user.name) localStorage.setItem("lh_me", d.user.name);
+  } catch (e) {}
+  window.location.replace(window.location.pathname);
+}
+
+const loginInput = { width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 38px 10px 38px", fontSize: 14, color: "#1A1A1A", textAlign: "center", letterSpacing: 1, outline: "none" };
+const loginBtn = { width: "100%", marginTop: 10, padding: "10px 0", background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" };
+
+function LoginShell({ children }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+      <div style={{ background: "#F4F4F3", border: "1px solid #E0E0DD", borderRadius: 1, padding: "40px 44px", textAlign: "center", maxWidth: 340, width: "90%" }}>
+        <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
+        <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase", color: "#1A1A1A" }}>Operating System</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen() {
+  const [mode, setMode] = useState("user"); // "user" = email + personal password · "house" = master key
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
 
   async function submit() {
-    if (!pw || busy) return;
+    if (!pw || busy || (mode === "user" && !email.trim())) return;
     setBusy(true); setErr(null);
     try {
       const r = await fetch("/api/data?op=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw }),
+        body: JSON.stringify(mode === "user" ? { email: email.trim(), password: pw } : { password: pw }),
       });
       const d = await r.json();
       if (r.ok && d.token) {
-        localStorage.setItem("lh_token", d.token);
-        window.location.reload();
+        finishLogin(d);
       } else {
-        setErr("Wrong password — contraseña incorrecta");
+        setErr(mode === "user" ? "Wrong email or password — correo o contraseña incorrectos" : "Wrong password — contraseña incorrecta");
         setBusy(false);
       }
     } catch (e) {
@@ -1755,20 +1780,30 @@ function LoginScreen() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
-      <div style={{ background: "#F4F4F3", border: "1px solid #E0E0DD", borderRadius: 1, padding: "40px 44px", textAlign: "center", maxWidth: 340, width: "90%" }}>
-        <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
-        <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase", color: "#1A1A1A" }}>Operating System</div>
-        <div style={{ fontSize: 11, fontStyle: "italic", color: "#71716C", marginTop: 6, marginBottom: 22 }}>Private — enter the house password<br/>Privado — ingresa la contraseña de la casa</div>
+    <LoginShell>
+        <div style={{ fontSize: 11, fontStyle: "italic", color: "#71716C", marginTop: 6, marginBottom: 22 }}>
+          {mode === "user" ? <>Private — sign in with your email<br/>Privado — ingresa con tu correo</> : <>Private — enter the house password<br/>Privado — ingresa la contraseña de la casa</>}
+        </div>
+        {mode === "user" && (
+          <input
+            type="email"
+            value={email}
+            autoFocus
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(); }}
+            placeholder="Email"
+            style={{ ...loginInput, marginBottom: 8 }}
+          />
+        )}
         <div style={{ position: "relative" }}>
         <input
           type={show ? "text" : "password"}
           value={pw}
-          autoFocus
+          autoFocus={mode === "house"}
           onChange={e => setPw(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") submit(); }}
           placeholder="Password"
-          style={{ width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 38px 10px 38px", fontSize: 14, color: "#1A1A1A", textAlign: "center", letterSpacing: 2, outline: "none" }}
+          style={loginInput}
         />
         <button
           type="button"
@@ -1779,13 +1814,80 @@ function LoginScreen() {
           {show ? "🙈" : "👁"}
         </button>
         </div>
-        <button onClick={submit} disabled={busy}
-          style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
+        <button onClick={submit} disabled={busy} style={loginBtn}>
           {busy ? "Unlocking…" : "Enter"}
         </button>
         {err && <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{err}</div>}
-      </div>
-    </div>
+        <button onClick={() => { setMode(m => m === "user" ? "house" : "user"); setErr(null); setPw(""); }}
+          style={{ marginTop: 16, background: "none", border: "none", cursor: "pointer", fontSize: 10, letterSpacing: 1, color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+          {mode === "user" ? "Use the house password instead" : "Sign in with your email instead"}
+        </button>
+    </LoginShell>
+  );
+}
+
+// Invite acceptance — the private link from the invite email lands here.
+function AcceptInvite({ invite }) {
+  const [info, setInfo] = useState(null);
+  const [err, setErr] = useState(null);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/data?op=invite_info&invite=" + encodeURIComponent(invite))
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => { if (ok) setInfo(d); else setErr(d.error || "This invite link is no longer valid."); })
+      .catch(() => setErr("Could not reach the server — no se pudo conectar"));
+  }, [invite]);
+
+  async function submit() {
+    if (busy) return;
+    if (pw.length < 8) { setErr("Password must be at least 8 characters — mínimo 8 caracteres"); return; }
+    if (pw !== pw2) { setErr("Passwords don't match — las contraseñas no coinciden"); return; }
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/data?op=accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invite, password: pw }),
+      });
+      const d = await r.json();
+      if (r.ok && d.token) finishLogin(d);
+      else { setErr(d.error || "Something went wrong."); setBusy(false); }
+    } catch (e) {
+      setErr("Could not reach the server — no se pudo conectar");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <LoginShell>
+      {!info && !err && <div style={{ fontSize: 11, fontStyle: "italic", color: "#71716C", marginTop: 18 }}>Checking your invite…</div>}
+      {!info && err && (
+        <>
+          <div style={{ marginTop: 18, fontSize: 12, color: "#9b5e5e" }}>{err}</div>
+          <button onClick={() => window.location.replace(window.location.pathname)} style={{ ...loginBtn, marginTop: 18 }}>Go to sign in</button>
+        </>
+      )}
+      {info && (
+        <>
+          <div style={{ fontSize: 12, fontStyle: "italic", color: "#71716C", marginTop: 10 }}>Welcome, {info.name}.</div>
+          <div style={{ fontSize: 11, color: "#8F8676", marginTop: 4, marginBottom: 18 }}>{info.email} · {info.role}<br/>Choose your password — elige tu contraseña</div>
+          <div style={{ position: "relative", marginBottom: 8 }}>
+            <input type={show ? "text" : "password"} value={pw} autoFocus onChange={(e) => setPw(e.target.value)} placeholder="New password (8+ characters)" style={loginInput} />
+            <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? "Hide password" : "Show password"}
+              style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: show ? "#1A1A1A" : "#9A9A95", padding: 4, lineHeight: 1 }}>
+              {show ? "🙈" : "👁"}
+            </button>
+          </div>
+          <input type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder="Repeat password" style={loginInput} />
+          <button onClick={submit} disabled={busy} style={loginBtn}>{busy ? "Saving…" : "Set password & enter"}</button>
+          {err && <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e" }}>{err}</div>}
+        </>
+      )}
+    </LoginShell>
   );
 }
 
@@ -2172,8 +2274,27 @@ const NAV = [
 { id: "ai", label: "✦ AI", labelEs: "Asesor AI", subs: [{ id: "coo", label: "AI COO" }, { id: "advisor", label: "Advisor" }] },
 ];
 
-const activeNav = NAV.find(n => n.id === tab) || NAV[0];
-const activeSub = activeNav.subs ? (sub[tab] || activeNav.subs[0].id) : null;
+// ── ROLE GATING (Team Portal spec) ── the house password and Owner / Admin see
+// everything; Managers see everything except bank + cash runway; Team Members
+// work in operations; Viewers get read-oriented spaces. Server enforces the
+// financial ops too — hiding tabs is presentation, not the lock.
+const me = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "null"); } catch { return null; } })();
+const myRole = (me && me.role) || "Owner / Admin";
+const iAmOwner = /^owner/i.test(myRole);
+const ROLE_TABS = {
+  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
+  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
+  "Viewer": ["content", "roadmap"],
+};
+const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
+const visibleNav = NAV
+  .filter(n => iAmOwner || (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]).includes(n.id))
+  .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
+
+if (!visibleNav.some(n => n.id === tab)) { setTab(visibleNav[0].id); return null; }
+
+const activeNav = visibleNav.find(n => n.id === tab) || visibleNav[0];
+const activeSub = activeNav.subs ? (activeNav.subs.some(s => s.id === sub[tab]) ? sub[tab] : activeNav.subs[0].id) : null;
 const setSubFor = (id) => setSub(s => ({ ...s, [tab]: id }));
 
 if (!loaded) {
@@ -2319,7 +2440,7 @@ if (gsub === "creative") return (
 );
 if (gsub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
 if (gsub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
-if (gsub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
+if (gsub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} canInvite={iAmOwner} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
 return null;
 }
 if (tab === "materials") {
@@ -2329,15 +2450,21 @@ if (activeSub === "suppliers") return <Tracker title="Supplier Database" intro="
 return null;
 }
 
+const inviteToken = new URLSearchParams(window.location.search).get("invite");
+if (inviteToken) return <AcceptInvite invite={inviteToken} />;
 if (locked) return <LoginScreen />;
+
+const hour = new Date().getHours();
+const timeOfDay = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
 return (
 <div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-<button onClick={() => { setCommandView(false); setTab("brain"); }} title="Home — Business Brain"
+<button onClick={() => { setCommandView(false); setTab(visibleNav[0].id); }} title="Home"
 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
 <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
 <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
+{me && me.name && <div style={{ fontSize: 11, fontStyle: "italic", color: "#8F8676", marginTop: 3 }}>{timeOfDay}, {me.name.split(" ")[0]}.</div>}
 </button>
 <div style={{ display: "flex", gap: 8 }}>
 {[
@@ -2350,12 +2477,12 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
-<button onClick={() => setCommandView(true)}
+{visibleNav.some(n => n.id === "brain") && <button onClick={() => setCommandView(true)}
   title="Open Command View — vista de comando"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
   ⌘ Command View
-</button>
-<button onClick={() => { localStorage.removeItem("lh_token"); window.location.reload(); }}
+</button>}
+<button onClick={() => { localStorage.removeItem("lh_token"); localStorage.removeItem("lh_user"); window.location.reload(); }}
   title="Lock the app — cerrar con llave"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
   ⏻ Lock
@@ -2365,7 +2492,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 
 {/* TOP NAV — 7 permanent homes */}
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto" }}>
-{NAV.map(n => (
+{visibleNav.map(n => (
 <button key={n.id} onClick={() => setTab(n.id)} style={{ background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
 {n.label}
 {n.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{n.alert}</span>}
@@ -2384,7 +2511,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 </div>
 )}
 
-<div style={(tab === "profit" || tab === "brain") ? {} : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
+<div style={(tab === "profit" || tab === "brain") ? {} : tab === "content" ? { padding: "22px 24px" } : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
 {renderBody()}
 </div>
 <div style={{ borderTop: "1px solid #E8E8E6", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 1, color: "#9A9A95" }}>

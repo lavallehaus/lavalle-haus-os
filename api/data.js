@@ -1,16 +1,53 @@
-import { createHmac } from "node:crypto";
+import { createHmac, scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
-// When APP_PASSWORD is set in Vercel, every request must carry the session
-// token in the x-app-token header. Until it is set, the lock stays off — so
-// deploying this code before adding the env var can never lock anyone out.
+// Two ways in: the house password (owner master key, legacy token) or a
+// per-user session token issued after an email invite + personal password.
+// When APP_PASSWORD is unset the lock stays off — deploying this code before
+// adding the env var can never lock anyone out.
 const SESSION_SALT = "lavalle-haus-session-v1";
 function appToken() {
   return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
 }
-function isAuthed(req) {
-  if (!process.env.APP_PASSWORD) return true;
-  return (req.headers["x-app-token"] || "") === appToken();
+function makeUserToken(user) {
+  const body = Buffer.from(JSON.stringify({ u: user.id, n: user.name, r: user.role, e: Date.now() + 30 * 86400000 })).toString("base64url");
+  const sig = createHmac("sha256", process.env.APP_PASSWORD || "x").update(body).digest("hex");
+  return "u." + body + "." + sig;
+}
+function verifyUserToken(tok) {
+  if (!process.env.APP_PASSWORD || !tok || !tok.startsWith("u.")) return null;
+  const parts = tok.split(".");
+  if (parts.length !== 3) return null;
+  const expect = createHmac("sha256", process.env.APP_PASSWORD).update(parts[1]).digest("hex");
+  if (parts[2] !== expect) return null;
+  try {
+    const p = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+    if (!p.e || Date.now() > p.e) return null;
+    return p;
+  } catch (e) { return null; }
+}
+// Resolve who is calling. House token → owner. User token → must still exist
+// in the user store and not be revoked (so Revoke works instantly, even for
+// tokens already issued). Returns { role, name, email, userId } or null.
+async function getAuth(req) {
+  if (!process.env.APP_PASSWORD) return { role: "Owner / Admin", name: "", email: "", userId: null, house: true };
+  const tok = req.headers["x-app-token"] || "";
+  if (tok === appToken()) return { role: "Owner / Admin", name: "", email: "", userId: null, house: true };
+  const p = verifyUserToken(tok);
+  if (!p) return null;
+  const users = (await kvGet("lavalle_users")) || [];
+  const u = users.find((x) => x.id === p.u);
+  if (!u || u.revoked || !u.hash) return null;
+  return { role: u.role, name: u.name, email: u.email, userId: u.id, house: false };
+}
+const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
+const hashPassword = (pw, salt) => scryptSync(pw, salt, 64).toString("hex");
+function passwordMatches(pw, salt, hash) {
+  try {
+    const a = Buffer.from(hashPassword(pw, salt), "hex");
+    const b = Buffer.from(hash, "hex");
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch (e) { return false; }
 }
 
 // ── PLAID (folded in here to stay under Vercel's 12-function Hobby cap) ─────────
@@ -126,22 +163,129 @@ export default async function handler(req, res) {
   if (req.method === "GET" && process.env.CRON_SECRET && req.headers && req.headers.authorization === "Bearer " + process.env.CRON_SECRET) {
     return runReminders(res);
   }
-  // Login: exchange the password for the session token
-  if (req.method === "POST" && req.query && req.query.op === "login") {
-    const pw = (req.body && req.body.password) || "";
-    if (process.env.APP_PASSWORD && pw === process.env.APP_PASSWORD) {
-      res.json({ token: appToken() });
-    } else {
-      res.status(401).json({ error: "Wrong password" });
-    }
-    return;
-  }
-  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
-
   const op = (req.query && req.query.op) || "";
 
-  // ── Plaid ops (bank balances → cash runway) ──────────────────────────────────
+  // ── Auth (public ops) ────────────────────────────────────────────────────────
+  // Login: house password (owner master key) or personal email + password.
+  if (req.method === "POST" && op === "login") {
+    const b = req.body || {};
+    const pw = b.password || "";
+    const email = (b.email || "").trim().toLowerCase();
+    if (!email && process.env.APP_PASSWORD && pw === process.env.APP_PASSWORD) {
+      res.json({ token: appToken(), user: { name: "", role: "Owner / Admin", email: "" } });
+      return;
+    }
+    if (email && pw) {
+      const users = (await kvGet("lavalle_users")) || [];
+      const u = users.find((x) => (x.email || "").toLowerCase() === email);
+      if (u && !u.revoked && u.hash && passwordMatches(pw, u.salt, u.hash)) {
+        res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email } });
+        return;
+      }
+    }
+    res.status(401).json({ error: "Wrong password" });
+    return;
+  }
+
+  // Invite details: lets the accept screen greet the person by name.
+  if (req.method === "GET" && op === "invite_info") {
+    const t = (req.query.invite || "").trim();
+    const users = (await kvGet("lavalle_users")) || [];
+    const u = users.find((x) => x.inviteToken && x.inviteToken === t && !x.revoked);
+    if (!u || (u.inviteExp && Date.now() > u.inviteExp)) { res.status(404).json({ error: "This invite link is no longer valid. Ask for a new one." }); return; }
+    res.json({ name: u.name, email: u.email, role: u.role });
+    return;
+  }
+
+  // Accept an invite: set a personal password, get a session token.
+  if (req.method === "POST" && op === "accept") {
+    const b = req.body || {};
+    const t = (b.invite || "").trim();
+    const pw = b.password || "";
+    if (pw.length < 8) { res.status(400).json({ error: "Password must be at least 8 characters." }); return; }
+    const users = (await kvGet("lavalle_users")) || [];
+    const u = users.find((x) => x.inviteToken && x.inviteToken === t && !x.revoked);
+    if (!u || (u.inviteExp && Date.now() > u.inviteExp)) { res.status(404).json({ error: "This invite link is no longer valid. Ask for a new one." }); return; }
+    u.salt = randomBytes(16).toString("hex");
+    u.hash = hashPassword(pw, u.salt);
+    u.inviteToken = null;
+    u.inviteExp = null;
+    u.acceptedAt = new Date().toISOString();
+    await kvSet("lavalle_users", users);
+    res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email } });
+    return;
+  }
+
+  const auth = await getAuth(req);
+  if (!auth) { res.status(401).json({ error: "Locked" }); return; }
+
+  // Who am I — restores name/role on the client after a reload.
+  if (req.method === "GET" && op === "me") {
+    res.json({ name: auth.name, role: auth.role, email: auth.email });
+    return;
+  }
+
+  // ── Team access (owner-only ops) ─────────────────────────────────────────────
+  if (op === "invite" || op === "revoke" || op === "users") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can manage team access." }); return; }
+    const users = (await kvGet("lavalle_users")) || [];
+
+    if (req.method === "GET" && op === "users") {
+      res.json({ users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, invitedAt: u.invitedAt || null, acceptedAt: u.acceptedAt || null, revoked: !!u.revoked, inviteExpired: !!(u.inviteToken && u.inviteExp && Date.now() > u.inviteExp) })) });
+      return;
+    }
+
+    if (req.method === "POST" && op === "invite") {
+      const b = req.body || {};
+      const name = (b.name || "").trim();
+      const email = (b.email || "").trim().toLowerCase();
+      const role = ["Owner / Admin", "Manager", "Team Member", "Viewer"].includes(b.role) ? b.role : "Team Member";
+      if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { res.status(400).json({ error: "A name and a valid email are required." }); return; }
+      let u = users.find((x) => (x.email || "").toLowerCase() === email);
+      if (!u) { u = { id: "usr_" + randomBytes(8).toString("hex") }; users.push(u); }
+      u.name = name; u.email = email; u.role = role;
+      u.revoked = false;
+      u.inviteToken = randomBytes(24).toString("hex");
+      u.inviteExp = Date.now() + 14 * 86400000;
+      u.invitedAt = new Date().toISOString();
+      await kvSet("lavalle_users", users);
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "";
+      const link = "https://" + host + "/?invite=" + u.inviteToken;
+      let sent = false, sendError = null;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (apiKey) {
+        const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+        const html =
+          '<div style="font-family:Georgia,serif;color:#1a1714;max-width:560px">' +
+            '<p style="font-size:11px;letter-spacing:2px;color:#a07848;text-transform:uppercase">Lavalle Haus OS</p>' +
+            '<h2 style="font-weight:400;margin:6px 0">You&rsquo;re invited, ' + name.replace(/[&<>"]/g, "") + '.</h2>' +
+            '<p style="line-height:1.6">You now have your own access to the Lavalle Haus operating system as <b>' + role + '</b>. Open the private link below and choose your password &mdash; the link is yours alone and expires in 14 days.</p>' +
+            '<p style="margin:22px 0"><a href="' + link + '" style="background:#1a1714;color:#ffffff;text-decoration:none;padding:12px 26px;font-size:12px;letter-spacing:2px;text-transform:uppercase">Set your password</a></p>' +
+            '<p style="font-size:12px;color:#8c7d6b;line-height:1.5">If the button doesn&rsquo;t work, copy this link:<br/>' + link + '</p>' +
+            '<hr style="border:none;border-top:1px solid #c8c2b8;margin:14px 0"/>' +
+            '<p style="font-size:12px;color:#8c7d6b">Sent from Lavalle Haus OS</p>' +
+          '</div>';
+        try { await sendResendEmail({ apiKey, from, to: email, subject: "Your access to Lavalle Haus OS", html }); sent = true; }
+        catch (e) { sendError = String(e).slice(0, 200); }
+      } else { sendError = "RESEND_API_KEY not set"; }
+      res.json({ ok: true, sent, sendError, link, user: { id: u.id, name, email, role } });
+      return;
+    }
+
+    if (req.method === "POST" && op === "revoke") {
+      const id = (req.body || {}).id;
+      const u = users.find((x) => x.id === id);
+      if (!u) { res.status(404).json({ error: "No such user." }); return; }
+      u.revoked = true; u.hash = null; u.salt = null; u.inviteToken = null; u.inviteExp = null;
+      await kvSet("lavalle_users", users);
+      res.json({ ok: true });
+      return;
+    }
+  }
+
+  // ── Plaid ops (bank balances → cash runway) — owner-only financials ─────────
   if (PLAID_OPS.includes(op)) {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Bank data is only available to the owner." }); return; }
     if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
       res.status(400).json({ error: "Plaid credentials not set in Vercel (PLAID_CLIENT_ID, PLAID_SECRET)." });
       return;

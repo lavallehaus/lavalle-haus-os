@@ -304,7 +304,7 @@ export default function Boards({ data, onSave, team = [] }) {
                     <button onClick={() => renameList(l)} title="Rename list" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 11, padding: 2 }}>✎</button>
                     <button onClick={() => deleteList(l)} title="Delete list" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 12, padding: 2 }}>×</button>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "56vh", overflowY: "auto" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 330px)", overflowY: "auto" }}>
                     {cards.map((card) => (
                       <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
                         style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden" }}>

@@ -49,7 +49,7 @@ function reconcile(items, flags) {
   return out;
 }
 
-export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave }) {
+export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave, canInvite = false }) {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState(() => ({
@@ -84,6 +84,47 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   useEffect(() => { if (onSave) onSave(state); /* eslint-disable-next-line */ }, [persistKey]);
 
   const memberById = useMemo(() => { const m = {}; state.team.forEach((t) => { m[t.id] = t; }); return m; }, [state.team]);
+
+  // ── App access (owner only) — email invites, per-user logins, revoke ────────
+  const [access, setAccess] = useState(null); // email -> user record from the server
+  const [inviteState, setInviteState] = useState({}); // memberId -> "sending" | "sent" | "err:…" | { link, sendError }
+  const refreshAccess = async () => {
+    try {
+      const r = await fetch("/api/data?op=users");
+      const d = await r.json();
+      if (r.ok) { const m = {}; (d.users || []).forEach((u) => { m[(u.email || "").toLowerCase()] = u; }); setAccess(m); }
+    } catch (e) {}
+  };
+  useEffect(() => { if (canInvite) refreshAccess(); /* eslint-disable-next-line */ }, [canInvite]);
+  const accessFor = (t) => (access && access[(t.email || "").toLowerCase()]) || null;
+  const sendInvite = async (t) => {
+    if (!t.email) return;
+    setInviteState((s) => ({ ...s, [t.id]: "sending" }));
+    try {
+      const r = await fetch("/api/data?op=invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: t.name, email: t.email, role: t.role || "Team Member" }) });
+      const d = await r.json();
+      if (!r.ok) { setInviteState((s) => ({ ...s, [t.id]: "err:" + (d.error || r.status) })); return; }
+      setInviteState((s) => ({ ...s, [t.id]: d.sent ? "sent" : { link: d.link, sendError: d.sendError } }));
+      refreshAccess();
+    } catch (e) { setInviteState((s) => ({ ...s, [t.id]: "err:Could not reach the server" })); }
+  };
+  const revokeAccess = async (t) => {
+    const u = accessFor(t);
+    if (!u) return;
+    if (!confirm(`Remove ${t.name}'s access to the app? Their login stops working immediately.`)) return;
+    try {
+      await fetch("/api/data?op=revoke", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id }) });
+      setInviteState((s) => { const n = { ...s }; delete n[t.id]; return n; });
+      refreshAccess();
+    } catch (e) {}
+  };
+  const accessLabel = (t) => {
+    const u = accessFor(t);
+    if (!u || u.revoked) return { text: u && u.revoked ? "access revoked" : "no app access", color: c.sub };
+    if (u.acceptedAt) return { text: "active — has own login", color: c.green };
+    if (u.inviteExpired) return { text: "invite expired", color: c.red };
+    return { text: "invited — waiting", color: c.clay };
+  };
 
   const sorted = useMemo(() => {
     const arr = state.items.filter((it) => filter === "all" ? true : filter === "done" ? !isLive(it) : isLive(it));
@@ -262,16 +303,34 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
             <button onClick={() => setEditId(null)} style={btnGhost}>Cancel</button>
           </div>
         ) : (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: "1px solid #00000008" }}>
+          <div key={t.id} style={{ borderBottom: "1px solid #00000008" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", flexWrap: "wrap" }}>
             <Avatar m={t} size={26} />
             <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, minWidth: 120 }}>{t.name}</span>
-            <select value={t.role || "Team Member"} onChange={(e) => setRole(t.id, e.target.value)} title="Role — controls what this person will see once per-user logins arrive"
+            <select value={t.role || "Team Member"} onChange={(e) => setRole(t.id, e.target.value)} title="Role — controls which tabs this person sees when they log in"
               style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, color: c.sub, fontFamily: sans, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>
               {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
-            <span style={{ fontFamily: sans, fontSize: 11, color: t.email ? c.sub : c.red, flex: 1, minWidth: 140 }}>{t.email || "no email — can't notify"}</span>
+            <span style={{ fontFamily: sans, fontSize: 11, color: t.email ? c.sub : c.red, flex: 1, minWidth: 140 }}>{t.email || "no email — can't notify or invite"}</span>
+            {canInvite && t.email && access && (() => { const a = accessLabel(t); const u = accessFor(t); const st = inviteState[t.id]; return (
+              <>
+                <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: a.color }}>{st === "sent" ? "invite emailed ✓" : a.text}</span>
+                {(!u || u.revoked || !u.acceptedAt) && <button onClick={() => sendInvite(t)} disabled={st === "sending"} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>{st === "sending" ? "Inviting…" : (u && !u.revoked && u.invitedAt) ? "Re-invite" : "Invite"}</button>}
+                {u && !u.revoked && <button onClick={() => revokeAccess(t)} style={{ ...btnGhost, color: c.red }}>Revoke</button>}
+              </>
+            ); })()}
             <button onClick={() => startEdit(t)} style={btnGhost}>Edit</button>
             <button onClick={() => removeMember(t.id)} style={btnGhost}>Remove</button>
+          </div>
+          {canInvite && inviteState[t.id] && typeof inviteState[t.id] === "object" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 0 8px 36px", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: sans, fontSize: 10.5, color: c.red }}>Email didn't send{inviteState[t.id].sendError ? " (" + inviteState[t.id].sendError + ")" : ""} — send them this private link instead:</span>
+              <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(inviteState[t.id].link); }} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>Copy invite link</button>
+            </div>
+          )}
+          {canInvite && typeof inviteState[t.id] === "string" && inviteState[t.id].startsWith("err:") && (
+            <div style={{ padding: "0 0 8px 36px", fontFamily: sans, fontSize: 10.5, color: c.red }}>{inviteState[t.id].slice(4)}</div>
+          )}
           </div>
         ))}
         <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 10, flexWrap: "wrap" }}>
