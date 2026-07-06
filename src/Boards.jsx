@@ -194,7 +194,7 @@ export default function Boards({ data, onSave, teamNames = [] }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "56vh", overflowY: "auto" }}>
                     {cards.map((card) => (
                       <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
-                        style={{ background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden" }}>
+                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden" }}>
                         {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: 110, objectFit: "cover" }} />}
                         <div style={{ padding: "9px 11px" }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
