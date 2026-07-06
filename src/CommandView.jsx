@@ -183,11 +183,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   useEffect(() => { if (!selected || !briefing) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [selected, briefing]);
   // muting cuts speech mid-sentence
   useEffect(() => { if (!voiceOn) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [voiceOn]);
-  // the Steward announces itself once when it enters the room
-  const welcomedRef = useRef(false);
-  useEffect(() => {
-    if (briefing && !welcomedRef.current) { welcomedRef.current = true; speak((lang === "es" ? "Bienvenido, " : "Welcome, ") + model.businessName + ".", voiceOn, lang); }
-  }, [briefing]);
+  // The Steward stays silent until a bubble is selected — no welcome line.
 
   // ── per-bubble conversation with the Steward ──
   const [chats, setChats] = useState({}); // nodeId -> [{role: "user"|"steward", text}]
