@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrainCanvas, BRAIN_THEMES, timeGreeting } from "./BusinessBrain.jsx";
-import { ASK_SUGGESTIONS } from "./businessBrain.js";
+import { BrainCanvas, BRAIN_THEMES, timeGreeting, PurposeDropdown } from "./BusinessBrain.jsx";
+import { ASK_SUGGESTIONS, HEALTH_PURPOSE } from "./businessBrain.js";
 
 // LAVALLE HAUS OS — Command View
 // The immersive, touch-friendly layer over the Business Brain, for large
@@ -368,6 +368,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
               <div>
                 <PanelHeader title="Executive Brief" t={t} onClose={() => setSelected(null)} />
                 <div style={{ fontFamily: serif, fontSize: 40, marginTop: 8 }}>{model.healthScore} <span style={{ fontSize: 17, fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
+                <PurposeDropdown purpose={HEALTH_PURPOSE} t={t} />
                 {briefing && <StewardBrief brief={brief} t={t} chat={chats.health || []} busy={chatBusy} onAsk={(qq) => askSteward("health", qq)} areaLabel={lang === "es" ? "el negocio" : "the business"} lang={lang} />}
                 {model.insights.map((ins) => (
                   <div key={ins.id} style={{ padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
@@ -383,6 +384,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 4, color: node.status === "improving" ? t.green : node.status === "declining" ? t.red : t.sub }}>
                   Status: {node.status}{node.change ? " · " + node.change : ""}
                 </div>
+                <PurposeDropdown purpose={node.purpose} t={t} />
                 {briefing && <StewardBrief brief={brief} t={t} chat={chats[node.id] || []} busy={chatBusy} onAsk={(qq) => askSteward(node.id, qq)} areaLabel={node.label} lang={lang} />}
                 {[["What happened", node.summary.what], ["Why it matters", node.summary.why], ["What to do next", node.summary.next]].map(([h, body]) => (
                   <div key={h} style={{ marginTop: 16 }}>

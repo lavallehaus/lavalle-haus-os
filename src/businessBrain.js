@@ -133,6 +133,12 @@ export function buildBrainModel(ctx) {
   const nodes = [
     {
       id: "revenue", label: "Revenue",
+      purpose: {
+        q: "Are we selling?",
+        body: "Net sales this week with the change vs last week. Inside: Shopify and Amazon this week, plus gross and net for the trailing 28 days. Gross is before discounts and refunds; net is what the orders were really worth.",
+        qEs: "¿Estamos vendiendo?",
+        bodyEs: "Ventas netas de la semana y su cambio contra la anterior; adentro, Shopify, Amazon y el bruto/neto de los últimos 28 días.",
+      },
       value: revNow != null ? money(revNow) + " wk" : (rev28 ? money(rev28) + " /28d" : "—"),
       status: wowPct == null ? "steady" : wowPct >= 0 ? "improving" : "declining",
       change: changeLabel(wowPct),
@@ -151,6 +157,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "marketing", label: "Marketing",
+      purpose: {
+        q: "Is our ad spend efficient?",
+        body: "Total monthly ad spend with the two numbers that matter: blended ROAS (sales returned per $1 of ads — under 1 means ads lose money) and CPA (what one order costs us in ads). If ROAS shows red, a weak campaign is dragging the blend down.",
+        qEs: "¿El gasto en anuncios es eficiente?",
+        bodyEs: "Gasto publicitario mensual con ROAS combinado (ventas por cada $1 de anuncios) y CPA (costo por pedido).",
+      },
       value: adSpend30 ? money(adSpend30) + " /mo" : "—",
       status: paused.length ? "declining" : (blendedRoas != null && blendedRoas >= 2 ? "improving" : "steady"),
       change: blendedRoas != null ? "ROAS " + blendedRoas.toFixed(2) + (blendedCpa != null ? " · CPA " + money(blendedCpa) : "") : (paused.length ? paused.length + " to pause" : null),
@@ -169,6 +181,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "inventory", label: "Inventory",
+      purpose: {
+        q: "Can we fulfill?",
+        body: "Every sellable product and its stock condition. Products at risk are out, low, or past their reorder point — each one is revenue we cannot capture until restocked.",
+        qEs: "¿Podemos surtir?",
+        bodyEs: "Cada producto y su inventario; los que están en riesgo son ventas que no podemos capturar hasta resurtir.",
+      },
       value: sellable.length + " SKUs",
       status: stockRisks.length ? "declining" : "steady",
       change: stockRisks.length ? stockRisks.length + " at risk" : inbound.length ? inbound.length + " inbound" : null,
@@ -183,6 +201,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "finance", label: "Profit & Cash",
+      purpose: {
+        q: "Do we keep any of it?",
+        body: "Revenue is money in — this bubble is what survives. Blended margin (CM2) is what's left of each sale after Amazon fees, ads and product cost; margin flags are products leaking money; cash is what's actually in the bank.",
+        qEs: "¿Nos queda algo?",
+        bodyEs: "El margen combinado después de comisiones, anuncios y costo del producto, los productos que pierden dinero, y el efectivo en el banco.",
+      },
       value: cm2Pct != null ? Math.round(cm2Pct) + "% margin" : (cash ? money(cash) + " cash" : "—"),
       status: (cm2Pct != null && cm2Pct < 15) || (cashRunwayWeeks != null && cashRunwayWeeks < 8) || highFlags.length ? "declining" : "steady",
       change: cash ? money(cash) + " cash" : (highFlags.length ? highFlags.length + " margin flags" : null),
@@ -201,6 +225,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "operations", label: "Operations",
+      purpose: {
+        q: "Is the team executing?",
+        body: "Open action items across the company, who owns them, and how many are high urgency. If this bubble is red, decisions are sitting unmade.",
+        qEs: "¿El equipo está ejecutando?",
+        bodyEs: "Tareas abiertas, responsables y cuántas son urgentes.",
+      },
       value: items.length + " open task" + (items.length === 1 ? "" : "s"),
       status: items.filter((i) => i.severity === "high").length ? "declining" : "steady",
       change: items.filter((i) => i.severity === "high").length ? items.filter((i) => i.severity === "high").length + " high urgency" : null,
@@ -219,6 +249,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "projects", label: "Launches",
+      purpose: {
+        q: "What's coming?",
+        body: "Products in the launch pipeline. Launches commit inventory and cash weeks before they return revenue, so they belong in every review.",
+        qEs: "¿Qué viene?",
+        bodyEs: "Productos por lanzar; comprometen inventario y efectivo antes de generar ingresos.",
+      },
       value: inbound.length ? inbound.length + " in pipeline" : "—",
       status: "steady",
       change: null,
@@ -232,6 +268,12 @@ export function buildBrainModel(ctx) {
     },
     {
       id: "growth", label: "Wholesale",
+      purpose: {
+        q: "Is the B2B engine building?",
+        body: "Wholesale accounts and the 239-store outreach with its three-email cadence. Every account won is repeat revenue with zero ad spend.",
+        qEs: "¿Crece el canal mayorista?",
+        bodyEs: "Cuentas de mayoreo y la gestión de 239 tiendas; cada cuenta es ingreso recurrente sin gasto publicitario.",
+      },
       value: wholesale.length ? wholesale.length + " accounts" : "Building",
       status: "steady",
       change: null,
@@ -262,6 +304,14 @@ export function buildBrainModel(ctx) {
     nodes,
   };
 }
+
+// What the central score means — shown in the Executive Brief dropdown.
+export const HEALTH_PURPOSE = {
+  q: "How is the company, in one number?",
+  body: "A 0-100 score computed from real operating signals: margin and ad-waste flags, stockouts, campaigns bleeding spend, cash runway, Amazon account health, and the week-over-week sales trend. Every point lost maps to something specific you can open and fix.",
+  qEs: "¿Cómo está la empresa, en un número?",
+  bodyEs: "Un puntaje de 0 a 100 calculado con señales reales: márgenes, inventario, anuncios, efectivo y la tendencia de ventas. Cada punto perdido corresponde a algo concreto por arreglar.",
+};
 
 // Ask-Chief starter questions, contextual per node (spec: Command View).
 export const ASK_SUGGESTIONS = {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ASK_SUGGESTIONS } from "./businessBrain.js";
+import { ASK_SUGGESTIONS, HEALTH_PURPOSE } from "./businessBrain.js";
 
 // LAVALLE HAUS OS — Business Brain landing page
 // A quiet-luxury visual map of the business: Business Health at the center,
@@ -434,6 +434,32 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
   );
 }
 
+// ── Purpose dropdown — teaches any team member what a bubble measures ────────
+export function PurposeDropdown({ purpose, t }) {
+  const [open, setOpen] = useState(false);
+  if (!purpose) return null;
+  return (
+    <div style={{ marginTop: 12, border: `1px solid ${t.line}`, borderRadius: 1, background: t.bg }}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", padding: "10px 13px", cursor: "pointer", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>
+        <span>What this measures · Qué mide</span>
+        <span style={{ display: "inline-block", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.25s ease" }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 13px 13px" }}>
+          <div style={{ fontFamily: sans, fontSize: 14.5, fontWeight: 400, color: t.ink }}>{purpose.q}</div>
+          <div style={{ fontFamily: sans, fontSize: 12.5, lineHeight: 1.65, color: t.sub, marginTop: 4 }}>{purpose.body}</div>
+          {purpose.qEs && (
+            <div style={{ fontFamily: sans, fontStyle: "italic", fontSize: 12, lineHeight: 1.6, color: t.sub, marginTop: 9, paddingTop: 9, borderTop: `1px solid ${t.line}` }}>
+              <span style={{ color: t.ink }}>{purpose.qEs}</span> {purpose.bodyEs}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Node drawer (landing page) ───────────────────────────────────────────────
 function NodeDrawer({ node, model, theme: t, onClose, onNavigate, onAsk }) {
   const isHealth = node === "health";
@@ -451,6 +477,7 @@ function NodeDrawer({ node, model, theme: t, onClose, onNavigate, onAsk }) {
         {isHealth ? (
           <div>
             <div style={{ fontFamily: serif, fontSize: 15, color: t.ink, margin: "10px 0 2px" }}>Business Health {model.healthScore} — <span style={{ fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
+            <PurposeDropdown purpose={HEALTH_PURPOSE} t={t} />
             {model.healthNotes.length === 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: t.sub, marginTop: 8 }}>No open deductions. The house is in order.</div>}
             {model.healthNotes.map((x, i) => (
               <div key={i} style={{ display: "flex", gap: 10, padding: "9px 0", borderBottom: `1px solid ${t.line}` }}>
@@ -475,6 +502,7 @@ function NodeDrawer({ node, model, theme: t, onClose, onNavigate, onAsk }) {
             <div style={{ fontFamily: sans, fontSize: 10, color: toneOf(n.status), letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>
               Status: {n.status}{n.change ? " · " + n.change : ""}
             </div>
+            <PurposeDropdown purpose={n.purpose} t={t} />
             {[["What happened", n.summary.what], ["Why it matters", n.summary.why], ["What to do next", n.summary.next]].map(([h, body]) => (
               <div key={h} style={{ marginTop: 14 }}>
                 <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{h}</div>
