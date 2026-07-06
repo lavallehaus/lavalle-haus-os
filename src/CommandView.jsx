@@ -104,25 +104,35 @@ function pickVoice(lang) {
   );
 }
 
+const _chosenVoice = {}; // lang -> voice NAME that worked; re-resolved fresh each utterance
 function speak(text, enabled, lang = "en") {
   try {
     if (!enabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.97; u.pitch = 0.9; // measured male register
-    u.lang = lang === "es" ? "es-MX" : "en-US";
     const go = () => {
-      const v = pickVoice(lang);
-      if (v) u.voice = v;
+      // Re-pick from the LIVE voice list every time: a voice object held from a
+      // previous call can go stale after voiceschanged, and Chrome then falls
+      // back silently to the default (female) voice mid-session.
+      const live = window.speechSynthesis.getVoices();
+      if (live && live.length) _voiceCache = live;
+      let v = null;
+      if (_chosenVoice[lang]) v = (live || []).find((x) => x.name === _chosenVoice[lang]) || null;
+      if (!v) v = pickVoice(lang);
+      if (v) _chosenVoice[lang] = v.name;
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.97; u.pitch = 0.9; // measured male register
+      if (v) { u.voice = v; u.lang = v.lang; } // lang must match the voice or some engines ignore it
+      else u.lang = lang === "es" ? "es-MX" : "en-US";
       window.speechSynthesis.speak(u);
     };
     // if voices haven't arrived yet, wait one tick for voiceschanged
     if (!loadVoices().length) {
-      const once = () => { try { window.speechSynthesis.removeEventListener("voiceschanged", once); } catch (e) {} go(); };
+      let fired = false;
+      const once = () => { if (fired) return; fired = true; try { window.speechSynthesis.removeEventListener("voiceschanged", once); } catch (e) {} go(); };
       try { window.speechSynthesis.addEventListener("voiceschanged", once); } catch (e) { window.speechSynthesis.onvoiceschanged = once; }
-      setTimeout(go, 250); // fallback in case the event never fires
+      setTimeout(once, 300); // fallback in case the event never fires
     } else {
-      go();
+      setTimeout(go, 60); // small gap after cancel() — Chrome drops immediate speaks
     }
   } catch (e) {}
 }

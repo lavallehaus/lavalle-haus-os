@@ -2094,7 +2094,8 @@ setLoaded(true);
 const criticalCount = products.filter(p => ["out", "low"].includes(stockStatus(p))).length;
 const pauseCount = campaigns.filter(c => c.status === "pause").length;
 const _storedActions = (dbState.actionsBoard && dbState.actionsBoard.items) || [];
-const _marginFlags = buildMarginsModel({ cogs: dbState.cogs || {}, products, campaigns, profitMatrix: dbState.profitMatrix || {}, settings: dbState.margins || {} }).flags;
+const _marginsModel = buildMarginsModel({ cogs: dbState.cogs || {}, products, campaigns, profitMatrix: dbState.profitMatrix || {}, settings: dbState.margins || {} });
+const _marginFlags = _marginsModel.flags;
 const _liveActions = _storedActions.filter(a => a.status !== "done" && a.status !== "resolved");
 const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severity === "high").length : _marginFlags.filter(f => f.severity === "high").length;
 
@@ -2111,6 +2112,7 @@ actionsBoard: dbState.actionsBoard || {},
 wholesale: dbState.wholesale || [],
 accountHealth: dbState.amazonAccountHealth || null,
 cashRunwayWeeks: null,
+marginsSummary: _marginsModel.summary || null,
 });
 const goTo = (nav) => {
 if (!nav) return;

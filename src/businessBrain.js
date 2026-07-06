@@ -50,6 +50,7 @@ export function buildBrainModel(ctx) {
     shopifySales = null, amazonSales = null,
     bankCash = null, pnl = {}, actionsBoard = {},
     wholesale = [], accountHealth = null, cashRunwayWeeks = null,
+    marginsSummary = null,
   } = ctx;
 
   const sellable = products.filter((p) => !p.isSample);
@@ -67,9 +68,20 @@ export function buildBrainModel(ctx) {
   const revNow = (shopNow != null || amzNow != null) ? (shopNow || 0) + (amzNow || 0) : null;
   const revPrev = (shopPrev != null || amzPrev != null) ? (shopPrev || 0) + (amzPrev || 0) : null;
   const wowPct = pctChange(revNow, revPrev);
+  // gross vs net over the trailing 28 days, across both channels
+  const sum2 = (a, b) => (a == null && b == null ? null : (a || 0) + (b || 0));
+  const gross28 = sum2(periodRev(shopifySales, "last4", "gross"), periodRev(amazonSales, "last4", "gross"));
+  const net28 = sum2(periodRev(shopifySales, "last4", "net"), periodRev(amazonSales, "last4", "net"));
 
   const adSpend30 = campaigns.reduce((s, c) => s + num(c.spend7d) * (30 / 7), 0);
   const bestCampaign = campaigns.filter((c) => num(c.roas) > 0).sort((a, b) => num(b.roas) - num(a.roas))[0] || null;
+  // blended efficiency across every campaign: the two numbers a CEO checks first
+  const spend7 = campaigns.reduce((s, c) => s + num(c.spend7d), 0);
+  const adSales7 = campaigns.reduce((s, c) => s + num(c.sales7d), 0);
+  const buys7 = campaigns.reduce((s, c) => s + num(c.purchases), 0);
+  const blendedRoas = spend7 > 0 ? adSales7 / spend7 : null;
+  const blendedCpa = buys7 > 0 ? spend7 / buys7 : null;
+  const cm2Pct = marginsSummary && marginsSummary.cm2Pct != null ? marginsSummary.cm2Pct : null;
 
   const items = (actionsBoard.items || []).filter((it) => it.status !== "done" && it.status !== "resolved");
   const team = actionsBoard.team || [];
@@ -133,24 +145,26 @@ export function buildBrainModel(ctx) {
       children: [
         { id: "rev-shopify", label: "Shopify", value: shopNow != null ? money(shopNow) + " wk" : "—", nav: { tab: "profit", sub: "matrix" } },
         { id: "rev-amazon", label: "Amazon", value: amzNow != null ? money(amzNow) + " wk" : "—", nav: { tab: "profit", sub: "amazondaily" } },
-        { id: "rev-wholesale", label: "Wholesale", value: wholesale.length ? wholesale.length + " accounts" : "—", nav: { tab: "growth", sub: "wholesale" } },
+        { id: "rev-gross", label: "Gross · 28d", value: gross28 != null ? money(gross28) : "Syncing…", nav: { tab: "profit", sub: "matrix" } },
+        { id: "rev-net", label: "Net · 28d", value: net28 != null ? money(net28) : "Syncing…", nav: { tab: "profit", sub: "matrix" } },
       ],
     },
     {
       id: "marketing", label: "Marketing",
       value: adSpend30 ? money(adSpend30) + " /mo" : "—",
-      status: paused.length ? "declining" : bestCampaign ? "improving" : "steady",
-      change: paused.length ? paused.length + " to pause" : null,
+      status: paused.length ? "declining" : (blendedRoas != null && blendedRoas >= 2 ? "improving" : "steady"),
+      change: blendedRoas != null ? "ROAS " + blendedRoas.toFixed(2) + (blendedCpa != null ? " · CPA " + money(blendedCpa) : "") : (paused.length ? paused.length + " to pause" : null),
       nav: { tab: "ads", sub: "ppc" },
       summary: {
-        what: campaigns.length + " Amazon campaigns, ~" + money(adSpend30) + "/month in spend.",
+        what: campaigns.length + " Amazon campaigns, ~" + money(adSpend30) + "/month in spend" + (blendedRoas != null ? " · blended ROAS " + blendedRoas.toFixed(2) : "") + (blendedCpa != null ? " · cost per order " + money(blendedCpa) + "." : "."),
         why: paused.length ? paused.length + " campaign" + (paused.length > 1 ? "s have" : " has") + " spend with no sales — pure loss until paused." : bestCampaign ? "Top ROAS " + num(bestCampaign.roas).toFixed(2) + " (" + bestCampaign.name + ")." : "No standout performance signals this week.",
         next: paused.length ? "Pause the flagged campaign" + (paused.length > 1 ? "s" : "") + " and move budget to the top performer." : "Scale the best performer gently; keep TACOS under 30%.",
       },
       children: [
-        { id: "mkt-ppc", label: "Amazon PPC", value: campaigns.length + " campaigns", nav: { tab: "ads", sub: "ppc" } },
-        { id: "mkt-meta", label: "Meta / Shopify", value: null, nav: { tab: "ads", sub: "meta" } },
-        { id: "mkt-email", label: "Email / Klaviyo", value: null, nav: { tab: "growth", sub: "email" } },
+        { id: "mkt-roas", label: "Blended ROAS", value: blendedRoas != null ? blendedRoas.toFixed(2) : "—", tone: blendedRoas != null && blendedRoas < 1.5 ? "risk" : null, nav: { tab: "ads", sub: "ppc" } },
+        { id: "mkt-cpa", label: "Cost per order (CPA)", value: blendedCpa != null ? money(blendedCpa) : "—", nav: { tab: "ads", sub: "ppc" } },
+        { id: "mkt-ppc", label: "Amazon PPC", value: campaigns.length + " campaigns" + (paused.length ? " · " + paused.length + " to pause" : ""), tone: paused.length ? "risk" : null, nav: { tab: "ads", sub: "ppc" } },
+        { id: "mkt-meta", label: "Meta / Shopify", value: "Connect", nav: { tab: "ads", sub: "meta" } },
       ],
     },
     {
@@ -168,27 +182,28 @@ export function buildBrainModel(ctx) {
         .concat(sellable.filter((p) => p._status === "ok").slice(0, Math.max(0, 3 - stockRisks.length)).map((p) => ({ id: "inv-" + p.id, label: p.name, value: "Healthy", nav: { tab: "inventory", sub: "fba" } }))),
     },
     {
-      id: "finance", label: "Finance",
-      value: cash != null ? money(cash) : "—",
-      status: cashRunwayWeeks != null && cashRunwayWeeks < 8 ? "declining" : "steady",
-      change: cashRunwayWeeks != null ? Math.round(cashRunwayWeeks) + " wk runway" : null,
+      id: "finance", label: "Profit & Cash",
+      value: cm2Pct != null ? Math.round(cm2Pct) + "% margin" : (cash ? money(cash) + " cash" : "—"),
+      status: (cm2Pct != null && cm2Pct < 15) || (cashRunwayWeeks != null && cashRunwayWeeks < 8) || highFlags.length ? "declining" : "steady",
+      change: cash ? money(cash) + " cash" : (highFlags.length ? highFlags.length + " margin flags" : null),
       nav: { tab: "profit", sub: "finances" },
       summary: {
-        what: cash != null ? "Cash position " + money(cash) + (cashRunwayWeeks != null ? " · ~" + Math.round(cashRunwayWeeks) + " weeks of runway." : ".") : "Connect the bank (Plaid) to track cash position and runway automatically.",
-        why: cashRunwayWeeks != null && cashRunwayWeeks < 8 ? "Runway under 8 weeks deserves an owner-level decision on spend." : "P&L and cash runway live in Finances.",
-        next: "Review Cash Runway before approving inventory purchases or ad increases.",
+        what: (cm2Pct != null ? "Blended margin after Amazon fees and ads (CM2) is " + Math.round(cm2Pct) + "%. " : "Margin computes as COGS are entered in the COGS Builder. ") + (cash ? "Cash position " + money(cash) + (cashRunwayWeeks != null ? " · ~" + Math.round(cashRunwayWeeks) + " weeks of runway." : ".") : "Bank not connected — cash position unknown."),
+        why: highFlags.length ? highFlags.length + " product" + (highFlags.length > 1 ? "s are" : " is") + " losing money or bleeding ad spend — profit leaks before cash ever lands." : (cm2Pct != null && cm2Pct < 15 ? "Under 15% blended margin leaves no cushion after operating costs." : "Revenue means nothing until it survives fees, ads and COGS."),
+        next: highFlags.length ? "Open Margins — fix the flagged products first; they are the fastest profit recovery." : (cash ? "Review Cash Runway before approving inventory purchases or ad increases." : "Connect the bank (Plaid) in Finances so cash and runway track automatically."),
       },
       children: [
-        { id: "fin-cash", label: "Cash Flow", value: cash != null ? money(cash) : "—", nav: { tab: "profit", sub: "finance" } },
+        { id: "fin-margin", label: "Blended margin (CM2)", value: cm2Pct != null ? Math.round(cm2Pct) + "%" : "Enter COGS", tone: cm2Pct != null && cm2Pct < 15 ? "risk" : null, nav: { tab: "profit", sub: "margins" } },
+        { id: "fin-flags", label: "Margin flags", value: highFlags.length ? highFlags.length + " to fix" : "None", tone: highFlags.length ? "risk" : null, nav: { tab: "growth", sub: "checklist" } },
+        { id: "fin-cash", label: "Cash position", value: cash ? money(cash) : "Connect bank", nav: { tab: "profit", sub: "finance" } },
         { id: "fin-pnl", label: "P&L", value: null, nav: { tab: "profit", sub: "finances" } },
-        { id: "fin-margins", label: "Margins", value: highFlags.length ? highFlags.length + " flags" : "OK", tone: highFlags.length ? "risk" : null, nav: { tab: "profit", sub: "margins" } },
       ],
     },
     {
       id: "operations", label: "Operations",
-      value: team.length ? team.length + " team" : "—",
-      status: "steady",
-      change: null,
+      value: items.length + " open task" + (items.length === 1 ? "" : "s"),
+      status: items.filter((i) => i.severity === "high").length ? "declining" : "steady",
+      change: items.filter((i) => i.severity === "high").length ? items.filter((i) => i.severity === "high").length + " high urgency" : null,
       nav: { tab: "growth", sub: "checklist" },
       summary: {
         what: items.length + " open action item" + (items.length === 1 ? "" : "s") + (team.length ? " across a team of " + team.length + "." : "."),
@@ -196,39 +211,40 @@ export function buildBrainModel(ctx) {
         next: "Assign owners and due dates on the Action Items board — reminders email automatically.",
       },
       children: [
+        { id: "ops-tasks", label: "Open tasks", value: items.length + (items.filter((i) => i.severity === "high").length ? " · " + items.filter((i) => i.severity === "high").length + " high" : ""), tone: items.filter((i) => i.severity === "high").length ? "risk" : null, nav: { tab: "growth", sub: "checklist" } },
         { id: "ops-team", label: "Team", value: team.length ? team.length + " members" : "Add members", nav: { tab: "growth", sub: "checklist" } },
         { id: "ops-suppliers", label: "Suppliers", value: null, nav: { tab: "materials", sub: "suppliers" } },
         { id: "ops-fba", label: "FBA Shipments", value: inbound.length ? inbound.length + " inbound" : null, nav: { tab: "inventory", sub: "inbound" } },
       ],
     },
     {
-      id: "projects", label: "Projects",
-      value: inbound.length ? inbound.length + " launching" : "—",
+      id: "projects", label: "Launches",
+      value: inbound.length ? inbound.length + " in pipeline" : "—",
       status: "steady",
       change: null,
       nav: { tab: "roadmap" },
       summary: {
         what: inbound.length ? "Launch pipeline: " + inbound.map((p) => p.name).slice(0, 3).join(", ") + "." : "The roadmap holds the launch plan by month.",
-        why: "Upcoming launches drive inventory and cash decisions weeks ahead of revenue.",
+        why: "Launches commit inventory and cash weeks before they return revenue — they belong in every executive review.",
         next: "Check the Roadmap tab for this month's commitments.",
       },
       children: inbound.slice(0, 3).map((p) => ({ id: "prj-" + p.id, label: p.name, value: "Inbound", nav: { tab: "roadmap" } })),
     },
     {
-      id: "growth", label: "Growth",
-      value: wholesale.length ? wholesale.length + " accounts" : "—",
+      id: "growth", label: "Wholesale",
+      value: wholesale.length ? wholesale.length + " accounts" : "Building",
       status: "steady",
       change: null,
       nav: { tab: "growth", sub: "wholesale" },
       summary: {
-        what: "Wholesale, retail expansion, creators and email retention all live under Growth.",
-        why: "B2B accounts compound: each one is repeat revenue without ad spend.",
-        next: "Work the wholesale outreach timeline — follow-ups win the accounts.",
+        what: wholesale.length ? wholesale.length + " wholesale account" + (wholesale.length === 1 ? "" : "s") + " tracked, with the 239-store outreach underway." : "The B2B engine: 239 stores mapped for outreach, three-email cadence per store.",
+        why: "Wholesale accounts compound — each one is repeat revenue with zero ad spend.",
+        next: "Work the Outreach Timeline — the follow-up emails win the accounts.",
       },
       children: [
-        { id: "gr-wholesale", label: "Wholesale", value: wholesale.length ? wholesale.length + " accounts" : null, nav: { tab: "growth", sub: "wholesale" } },
-        { id: "gr-retail", label: "Retail", value: null, nav: { tab: "growth", sub: "retail" } },
-        { id: "gr-creators", label: "Creators", value: null, nav: { tab: "growth", sub: "creators" } },
+        { id: "gr-accounts", label: "Accounts", value: wholesale.length ? wholesale.length + " active" : "None yet", nav: { tab: "growth", sub: "wholesale" } },
+        { id: "gr-outreach", label: "Retail Outreach", value: "239 stores", nav: { tab: "growth", sub: "wholesale" } },
+        { id: "gr-timeline", label: "Outreach Timeline", value: "3-email cadence", nav: { tab: "growth", sub: "wholesale" } },
       ],
     },
   ];
