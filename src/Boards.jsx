@@ -51,14 +51,32 @@ export default function Boards({ data, onSave, teamNames = [] }) {
   const [editCard, setEditCard] = useState(null);
 
   // First run: seed from the Trello export, then the database owns it.
+  // If the saved data predates the covers/members import (_mediaV2), merge
+  // those in once without touching any edits made since.
   useEffect(() => {
-    if (boards) return;
     (async () => {
+      if (boards && boards._mediaV2) return;
       try {
         const seed = await fetch("/boards-seed.json").then((r) => r.json());
-        setBoards(seed);
-        onSave && onSave(seed);
-      } catch (e) { setBoards({}); }
+        if (!boards) {
+          setBoards(seed);
+          onSave && onSave(seed);
+        } else {
+          const next = { ...boards, _mediaV2: true };
+          for (const [key, sb] of Object.entries(seed)) {
+            if (key.startsWith("_") || !next[key]) continue;
+            const seedById = {};
+            (sb.cards || []).forEach((sc) => { seedById[sc.id] = sc; });
+            next[key] = { ...next[key], cards: next[key].cards.map((card) => {
+              const sc = seedById[card.id];
+              if (!sc) return card;
+              return { ...card, members: (card.members && card.members.length) ? card.members : (sc.members || []), cover: card.cover || sc.cover || null };
+            }) };
+          }
+          setBoards(next);
+          onSave && onSave(next);
+        }
+      } catch (e) { if (!boards) setBoards({}); }
       setLoading(false);
     })();
   }, []);
