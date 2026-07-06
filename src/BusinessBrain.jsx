@@ -15,14 +15,24 @@ export const BRAIN_THEMES = {
   day: {
     id: "day", bg: "#FFFFFF", card: "#F4F4F3", ink: "#1A1A1A", sub: "#71716C",
     line: "#E0E0DD", accent: "#8F8676", brass: "#A39B8B", green: "#5a7a5a", red: "#9b5e5e",
-    canvas: "radial-gradient(ellipse at 50% 38%, #FAFAF9 0%, #FFFFFF 62%, #F4F4F3 100%)",
-    nodeBg: "#FFFFFF", nodeBorder: "#E0E0DD", link: "#E5E5E2", halo: "rgba(163,155,139,0.14)",
+    canvas: "radial-gradient(ellipse at 50% 38%, #FAFAF9 0%, #FFFFFF 62%, #F2F2F0 100%)",
+    nodeBg: "#FFFFFF", nodeBorder: "#E3E3E0", link: "#DEDEDA", halo: "rgba(163,155,139,0.14)",
+    nodeFill: "radial-gradient(circle at 32% 26%, #FFFFFF 0%, #FBFBFA 55%, #F0F0ED 100%)",
+    coreFill: "radial-gradient(circle at 36% 28%, #FFFFFF 0%, #F8F8F6 58%, #ECECE8 100%)",
+    nodeShadow: "0 1px 2px rgba(26,26,26,0.05), 0 16px 36px rgba(26,26,26,0.10), inset 0 1px 0 rgba(255,255,255,0.9)",
+    coreShadow: "0 2px 4px rgba(26,26,26,0.05), 0 28px 64px rgba(26,26,26,0.13), inset 0 1.5px 0 rgba(255,255,255,0.95)",
+    ring: "rgba(143,134,118,0.28)", impulse: "#9C8F79", coreGlow: "rgba(163,155,139,0.16)",
   },
   night: {
-    id: "night", bg: "#211a14", card: "#2b2219", ink: "#efe7da", sub: "#a8917a",
-    line: "#463829", accent: "#c2a878", brass: "#c2a878", green: "#8fae8f", red: "#c88f83",
-    canvas: "radial-gradient(ellipse at 50% 38%, #2a211a 0%, #211a14 62%, #1a140f 100%)",
-    nodeBg: "#2b2219", nodeBorder: "#463829", link: "#3b2f22", halo: "rgba(194,168,120,0.14)",
+    id: "night", bg: "#1d1712", card: "#2b2219", ink: "#F0E8DC", sub: "#A8977F",
+    line: "#463829", accent: "#C9AE82", brass: "#C9AE82", green: "#8fae8f", red: "#c88f83",
+    canvas: "radial-gradient(ellipse at 50% 34%, #2e251c 0%, #211a14 55%, #14100b 100%)",
+    nodeBg: "#2b2219", nodeBorder: "rgba(201,174,130,0.28)", link: "rgba(201,174,130,0.20)", halo: "rgba(201,174,130,0.16)",
+    nodeFill: "radial-gradient(circle at 32% 26%, #3a2e22 0%, #2c231a 58%, #241c14 100%)",
+    coreFill: "radial-gradient(circle at 36% 28%, #403325 0%, #2e251b 58%, #221a12 100%)",
+    nodeShadow: "0 22px 52px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,244,224,0.07)",
+    coreShadow: "0 34px 80px rgba(0,0,0,0.62), inset 0 1.5px 0 rgba(255,244,224,0.09)",
+    ring: "rgba(201,174,130,0.16)", impulse: "#E2C89A", coreGlow: "rgba(201,174,130,0.22)",
   },
 };
 
@@ -44,6 +54,7 @@ const MOTION_CSS = `
 }
 .bb-node { transition: box-shadow 0.45s ease, border-color 0.45s ease; will-change: transform; }
 .bb-node:hover { z-index: 5; }
+.bb-node, .bb-center { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 `;
 
 function useMotionCss() {
@@ -62,10 +73,14 @@ function useMotionCss() {
 // heartbeat, and the whole field leans gently toward the cursor. All motion is
 // driven by one requestAnimationFrame loop that writes straight to the DOM
 // (no re-renders), and prefers-reduced-motion freezes everything.
-export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520 }) {
+export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520, pannable = false }) {
   useMotionCss();
   const wrapRef = useRef(null);
+  const fieldRef = useRef(null);
   const [w, setW] = useState(900);
+  const [transformed, setTransformed] = useState(false);
+  const viewRef = useRef({ x: 0, y: 0, z: 1 });
+  const movedRef = useRef(false);
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -73,6 +88,83 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // ── Touch: one-finger drag pans, two-finger pinch zooms, tap still selects ──
+  // (Command View spec: tap to expand · swipe/drag to pan · pinch to zoom.)
+  const applyView = () => {
+    const v = viewRef.current;
+    if (fieldRef.current) fieldRef.current.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.z})`;
+    setTransformed(Math.abs(v.x) > 2 || Math.abs(v.y) > 2 || Math.abs(v.z - 1) > 0.02);
+  };
+  const resetView = () => { viewRef.current = { x: 0, y: 0, z: 1 }; applyView(); };
+  useEffect(() => {
+    if (!pannable) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const pointers = new Map();
+    let start = null;   // one-finger drag origin {x, y, vx, vy}
+    let pinch = null;   // two-finger base {d, z, mx, my, vx, vy}
+    let lastTap = 0;
+    const clampView = (v) => {
+      v.z = Math.min(2.4, Math.max(0.6, v.z));
+      const lim = Math.max(wrap.clientWidth, wrap.clientHeight) * 0.6 * v.z;
+      v.x = Math.min(lim, Math.max(-lim, v.x));
+      v.y = Math.min(lim, Math.max(-lim, v.y));
+      return v;
+    };
+    const down = (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const v = viewRef.current;
+      if (pointers.size === 1) start = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y };
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: v.z, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, vx: v.x, vy: v.y };
+        start = null;
+      }
+    };
+    const move = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1 && start) {
+        const dx = e.clientX - start.x, dy = e.clientY - start.y;
+        if (Math.hypot(dx, dy) > 10) movedRef.current = true;
+        if (movedRef.current) {
+          viewRef.current = clampView({ ...viewRef.current, x: start.vx + dx, y: start.vy + dy });
+          applyView();
+        }
+      } else if (pointers.size === 2 && pinch) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        movedRef.current = true;
+        viewRef.current = clampView({ z: pinch.z * (d / Math.max(1, pinch.d)), x: pinch.vx + (mx - pinch.mx), y: pinch.vy + (my - pinch.my) });
+        applyView();
+      }
+    };
+    const up = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch = null;
+      if (pointers.size === 0) {
+        if (!movedRef.current) {
+          const now = Date.now();
+          if (now - lastTap < 320) resetView(); // double-tap returns home
+          lastTap = now;
+        }
+        start = null;
+        setTimeout(() => { movedRef.current = false; }, 0);
+      }
+    };
+    wrap.addEventListener("pointerdown", down);
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      wrap.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [pannable]);
 
   const H = height;
   const cx = w / 2, cy = H / 2;
@@ -175,85 +267,133 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     return { x: cx + rx * 1.18 * r * Math.cos(a), y: cy + ry * 1.3 * r * Math.sin(a), d: 3 + (i % 5), delay: (i % 7) * 0.6 };
   });
 
+  const gid = "bb" + (t.id || "d"); // per-theme SVG def ids
+
   return (
-    <div ref={wrapRef} style={{ position: "relative", height: H, "--bb-halo": t.halo, overflow: "hidden" }}>
-      <svg width="100%" height={H} style={{ position: "absolute", inset: 0 }} aria-hidden="true">
-        {/* ambient synapse dust */}
-        {synapses.map((s, i) => (
-          <circle key={"syn" + i} className="bb-syn" cx={s.x} cy={s.y} r={1.4 * scale}
-            fill={t.brass} opacity="0.15"
-            style={{ animation: `bbTwinkle ${s.d}s ease-in-out ${s.delay}s infinite` }} />
-        ))}
-        {/* curved synapse lines */}
-        {pos.map(({ n }, i) => (
-          <path key={n.id} ref={(el) => (pathRefs.current[i] = el)}
-            d={`M ${cx} ${cy} L ${pos[i].x} ${pos[i].y}`}
-            fill="none" stroke={selectedId === n.id ? t.brass : t.link}
-            strokeWidth={selectedId === n.id ? 1.4 : 1} strokeOpacity="0.8" />
-        ))}
-        {/* traveling electrical impulses */}
-        {pos.map(({ n }, i) => [0, 1].map((k) => (
-          <circle key={n.id + "-imp" + k}
-            ref={(el) => { (impRefs.current[i] = impRefs.current[i] || [])[k] = el; }}
-            r={2.1 * scale} fill={t.brass} opacity="0" />
-        )))}
-      </svg>
+    <div
+      ref={wrapRef}
+      onClickCapture={(e) => { if (movedRef.current) { e.preventDefault(); e.stopPropagation(); movedRef.current = false; } }}
+      style={{ position: "relative", height: H, "--bb-halo": t.halo, overflow: "hidden", touchAction: pannable ? "none" : undefined }}>
+      <div ref={fieldRef} style={{ position: "absolute", inset: 0, transformOrigin: "50% 50%", willChange: pannable ? "transform" : undefined }}>
+        <svg width="100%" height={H} style={{ position: "absolute", inset: 0 }} aria-hidden="true">
+          <defs>
+            <filter id={gid + "-glow"} x="-200%" y="-200%" width="500%" height="500%">
+              <feGaussianBlur stdDeviation={2.4 * scale} result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <radialGradient id={gid + "-corehalo"}>
+              <stop offset="0%" stopColor={t.coreGlow || t.halo} />
+              <stop offset="70%" stopColor={t.coreGlow || t.halo} stopOpacity="0.35" />
+              <stop offset="100%" stopColor={t.coreGlow || t.halo} stopOpacity="0" />
+            </radialGradient>
+          </defs>
 
-      {/* heartbeat ripples behind the core */}
-      {[0, 1].map((k) => (
-        <div key={"rip" + k} className="bb-ripple" aria-hidden="true"
-          style={{
-            position: "absolute", left: cx, top: cy, width: centerR * 2, height: centerR * 2,
-            borderRadius: "50%", border: `1px solid ${t.brass}`, pointerEvents: "none", opacity: 0,
-            transform: "translate(-50%,-50%)",
-            animation: `bbRipple 5.2s ease-out ${k * 2.6}s infinite`,
-          }} />
-      ))}
+          {/* soft aura behind the core */}
+          <circle cx={cx} cy={cy} r={centerR * 2.4} fill={`url(#${gid}-corehalo)`} />
 
-      {/* center — Business Health */}
-      <button
-        className="bb-center"
-        onClick={() => onSelect && onSelect("health")}
-        aria-label={"Business Health " + model.healthScore + ", " + model.status}
-        style={{
+          {/* orbit guides — the quiet architecture of the map */}
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={t.ring || t.link} strokeWidth="1" strokeDasharray="2 8" />
+          <ellipse cx={cx} cy={cy} rx={rx * 1.28} ry={ry * 1.34} fill="none" stroke={t.ring || t.link} strokeOpacity="0.5" strokeWidth="1" strokeDasharray="1 10" />
+
+          {/* ambient synapse dust */}
+          {synapses.map((s, i) => (
+            <circle key={"syn" + i} className="bb-syn" cx={s.x} cy={s.y} r={1.3 * scale}
+              fill={t.impulse || t.brass} opacity="0.15"
+              style={{ animation: `bbTwinkle ${s.d}s ease-in-out ${s.delay}s infinite` }} />
+          ))}
+          {/* curved synapse lines */}
+          {pos.map(({ n }, i) => (
+            <path key={n.id} ref={(el) => (pathRefs.current[i] = el)}
+              d={`M ${cx} ${cy} L ${pos[i].x} ${pos[i].y}`}
+              fill="none" stroke={selectedId === n.id ? t.brass : t.link}
+              strokeWidth={selectedId === n.id ? 1.4 : 1} strokeOpacity="0.9" />
+          ))}
+          {/* traveling electrical impulses (glowing) */}
+          {pos.map(({ n }, i) => [0, 1].map((k) => (
+            <circle key={n.id + "-imp" + k}
+              ref={(el) => { (impRefs.current[i] = impRefs.current[i] || [])[k] = el; }}
+              r={2.3 * scale} fill={t.impulse || t.brass} opacity="0" filter={`url(#${gid}-glow)`} />
+          )))}
+        </svg>
+
+        {/* heartbeat ripples behind the core */}
+        {[0, 1].map((k) => (
+          <div key={"rip" + k} className="bb-ripple" aria-hidden="true"
+            style={{
+              position: "absolute", left: cx, top: cy, width: centerR * 2, height: centerR * 2,
+              borderRadius: "50%", border: `1px solid ${t.brass}`, pointerEvents: "none", opacity: 0,
+              transform: "translate(-50%,-50%)",
+              animation: `bbRipple 5.2s ease-out ${k * 2.6}s infinite`,
+            }} />
+        ))}
+
+        {/* still outer ring framing the core */}
+        <div aria-hidden="true" style={{
           position: "absolute", left: cx, top: cy, transform: "translate(-50%,-50%)",
-          width: centerR * 2, height: centerR * 2, borderRadius: "50%",
-          background: t.nodeBg, border: `1px solid ${t.brass}`, cursor: "pointer",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          animation: "bbBreathe 6s ease-in-out infinite", boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
-        }}>
-        <div style={{ fontFamily: sans, fontSize: 9 * scale + 1, letterSpacing: 2, textTransform: "uppercase", color: t.sub }}>Business Health</div>
-        <div style={{ fontFamily: serif, fontSize: 44 * scale, color: t.ink, lineHeight: 1.05 }}>{model.healthScore}</div>
-        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13 * scale, color: t.accent }}>{model.status}</div>
-        <div style={{ fontFamily: sans, fontSize: 8 * scale + 1, letterSpacing: 1, color: t.sub, marginTop: 4 }}>
-          {model.opportunities} opportunities · {model.risks} risk{model.risks === 1 ? "" : "s"}
-        </div>
-      </button>
+          width: centerR * 2 + 22 * scale, height: centerR * 2 + 22 * scale, borderRadius: "50%",
+          border: `1px solid ${t.ring || t.line}`, pointerEvents: "none",
+        }} />
 
-      {/* major nodes */}
-      {pos.map(({ n, x, y }, i) => (
+        {/* center — Business Health */}
         <button
-          key={n.id}
-          className="bb-node"
-          ref={(el) => (nodeRefs.current[i] = el)}
-          onClick={() => onSelect && onSelect(n.id)}
-          onMouseEnter={() => { hoverRef.current = i; }}
-          onMouseLeave={() => { hoverRef.current = -1; }}
-          aria-label={n.label + (n.value ? ", " + n.value : "")}
+          className="bb-center"
+          onClick={() => onSelect && onSelect("health")}
+          aria-label={"Business Health " + model.healthScore + ", " + model.status}
           style={{
-            position: "absolute", left: x, top: y, transform: "translate(-50%,-50%)",
-            minWidth: 108 * scale, padding: `${10 * scale}px ${14 * scale}px`, borderRadius: "50%",
-            aspectRatio: "1.25 / 1",
-            background: t.nodeBg, border: `1px solid ${selectedId === n.id ? t.brass : t.nodeBorder}`,
-            cursor: "pointer", textAlign: "center",
+            position: "absolute", left: cx, top: cy, transform: "translate(-50%,-50%)",
+            width: centerR * 2, height: centerR * 2, borderRadius: "50%",
+            background: t.coreFill || t.nodeBg, border: `1px solid ${t.brass}`, cursor: "pointer",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+            animation: "bbBreathe 6s ease-in-out infinite",
+            boxShadow: t.coreShadow || "0 8px 30px rgba(0,0,0,0.08)",
           }}>
-          <div style={{ fontFamily: serif, fontSize: 14 * scale + 1, color: t.ink }}>{n.label}</div>
-          {n.value && <div style={{ fontFamily: sans, fontSize: 10 * scale, color: t.sub, marginTop: 2 }}>{n.value}</div>}
-          {n.change && <div style={{ fontFamily: sans, fontSize: 9 * scale, color: toneOf(n.status), marginTop: 1 }}>{n.change}</div>}
+          <div style={{ fontFamily: sans, fontSize: 9 * scale + 1, letterSpacing: 2.5, textTransform: "uppercase", color: t.sub }}>Business Health</div>
+          <div style={{ fontFamily: serif, fontWeight: 300, fontSize: 47 * scale, color: t.ink, lineHeight: 1.02 }}>{model.healthScore}</div>
+          <div style={{ fontFamily: sans, fontSize: 10 * scale + 1, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{model.status}</div>
+          <div style={{ fontFamily: sans, fontSize: 8 * scale + 1, letterSpacing: 1, color: t.sub, marginTop: 5 }}>
+            {model.opportunities} opportunities · {model.risks} risk{model.risks === 1 ? "" : "s"}
+          </div>
         </button>
-      ))}
+
+        {/* major nodes */}
+        {pos.map(({ n, x, y }, i) => (
+          <button
+            key={n.id}
+            className="bb-node"
+            ref={(el) => (nodeRefs.current[i] = el)}
+            onClick={() => onSelect && onSelect(n.id)}
+            onMouseEnter={() => { hoverRef.current = i; }}
+            onMouseLeave={() => { hoverRef.current = -1; }}
+            aria-label={n.label + (n.value ? ", " + n.value : "")}
+            style={{
+              position: "absolute", left: x, top: y, transform: "translate(-50%,-50%)",
+              minWidth: 110 * scale, padding: `${11 * scale}px ${15 * scale}px`, borderRadius: "50%",
+              aspectRatio: "1.25 / 1",
+              background: t.nodeFill || t.nodeBg,
+              border: `1px solid ${selectedId === n.id ? t.brass : t.nodeBorder}`,
+              cursor: "pointer", textAlign: "center",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              boxShadow: t.nodeShadow || "0 4px 18px rgba(0,0,0,0.06)",
+            }}>
+            <div style={{ fontFamily: serif, fontWeight: 400, fontSize: 14 * scale + 1, letterSpacing: 0.3, color: t.ink }}>{n.label}</div>
+            {n.value && <div style={{ fontFamily: sans, fontSize: 9 * scale + 0.5, letterSpacing: 1.2, textTransform: "uppercase", color: t.sub, marginTop: 3 }}>{n.value}</div>}
+            {n.change && <div style={{ fontFamily: sans, fontSize: 9 * scale, letterSpacing: 0.8, color: toneOf(n.status), marginTop: 1.5 }}>{n.change}</div>}
+          </button>
+        ))}
+      </div>
+
+      {/* reset chip appears once the view is panned/zoomed */}
+      {pannable && transformed && (
+        <button onClick={resetView}
+          style={{
+            position: "absolute", left: 14, bottom: 12, zIndex: 6,
+            background: t.card, color: t.sub, border: `1px solid ${t.line}`, borderRadius: 1,
+            fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase",
+            padding: "8px 14px", cursor: "pointer",
+          }}>
+          ⤾ Reset view
+        </button>
+      )}
     </div>
   );
 }

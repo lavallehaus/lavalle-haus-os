@@ -95,7 +95,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
 
       {/* canvas — larger nodes, generous spacing */}
       <div style={{ padding: "0 clamp(10px, 2vw, 30px)" }}>
-        <BrainCanvas model={model} theme={t} scale={1.25} selectedId={selected} onSelect={(id) => { setAmbient(false); setSelected(id); }} height={canvasH} />
+        <BrainCanvas model={model} theme={t} scale={1.25} selectedId={selected} onSelect={(id) => { setAmbient(false); setSelected(id); }} height={canvasH} pannable />
       </div>
 
       {/* ambient ribbon */}

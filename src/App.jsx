@@ -1197,6 +1197,19 @@ One platform, industry modules — this app is the internal master; each version
 );
 }
 
+// ── EMBEDDED PAGE — runs a self-contained public/ page inside a tab ───────────
+function EmbeddedPage({ src, title, openLabel = "Open full window" }) {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 12, color: "#71716C" }}>{title}</div>
+        <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 3 }}>{openLabel} ↗</a>
+      </div>
+      <iframe title={title} src={src} style={{ width: "100%", height: "calc(100vh - 250px)", minHeight: 560, border: "1px solid #E0E0DD", borderRadius: 1, background: "#FFFFFF" }} />
+    </div>
+  );
+}
+
 // ── TAB: POPPY CREATIVE STUDIO ────────────────────────────────────────────────
 // Creative intelligence framework (per the Poppy Creative Studio + Creative
 // Intelligence specs). The structure ships now; each phase's data sources
@@ -2113,6 +2126,8 @@ const NAV = [
 { id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Action Items" },
 { id: "wholesale", label: "Wholesale Accounts" },
+{ id: "wholesalepage", label: "Retail Outreach" },
+{ id: "outreachtimeline", label: "Outreach Timeline" },
 { id: "poppy", label: "Poppy Studio" },
 ] },
 { id: "content", label: "Content", labelEs: "Contenido" },
@@ -2238,6 +2253,10 @@ if (activeSub === "email") return <EmailRetention data={dbState.emailRetention |
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
 if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { setDbState((prev) => { const next = { ...prev, wholesale: w }; dbSave(next); return next; }); }} />;
+// The two coded wholesale workspaces (bilingual, self-contained HTML from the
+// spec folder) run inside the app; owners/edits save in this browser.
+if (activeSub === "wholesalepage") return <EmbeddedPage src="/wholesale.html" title="Retail Outreach — store-by-store wholesale emails" openLabel="Open full window" />;
+if (activeSub === "outreachtimeline") return <EmbeddedPage src="/wholesale-outreach.html" title="Outreach Timeline — follow-up cadence per store" openLabel="Open full window" />;
 if (activeSub === "poppy") return <PoppyStudio />;
 }
 if (tab === "materials") {
