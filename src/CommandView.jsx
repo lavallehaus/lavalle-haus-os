@@ -23,11 +23,141 @@ const BACKGROUNDS = {
 const AMBIENT_AFTER_MS = 3 * 60 * 1000; // idle minutes before ambient mode
 const AMBIENT_STEP_MS = 12 * 1000;
 
+// ── THE STEWARD — the agent present in the room ──────────────────────────────
+// With Briefing on, every bubble press asks the Steward to read that part of
+// the business: its state, what's missing, and the one next action. Spoken
+// aloud via the browser's own voice when Voice is on. Answers come from the
+// server-side Claude passthrough (/api/categorize) so the key stays private;
+// if the API is unreachable it composes a brief from the live model instead.
+const AGENT_NAME = "The Steward";
+
+function stewardSystem(businessName) {
+  return `You are ${AGENT_NAME}, the senior operator who runs ${businessName}'s Chief operating system. The owner is reviewing the business on a large screen and has just opened one area. Brief them aloud.
+Voice: composed, precise, quietly confident. Plain sentences, no emojis, no headers, no lists, no pleasantries.
+In 60-100 words: state how this area stands; name specifically what is missing, unhealthy, or not yet connected (use only the data given — if a feed or number is absent, say exactly what to connect or enter); close with the single most important action, as one directive sentence starting "Next:".`;
+}
+
+function stewardContext(model, nodeId) {
+  if (nodeId === "health") {
+    return { area: "Business Health (overall)", healthScore: model.healthScore, status: model.status, deductions: model.healthNotes, insights: model.insights.map((i) => i.title + " — " + i.body), priorities: model.priorities };
+  }
+  const n = model.nodes.find((x) => x.id === nodeId);
+  if (!n) return null;
+  return {
+    area: n.label, status: n.status, headline: n.value, change: n.change,
+    whatHappened: n.summary.what, whyItMatters: n.summary.why, suggestedNext: n.summary.next,
+    parts: (n.children || []).map((c) => c.label + ": " + (c.value || "no data yet")),
+    relatedInsights: model.insights.filter((i) => (i.nav && i.nav.tab) || true).slice(0, 4).map((i) => i.title + " — " + i.body),
+    healthScore: model.healthScore, healthStatus: model.status,
+  };
+}
+
+// Offline/local fallback so the Steward never goes silent.
+function composeLocalBrief(model, nodeId) {
+  if (nodeId === "health") {
+    const worst = model.healthNotes[0];
+    return `${model.businessName} stands at ${model.healthScore}, ${model.status.toLowerCase()}. ` +
+      (worst ? `The largest deduction: ${worst.note}. ` : "No open deductions. ") +
+      (model.priorities[0] ? `Next: ${model.priorities[0].title}.` : "Next: review this week's priorities on the Action Items board.");
+  }
+  const n = model.nodes.find((x) => x.id === nodeId);
+  if (!n) return "";
+  const missing = (n.children || []).filter((c) => !c.value).map((c) => c.label);
+  return `${n.label} is ${n.status}. ${n.summary.what} ${n.summary.why} ` +
+    (missing.length ? `Not yet connected: ${missing.join(", ")}. ` : "") +
+    `Next: ${n.summary.next}`;
+}
+
+function speak(text, enabled) {
+  try {
+    if (!enabled || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.98; u.pitch = 0.95;
+    const voices = window.speechSynthesis.getVoices();
+    const pick = voices.find((v) => /Samantha|Serena|Google UK English Female|Google US English/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("en"));
+    if (pick) u.voice = pick;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
 export default function CommandView({ model, themeId, onToggleTheme, onExit, onNavigate, onAsk }) {
   const t = BRAIN_THEMES[themeId] || BRAIN_THEMES.day;
   const [selected, setSelected] = useState(null);
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => { const iv = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(iv); }, []);
+
+  // ── The Steward's presence ──
+  const [briefing, setBriefing] = useState(() => { try { return localStorage.getItem("lh_cv_brief") === "1"; } catch { return false; } });
+  const [voiceOn, setVoiceOn] = useState(() => { try { return localStorage.getItem("lh_cv_voice") !== "0"; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem("lh_cv_brief", briefing ? "1" : "0"); localStorage.setItem("lh_cv_voice", voiceOn ? "1" : "0"); } catch {} }, [briefing, voiceOn]);
+  const [brief, setBrief] = useState({ nodeId: null, status: "idle", text: "" });
+  const briefCache = useRef({});
+  useEffect(() => {
+    if (!briefing || !selected) { setBrief({ nodeId: null, status: "idle", text: "" }); return; }
+    const nodeId = selected;
+    if (briefCache.current[nodeId]) {
+      setBrief({ nodeId, status: "ready", text: briefCache.current[nodeId] });
+      speak(briefCache.current[nodeId], voiceOn);
+      return;
+    }
+    let dead = false;
+    setBrief({ nodeId, status: "loading", text: "" });
+    (async () => {
+      let text = "";
+      try {
+        const ctx = stewardContext(model, nodeId);
+        const r = await fetch("/api/categorize", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ system: stewardSystem(model.businessName), max_tokens: 300, messages: [{ role: "user", content: "Brief me on this area now. Data:\n" + JSON.stringify(ctx) }] }),
+        });
+        const d = await r.json();
+        if (r.ok && d.content && d.content[0] && d.content[0].text) text = d.content[0].text.trim();
+      } catch (e) {}
+      if (!text) text = composeLocalBrief(model, nodeId);
+      briefCache.current[nodeId] = text;
+      if (!dead) { setBrief({ nodeId, status: "ready", text }); speak(text, voiceOn); }
+    })();
+    return () => { dead = true; };
+  }, [briefing, selected]);
+  // leaving the room silences the Steward
+  useEffect(() => () => { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }, []);
+  useEffect(() => { if (!selected || !briefing) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [selected, briefing]);
+  // muting cuts speech mid-sentence
+  useEffect(() => { if (!voiceOn) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [voiceOn]);
+  // the Steward announces itself once when it enters the room
+  const welcomedRef = useRef(false);
+  useEffect(() => {
+    if (briefing && !welcomedRef.current) { welcomedRef.current = true; speak("Welcome, " + model.businessName + ".", voiceOn); }
+  }, [briefing]);
+
+  // ── per-bubble conversation with the Steward ──
+  const [chats, setChats] = useState({}); // nodeId -> [{role: "user"|"steward", text}]
+  const [chatBusy, setChatBusy] = useState(false);
+  async function askSteward(nodeId, q) {
+    const entry = { role: "user", text: q };
+    const history = [...(chats[nodeId] || []), entry];
+    setChats((c) => ({ ...c, [nodeId]: history }));
+    setChatBusy(true);
+    let text = "";
+    try {
+      const ctx = stewardContext(model, nodeId);
+      const r = await fetch("/api/categorize", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system: stewardSystem(model.businessName) + "\nYou are now in conversation about this area. Answer the owner's question directly in under 80 words, grounded only in the data below. If the data cannot answer it, say exactly what to connect or check.\nArea data:\n" + JSON.stringify(ctx),
+          max_tokens: 400,
+          messages: history.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })),
+        }),
+      });
+      const d = await r.json();
+      if (r.ok && d.content && d.content[0] && d.content[0].text) text = d.content[0].text.trim();
+    } catch (e) {}
+    if (!text) text = "I can't reach the intelligence service from here. From the live data: " + composeLocalBrief(model, nodeId);
+    setChats((c) => ({ ...c, [nodeId]: [...(c[nodeId] || []), { role: "steward", text }] }));
+    setChatBusy(false);
+    speak(text, voiceOn);
+  }
   const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "gallery"; } catch { return "gallery"; } });
   useEffect(() => { try { localStorage.setItem("lh_cv_bg", bg); } catch {} }, [bg]);
   const [q, setQ] = useState("");
@@ -107,6 +237,16 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
           <div style={{ fontFamily: serif, fontSize: "clamp(18px, 2.2vw, 26px)", fontWeight: 300 }}>{timeGreeting(model.businessName)}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setBriefing((b) => !b)} title={AGENT_NAME + " briefs each area as you open it"}
+            style={{ ...tbBtn(t), border: `1px solid ${briefing ? t.brass : t.line}`, color: briefing ? t.accent : t.sub }}>
+            ◉ {AGENT_NAME}: {briefing ? "Present" : "Off"}
+          </button>
+          {briefing && (
+            <button onClick={() => setVoiceOn((v) => !v)} title={voiceOn ? "Mute — replies stay in the chat" : "Unmute — speak replies aloud"}
+              style={{ ...tbBtn(t), border: `1px solid ${voiceOn ? t.brass : t.line}`, color: voiceOn ? t.accent : t.sub }}>
+              {voiceOn ? "🔊 Unmuted" : "🔇 Muted"}
+            </button>
+          )}
           <select value={bg} onChange={(e) => setBg(e.target.value)} aria-label="Background theme"
             style={{ background: "transparent", border: `1px solid ${t.line}`, borderRadius: 1, color: t.sub, fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", padding: "8px 10px", cursor: "pointer" }}>
             {Object.entries(BACKGROUNDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -161,6 +301,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
               <div>
                 <PanelHeader title="Executive Brief" t={t} onClose={() => setSelected(null)} />
                 <div style={{ fontFamily: serif, fontSize: 40, marginTop: 8 }}>{model.healthScore} <span style={{ fontSize: 17, fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
+                {briefing && <StewardBrief brief={brief} t={t} chat={chats.health || []} busy={chatBusy} onAsk={(qq) => askSteward("health", qq)} areaLabel="the business" />}
                 {model.insights.map((ins) => (
                   <div key={ins.id} style={{ padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
                     <div style={{ fontFamily: serif, fontSize: 15 }}>{ins.title}</div>
@@ -175,6 +316,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 4, color: node.status === "improving" ? t.green : node.status === "declining" ? t.red : t.sub }}>
                   Status: {node.status}{node.change ? " · " + node.change : ""}
                 </div>
+                {briefing && <StewardBrief brief={brief} t={t} chat={chats[node.id] || []} busy={chatBusy} onAsk={(qq) => askSteward(node.id, qq)} areaLabel={node.label} />}
                 {[["What happened", node.summary.what], ["Why it matters", node.summary.why], ["What to do next", node.summary.next]].map(([h, body]) => (
                   <div key={h} style={{ marginTop: 16 }}>
                     <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{h}</div>
@@ -202,6 +344,50 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel }) {
+  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const [q, setQ] = useState("");
+  const endRef = useRef(null);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ block: "nearest" }); }, [chat.length, busy]);
+  const send = () => { const v = q.trim(); if (!v || busy) return; setQ(""); onAsk(v); };
+  return (
+    <div style={{ marginTop: 14, padding: "13px 16px", background: t.bg, border: `1px solid ${t.line}`, borderLeft: `2px solid ${t.brass}`, borderRadius: 1 }}>
+      <div style={{ fontFamily: sansF, fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", color: t.accent }}>◉ {AGENT_NAME}</div>
+      {brief.status === "loading" ? (
+        <div style={{ fontFamily: sansF, fontStyle: "italic", fontSize: 13, color: t.sub, marginTop: 6 }}>Reading the room…</div>
+      ) : (
+        <div style={{ fontFamily: sansF, fontSize: 13.5, lineHeight: 1.65, color: t.ink, marginTop: 6, whiteSpace: "pre-wrap" }}>{brief.text}</div>
+      )}
+
+      {/* the conversation — always answers here; speaks only when unmuted */}
+      {(chat.length > 0 || busy) && (
+        <div style={{ marginTop: 12, maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          {chat.map((m, i) => (
+            <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%", padding: "8px 12px", borderRadius: 1, fontFamily: sansF, fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap", background: m.role === "user" ? t.ink : t.card, color: m.role === "user" ? t.bg : t.ink, border: m.role === "user" ? "none" : `1px solid ${t.line}` }}>
+              {m.text}
+            </div>
+          ))}
+          {busy && <div style={{ alignSelf: "flex-start", fontFamily: sansF, fontStyle: "italic", fontSize: 12.5, color: t.sub }}>{AGENT_NAME} is thinking…</div>}
+          <div ref={endRef} />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") send(); }}
+          placeholder={"Ask about " + (areaLabel || "this area") + "…"}
+          style={{ flex: 1, background: t.card, border: `1px solid ${t.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sansF, fontSize: 13, color: t.ink, outline: "none" }}
+        />
+        <button onClick={send} disabled={busy}
+          style={{ padding: "0 14px", background: t.ink, color: t.bg, border: "none", borderRadius: 1, fontFamily: sansF, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: busy ? 0.5 : 1 }}>
+          Ask
+        </button>
+      </div>
     </div>
   );
 }
