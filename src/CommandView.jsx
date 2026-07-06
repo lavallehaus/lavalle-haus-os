@@ -31,10 +31,11 @@ const AMBIENT_STEP_MS = 12 * 1000;
 // if the API is unreachable it composes a brief from the live model instead.
 const AGENT_NAME = "The Steward";
 
-function stewardSystem(businessName) {
+function stewardSystem(businessName, lang) {
   return `You are ${AGENT_NAME}, the senior operator who runs ${businessName}'s Chief operating system. The owner is reviewing the business on a large screen and has just opened one area. Brief them aloud.
 Voice: composed, precise, quietly confident. Plain sentences, no emojis, no headers, no lists, no pleasantries.
-In 60-100 words: state how this area stands; name specifically what is missing, unhealthy, or not yet connected (use only the data given — if a feed or number is absent, say exactly what to connect or enter); close with the single most important action, as one directive sentence starting "Next:".`;
+In 60-100 words: state how this area stands; name specifically what is missing, unhealthy, or not yet connected (use only the data given — if a feed or number is absent, say exactly what to connect or enter); close with the single most important action, as one directive sentence starting "${lang === "es" ? "Siguiente:" : "Next:"}".` +
+    (lang === "es" ? "\nRespond entirely in natural, professional Spanish (español de negocios, tono sereno)." : "");
 }
 
 function stewardContext(model, nodeId) {
@@ -68,14 +69,17 @@ function composeLocalBrief(model, nodeId) {
     `Next: ${n.summary.next}`;
 }
 
-function speak(text, enabled) {
+function speak(text, enabled, lang = "en") {
   try {
     if (!enabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.98; u.pitch = 0.95;
+    u.lang = lang === "es" ? "es-MX" : "en-US";
     const voices = window.speechSynthesis.getVoices();
-    const pick = voices.find((v) => /Samantha|Serena|Google UK English Female|Google US English/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("en"));
+    const pick = lang === "es"
+      ? (voices.find((v) => /Paulina|Mónica|Monica|Google español/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("es")))
+      : (voices.find((v) => /Samantha|Serena|Google UK English Female|Google US English/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("en")));
     if (pick) u.voice = pick;
     window.speechSynthesis.speak(u);
   } catch (e) {}
@@ -90,15 +94,17 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   // ── The Steward's presence ──
   const [briefing, setBriefing] = useState(() => { try { return localStorage.getItem("lh_cv_brief") === "1"; } catch { return false; } });
   const [voiceOn, setVoiceOn] = useState(() => { try { return localStorage.getItem("lh_cv_voice") !== "0"; } catch { return true; } });
-  useEffect(() => { try { localStorage.setItem("lh_cv_brief", briefing ? "1" : "0"); localStorage.setItem("lh_cv_voice", voiceOn ? "1" : "0"); } catch {} }, [briefing, voiceOn]);
+  const [lang, setLang] = useState(() => { try { return localStorage.getItem("lh_cv_lang") || "en"; } catch { return "en"; } });
+  useEffect(() => { try { localStorage.setItem("lh_cv_brief", briefing ? "1" : "0"); localStorage.setItem("lh_cv_voice", voiceOn ? "1" : "0"); localStorage.setItem("lh_cv_lang", lang); } catch {} }, [briefing, voiceOn, lang]);
   const [brief, setBrief] = useState({ nodeId: null, status: "idle", text: "" });
   const briefCache = useRef({});
   useEffect(() => {
     if (!briefing || !selected) { setBrief({ nodeId: null, status: "idle", text: "" }); return; }
     const nodeId = selected;
-    if (briefCache.current[nodeId]) {
-      setBrief({ nodeId, status: "ready", text: briefCache.current[nodeId] });
-      speak(briefCache.current[nodeId], voiceOn);
+    const ck = nodeId + ":" + lang;
+    if (briefCache.current[ck]) {
+      setBrief({ nodeId, status: "ready", text: briefCache.current[ck] });
+      speak(briefCache.current[ck], voiceOn, lang);
       return;
     }
     let dead = false;
@@ -109,17 +115,17 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
         const ctx = stewardContext(model, nodeId);
         const r = await fetch("/api/categorize", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ system: stewardSystem(model.businessName), max_tokens: 300, messages: [{ role: "user", content: "Brief me on this area now. Data:\n" + JSON.stringify(ctx) }] }),
+          body: JSON.stringify({ system: stewardSystem(model.businessName, lang), max_tokens: 300, messages: [{ role: "user", content: "Brief me on this area now. Data:\n" + JSON.stringify(ctx) }] }),
         });
         const d = await r.json();
         if (r.ok && d.content && d.content[0] && d.content[0].text) text = d.content[0].text.trim();
       } catch (e) {}
-      if (!text) text = composeLocalBrief(model, nodeId);
-      briefCache.current[nodeId] = text;
-      if (!dead) { setBrief({ nodeId, status: "ready", text }); speak(text, voiceOn); }
+      if (!text) text = (lang === "es" ? "(Sin conexión al servicio de inteligencia — datos en vivo:) " : "") + composeLocalBrief(model, nodeId);
+      briefCache.current[ck] = text;
+      if (!dead) { setBrief({ nodeId, status: "ready", text }); speak(text, voiceOn, lang); }
     })();
     return () => { dead = true; };
-  }, [briefing, selected]);
+  }, [briefing, selected, lang]);
   // leaving the room silences the Steward
   useEffect(() => () => { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }, []);
   useEffect(() => { if (!selected || !briefing) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [selected, briefing]);
@@ -128,7 +134,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   // the Steward announces itself once when it enters the room
   const welcomedRef = useRef(false);
   useEffect(() => {
-    if (briefing && !welcomedRef.current) { welcomedRef.current = true; speak("Welcome, " + model.businessName + ".", voiceOn); }
+    if (briefing && !welcomedRef.current) { welcomedRef.current = true; speak((lang === "es" ? "Bienvenido, " : "Welcome, ") + model.businessName + ".", voiceOn, lang); }
   }, [briefing]);
 
   // ── per-bubble conversation with the Steward ──
@@ -145,7 +151,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
       const r = await fetch("/api/categorize", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: stewardSystem(model.businessName) + "\nYou are now in conversation about this area. Answer the owner's question directly in under 80 words, grounded only in the data below. If the data cannot answer it, say exactly what to connect or check.\nArea data:\n" + JSON.stringify(ctx),
+          system: stewardSystem(model.businessName, lang) + "\nYou are now in conversation about this area. Answer the owner's question directly in under 80 words, grounded only in the data below. If the data cannot answer it, say exactly what to connect or check.\nArea data:\n" + JSON.stringify(ctx),
           max_tokens: 400,
           messages: history.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })),
         }),
@@ -153,10 +159,10 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
       const d = await r.json();
       if (r.ok && d.content && d.content[0] && d.content[0].text) text = d.content[0].text.trim();
     } catch (e) {}
-    if (!text) text = "I can't reach the intelligence service from here. From the live data: " + composeLocalBrief(model, nodeId);
+    if (!text) text = (lang === "es" ? "No puedo alcanzar el servicio de inteligencia desde aquí. De los datos en vivo: " : "I can't reach the intelligence service from here. From the live data: ") + composeLocalBrief(model, nodeId);
     setChats((c) => ({ ...c, [nodeId]: [...(c[nodeId] || []), { role: "steward", text }] }));
     setChatBusy(false);
-    speak(text, voiceOn);
+    speak(text, voiceOn, lang);
   }
   const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "gallery"; } catch { return "gallery"; } });
   useEffect(() => { try { localStorage.setItem("lh_cv_bg", bg); } catch {} }, [bg]);
@@ -259,6 +265,15 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
 
       {/* canvas — larger nodes, generous spacing */}
       <div style={{ position: "relative", padding: "0 clamp(10px, 2vw, 30px)" }}>
+        {/* the Steward's language — minimal, top right of the map */}
+        <div style={{ position: "absolute", top: 14, right: "clamp(18px, 3vw, 44px)", zIndex: 5, display: "flex", alignItems: "center", gap: 10 }}>
+          {["en", "es"].map((l) => (
+            <button key={l} onClick={() => setLang(l)} aria-label={l === "en" ? "Steward speaks English" : "El Steward habla español"}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: lang === l ? t.ink : t.sub, borderBottom: lang === l ? `1px solid ${t.brass}` : "1px solid transparent", lineHeight: 1.9 }}>
+              {l}
+            </button>
+          ))}
+        </div>
         <BrainCanvas model={model} theme={t} scale={1.25} selectedId={selected} onSelect={(id) => { setAmbient(false); setSelected(id); }} height={canvasH} pannable deluxe />
       </div>
 
@@ -301,7 +316,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
               <div>
                 <PanelHeader title="Executive Brief" t={t} onClose={() => setSelected(null)} />
                 <div style={{ fontFamily: serif, fontSize: 40, marginTop: 8 }}>{model.healthScore} <span style={{ fontSize: 17, fontStyle: "italic", color: t.accent }}>{model.status}</span></div>
-                {briefing && <StewardBrief brief={brief} t={t} chat={chats.health || []} busy={chatBusy} onAsk={(qq) => askSteward("health", qq)} areaLabel="the business" />}
+                {briefing && <StewardBrief brief={brief} t={t} chat={chats.health || []} busy={chatBusy} onAsk={(qq) => askSteward("health", qq)} areaLabel={lang === "es" ? "el negocio" : "the business"} lang={lang} />}
                 {model.insights.map((ins) => (
                   <div key={ins.id} style={{ padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
                     <div style={{ fontFamily: serif, fontSize: 15 }}>{ins.title}</div>
@@ -316,7 +331,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 4, color: node.status === "improving" ? t.green : node.status === "declining" ? t.red : t.sub }}>
                   Status: {node.status}{node.change ? " · " + node.change : ""}
                 </div>
-                {briefing && <StewardBrief brief={brief} t={t} chat={chats[node.id] || []} busy={chatBusy} onAsk={(qq) => askSteward(node.id, qq)} areaLabel={node.label} />}
+                {briefing && <StewardBrief brief={brief} t={t} chat={chats[node.id] || []} busy={chatBusy} onAsk={(qq) => askSteward(node.id, qq)} areaLabel={node.label} lang={lang} />}
                 {[["What happened", node.summary.what], ["Why it matters", node.summary.why], ["What to do next", node.summary.next]].map(([h, body]) => (
                   <div key={h} style={{ marginTop: 16 }}>
                     <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{h}</div>
@@ -348,7 +363,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   );
 }
 
-function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel }) {
+function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel, lang = "en" }) {
   const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
   const [q, setQ] = useState("");
   const endRef = useRef(null);
@@ -358,7 +373,7 @@ function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel }) {
     <div style={{ marginTop: 14, padding: "13px 16px", background: t.bg, border: `1px solid ${t.line}`, borderLeft: `2px solid ${t.brass}`, borderRadius: 1 }}>
       <div style={{ fontFamily: sansF, fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", color: t.accent }}>◉ {AGENT_NAME}</div>
       {brief.status === "loading" ? (
-        <div style={{ fontFamily: sansF, fontStyle: "italic", fontSize: 13, color: t.sub, marginTop: 6 }}>Reading the room…</div>
+        <div style={{ fontFamily: sansF, fontStyle: "italic", fontSize: 13, color: t.sub, marginTop: 6 }}>{lang === "es" ? "Leyendo la sala…" : "Reading the room…"}</div>
       ) : (
         <div style={{ fontFamily: sansF, fontSize: 13.5, lineHeight: 1.65, color: t.ink, marginTop: 6, whiteSpace: "pre-wrap" }}>{brief.text}</div>
       )}
@@ -371,7 +386,7 @@ function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel }) {
               {m.text}
             </div>
           ))}
-          {busy && <div style={{ alignSelf: "flex-start", fontFamily: sansF, fontStyle: "italic", fontSize: 12.5, color: t.sub }}>{AGENT_NAME} is thinking…</div>}
+          {busy && <div style={{ alignSelf: "flex-start", fontFamily: sansF, fontStyle: "italic", fontSize: 12.5, color: t.sub }}>{AGENT_NAME}{lang === "es" ? " está pensando…" : " is thinking…"}</div>}
           <div ref={endRef} />
         </div>
       )}
@@ -380,7 +395,7 @@ function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") send(); }}
-          placeholder={"Ask about " + (areaLabel || "this area") + "…"}
+          placeholder={(lang === "es" ? "Pregunta sobre " : "Ask about ") + (areaLabel || (lang === "es" ? "esta área" : "this area")) + "…"}
           style={{ flex: 1, background: t.card, border: `1px solid ${t.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sansF, fontSize: 13, color: t.ink, outline: "none" }}
         />
         <button onClick={send} disabled={busy}
