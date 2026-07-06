@@ -49,9 +49,11 @@ const MOTION_CSS = `
 @keyframes bbBreathe { 0%,100% { box-shadow: 0 0 0 0 var(--bb-halo), 0 8px 30px rgba(0,0,0,0.08); } 50% { box-shadow: 0 0 0 18px transparent, 0 8px 30px rgba(0,0,0,0.08); } }
 @keyframes bbRipple { 0% { transform: translate(-50%,-50%) scale(1); opacity: 0.45; } 100% { transform: translate(-50%,-50%) scale(1.45); opacity: 0; } }
 @keyframes bbTwinkle { 0%,100% { opacity: 0.12; } 50% { opacity: 0.45; } }
+@keyframes bbSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .bb-node, .bb-center, .bb-ripple, .bb-syn { animation: none !important; }
+  .bb-node, .bb-center, .bb-ripple, .bb-syn, .bb-orbit { animation: none !important; }
 }
+.bb-orbit { transform-origin: center; animation: bbSpin 120s linear infinite; }
 .bb-node { transition: box-shadow 0.45s ease, border-color 0.45s ease; will-change: transform; }
 .bb-node:hover { z-index: 5; }
 .bb-node, .bb-center { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
@@ -73,7 +75,7 @@ function useMotionCss() {
 // heartbeat, and the whole field leans gently toward the cursor. All motion is
 // driven by one requestAnimationFrame loop that writes straight to the DOM
 // (no re-renders), and prefers-reduced-motion freezes everything.
-export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520, pannable = false }) {
+export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520, pannable = false, deluxe = false }) {
   useMotionCss();
   const wrapRef = useRef(null);
   const fieldRef = useRef(null);
@@ -307,6 +309,23 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           {/* orbit guides — the quiet architecture of the map */}
           <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={t.ring || t.link} strokeWidth="1" strokeDasharray="2 8" />
           <ellipse cx={cx} cy={cy} rx={rx * 1.28} ry={ry * 1.34} fill="none" stroke={t.ring || t.link} strokeOpacity="0.5" strokeWidth="1" strokeDasharray="1 10" />
+
+          {deluxe && (
+            <g>
+              {/* the health score as an instrument arc: score/100 around the core */}
+              <circle cx={cx} cy={cy} r={centerR + 14 * scale} fill="none" stroke={t.line} strokeOpacity="0.55" strokeWidth={2 * scale} />
+              <circle cx={cx} cy={cy} r={centerR + 14 * scale} fill="none"
+                stroke={t.brass} strokeWidth={2.4 * scale} strokeLinecap="round"
+                strokeDasharray={`${(model.healthScore / 100) * 2 * Math.PI * (centerR + 14 * scale)} ${2 * Math.PI * (centerR + 14 * scale)}`}
+                transform={`rotate(-90 ${cx} ${cy})`} filter={`url(#${gid}-glow)`} />
+              {/* slow-rotating survey ring */}
+              <g>
+                <animateTransform attributeName="transform" type="rotate" from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="120s" repeatCount="indefinite" />
+                <circle cx={cx} cy={cy} r={centerR + 30 * scale} fill="none" stroke={t.brass} strokeOpacity="0.35" strokeWidth="1" strokeDasharray={`1 ${10 * scale}`} />
+                <circle cx={cx + centerR + 30 * scale} cy={cy} r={2.2 * scale} fill={t.brass} opacity="0.8" filter={`url(#${gid}-glow)`} />
+              </g>
+            </g>
+          )}
 
           {/* ambient synapse dust */}
           {synapses.map((s, i) => (

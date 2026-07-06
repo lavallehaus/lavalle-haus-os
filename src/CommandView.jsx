@@ -26,6 +26,8 @@ const AMBIENT_STEP_MS = 12 * 1000;
 export default function CommandView({ model, themeId, onToggleTheme, onExit, onNavigate, onAsk }) {
   const t = BRAIN_THEMES[themeId] || BRAIN_THEMES.day;
   const [selected, setSelected] = useState(null);
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => { const iv = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(iv); }, []);
   const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "gallery"; } catch { return "gallery"; } });
   useEffect(() => { try { localStorage.setItem("lh_cv_bg", bg); } catch {} }, [bg]);
   const [q, setQ] = useState("");
@@ -74,13 +76,35 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   const bgCss = (BACKGROUNDS[bg] || BACKGROUNDS.travertine)[themeId] || BACKGROUNDS.travertine.day;
   const canvasH = Math.max(460, Math.min(760, typeof window !== "undefined" ? window.innerHeight - 210 : 560));
 
+  const nodeStat = (id) => model.nodes.find((n) => n.id === id);
+  const stats = [
+    { l: "Health", v: model.healthScore + " · " + model.status },
+    { l: "Opportunities", v: String(model.opportunities) },
+    { l: "Risks", v: String(model.risks), tone: model.risks > 0 ? t.red : null },
+    { l: "Revenue", v: (nodeStat("revenue") || {}).value || "—" },
+    { l: "Marketing", v: (nodeStat("marketing") || {}).value || "—" },
+    { l: "Inventory", v: (nodeStat("inventory") || {}).value || "—" },
+  ];
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, background: bgCss, color: t.ink, overflowY: "auto" }}>
+      {/* atmosphere: fine dot grid + vignette */}
+      <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: `radial-gradient(${t.ring || t.line} 0.8px, transparent 0.8px)`, backgroundSize: "34px 34px", opacity: themeId === "night" ? 0.5 : 0.55, maskImage: "radial-gradient(ellipse at 50% 42%, black 30%, transparent 78%)", WebkitMaskImage: "radial-gradient(ellipse at 50% 42%, black 30%, transparent 78%)" }} />
+      <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", background: themeId === "night" ? "radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,0.35) 100%)" : "radial-gradient(ellipse at 50% 45%, transparent 60%, rgba(26,26,26,0.05) 100%)" }} />
+
       {/* toolbar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px clamp(16px, 3vw, 40px)", flexWrap: "wrap", gap: 10 }}>
+      <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px clamp(16px, 3vw, 40px)", flexWrap: "wrap", gap: 10, borderBottom: `1px solid ${t.line}` }}>
         <div>
-          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", color: t.sub }}>{model.businessName} · Command View</div>
-          <div style={{ fontFamily: serif, fontSize: "clamp(18px, 2.2vw, 26px)" }}>{timeGreeting(model.businessName)}</div>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", color: t.sub }}>
+            {model.businessName} · Command View
+            <span style={{ margin: "0 10px", color: t.line }}>|</span>
+            <span style={{ color: t.accent }}>● Live</span>
+            <span style={{ margin: "0 10px", color: t.line }}>|</span>
+            {clock.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            <span style={{ margin: "0 10px", color: t.line }}>|</span>
+            Interpreting {model.insights.length} signal{model.insights.length === 1 ? "" : "s"}
+          </div>
+          <div style={{ fontFamily: serif, fontSize: "clamp(18px, 2.2vw, 26px)", fontWeight: 300 }}>{timeGreeting(model.businessName)}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <select value={bg} onChange={(e) => setBg(e.target.value)} aria-label="Background theme"
@@ -94,8 +118,18 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
       </div>
 
       {/* canvas — larger nodes, generous spacing */}
-      <div style={{ padding: "0 clamp(10px, 2vw, 30px)" }}>
-        <BrainCanvas model={model} theme={t} scale={1.25} selectedId={selected} onSelect={(id) => { setAmbient(false); setSelected(id); }} height={canvasH} pannable />
+      <div style={{ position: "relative", padding: "0 clamp(10px, 2vw, 30px)" }}>
+        <BrainCanvas model={model} theme={t} scale={1.25} selectedId={selected} onSelect={(id) => { setAmbient(false); setSelected(id); }} height={canvasH} pannable deluxe />
+      </div>
+
+      {/* instrument strip — the numbers at a glance */}
+      <div style={{ position: "relative", display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 0, padding: "4px clamp(16px, 3vw, 40px) 0" }}>
+        {stats.map((s, i) => (
+          <div key={s.l} style={{ padding: "6px 22px", borderLeft: i === 0 ? "none" : `1px solid ${t.line}`, textAlign: "center" }}>
+            <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", color: t.sub }}>{s.l}</div>
+            <div style={{ fontFamily: sans, fontSize: 13.5, fontWeight: 300, letterSpacing: 0.5, color: s.tone || t.ink, marginTop: 2 }}>{s.v}</div>
+          </div>
+        ))}
       </div>
 
       {/* ambient ribbon */}
