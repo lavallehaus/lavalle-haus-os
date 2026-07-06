@@ -20,6 +20,9 @@ import Tracker from "./Tracker.jsx";
 import AmazonKeywords from "./AmazonKeywords.jsx";
 import ReorderList from "./ReorderList.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
+import BusinessBrain from "./BusinessBrain.jsx";
+import CommandView from "./CommandView.jsx";
+import { buildBrainModel } from "./businessBrain.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1138,6 +1141,17 @@ setDraft({ buyLink: "", estCost: "", note: "" });
 
 // ── TAB: ROADMAP ──────────────────────────────────────────────────────────────
 
+// ── CHIEF PLATFORM ROLLOUT ────────────────────────────────────────────────────
+// The versioned path from this internal master app to the customer-facing
+// product (per the Premoretum, Platform Tiers and Final Pricing docs).
+// Master App = everything we need internally. Customer MVP = strongest wedge first.
+const CHIEF_ROLLOUT = [
+{ version: "Chief Core 1.0", who: "Every business", price: "$29–149/mo tiers", promise: "Where do we stand, what needs attention, what happens next.", includes: "CEO dashboard · Business Health · tasks & team · SOPs · weekly AI summary · native finance (statement upload → AI-categorized P&L, no QuickBooks required)", status: "in this app" },
+{ version: "Chief Commerce 2.0 — MVP wedge", who: "E-commerce operators, $250k–$10M/yr (launch pricing: Operator $199/mo)", price: "$49–499/mo tiers", promise: "Know exactly what deserves your attention this week.", includes: "Daily Brief · Executive Decision Center · Shopify + Amazon + Meta integrations · inventory alerts · supplier & wholesale tracking · launch workflows. Lavalle Haus + The Fold are the testing environments.", status: "building here" },
+{ version: "Chief Executive 2.5", who: "Brands needing forecasting + memory (Executive $999/mo)", price: "$999/mo", promise: "Operate like you have an executive team.", includes: "Institutional Memory · decision log · forecasting · scenario planning · benchmark network · team accountability", status: "planned" },
+{ version: "Chief Construction 3.0", who: "Contractors & trades", price: "$49–399/mo tiers", promise: "Know project profitability before the project ends.", includes: "Bids · job costing · labor & materials tracking · change orders · crew profitability. 6th Gen Masonry is the testing environment.", status: "planned" },
+];
+
 function RoadmapTab() {
 return (
 <div>
@@ -1159,16 +1173,93 @@ return (
 </Card>
 ))}
 </div>
+
+<div style={{ height: 30 }} />
+<SectionTitle>Chief Platform Rollout</SectionTitle>
+<div style={{ fontSize: 11, fontStyle: "italic", color: "rgba(111,102,87,0.7)", fontFamily: "'IM Fell English', Georgia, serif", marginTop: -14, marginBottom: 14 }}>
+One platform, industry modules — this app is the internal master; each version below is a customer-facing slice. “Know exactly what to do next.”
+</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+{CHIEF_ROLLOUT.map((v, i) => (
+<Card key={v.version} style={{ borderLeft: `3px solid ${v.status === "building here" ? "#a07848" : "#c8c2b8"}` }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
+<div style={{ fontSize: 16, fontFamily: "'IM Fell English', Georgia, serif", color: "#1a1714" }}>{v.version}</div>
+<div style={{ fontSize: 9, fontFamily: "monospace", letterSpacing: 2, textTransform: "uppercase", color: v.status === "building here" ? "#a07848" : "#9c8d7b" }}>{v.status}</div>
+</div>
+<div style={{ fontSize: 12, fontStyle: "italic", color: "#8c7d6b", fontFamily: "'IM Fell English', Georgia, serif", marginTop: 3 }}>{v.promise}</div>
+<div style={{ fontSize: 11, fontFamily: "monospace", color: "#9c8d7b", marginTop: 6 }}>{v.who} · {v.price}</div>
+<div style={{ fontSize: 12.5, color: "#3a342d", fontFamily: "'IM Fell English', Georgia, serif", lineHeight: 1.6, marginTop: 6 }}>{v.includes}</div>
+</Card>
+))}
+</div>
+</div>
+);
+}
+
+// ── TAB: POPPY CREATIVE STUDIO ────────────────────────────────────────────────
+// Creative intelligence framework (per the Poppy Creative Studio + Creative
+// Intelligence specs). The structure ships now; each phase's data sources
+// (Meta Ad Library, Apify, TikTok Creative Center) connect in a later phase.
+const POPPY_PHASES = [
+{ id: "observe", title: "Observe", body: "Collect competitor ads, organic content, creators, trends, and creative patterns.", sources: ["Meta Competitor Intelligence — top long-running competitor ads, new ads this week, offer & landing-page trackers", "TikTok Organic Intelligence — top videos, trending hooks, sounds, creator discovery", "TikTok Ad Intelligence — top ads, formats, hooks and offers", "Amazon Creative Intelligence — listing changes, launches, review velocity, pricing moves"] },
+{ id: "analyze", title: "Analyze", body: "Deconstruct what's working: hook type, offer, format, audience signals, visual style, CTA, length, messaging pattern — with an AI summary of why it works.", sources: [] },
+{ id: "adapt", title: "Adapt", body: "Filter everything through Lavalle Haus positioning: Luxury Alignment Score, Brand Equity Score, audience fit, visual refinement. Decide what to keep, remove, elevate, or avoid.", sources: [] },
+{ id: "create", title: "Create", body: "Generate original concepts — static ads, video concepts, hooks, headlines, copy, shot lists, creative briefs, testing variations.", sources: [] },
+{ id: "test", title: "Test", body: "Build the testing plan: budget allocation, KPI targets, ROAS goals, hook retention targets — and connect results back to Meta, Amazon, Shopify and Klaviyo.", sources: [] },
+];
+
+function PoppyStudio() {
+const serifF = "'IM Fell English', Georgia, serif";
+return (
+<div>
+<SectionTitle>Poppy Creative Studio</SectionTitle>
+<div style={{ fontSize: 12, fontStyle: "italic", color: "#8c7d6b", fontFamily: serifF, marginTop: -14, marginBottom: 16 }}>
+Competitor and trend intelligence, transformed into original brand-aligned creative — never a copying tool. Not an ad spy tool: better decisions, not imitation.
+</div>
+{/* the featured workflow, always visible */}
+<div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+{POPPY_PHASES.map((ph, i) => (
+<div key={ph.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+<span style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#a07848", border: "1px solid #c8c2b8", borderRadius: 1, padding: "6px 12px", background: "#efece5" }}>{ph.title}</span>
+{i < POPPY_PHASES.length - 1 && <span style={{ color: "#9c8d7b" }}>→</span>}
+</div>
+))}
+</div>
+<div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+{POPPY_PHASES.map((ph) => (
+<Card key={ph.id}>
+<div style={{ fontFamily: serifF, fontSize: 17, color: "#1a1714" }}>{ph.title}</div>
+<div style={{ fontFamily: serifF, fontSize: 13, color: "#3a342d", lineHeight: 1.6, marginTop: 4 }}>{ph.body}</div>
+{ph.sources.length > 0 && (
+<div style={{ marginTop: 8 }}>
+{ph.sources.map((s, i) => (
+<div key={i} style={{ fontFamily: serifF, fontSize: 12, color: "#8c7d6b", paddingLeft: 12, borderLeft: "1px solid #d4cfc7", marginTop: 5, lineHeight: 1.5 }}>{s}</div>
+))}
+<div style={{ fontFamily: serifF, fontStyle: "italic", fontSize: 10.5, color: "rgba(111,102,87,0.6)", marginTop: 8 }}>Data sources connect in a later phase — the workflow and scoring structure live here now.</div>
+</div>
+)}
+</Card>
+))}
+</div>
 </div>
 );
 }
 
 // ── TAB: AI ADVISOR ───────────────────────────────────────────────────────────
 
-function AITab({ products, campaigns }) {
+function AITab({ products, campaigns, initialQuestion = null, onSeedConsumed }) {
 const [q, setQ] = useState("");
 const [history, setHistory] = useState([]);
 const [loading, setLoading] = useState(false);
+
+// A question handed over from the Business Brain / Command View "Ask Chief"
+const seedRef = useRef(false);
+useEffect(() => {
+if (!initialQuestion || seedRef.current) return;
+seedRef.current = true;
+ask(initialQuestion);
+if (onSeedConsumed) onSeedConsumed();
+}, [initialQuestion]);
 
 const suggestions = [
 "What should I do with my ad spend this week?",
@@ -1664,27 +1755,65 @@ function PrivacyModal({ onClose }) {
           <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Privacy Policy</h1>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#8c7d6b", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus · Last updated {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
-        <p style={p}>Lavalle Haus (“we,” “us”) operates a small candle and body-care business. This policy explains what information we handle and how we protect it.</p>
-        <div style={hd}>What we collect</div>
-        <p style={p}>Our internal operating system stores business data — products, inventory, sales, advertising, supplier and team records. When you connect an account (such as a bank via Plaid, Amazon Selling Partner, or Shopify), we store the access tokens needed to read that data on your behalf. We do not collect personal information from the public through this tool.</p>
-        <div style={hd}>How it’s stored & secured</div>
-        <p style={p}>Data is stored in an encrypted, access-controlled database (Upstash Redis) and served over encrypted connections (TLS) through our hosting provider (Vercel). Access is limited to a small number of authorized team members, protected by a passcode and two-factor authentication on the underlying accounts. Account credentials and bank connections are handled server-side and, in the case of banking, by Plaid — we never see or store your online banking username or password.</p>
-        <div style={hd}>Third-party services</div>
-        <p style={p}>We rely on reputable providers to operate: Plaid (bank connections), Amazon and Shopify (commerce data), Resend (email notifications), and Upstash/Vercel (storage and hosting). Each processes data only as needed to provide its service.</p>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus OS · Effective June 2026 · Last reviewed June 2026</div>
+        <div style={hd}>Who we are</div>
+        <p style={p}>Lavalle Haus OS is an internal business application operated by Refillery Haus (“we,” “us”). It is used by the business's owners to manage the company's own operations, inventory, advertising, and finances. It is not a product offered to outside consumers, and it does not create accounts for third-party end users.</p>
+        <div style={hd}>What information the application accesses</div>
+        <p style={p}>To operate, the application connects to services the business already uses and accesses the business's own data, including: bank account information via Plaid — account names and balances, and transaction history — used to track the company's cash position and runway; and commerce and advertising data via the Amazon, Shopify, and Google APIs — orders, inventory, listings, and ad performance for the business's own accounts. All of this data belongs to the business itself. The application does not collect personal information from outside consumers.</p>
         <div style={hd}>How we use it</div>
-        <p style={p}>Information is used solely to run and improve our own operations — tracking margins, inventory, and tasks, and notifying team members. We do not sell personal data, and we do not share it except as required to provide the services above or to comply with the law.</p>
-        <div style={hd}>Retention</div>
-        <p style={p}>We keep business records for as long as they’re useful to operations and review them periodically, removing what we no longer need. You may request deletion of data we hold about you.</p>
+        <p style={p}>Information is used solely to run and analyze the business — tracking sales, inventory, margins, cash flow, and advertising. We do not use it for any other purpose.</p>
+        <div style={hd}>How we protect it</div>
+        <p style={p}>Connections use HTTPS/TLS encryption in transit. Stored data and access tokens are encrypted at rest and held server-side; access tokens are never exposed in the browser. Access to the application is limited to two authorized individuals and protected by password authentication.</p>
+        <div style={hd}>Sharing</div>
+        <p style={p}>We do not sell or rent any information. Data is shared only with the service providers required to operate the application (Plaid, Vercel, Upstash, and the Amazon, Shopify, and Google APIs), each under their own terms and privacy practices.</p>
+        <div style={hd}>Plaid</div>
+        <p style={p}>When you connect a bank account, the connection is handled by Plaid Inc. Your bank login credentials are entered directly into Plaid's secure interface and are never seen or stored by this application; we receive only the resulting balance and transaction data. Plaid's handling of that data is governed by the Plaid End User Privacy Policy at plaid.com/legal.</p>
+        <div style={hd}>Data retention & deletion</div>
+        <p style={p}>We retain data only as long as needed to operate the business. A connected bank can be disconnected at any time within the application, which deletes the stored access token. To request deletion of other stored data, contact us.</p>
         <div style={hd}>Contact</div>
-        <p style={p}>Questions about this policy or your data can be directed to the business owner at the contact address listed on our store.</p>
+        <p style={p}>For any privacy question or request, contact the business owner at the email associated with the Lavalle Haus / Refillery Haus account.</p>
+      </div>
+    </div>
+  );
+}
+
+function RetentionModal({ onClose }) {
+  const wrap = { position: "fixed", inset: 0, background: "rgba(26,23,20,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 };
+  const card = { background: "#f7f4ef", border: "1px solid #c8c2b8", borderRadius: 2, maxWidth: 680, maxHeight: "85vh", overflowY: "auto", padding: "28px 32px", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" };
+  const h = { fontFamily: "'IM Fell English', Georgia, serif", color: "#1a1714" };
+  const p = { fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.6, color: "#3a342d", margin: "8px 0" };
+  const hd = { fontFamily: "monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#a07848", marginTop: 18 };
+  return (
+    <div style={wrap} onClick={onClose}>
+      <div style={card} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Data Retention & Deletion Policy</h1>
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#8c7d6b", cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#8c7d6b", letterSpacing: 1, marginBottom: 6 }}>Owner: Refillery Haus · Applies to Lavalle Haus OS · Last reviewed June 2026 · Reviewed at least annually</div>
+        <div style={hd}>1. Principle</div>
+        <p style={p}>We retain only the data needed to operate the business, for only as long as it is useful for that purpose, and we provide clear ways to delete it.</p>
+        <div style={hd}>2. What we store and for how long</div>
+        <p style={p}><b>Business operational data</b> (inventory, sales, advertising, margins, financial figures): retained while the application is in active use, as it forms the ongoing operating record of the business.</p>
+        <p style={p}><b>Bank connection tokens (Plaid):</b> retained only while the bank is connected. Disconnecting a bank within the application immediately deletes its stored access token and stops further data retrieval.</p>
+        <p style={p}><b>Bank balance and transaction data:</b> retrieved on demand to display current figures; only the data needed for cash-flow and runway tracking is kept.</p>
+        <p style={p}><b>Third-party API credentials</b> (Amazon, Shopify, Google, Plaid): stored server-side as environment variables or encrypted database entries, and removed when an integration is no longer used.</p>
+        <div style={hd}>3. Deletion</div>
+        <p style={p}>A connected bank can be removed at any time using the disconnect control in the application; this deletes the associated access token via Plaid's item-removal process. Other stored data can be deleted on request by the business owners. When the application is retired, its database key and all connected-integration tokens are deleted.</p>
+        <div style={hd}>4. Compliance & review</div>
+        <p style={p}>This policy is reviewed at least once per year, and whenever data sources or applicable privacy laws change, to confirm it remains accurate and compliant.</p>
       </div>
     </div>
   );
 }
 
 export default function App() {
-const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "profit"; } catch { return "profit"; } });
+const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
+// Business Brain theme (day/night) + Command View overlay
+const [brainTheme, setBrainTheme] = useState(() => { try { return localStorage.getItem("lh_theme") || "day"; } catch { return "day"; } });
+useEffect(() => { try { localStorage.setItem("lh_theme", brainTheme); } catch {} }, [brainTheme]);
+const [commandView, setCommandView] = useState(false);
+const [askSeed, setAskSeed] = useState(null);
 const [sub, setSub] = useState(() => { try { return JSON.parse(localStorage.getItem("lh_sub") || "{}"); } catch { return {}; } });
 useEffect(() => { try { localStorage.setItem("lh_tab", tab); localStorage.setItem("lh_sub", JSON.stringify(sub)); } catch {} }, [tab, sub]);
 const [products, setProducts] = useState(INITIAL_PRODUCTS);
@@ -1694,6 +1823,7 @@ const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [], deletedProducts: [] });
 const [loaded, setLoaded] = useState(false);
 const [showPrivacy, setShowPrivacy] = useState(false);
+const [showRetention, setShowRetention] = useState(false);
 const [shopify, setShopify] = useState({ connected: false, items: {}, sold: {}, ugc: {}, variantDetail: {}, unmatched: [], soldUnmatched: [], syncedAt: null, syncing: false });
 const [shopifySales, setShopifySales] = useState(null);
 async function fetchShopifySales() { try { const r = await fetch("/api/shopify-sync?op=sales").then((x) => x.json()); if (r && r.periods) setShopifySales(r); } catch (e) {} }
@@ -1922,8 +2052,36 @@ const _marginFlags = buildMarginsModel({ cogs: dbState.cogs || {}, products, cam
 const _liveActions = _storedActions.filter(a => a.status !== "done" && a.status !== "resolved");
 const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severity === "high").length : _marginFlags.filter(f => f.severity === "high").length;
 
-// ── 7-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
+// ── BUSINESS BRAIN MODEL — one live config drives the landing page + Command View ──
+const brainModel = buildBrainModel({
+businessName: "Lavalle Haus",
+products: products.map(p => ({ ...p, _status: stockStatus(p, shopify, amazon) })),
+campaigns,
+flags: _marginFlags,
+shopifySales, amazonSales,
+bankCash: dbState.bankCash || null,
+pnl: dbState.pnl || {},
+actionsBoard: dbState.actionsBoard || {},
+wholesale: dbState.wholesale || [],
+accountHealth: dbState.amazonAccountHealth || null,
+cashRunwayWeeks: null,
+});
+const goTo = (nav) => {
+if (!nav) return;
+setCommandView(false);
+setTab(nav.tab);
+if (nav.sub) setSub(s => ({ ...s, [nav.tab]: nav.sub }));
+};
+const askChief = (question) => {
+setCommandView(false);
+setAskSeed(question);
+setTab("ai");
+setSub(s => ({ ...s, ai: "advisor" }));
+};
+
+// ── 8-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
+{ id: "brain", label: "Business Brain", labelEs: "Cerebro del negocio" },
 { id: "profit", label: "Sales", labelEs: "Ventas", subs: [
 { id: "matrix", label: "Profit Matrix" },{ id: "amazondaily", label: "Amazon Daily" },{ id: "pricing", label: "Pricing" },{ id: "cogs", label: "COGS" },{ id: "margins", label: "Margins" },
 { id: "finances", label: "Finances" },
@@ -1954,6 +2112,7 @@ const NAV = [
 { id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Action Items" },
 { id: "wholesale", label: "Wholesale Accounts" },
+{ id: "poppy", label: "Poppy Studio" },
 ] },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
 { id: "materials", label: "Materials", labelEs: "Materiales", subs: [
@@ -1994,8 +2153,20 @@ setDbState((prev) => { const next = { ...prev, profitMatrix: { products: pm.prod
 );
 
 function renderBody() {
+if (tab === "brain") {
+return (
+<BusinessBrain
+model={brainModel}
+themeId={brainTheme}
+onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
+onNavigate={goTo}
+onOpenCommand={() => setCommandView(true)}
+onAsk={askChief}
+/>
+);
+}
 if (tab === "profit") {
-if (activeSub === "amazondaily") return <AmazonProfit products={products} />;
+if (activeSub === "amazondaily") return <AmazonProfit products={products} accountHealth={dbState.amazonAccountHealth || null} onSaveHealth={(h) => setDbState((prev) => { const next = { ...prev, amazonAccountHealth: h }; dbSave(next); return next; })} />;
 if (activeSub === "pricing") return <Pricing products={products} />;
 if (activeSub === "cogs") return <CogsBuilder data={dbState.cogs || {}} onSave={(cg) => { setDbState((prev) => { const next = { ...prev, cogs: { products: cg.products, laborRate: cg.laborRate } }; dbSave(next); return next; }); }} />;
 if (activeSub === "margins") return <Margins cogs={dbState.cogs || {}} products={products} campaigns={campaigns} profitMatrix={dbState.profitMatrix || {}} data={dbState.margins || {}} onSave={(m) => { setDbState((prev) => { const next = { ...prev, margins: m }; dbSave(next); return next; }); }} onFbaFees={(map, updatedAt) => { setDbState((prev) => { const next = { ...prev, margins: { ...(prev.margins || {}), amazonFba: { ...((prev.margins || {}).amazonFba || {}), ...map }, fbaUpdatedAt: updatedAt } }; dbSave(next); return next; }); }} />;
@@ -2011,7 +2182,7 @@ return profitNode;
 }
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
-if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} />;
+if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} initialQuestion={askSeed} onSeedConsumed={() => setAskSeed(null)} />;
 return <AICoo
 products={products} campaigns={campaigns} weeks={weeks} materials={materials}
 cogs={dbState.cogs || {}} profitMatrix={dbState.profitMatrix || {}}
@@ -2064,6 +2235,7 @@ if (activeSub === "email") return <EmailRetention data={dbState.emailRetention |
 if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
 if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
 if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { setDbState((prev) => { const next = { ...prev, wholesale: w }; dbSave(next); return next; }); }} />;
+if (activeSub === "poppy") return <PoppyStudio />;
 }
 if (tab === "materials") {
 if (activeSub === "priceoz") return <PriceOzTab />;
@@ -2092,6 +2264,11 @@ return (
 <div style={{ fontSize: 9, color: "#a09488", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
+<button onClick={() => setCommandView(true)}
+  title="Open Command View — vista de comando"
+  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #c8c2b8", borderRadius: 1, color: "#8c7d6b", fontSize: 9, letterSpacing: 2, fontFamily: "monospace", cursor: "pointer", textTransform: "uppercase" }}>
+  ⌘ Command View
+</button>
 <button onClick={() => { localStorage.removeItem("lh_token"); window.location.reload(); }}
   title="Lock the app — cerrar con llave"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #c8c2b8", borderRadius: 1, color: "#8c7d6b", fontSize: 9, letterSpacing: 2, fontFamily: "monospace", cursor: "pointer", textTransform: "uppercase" }}>
@@ -2121,15 +2298,28 @@ return (
 </div>
 )}
 
-<div style={tab === "profit" ? {} : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
+<div style={(tab === "profit" || tab === "brain") ? {} : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
 {renderBody()}
 </div>
 <div style={{ borderTop: "1px solid #d4cfc7", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "monospace", fontSize: 10, letterSpacing: 1, color: "#a09488" }}>
 <span>© {new Date().getFullYear()} Lavalle Haus</span>
 <span>·</span>
 <button onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "#a07848", cursor: "pointer", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
+<span>·</span>
+<button onClick={() => setShowRetention(true)} style={{ background: "none", border: "none", color: "#a07848", cursor: "pointer", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Data Retention</button>
 </div>
 {showPrivacy && <PrivacyModal onClose={() => setShowPrivacy(false)} />}
+{showRetention && <RetentionModal onClose={() => setShowRetention(false)} />}
+{commandView && (
+<CommandView
+model={brainModel}
+themeId={brainTheme}
+onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
+onExit={() => setCommandView(false)}
+onNavigate={goTo}
+onAsk={askChief}
+/>
+)}
 </div>
 );
 }

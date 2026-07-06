@@ -102,10 +102,17 @@ export default function Wholesale({ data = [], onSave }) {
         <button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: `1px solid ${c.line}`, color: future.length ? c.sub : c.line, borderRadius: 2, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>REDO</button>
         <span style={{ fontSize: 10, color: c.sub, fontFamily: sans, opacity: 0.7 }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
       </div>
-      <div>
-        <h1 style={S.h1}>Wholesale Accounts</h1><div style={faintEs}>Cuentas mayoristas</div>
-        <div style={S.sub}>Accounts, reorder timing, and open opportunities — your B2B relationships in one place.</div>
-        <div style={faintEs}>Cuentas, tiempos de recompra y oportunidades abiertas.</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={S.h1}>Wholesale Accounts</h1><div style={faintEs}>Cuentas mayoristas</div>
+          <div style={S.sub}>Accounts, reorder timing, and open opportunities — your B2B relationships in one place.</div>
+          <div style={faintEs}>Cuentas, tiempos de recompra y oportunidades abiertas.</div>
+        </div>
+        {/* The standalone bilingual wholesale workspaces, served with the app */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <a href="/wholesale.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Wholesale Page ↗</a>
+          <a href="/wholesale-outreach.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Outreach Timeline ↗</a>
+        </div>
       </div>
 
       {/* SUMMARY */}

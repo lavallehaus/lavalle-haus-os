@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-
+scale=1.0">
+<title>Lavalle Haus, Outreach Timeline / Cronograma de Contacto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com"
+crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,
+500;0,600;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F4F1EA;--paper2:#FBFAF6;--header:#EDEAE3;--ink:#26221C;--soft:#6B6459;--muted:#9A9387;--line:
+#DCD7CC;--gold:#A9873F;--terra:#9C4A39;--sage:#7d8a72;--btn:#2A2620;--serif:"EB Garamond",Georgia,serif;--
+sans:"Jost",Arial,sans-serif;--lw:250px;}
+*{box-sizing:border-box;}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:16px;-
+webkit-font-smoothing:antialiased;font-feature-settings:"onum" 1;}
+.wrap{max-width:1280px;margin:0 auto;padding:0 clamp(14px,3vw,40px);}
+.util{background:var(--ink);color:var(--paper);font-family:var(--sans);font-size:10.5px;letter-spacing:.18em;text-
+transform:uppercase;text-align:center;padding:8px;font-weight:300;}.util span{opacity:.72;}
+header{background:var(--header);border-bottom:1px solid var(--line);}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;flex-wrap:wrap;}
+.brand b{font-weight:500;letter-spacing:.34em;font-size:18px;display:block;padding-left:.34em;}
+.brand small{font-family:var(--sans);font-weight:300;font-size:9px;letter-spacing:.3em;color:var(--muted);text-transform:
+uppercase;display:block;margin-top:6px;padding-left:.32em;}
+.ctrls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-family:var(--sans);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.field input,.field select{font-family:var(--sans);font-size:12.5px;color:var(--ink);background:var(--paper2);border:1px
+solid var(--line);padding:8px 10px;}
+.langtog{display:flex;border:1px solid var(--line);}
+.langtog button{font-family:var(--sans);font-size:11px;letter-spacing:.1em;text-transform:uppercase;background:var(--
+paper2);border:0;padding:8px 13px;cursor:pointer;color:var(--soft);}
+.langtog button.on{background:var(--btn);color:var(--paper);}
+.titleblock{padding:24px 0 4px;}
+.titleblock h1{font-weight:500;font-size:clamp(24px,3.4vw,36px);margin:0;line-height:1.06;}
+.titleblock .es{font-style:italic;color:var(--soft);font-size:clamp(13px,1.8vw,17px);margin-top:5px;display:block;}
+.titleblock p{font-family:var(--sans);font-size:11.5px;color:var(--soft);max-width:80ch;margin:12px 0 0;line-height:1.7;}
+.titleblock p .pes{display:block;color:var(--muted);}
+/* tabs */
+.tabbar{display:flex;gap:4px;border-bottom:1px solid var(--ink);margin-top:18px;overflow-x:auto;}
+.tabbar button{font-family:var(--sans);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);
+background:none;border:0;padding:13px 18px;cursor:pointer;white-space:nowrap;position:relative;}
+.tabbar button .c{color:var(--muted);font-size:10px;margin-left:6px;}
+.tabbar button.on{color:var(--ink);}
+.tabbar button.on::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:var(--
+gold);}
+/* calendar */
+.calwrap{margin:20px 0 6px;}
+
+.calhd{font-family:var(--sans);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);font-
+weight:500;margin-bottom:10px;}
+.cal{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;}
+.cell{border:1px solid var(--line);background:var(--paper2);padding:11px 12px;min-width:108px;}
+.cell .mo{font-family:var(--sans);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.cell .big{font-family:var(--serif);font-size:28px;font-weight:500;line-height:1.05;margin-top:6px;}
+.cell .sub{font-family:var(--sans);font-size:9px;letter-spacing:.03em;color:var(--soft);margin-top:5px;line-height:1.5;}
+.cell .sent{color:var(--sage);}.cell.zero .big{color:var(--muted);opacity:.5;}
+/* phase + gantt */
+.phase{margin-top:28px;}
+.phhead{border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:4px;}
+.phtop{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap;}
+.phtop .pn{font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);font-
+weight:500;}
+.badges{display:flex;gap:7px;flex-wrap:wrap;}
+.bdg{font-family:var(--sans);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border:1px
+solid var(--line);color:var(--soft);}
+.bdg.fit{border-color:#7d8a7255;background:#DCE5D755;color:var(--sage);}
+.bdg.like{border-color:#A9873f55;background:#F0E6CE66;color:var(--gold);}
+.phwhy{font-family:var(--sans);font-size:11px;color:var(--soft);line-height:1.6;margin-top:8px;max-width:92ch;}
+.tlhead{position:relative;height:18px;margin:14px 0 2px;margin-left:var(--lw);}
+.tick{position:absolute;top:0;transform:translateX(-50%);font-family:var(--sans);font-size:9px;letter-spacing:.06em;text-
+transform:uppercase;color:var(--muted);white-space:nowrap;}
+.grow{display:grid;grid-template-columns:var(--lw) 1fr;border-bottom:1px solid var(--line);padding:4px 0 2px;}
+.ginfo{padding:12px 14px 12px 0;}
+.ginfo .nm{font-size:18px;line-height:1.12;}
+.ginfo .meta{font-family:var(--sans);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+margin-top:3px;}
+.ginfo .why{font-family:var(--sans);font-size:10px;color:var(--soft);line-height:1.5;margin-top:6px;}
+.ginfo .badges{margin-top:7px;}
+.emailrow{display:flex;align-items:center;gap:6px;margin-top:8px;}
+.emailrow input{flex:1;font-family:var(--sans);font-size:11px;border:1px solid var(--line);background:var(--
+paper);padding:6px 7px;color:var(--ink);min-width:0;}
+.emailrow .el{font-family:var(--sans);font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.rowacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;}
+.rowacts button{font-family:var(--sans);font-size:8.5px;letter-spacing:.08em;text-transform:
+uppercase;background:none;border:1px solid var(--line);padding:5px 8px;cursor:pointer;color:var(--soft);}
+.rowacts .del:hover{border-color:var(--terra);color:var(--terra);}
+.rowacts .noresp:hover:not(:disabled){border-color:var(--gold);color:var(--gold);}
+.rowacts .back:hover{border-color:var(--sage);color:var(--sage);}
+.rowacts button:disabled{opacity:.4;cursor:not-allowed;}
+.track{position:relative;border-left:1px solid var(--line);min-height:54px;}
+.gl{position:absolute;top:0;bottom:0;width:1px;background:var(--line);opacity:.55;}
+.bar{position:absolute;top:24px;height:2px;background:var(--gold);opacity:.4;}
+.mk{position:absolute;top:16px;transform:translateX(-50%);width:34px;text-align:center;cursor:pointer;}
+.mk .dot{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--gold);background:var(--paper);color:var(--
+gold);font-family:var(--sans);font-size:10px;line-height:18px;margin:0 auto;}
+.mk.done .dot{background:var(--sage);border-color:var(--sage);color:#fff;}
+.mk .dl{font-family:var(--sans);font-size:8px;color:var(--muted);margin-top:3px;white-space:nowrap;}
+.mk.done .dl{color:var(--sage);}
+/* log + inline editable emails */
+.log{grid-column:1 / -1;padding:6px 0 14px var(--lw);display:flex;flex-direction:column;gap:9px;}
+.logc{border:1px solid var(--line);background:var(--paper2);}
+.logc.sent{border-color:#7d8a7255;background:#DCE5D733;}
+.logc .lh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px;}
+.logc .et{font-family:var(--sans);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-
+weight:500;min-width:118px;}
+.logc .pl{font-family:var(--sans);font-size:9px;color:var(--muted);}
+.logc .ctl{display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;}
+.logc .ctl label{font-family:var(--sans);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.logc input[type=date],.logc select{font-family:var(--sans);font-size:11px;border:1px solid var(--line);background:var(--
+paper);padding:6px 7px;color:var(--ink);}
+.emd{border-top:1px dashed var(--line);}
+.emd summary{font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);
+cursor:pointer;padding:9px 12px;list-style:none;}
+.emd summary::-webkit-details-marker{display:none;}
+.emd summary::before{content:"\25B8 ";color:var(--gold);}
+.emd[open] summary::before{content:"\25BE ";}
+.emd summary:hover{color:var(--ink);}
+.emin{padding:0 12px 12px;}
+.fl{font-family:var(--sans);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:8px
+0 4px;}
+.subjin{width:100%;font-family:var(--sans);font-size:12.5px;color:var(--ink);background:var(--paper);border:1px solid
+var(--line);padding:8px 10px;}
+.bodyin{width:100%;font-family:var(--serif);font-size:14.5px;line-height:1.5;color:var(--ink);background:var(--
+paper);border:1px solid var(--line);padding:10px 12px;resize:vertical;min-height:150px;margin-top:4px;}
+.ebtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.ebtns button{font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:8px
+13px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--soft);}
+.ebtns .send{background:var(--btn);color:var(--paper);border-color:var(--btn);}.ebtns .send:hover{background:var(--
+gold);border-color:var(--gold);}
+.ebtns button:hover{border-color:var(--gold);color:var(--gold);}.ebtns .send:hover{color:var(--paper);}
+.empty{padding:50px 0;text-align:center;color:var(--muted);font-style:italic;}
+footer{border-top:1px solid var(--line);background:var(--paper2);padding:24px 0;font-family:var(--sans);font-
+size:11px;letter-spacing:.05em;color:var(--muted);text-align:center;line-height:1.8;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--
+btn);color:var(--paper);font-family:var(--sans);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+padding:12px 22px;opacity:0;transition:all .3s;z-index:200;text-align:center;}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:900px){:root{--lw:170px;}.logc .ctl{margin-left:0;}}
+@media(max-width:640px){:root{--lw:128px;}.ginfo .why{display:none;}.logc .et{min-width:0;}}
+.subbar{display:flex;gap:4px;align-items:center;margin-top:12px;flex-wrap:wrap;}
+.subtab{font-family:var(--sans);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);
+background:var(--paper2);border:1px solid var(--line);padding:8px 13px;cursor:pointer;}
+.subtab .c{color:var(--muted);margin-left:5px;}
+.subtab.on{background:var(--btn);color:var(--paper);border-color:var(--btn);}
+.research-btn{font-family:var(--sans);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--
+paper);background:var(--gold);border:0;padding:9px 14px;cursor:pointer;margin-left:auto;}
+.research-btn:hover{background:var(--btn);}
+.rpanel{border:1px solid var(--gold);background:#F0E6CE2b;margin-top:14px;padding:16px 18px;}
+.rpanel h3{font-family:var(--serif);font-weight:500;font-size:18px;margin:0 0 2px;}
+.rpanel .rsub{font-family:var(--sans);font-size:10.5px;color:var(--soft);line-height:1.6;margin-bottom:12px;}
+.rcard{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-top:1px solid var(--
+line);padding:11px 0;}
+.rcard .rn{font-size:16px;}
+.rcard .rm{font-family:var(--sans);font-size:9.5px;letter-spacing:.04em;color:var(--muted);text-transform:
+uppercase;margin-top:2px;}
+.rcard .rw{font-family:var(--sans);font-size:11px;color:var(--soft);margin-top:5px;line-height:1.5;max-width:62ch;}
+.rcard .addbtn{font-family:var(--sans);font-size:9px;letter-spacing:.1em;text-transform:uppercase;background:var(--
+btn);color:var(--paper);border:0;padding:8px 13px;cursor:pointer;white-space:nowrap;}
+.rcard .addbtn:hover{background:var(--gold);}
+.rcard .addbtn:disabled{background:var(--sage);cursor:default;}
+.glink{display:inline-block;margin-top:12px;font-family:var(--sans);font-size:10px;letter-spacing:.1em;text-
+transform:uppercase;color:var(--gold);border-bottom:1px solid var(--gold);padding-bottom:2px;}
+.rnote{font-family:var(--sans);font-size:10px;color:var(--muted);line-height:1.6;margin-top:10px;}
+</style></head><body>
+<div class="util"><span>Outreach Timeline &nbsp;and&nbsp; Cronograma de Contacto</span></div>
+<header><div class="wrap mast">
+  <div class="brand"><b>LAVALLE&nbsp;HAUS</b><small>Reach out again, by state and phase / Volver a contactar,
+por estado y fase</small></div>
+  <div class="ctrls">
+    <div class="field"><label>Campaign start / Inicio</label><input type="date" id="start"></div>
+    <div class="field"><label>Add teammate / Agregar</label><select id="teamsel"></select></div>
+    <div class="langtog"><button data-l="en" class="on">EN</button><button data-l="es">ES</button></div>
+  </div>
+</div></header>
+<div class="wrap titleblock">
+  <h1 id="h1">Outreach Timeline</h1><span class="es" id="h1es">Cronograma para volver a contactar</span>
+  <p id="intro"></p>
+  <div class="tabbar" id="tabbar"></div>
+  <div class="subbar" id="subbar"></div>
+  <div id="research"></div>
+</div>
+<div class="wrap calwrap" id="calwrap"><div class="calhd" id="calhd"></div><div class="cal" id="cal"></div></div>
+<main class="wrap" id="content"></main>
+<footer>2026 Lavalle Haus &nbsp;,&nbsp; everything saves in your browser / todo se guarda en tu
+navegador</footer>
+<div class="toast" id="toast"></div>
+<script>
+const D={"stores": [{"id": "Shoppe Amber Interiors|Orange County", "store": "Shoppe Amber Interiors", "type": "Home",
+"city": "Calabasas area", "region": "Orange County", "status": "Interested", "email": "buying@shoppeamberinteriors. com", "web": "shoppeamberinteriors.com", "desc": "Elevated home & lifestyle (well-known)", "phase": 0, "tab": "ca",
+"cat": "home", "exp": false, "whyEn": "Replied with interest two years ago", "whyEs": "Respondio con interes hace dos anos"}, {"id": "Magnolia Boutique|Orange County", "store": "Magnolia Boutique", "type": "Home", "city": "Arcadia",
+"region": "Orange County", "status": "In discussion", "email": "", "web": "magnoliaboutiquearcadia.com", "desc":
+"Luxury curated home decor", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"}, {"id": "Blue Eyed Girl|Orange County", "store": "Blue Eyed Girl", "type": "Home", "city": "Laguna Niguel", "region": "Orange County", "status": "In discussion", "email": "", "web": "shopblueeyedgirl.com", "desc": "Clothing, candles & self-care", "phase": 0, "tab": "ca",
+"cat": "home", "exp": false, "whyEn": "Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"}, {"id": "Stevie Sister|Orange County", "store": "Stevie Sister", "type": "Home", "city":
+"Newport Beach", "region": "Orange County", "status": "In discussion", "email": "", "web": "steviesister.com", "desc":
+"Bohemian eco-conscious boutique", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"}, {"id": "Brick Market Boutique|Orange County", "store": "Brick Market Boutique", "type": "Home", "city": "Anaheim", "region": "Orange County", "status": "In discussion", "email": "", "web": "brickmarketboutique.com", "desc": "Clothing, candles & self- care", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"}, {"id": "Phyllisophical|Orange County", "store":
+"Phyllisophical", "type": "Home", "city": "Tustin", "region": "Orange County", "status": "In discussion", "email": "", "web":
+"shopphyllis.com", "desc": "Clothing, candles & self-care", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn":
+"Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"},
+{"id": "Spice & Tulips|Orange County", "store": "Spice & Tulips", "type": "Home", "city": "Tustin", "region": "Orange County", "status": "In discussion", "email": "", "web": "spiceandtulips.com", "desc": "Artisanal self-care, flowers, candles", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Engaged two years ago, owner review was pending", "whyEs": "Mostro interes hace dos anos, faltaba la duena"}, {"id": "Fleur De Lys|Orange County", "store":
+"Fleur De Lys", "type": "Home", "city": "Costa Mesa", "region": "Orange County", "status": "Contacted", "email": "",
+"web": "shopfleurdelys.com", "desc": "Refined home goods boutique", "phase": 0, "tab": "ca", "cat": "home", "exp":
+false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Juxtaposition Home|Orange County", "store": "Juxtaposition Home", "type": "Home",
+"city": "Newport Beach", "region": "Orange County", "status": "Contacted", "email": "", "web": "", "desc": "Home goods & lifestyle boutique", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Trois Interiors|Orange County", "store": "Trois Interiors", "type": "Home", "city": "Laguna Niguel", "region": "Orange County",
+"status": "Contacted", "email": "", "web": "laguna.myshowroomsoftware.com", "desc": "Home goods & lifestyle boutique", "phase": 0, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Heath Ceramics|Marin",
+"store": "Heath Ceramics", "type": "Home", "city": "Sausalito", "region": "Marin", "status": "Contacted", "email": "",
+"web": "heathceramics.com", "desc": "Handcrafted sustainable ceramics", "phase": 1, "tab": "ca", "cat": "home", "exp":
+false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "The Goods|Marin", "store": "The Goods", "type": "Home", "city": "Mill Valley", "region":
+"Marin", "status": "Contacted", "email": "", "web": "thegoodsmv.com", "desc": "Eco artisanal goods boutique", "phase":
+1, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet",
+"whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Pollen & Wool|Marin", "store": "Pollen & Wool", "type": "Home", "city": "Corte Madera", "region": "Marin", "status": "Contacted", "email": "", "web":
+"delilahstudios.com", "desc": "Locally made eco-friendly goods", "phase": 1, "tab": "ca", "cat": "home", "exp": false,
+"whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Studio 333|Marin", "store": "Studio 333", "type": "Home", "city": "Sausalito", "region":
+"Marin", "status": "Contacted", "email": "", "web": "studio333.info", "desc": "Art/design gallery, sustainable goods",
+"phase": 1, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Bloomingayles|Marin", "store":
+"Bloomingayles", "type": "Home", "city": "Mill Valley", "region": "Marin", "status": "Contacted", "email": "", "web":
+"bloomingaylesmarin.com", "desc": "Eco floral & home goods", "phase": 1, "tab": "ca", "cat": "home", "exp": false,
+"whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Margaret O'Leary|Marin", "store": "Margaret O'Leary", "type": "Home", "city": "Mill Valley",
+"region": "Marin", "status": "Contacted", "email": "", "web": "margaretoleary.com", "desc": "Sustainable high-quality knitwear", "phase": 1, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Sausalito Books by the Bay|Marin", "store": "Sausalito Books by the Bay", "type": "Home", "city": "Sausalito", "region": "Marin", "status":
+"Contacted", "email": "", "web": "sausalitobooksbythebay.com", "desc": "Books + local artisan products", "phase": 1,
+"tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs":
+"Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Blanc|Marin", "store": "Blanc", "type": "Boutique",
+"city": "San Anselmo", "region": "Marin", "status": "Contacted", "email": "FASHION@BLANCBOUTIQUE.COM", "web":
+"blancboutique.com", "desc": "Curated fashion & home goods", "phase": 1, "tab": "ca", "cat": "home", "exp": false,
+"whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Chateau Sonoma|Sonoma", "store": "Chateau Sonoma", "type": "Home", "city": "Sonoma",
+"region": "Sonoma", "status": "Contacted", "email": "", "web": "chateausonoma.com", "desc": "French-inspired sustainable home decor", "phase": 1, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Summer Vine|Sonoma", "store": "Summer Vine", "type": "Home", "city": "Sonoma", "region": "Sonoma", "status": "Contacted",
+"email": "", "web": "summervinesonoma.com", "desc": "Eco home goods & gifts boutique", "phase": 1, "tab": "ca", "cat":
+"home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Napa General Store|Napa", "store": "Napa General Store", "type":
+"Home", "city": "Napa", "region": "Napa", "status": "Contacted", "email": "", "web": "napageneralstore.com", "desc":
+"Rustic Napa Valley artisan goods", "phase": 2, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id":
+"Erin Martin Design|Napa", "store": "Erin Martin Design", "type": "Home", "city": "Napa", "region": "Napa", "status":
+"Contacted", "email": "", "web": "erinmartin.com", "desc": "Sustainable high-quality home decor", "phase": 2, "tab":
+"ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs":
+"Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Acres Home + Garden|Napa", "store": "Acres Home + Garden", "type": "Home", "city": "Napa", "region": "Napa", "status": "Contacted", "email": "", "web":
+"acreshomeandgarden.com", "desc": "Napa Valley sustainable goods", "phase": 2, "tab": "ca", "cat": "home", "exp":
+false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Napa Valley Vintage Home|Napa", "store": "Napa Valley Vintage Home", "type":
+"Home", "city": "St. Helena", "region": "Napa", "status": "Contacted", "email": "", "web": "vintagehomenapavalley.com",
+"desc": "Local & European artisanal goods", "phase": 2, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"},
+{"id": "The French Laundry Garden Shop|Napa", "store": "The French Laundry Garden Shop", "type": "Home", "city":
+"Yountville", "region": "Napa", "status": "Contacted", "email": "", "web": "thomaskeller.com", "desc": "Local artisanal home & garden", "phase": 2, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Blackbird of Calistoga|Napa", "store": "Blackbird of Calistoga", "type": "Home", "city": "Calistoga", "region": "Napa", "status":
+"Contacted", "email": "", "web": "blackbirdofcalistoga.com", "desc": "Eco clothing & home goods", "phase": 2, "tab":
+"ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs":
+"Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "V Marketplace|Napa", "store": "V Marketplace",
+"type": "Home", "city": "Yountville", "region": "Napa", "status": "Contacted", "email": "", "web": "theestateyountville.com",
+"desc": "Collection of artisanal boutiques", "phase": 2, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"},
+{"id": "The Olive Press|Napa", "store": "The Olive Press", "type": "Home", "city": "Napa", "region": "Napa", "status":
+"Contacted", "email": "", "web": "theolivepress.com", "desc": "Local artisanal olive oils", "phase": 2, "tab": "ca", "cat":
+"home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Elyse Walker|Napa", "store": "Elyse Walker", "type": "Home", "city":
+"St. Helena", "region": "Napa", "status": "Contacted", "email": "", "web": "elysewalker.com", "desc": "Luxury boutique, sustainable focus", "phase": 2, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Petaluma Home and Garden|Sonoma", "store": "Petaluma Home and Garden", "type": "Home", "city": "Petaluma", "region": "Sonoma",
+"status": "Contacted", "email": "", "web": "", "desc": "Curated eco-friendly home goods", "phase": 2, "tab": "ca", "cat":
+"home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Kismet Boutique|South Bay", "store": "Kismet Boutique", "type":
+"Home", "city": "Los Gatos", "region": "South Bay", "status": "Contacted", "email": "", "web": "kismetlg.com", "desc":
+"Candles, home decor, self-care", "phase": 3, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id":
+"La Jolie Maison|South Bay", "store": "La Jolie Maison", "type": "Home", "city": "Morgan Hill", "region": "South Bay",
+"status": "Contacted", "email": "", "web": "maisona.shop", "desc": "Soaps, candles & home", "phase": 3, "tab": "ca",
+"cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Leaf and Petal|South Bay", "store": "Leaf and Petal", "type":
+"Home", "city": "Palo Alto", "region": "South Bay", "status": "Contacted", "email": "", "web": "lpetal.com", "desc": "Home & self-care boutique", "phase": 3, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Ladera Garden and Gifts|South Bay", "store": "Ladera Garden and Gifts", "type": "Home", "city": "Palo Alto", "region": "South Bay",
+"status": "Contacted", "email": "", "web": "", "desc": "Garden, gifts & self-care", "phase": 3, "tab": "ca", "cat": "home",
+"exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Romantiques|South Bay", "store": "Romantiques", "type": "Home",
+"city": "Los Gatos", "region": "South Bay", "status": "Contacted", "email": "", "web": "shopromantiques.com", "desc":
+"Self-care gifts & home decor", "phase": 3, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Carmel Bay Company|Carmel & Monterey", "store": "Carmel Bay Company", "type": "Home", "city": "Carmel", "region":
+"Carmel & Monterey", "status": "Contacted", "email": "", "web": "carmelbaycompany.com", "desc": "Home decor, gifts, local products", "phase": 3, "tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Eco Carmel|Carmel & Monterey", "store": "Eco Carmel", "type": "Home", "city": "Carmel", "region": "Carmel & Monterey", "status":
+"Contacted", "email": "", "web": "ecocarmel.com", "desc": "Eco sustainable home & lifestyle", "phase": 3, "tab": "ca",
+"cat": "home", "exp": false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "tancredi & Morgen|Carmel & Monterey", "store": "tancredi & Morgen", "type": "Home", "city": "Carmel", "region": "Carmel & Monterey", "status": "Contacted", "email": "", "web":
+"tancrediandmorgen.com", "desc": "Home goods, candle pairs with decor", "phase": 3, "tab": "ca", "cat": "home", "exp":
+false, "whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Jan de Luz Linens|Carmel & Monterey", "store": "Jan de Luz Linens", "type": "Home",
+"city": "Carmel-by-the-Sea", "region": "Carmel & Monterey", "status": "Contacted", "email": "", "web":
+"jandeluzlinens.com", "desc": "Fine linens, gifting & self-care", "phase": 3, "tab": "ca", "cat": "home", "exp": false,
+"whyEn": "Strong brand fit, contacted two years ago with no reply yet", "whyEs": "Buen encaje, contactada hace dos anos sin respuesta"}, {"id": "Kitkitdizzi|Sierra", "store": "Kitkitdizzi", "type": "Boutique", "city": "Nevada City", "region":
+"Sierra", "status": "Not yet contacted", "email": "", "web": "", "desc": "Local artisan gifts & home goods", "phase": 3,
+"tab": "ca", "cat": "home", "exp": false, "whyEn": "Strong brand fit, a fresh introduction", "whyEs": "Buen encaje, primera presentacion"}, {"id": "Mon Corner B|International", "store": "Mon Corner B", "type": "Spa / Beauty", "city":
+"Paris, France", "region": "International", "status": "Expansion", "email": "", "web": "", "desc": "Parisian clean beauty concept store", "phase": 4, "tab": "intl", "cat": "beauty", "exp": true, "whyEn": "Reference for the body and beauty direction, Paris, France", "whyEs": "Referencia para cuerpo y belleza, Paris, France"}, {"id": "Oh My Cream|International", "store": "Oh My Cream", "type": "Spa / Beauty", "city": "United Kingdom", "region":
+"International", "status": "Expansion", "email": "", "web": "", "desc": "clean beauty and skincare retailer", "phase": 4,
+"tab": "intl", "cat": "beauty", "exp": true, "whyEn": "Reference for the body and beauty direction, United Kingdom",
+"whyEs": "Referencia para cuerpo y belleza, United Kingdom"}, {"id": "Capital Head Spa and Hair|International",
+"store": "Capital Head Spa and Hair", "type": "Spa / Beauty", "city": "Canada", "region": "International", "status":
+"Expansion", "email": "", "web": "", "desc": "head spa and hair wellness studio", "phase": 4, "tab": "intl", "cat": "spa",
+"exp": true, "whyEn": "Reference for the body and beauty direction, Canada", "whyEs": "Referencia para cuerpo y belleza, Canada"}], "phases": [{"n": 1, "tab": "ca", "en": "Orange County home boutiques", "es": "Boutiques de hogar, Orange County", "fit": "High", "like": "High", "offset": 0, "exp": false, "research": false, "rEn": "They replied warmly two years ago. Highest chance of a yes, so we open here.", "rEs": "Respondieron con calidez hace dos anos. La mayor probabilidad de un si, por eso abrimos aqui."}, {"n": 2, "tab": "ca", "en": "Marin and the North Bay", "es": "Marin y el North Bay", "fit": "Very high", "like": "Medium to high", "offset": 28, "exp": false, "research": false, "rEn": "Design led, sustainability minded home stores. The closest aesthetic match to the brand.", "rEs": "Tiendas de hogar de diseno y sostenibilidad. El encaje estetico mas cercano a la marca."}, {"n": 3, "tab": "ca", "en": "Napa Valley and wine country",
+"es": "Napa Valley y wine country", "fit": "High", "like": "Medium", "offset": 63, "exp": false, "research": false, "rEn":
+"Wine country artisan home stores with year round visitor gifting.", "rEs": "Tiendas artesanales de hogar en wine country con regalo de visitantes todo el ano."}, {"n": 4, "tab": "ca", "en": "South Bay, Carmel and the Sierra", "es":
+"South Bay, Carmel y la Sierra", "fit": "High", "like": "Medium", "offset": 91, "exp": false, "research": false, "rEn": "Home, candle and self care boutiques across the Peninsula and the coast. Closes the home wave by late November.", "rEs":
+"Boutiques de hogar, velas y autocuidado en la Peninsula y la costa. Cierra la ola de hogar a fines de noviembre."},
+{"n": 5, "tab": "intl", "en": "Body, beauty and spa, expansion begins", "es": "Cuerpo, belleza y spa, inicia la expansion",
+"fit": "Reference", "like": "Future", "offset": 148, "exp": true, "research": false, "rEn": "Here we move from home into body and beauty. These international stores are the reference for the kind of account we want to grow into.", "rEs":
+"Aqui pasamos de hogar a cuerpo y belleza. Estas tiendas internacionales son la referencia del tipo de cuenta a la que queremos crecer."}, {"n": 6, "tab": "ca", "en": "Researched additions", "es": "Agregadas por research", "fit": "To verify", "like": "New", "offset": 119, "exp": false, "research": true, "rEn": "Stores found through research that fit this category. Verify the fit, add a contact email, then work them like the rest.", "rEs": "Tiendas encontradas con research que encajan en esta categoria. Verifica el encaje, agrega un correo y trabajalas como las demas."}, {"n": 6, "tab":
+"intl", "en": "Researched additions", "es": "Agregadas por research", "fit": "To verify", "like": "New", "offset": 176, "exp":
+false, "research": true, "rEn": "Stores found through research that fit this category. Verify the fit, add a contact email, then work them like the rest.", "rEs": "Tiendas encontradas con research que encajan en esta categoria. Verifica el encaje, agrega un correo y trabajalas como las demas."}], "research": {"ca:beauty": [{"store": "Credo Beauty", "city":
+"San Francisco and Los Angeles", "why": "Clean beauty retailer that carries indie, vetted clean brands", "web":
+"credobeauty.com"}, {"store": "Otherwild", "city": "Los Angeles", "why": "Queer owned, low waste shop stocking clean body care", "web": "otherwild.com"}, {"store": "Evolue Beauty", "city": "Los Angeles", "why": "Green beauty boutique focused on natural skincare", "web": ""}, {"store": "Larchmont Beauty Center", "city": "Los Angeles", "why": "Long running curated skincare and beauty shop", "web": "larchmontbeauty.com"}, {"store": "Des Kohan", "city": "Los Angeles", "why": "Designer boutique with a curated beauty and body edit", "web": ""}], "ca:spa": [{"store": "Cocoon Day Spa", "city": "San Francisco", "why": "Day spa with a boutique retailing clean skincare and gifts", "web":
+"cocoondayspa.com"}, {"store": "SkinSpirit", "city": "Bay Area", "why": "Skincare studios that retail across several Bay Area locations", "web": "skinspirit.com"}], "ca:home": [], "intl:beauty": [], "intl:spa": [], "noresp:home": [],
+"noresp:beauty": [], "noresp:spa": []}, "google": {"ca:home": "home decor lifestyle boutiques California stockist wholesale candles", "ca:beauty": "clean beauty boutique California wholesale indie skincare stockist", "ca:spa": "day spa facial studio California retail clean skincare stockist", "intl:home": "home lifestyle concept store Paris London wholesale stockist candles", "intl:beauty": "clean beauty concept store Paris London wholesale stockist", "intl:spa":
+"head spa wellness studio Canada retail clean skincare stockist", "noresp:home": "home decor boutiques California wholesale stockist", "noresp:beauty": "clean beauty boutique California wholesale stockist", "noresp:spa": "day spa facial studio California retail stockist"}};const STORES=D.stores,PHASES=D.phases,RESEARCH=D.research||{}
+,GOOGLE=D.google||{};
+const DAY=86400000,GAP=28;
+const KEY="lh_gantt_v2";
+let S={team:["Kiabeth","Kiaredza"],start:null,store:{},added:[]};
+try{const s=JSON.parse(localStorage.getItem(KEY));if(s){S.team=s.team||S.team;S.start=s.start||null;S.store=s.store||
+{};S.added=s.added||[];}}catch(e){}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function rec(id){S.store[id]=S.store[id]||{log:{},edits:{},state:'active'};return S.store[id];}
+S.added.forEach(a=>{if(!STORES.find(x=>x.id===a.id))STORES.push(a);});
+let lang='en',tab='ca';
+const CATS=[{id:'home',en:'Home',es:'Hogar'},{id:'beauty',en:'Beauty',es:'Belleza'},{id:'spa',en:'Spa',es:'Spa'}];
+const subcat={ca:'home',intl:'beauty',noresp:'home'};
+let showResearch=false;
+function viewStores(t,cat){return tabStores(t).filter(s=>s.cat===cat);}
+const TABS=[{id:'ca',en:'California',es:'California'},{id:'intl',en:'International',es:'Internacional'},{id:'noresp',en:'No Response',es:'Sin Respuesta'}];
+function defStart(){const t=new Date();let d=new Date(t.getFullYear(),t.getMonth()+1,1);while(d.
+getDay()!==1)d.setDate(d.getDate()+1);return d;}
+function startDate(){return S.start?new Date(S.start+"T00:00:00"):defStart();}
+function planned(s,i){return new Date(startDate().getTime()+PHASES[s.phase].offset*DAY+i*GAP*DAY);}
+function fmt(d){return d.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',day:'numeric'});}
+function fmtL(d){return d.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',day:'numeric',year:' numeric'});}
+function iso(d){return d.toISOString().slice(0,10);}
+function stState(s){return (S.store[s.id]&&S.store[s.id].state)||'active';}
+function emailOf(s){return (S.store[s.id]&&S.store[s.id].email!=null)?S.store[s.id].email:s.email;}
+function tabStores(t){if(t==='noresp')return STORES.filter(s=>stState(s)==='noresp');return STORES.filter(s=>s.tab===t&&stState(s)==='active');}
+function activePhases(t){return PHASES.map((p,i)=>({p,i})).filter(x=>x.p.tab===t);}
+function bounds(){
+  const st=viewStores(tab,subcat[tab]);const list=st.length?st:STORES;let minE=Infinity,max=0;
+  list.forEach(s=>{const e1=planned(s,0).getTime(),e3=planned(s,2).getTime();if(e1<
+minE)minE=e1;if(e3>max)max=e3;});
+  const md=new Date(minE);let min=new Date(md.getFullYear(),md.getMonth(),1).getTime();max+=8*DAY;return {min,max,span:max-min};}
+function pct(t){const {min,span}=bounds();return ((t-min)/span)*100;}
+function months(){const {min,max}=bounds();const out=[];let d=new Date(min);d.setDate(1);const end=new
+Date(max);while(d<=end){out.push(new Date(d));d=new Date(d.getFullYear(),d.getMonth()+1,1);}return out;}
+function INTRO(){return lang==='en'
+ ?{h:'Outreach Timeline',e:'Cronograma para volver a contactar',p:'California home stores come first, ordered by likelihood and brand fit, worked from July to November. International body and beauty accounts sit in their own tab and begin in December. Use the type sub tabs to focus on Home, Beauty or Spa. Under each email is the templated message, ready to edit and send. Mark the date and who sent it. If the third email goes out with no reply, move the row to No Response. Use Deep Research to pull fitting stores from Google by category.'}
+ :{h:'Cronograma para volver a contactar',e:'Outreach Timeline',p:'Primero las tiendas de hogar de California, ordenadas por probabilidad y encaje, de julio a noviembre. Las cuentas internacionales de cuerpo y belleza van en su propia pestana y empiezan en diciembre. Usa las sub pestanas de tipo para enfocarte en Hogar, Belleza o Spa. Bajo cada correo esta el mensaje de plantilla, listo para editar y enviar. Marca la fecha y quien lo envio. Si el tercer correo sale sin respuesta, mueve la fila a Sin Respuesta. Usa Deep Research para traer tiendas que encajan desde Google por categoria.'};}
+function buildHead(){const t=INTRO();document.getElementById('h1').textContent=t.h;document.
+getElementById('h1es').textContent=t.e;document.getElementById('intro').textContent=t.p;document.
+getElementById('calhd').textContent=lang==='en'?'Stores reached per month / Tiendas contactadas por mes':'Tiendas contactadas por mes / Stores reached per month';}
+function buildTabs(){document.getElementById('tabbar').innerHTML=TABS.map(t=>{const n=tabStores(t.id).length;
+return `<button data-tab="${t.id}" class="${tab===t.id?'on':''}">${lang==='en'?t.en:t.es}<span class="c">${n}</span>
+</button>`;}).join('');
+  document.querySelectorAll('#tabbar button').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;
+showResearch=false;render();});}
+function buildTeamSel(){document.getElementById('teamsel').innerHTML=`<option value="">${lang==='en'?'team.. .':'equipo...'}</option>`+S.team.map(t=>`<option>${t}</option>`).join('')+`<option value="__add">+ ${lang==='en'?'add member':'agregar'}</option>`;}
+function buildCal(){
+  const cw=document.getElementById('calwrap');
+  if(tab==='noresp'){cw.style.display='none';return;}cw.style.display='';
+  const st=viewStores(tab,subcat[tab]);if(!st.length){cw.style.display='none';return;}const ms=months();
+  document.getElementById('cal').innerHTML=ms.map(mo=>{
+    const a=mo.getTime(),b=new Date(mo.getFullYear(),mo.getMonth()+1,1).getTime();let e1=0,tot=0,sent=0;
+    st.forEach(s=>{for(let i=0;i<3;i++){const t=planned(s,i).getTime();if(t>=a&&t<b){tot++;if(i===0)e1++;}}
+      const lg=(S.store[s.id]&&S.store[s.id].log)||{};[0,1,2].forEach(i=>{const dd=lg['e'+i]&&lg['e'+i].date;if(dd){const
+tt=new Date(dd+"T00:00:00").getTime();if(tt>=a&&tt<b)sent++;}});});
+    const mo2=mo.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',year:'numeric'});
+    return `<div class="cell ${e1===0?'zero':''}"><div class="mo">${mo2}</div><div class="big">${e1}</div><div
+class="sub">${lang==='en'?'new stores':'tiendas nuevas'}<br>${tot} ${lang==='en'?'emails':'correos'}<br><span
+class="sent">${sent} ${lang==='en'?'sent':'enviados'}</span></div></div>`;
+  }).join('');
+}
+function teamOpts(sel){return `<option value="">${lang==='en'?'by...':'por...'}</option>`+S.team.map(t=>`<option
+${sel===t?'selected':''}>${t}</option>`).join('')+`<option value="__add">+ ${lang==='en'?'add':'agregar'}</option>`;}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function gridlines(){return months().map(mo=>`<div class="gl" style="left:${pct(mo.getTime())}%"></div>`).join('');}
+function tlHead(){return months().map(mo=>`<div class="tick" style="left:${pct(mo.getTime()
+)}%">${mo.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short'})}</div>`).join('');}
+function storeRow(s){
+  const r=rec(s.id);const lg=r.log;const dts=[planned(s,0),planned(s,1),planned(s,2)];
+  const mks=dts.map((d,i)=>{const done=lg['e'+i]&&lg['e'+i].date;return `<div class="mk ${done?'done':''}"
+style="left:${pct(d.getTime())}%" data-id="${encodeURIComponent(s.id)}" data-i="${i}" title="Email ${i+1},
+${fmtL(d)}${done?', sent '+lg['e'+i].date:''}"><div class="dot">${i+1}</div><div class="dl">${fmt(d)}</div></
+div>`;}).join('');
+  const bar=`<div class="bar" style="left:${pct(dts[0].getTime())}%;width:${pct(dts[2].getTime())-pct(dts[0].
+getTime())}%"></div>`;
+  const badge=s.exp?`<span class="bdg fit">${lang==='en'?'Reference':'Referencia'}</span>`:`<span class="bdg
+like">${lang==='en'?'Likely ':'Prob '}${PHASES[s.phase].like}</span>`;
+  const e3sent=!!(lg['e2']&&lg['e2'].date);const isNo=stState(s)==='noresp';
+  const acts=isNo
+    ?`<button class="back" data-id="${encodeURIComponent(s.id)}">${lang==='en'?'Return to active':'Regresar a activas'}</button><button class="del" data-id="${encodeURIComponent(s.id)}">${lang==='en'?'Remove':'Quitar'}
+</button>`
+    :`<button class="noresp" data-id="${encodeURIComponent(s.id)}" ${e3sent?'':'disabled'}
+title="${lang==='en'?'Enabled after the third email is logged':'Se activa al registrar el tercer correo'}">${lang==='en'?'No response, move':'Sin respuesta, mover'}</button><button class="del" data-
+id="${encodeURIComponent(s.id)}">${lang==='en'?'Not a fit, remove':'No encaja, quitar'}</button>`;
+  const labs=lang==='en'?['Email 1','Email 2','Email 3']:['Email 1','Email 2','Email 3'];
+  const sublab=lang==='en'?['reintroduction','one month later','two months later']:['reconexion','un mes despues','dos meses despues'];
+  let logblocks='';
+  for(let i=0;i<3;i++){const e=getMail(s,i);const lv=(lg['e'+i]&&lg['e'+i]) ||{};
+    logblocks+=`<div class="logc ${lv.date?'sent':''}">
+      <div class="lh"><span class="et">${labs[i]} <span style="color:var(--muted)">${sublab[i]}</span></span><span
+class="pl">${lang==='en'?'plan':'plan'} ${fmt(dts[i])}</span>
+        <div class="ctl"><label>${lang==='en'?'sent':'enviado'}</label><input type="date" class="sd" data-
+id="${encodeURIComponent(s.id)}" data-i="${i}" value="${lv.date||''}">
+        <label>${lang==='en'?'by':'por'}</label><select class="by" data-id="${encodeURIComponent(s.id)}" data-
+i="${i}">${teamOpts(lv.by||'')}</select></div></div>
+      <details class="emd"><summary>${lang==='en'?'Email text, edit and send':'Texto del correo, editar y enviar'}
+</summary>
+        <div class="emin"><div class="fl">${lang==='en'?'Subject':'Asunto'}</div>
+        <input class="subjin" data-id="${encodeURIComponent(s.id)}" data-i="${i}" value="${esc(e.sub).replace(/" /g,'&quot;')}">
+        <textarea class="bodyin" data-id="${encodeURIComponent(s.id)}" data-i="${i}" rows="${Math.max(9,e.body. split('\n').length+1)}">${esc(e.body)}</textarea>
+        <div class="ebtns"><button class="send" data-id="${encodeURIComponent(s.id)}" data-i="${i}">Send /
+Enviar</button>
+          <button class="copy" data-id="${encodeURIComponent(s.id)}" data-i="${i}">Copy / Copiar</button>
+          <button class="resetx" data-id="${encodeURIComponent(s.id)}" data-i="${i}">Reset / Restaurar</button>
+          <button class="marktoday" data-id="${encodeURIComponent(s.id)}" data-i="${i}">${lang==='en'?'Mark sent today':'Marcar enviado hoy'}</button></div></div></details></div>`;
+  }
+  const site=s.web?` &middot; <a href="https://${s.web}" target="_blank" rel="noopener" style="color:var(--soft);border- bottom:1px solid var(--line)">site</a>`:'';
+  return `<div class="grow">
+    <div class="ginfo"><div class="nm">${s.store}</div>
+      <div class="meta">${s.type} &middot; ${s.city}${site}</div>
+      <div class="why">${lang==='en'?s.whyEn:s.whyEs}</div>
+      <div class="emailrow"><span class="el">${lang==='en'?'to':'para'}</span><input class="recip" data-
+id="${encodeURIComponent(s.id)}" placeholder="${lang==='en'?'add email':'agregar correo'}"
+value="${esc(emailOf(s))}"></div>
+      <div class="badges">${badge}</div>
+      <div class="rowacts">${acts}</div></div>
+    <div class="track">${gridlines()}${bar}${mks}</div>
+    <div class="log">${logblocks}</div>
+  </div>`;
+}
+function render(){
+  buildHead();buildTabs();buildSubtabs();buildCal();buildResearch();
+  const c=document.getElementById('content');
+  if(tab==='noresp'){
+    const st=viewStores('noresp',subcat['noresp']);
+    if(!st.length){c.innerHTML=`<div class="empty">${lang==='en'?'No stores here yet. Move a row here after the third email goes out with no reply.':'Aun no hay tiendas aqui. Mueve una fila despues de que el tercer correo salga sin respuesta.'}</div>`;return;}
+    c.innerHTML=`<section class="phase"><div class="phhead"><div class="phtop"><div
+class="pn">${lang==='en'?'No response after three emails':'Sin respuesta tras tres correos'}</div><div
+class="badges"><span class="bdg">${st.length} stores</span></div></div></div>`+
+      `<div class="tlhead">${tlHead()}</div>`+st.map(storeRow).join('')+`</section>`;
+    wire();return;
+  }
+  let html='';
+  activePhases(tab).forEach(({p,i})=>{
+    const g=viewStores(tab,subcat[tab]).filter(s=>s.phase===i);if(!g.length)return;
+    const kick=planned(g[0],0).toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'long',year:'numeric'});
+    const bdgs=p.exp?`<span class="bdg">Kickoff ${kick}</span><span class="bdg like">Direction, body and
+beauty</span><span class="bdg fit">International reference</span><span class="bdg">${g.length} stores</span>`
+      :`<span class="bdg">Kickoff ${kick}</span><span class="bdg like">Likelihood ${p.like}</span><span class="bdg fit">Brand fit ${p.fit}</span><span class="bdg">${g.length} stores</span>`;
+    html+=`<section class="phase"><div class="phhead"><div class="phtop"><div class="pn">Phase ${p.n} / Fase
+${p.n} &nbsp; ${lang==='en'?p.en:p.es}</div><div class="badges">${bdgs}</div></div><div
+class="phwhy">${lang==='en'?p.rEn:p.rEs}</div></div>`;
+    html+=`<div class="tlhead">${tlHead()}</div>`+g.map(storeRow).join('')+`</section>`;
+  });
+  if(!html){const cat=(CATS.find(x=>x.id===subcat[tab])||{}).en;c.innerHTML=`<div class="empty">${lang==='en'?('No '+cat+' stores in this tab yet. Tap Deep Research to pull fitting stores from Google.'):('Aun no hay tiendas de este tipo en esta pestana. Toca Deep Research para traer tiendas desde Google.')}</div>`;wire();return;}
+  c.innerHTML=html;wire();
+}
+/* ---------- email templates ---------- */
+function sig(by){const n=by||(lang==='en'?'Kiabeth and Kiaredza':'Kiabeth y Kiaredza');return lang==='en'?
+`Warmly,\n${n}\nLavalle Haus, 831.359.5978`:`Con carino,\n${n}\nLavalle Haus, 831.359.5978`;}
+function tmpl(s,i){
+  const by=(S.store[s.id]&&S.store[s.id].log&&S.store[s.id].log['e'+i]&&S.store[s.id].log['e'+i].by)||'';
+  const hi=lang==='en'?`Hi ${s.store} Team,`:`Hola equipo de ${s.store},`;
+  const descL=(s.desc||'').charAt(0).toLowerCase()+(s.desc||'').slice(1);
+  if(i===0){
+    if(s.exp){const sub=lang==='en'?`Introducing Lavalle Haus to ${s.store}`:`Presentando Lavalle Haus a ${s.store}`;
+      const body=lang==='en'?[hi,'',`We are the sisters behind Lavalle Haus, a California clean body care brand built on
+essential oils, plastic free packaging, and a quiet, considered design.`,'',`We admire ${s.store} as exactly the kind of
+${descL} we hope to grow alongside as we expand into body and beauty retail.`,'',`Our collection: The Evening
+Candle, Soaking Salts, Daily Body Oil, and Beldi Black Soap.`,'',`We would love to explore whether there is a fit and
+send samples or a line sheet. Catalog and wholesale pricing: (link)`,'',sig(by)].join('\n')
+       :[hi,'',`Somos las hermanas detras de Lavalle Haus, una marca de cuidado corporal limpio de California, basada
+en aceites esenciales, empaque sin plastico y un diseno sereno y cuidado.`,'',`Admiramos ${s.store} como justo el tipo
+de ${descL} con el que esperamos crecer al expandirnos a cuerpo y belleza.`,'',`Nuestra coleccion: Vela de noche,
+Sales de bano, Aceite corporal y Jabon negro Beldi.`,'',`Nos encantaria explorar si hay encaje y enviar muestras o un
+line sheet. Catalogo y precios: (enlace)`,'',sig(by)].join('\n');
+      return {sub,body};}
+    const sub=lang==='en'?`Reintroducing Lavalle Haus to ${s.store}`:`Reconectando: Lavalle Haus y ${s.store}`;
+    const body=lang==='en'?[hi,'',`It has been about two years since we first reached out, and a great deal has grown
+on our side since then. We are the sisters behind Lavalle Haus, a California clean body care brand built on essential
+oils, plastic free packaging, and a quiet, considered design.`,'',`We thought of ${s.store} again because of what you do
+best, ${descL}. It felt like a natural home for our line.`,'',`Our collection: The Evening Candle, Soaking Salts, Daily
+Body Oil, and Beldi Black Soap.`,'',`We would love to send a sample set if it feels like a fit. Catalog and wholesale
+pricing: (link)`,'',sig(by)].join('\n')
+     :[hi,'',`Han pasado unos dos anos desde que les escribimos por primera vez, y mucho ha crecido de nuestro lado.
+Somos las hermanas detras de Lavalle Haus, una marca de cuidado corporal limpio de California, basada en aceites
+esenciales, empaque sin plastico y un diseno sereno y cuidado.`,'',`Volvimos a pensar en ${s.store} por lo que mejor
+hacen, ${descL}. Nos parecio un hogar natural para nuestra linea.`,'',`Nuestra coleccion: Vela de noche, Sales de
+bano, Aceite corporal y Jabon negro Beldi.`,'',`Nos encantaria enviar un set de muestras si les parece adecuado.
+Catalogo y precios: (enlace)`,'',sig(by)].join('\n');
+    return {sub,body};
+  }
+  if(i===1){const sub=lang==='en'?`A second hello from Lavalle Haus`:`Un segundo saludo de Lavalle Haus`;
+    const body=lang==='en'?[hi,'',`Circling back with a warm second note. We still believe our candles and body care
+would feel right at home at ${s.store}.`,'',`Happy to send whatever is most useful: a sample set, a line sheet, or
+wholesale pricing. Catalog here: (link)`,'',sig(by)].join('\n')
+     :[hi,'',`Regresamos con un segundo saludo. Seguimos creyendo que nuestras velas y cuidado corporal se sentirian
+muy bien en ${s.store}.`,'',`Con gusto enviamos lo que sea mas util: un set de muestras, un line sheet o precios de
+mayoreo. Catalogo aqui: (enlace)`,'',sig(by)].join('\n');
+    return {sub,body};}
+  const sub=lang==='en'?`One last note, with seasonal samples`:`Una ultima nota, con muestras de temporada`;
+  const body=lang==='en'?[hi,'',`Reaching out one last time for now. We just refreshed our seasonal scents and would
+gladly send a sample set to ${s.store} if you are open to it.`,'',`Either way, thank you for the work you do. We are
+genuine admirers of ${s.store}.`,'',sig(by)].join('\n')
+   :[hi,'',`Les escribimos una ultima vez por ahora. Acabamos de renovar nuestros aromas de temporada y con gusto
+enviamos un set de muestras a ${s.store} si estan abiertos.`,'',`De cualquier modo, gracias por su trabajo. Somos
+admiradoras de ${s.store}.`,'',sig(by)].join('\n');
+  return {sub,body};
+}
+function getMail(s,i){const r=S.store[s.id];const e=r&&r.edits&&r.edits[lang]&&r.edits[lang][i];return e?e:tmpl(s,i);}
+/* ---------- interactions ---------- */
+function wire(){
+  const c=document.getElementById('content');
+  c.querySelectorAll('.sd').forEach(el=>el.onchange=()=>{const id=decodeURIComponent(el.dataset.id),i=+el.dataset.i;
+const r=rec(id);r.log['e'+i]=r.log['e'+i]||{};r.log['e'+i].date=el.value;persist();render();});
+  c.querySelectorAll('.by').forEach(el=>el.onchange=()=>{const id=decodeURIComponent(el.dataset.id),i=+el.dataset.i;
+    if(el.value==='__add'){const nm=(prompt(lang==='en'?'New teammate name:':'Nombre del integrante:')||'').trim();if(
+nm){if(!S.team.includes(nm))S.team.push(nm);const r=rec(id);r.log['e'+i]=r.log['e'+i]||{};r.log['e'+i].by=nm;
+persist();render();}else render();return;}
+    const r=rec(id);r.log['e'+i]=r.log['e'+i]||{};r.log['e'+i].by=el.value;persist();});
+  c.querySelectorAll('.recip').forEach(el=>el.oninput=()=>{const id=decodeURIComponent(el.
+dataset.id);rec(id).email=el.value;persist();});
+  c.querySelectorAll('.subjin,.bodyin').forEach(el=>el.oninput=()=>{const id=decodeURIComponent(el.
+dataset.id),i=+el.dataset.i;const r=rec(id);r.edits[lang]=r.edits[lang]||{};
+    const root=el.closest('.emin');const sub=root.querySelector('.subjin').value,body=root.querySelector('.bodyin').
+value;r.edits[lang][i]={sub,body};persist();});
+  c.querySelectorAll('.copy').forEach(b=>b.onclick=()=>{const root=b.closest('.emin');copyText('Subject: '+root.querySelector('.subjin').value+'\n\n'+root.querySelector('.bodyin').value);});
+  c.querySelectorAll('.send').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.dataset.id);const
+s=STORES.find(x=>x.id===id);const root=b.closest('.emin');const to=emailOf(s)||'';
+    if(!to)toast(lang==='en'?'Add an email above, opening your mail app':'Agrega un correo arriba, abriendo tu app');
+    window.location.href=`mailto:${to}?subject=${encodeURIComponent(root.querySelector('.subjin').value)}&body=${
+encodeURIComponent(root.querySelector('.bodyin').value)}`;});
+  c.querySelectorAll('.resetx').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.dataset.id),i=+b.dataset.i;
+const r=rec(id);if(r.edits[lang])delete r.edits[lang][i];persist();render();toast(lang==='en'?'Reset to template':'Plantilla restaurada');});
+  c.querySelectorAll('.marktoday').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.
+dataset.id),i=+b.dataset.i;const r=rec(id);r.log['e'+i]=r.log['e'+i]||{};r.log['e'+i].date=iso(new Date());persist();render();
+toast(lang==='en'?'Marked sent today':'Marcado enviado hoy');});
+  c.querySelectorAll('.del').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.dataset.id);if(confirm(lang===
+'en'?'Remove this store from the plan?':'Quitar esta tienda del plan?')){rec(id).state='deleted';persist();render();
+toast(lang==='en'?'Store removed':'Tienda quitada');}});
+  c.querySelectorAll('.noresp').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.dataset.id);rec(id).state=' noresp';persist();render();toast(lang==='en'?'Moved to No Response':'Movida a Sin Respuesta');});
+  c.querySelectorAll('.back').forEach(b=>b.onclick=()=>{const id=decodeURIComponent(b.dataset.id);rec(id).state=' active';persist();render();toast(lang==='en'?'Returned to active':'Regresada a activas');});
+  c.querySelectorAll('.mk').forEach(el=>el.onclick=()=>{const d=el.closest('.grow').querySelectorAll('.emd')[+el.
+dataset.i];if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'center'});}});
+}
+function buildSubtabs(){
+  const bar=document.getElementById('subbar');
+  if(tab==='noresp'){const present=CATS.filter(c=>viewStores('noresp',c.id).length>0);
+    if(!present.length){bar.innerHTML='';return;}}
+  bar.innerHTML=CATS.map(c=>{const n=viewStores(tab,c.id).length;return `<button class="subtab ${subcat[tab]===c.id?'on':''}" data-cat="${c.id}">${lang==='en'?c.en:c.es}<span class="c">${n}</span></button>
+`;}).join('')
+    + (tab==='noresp'?'':`<button class="research-btn" id="rbtn">${lang==='en'?'Deep Research':'Deep Research'}
+</button>`);
+  bar.querySelectorAll('.subtab').forEach(b=>b.onclick=()=>{subcat[tab]=b.dataset.cat;showResearch=false;render();});
+  const rb=document.getElementById('rbtn');if(rb)rb.onclick=()=>{showResearch=!showResearch;render();};
+}
+function buildResearch(){
+  const box=document.getElementById('research');
+  if(tab==='noresp'||!showResearch){box.innerHTML='';return;}
+  const cat=subcat[tab];const key=tab+':'+cat;const list=RESEARCH[key]||[];
+  const gq=GOOGLE[key]||'';const gurl='https://www.google.com/search?q='+encodeURIComponent(gq);
+  const catLabel=(CATS.find(c=>c.id===cat)||{}).en;const geoLabel=(TABS.find(x=>x.id===tab)||{}).en;
+  let cards=list.map(c=>{const added=!!STORES.find(s=>s.store===c.store&&s.cat===cat&&s.tab===tab);
+    return `<div class="rcard"><div><div class="rn">${c.store}</div><div class="rm">${c.city}${c.web?' &middot; '+c.web:''}</div><div class="rw">${c.why}</div></div>
+      <button class="addbtn" data-store="${encodeURIComponent(c.store)}" ${added?'disabled':''}>${added?
+(lang==='en'?'Added':'Agregada'):(lang==='en'?'Add to plan':'Agregar al plan')}</button></div>`;}).join('');
+  if(!list.length)cards=`<div class="rnote">${lang==='en'?'No saved candidates for this category yet. Use the live Google search below, or ask Claude to run a fresh deep research pass and add the results here.':'Aun no hay candidatas guardadas para esta categoria. Usa la busqueda en vivo de Google abajo, o pidele a Claude una nueva ronda de research y agregamos los resultados aqui.'}</div>`;
+  box.innerHTML=`<div class="wrap"><div class="rpanel">
+    <h3>${lang==='en'?'Deep Research':'Deep Research'}, ${catLabel} in ${geoLabel}</h3>
+    <div class="rsub">${lang==='en'?'Candidate stores compiled from Google and trade research that fit this category. Add the ones you like; they drop into a Researched additions phase with the full three email sequence.':'Tiendas candidatas reunidas de Google y research del sector que encajan en esta categoria. Agrega las que te gusten; entran en una fase de Agregadas por research con la secuencia completa de tres correos.'}</div>
+    ${cards}
+    <a class="glink" href="${gurl}" target="_blank" rel="noopener">${lang==='en'?'Search Google live for more':'Buscar mas en Google en vivo'}</a>
+    <div class="rnote">${lang==='en'?'A downloaded file cannot crawl Google by itself, so the live button opens a real Google search in a new tab, and the saved list above is a verified head start.':'Un archivo descargado no puede rastrear Google por si solo, asi que el boton en vivo abre una busqueda real de Google en otra pestana, y la lista de arriba es un comienzo verificado.'}</div>
+  </div></div>`;
+  box.querySelectorAll('.addbtn').forEach(b=>b.onclick=()=>{if(b.disabled)return;const name=decodeURIComponent(b.
+dataset.store);const c=list.find(x=>x.store===name);addCandidate(c);});
+}
+function addCandidate(c){
+  const cat=subcat[tab];const id=c.store+"|R:"+tab+":"+cat;
+  if(STORES.find(s=>s.id===id)){toast(lang==='en'?'Already added':'Ya agregada');return;}
+  const ph=(tab==='ca')?5:6;
+  const obj={id,store:c.store,type:cat==='spa'?'Spa':(cat==='beauty'?'Beauty':'Home'),city:c.city,region:(tab==='ca'?' California':'International')+' (research)',status:'Research',email:'',web:(c.web||''),desc:c.why,phase:ph,tab:tab,cat:
+cat,exp:false,whyEn:'Found via research: '+c.why,whyEs:'Encontrada via research: '+c.why};
+  S.added.push(obj);STORES.push(obj);persist();render();toast(lang==='en'?'Added to plan':'Agregada al plan');
+}
+function copyText(t){const done=()=>toast(lang==='en'?'Copied to clipboard':'Copiado al portapapeles');if(navigator.
+clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done).catch(()=>fb(t,done));else
+fb(t,done);}
+function fb(t,cb){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);
+ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb();}
+let tt;function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('on');
+clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('on'),1900);}
+const sdIn=document.getElementById('start');sdIn.value=iso(startDate());
+sdIn.onchange=()=>{S.start=sdIn.value;persist();render();};
+document.getElementById('teamsel').onchange=e=>{if(e.target.value==='__add'){const nm=
+(prompt(lang==='en'?'New teammate name:':'Nombre del integrante:')||'').trim();if(nm&&!S.team.includes(nm)){S.
+team.push(nm);persist();}}buildTeamSel();render();};
+document.querySelectorAll('header .langtog button').forEach(b=>b.onclick=()=>{lang=b.dataset.l;
+document.querySelectorAll('header .langtog button').forEach(x=>x.classList.toggle('on',x===b));
+buildTeamSel();render();});
+buildTeamSel();render();
+</script></body></html>

@@ -23,7 +23,81 @@ const FEE_LABEL = {
   DigitalServicesFee: "Digital services",
 };
 
-export default function AmazonProfit({ products = [] }) {
+// ── AMAZON ACCOUNT HEALTH ─────────────────────────────────────────────────────
+// Sits above every sales metric: the account itself must be healthy before ad
+// or inventory decisions. SP-API has no public account-health endpoint yet, so
+// the figures are kept by hand here (placeholder integration) and the status
+// flows into the Business Brain + Executive Brief as a priority alert.
+const HEALTH_STATUSES = ["Healthy", "Needs Review", "At Risk", "Critical"];
+const HEALTH_COLOR = { "Healthy": "#5a7a5a", "Needs Review": "#a07848", "At Risk": "#b06a2e", "Critical": "#9b5e5e" };
+const HEALTH_METRICS = [
+  { key: "odr", label: "Order defect rate", target: "< 1%" },
+  { key: "lateShipment", label: "Late shipment rate", target: "< 4%" },
+  { key: "validTracking", label: "Valid tracking rate", target: "> 95%" },
+  { key: "policyIssues", label: "Policy issues", target: "0" },
+];
+
+function AccountHealth({ data, onSave }) {
+  const h = data || {};
+  const status = h.status || "Needs Review";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(h);
+  useEffect(() => { setDraft(h); }, [data]);
+  const save = () => { onSave && onSave({ ...draft, status: draft.status || status, updatedAt: new Date().toISOString() }); setEditing(false); };
+  const col = HEALTH_COLOR[status] || c.clay;
+  return (
+    <div style={{ background: c.card, border: `1px solid ${c.line}`, borderLeft: `3px solid ${col}`, borderRadius: 1, padding: "14px 18px", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Amazon Account Health</div>
+          <div style={{ fontFamily: serif, fontSize: 20, color: col, marginTop: 2 }}>
+            {status}
+            {h.updatedAt && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub, marginLeft: 10 }}>updated {new Date(h.updatedAt).toLocaleDateString()}</span>}
+          </div>
+        </div>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} style={{ background: "transparent", border: `1px solid ${c.line}`, color: c.sub, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>UPDATE</button>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={save} style={{ background: c.ink, border: "none", color: c.bg, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>SAVE</button>
+            <button onClick={() => { setDraft(h); setEditing(false); }} style={{ background: "transparent", border: `1px solid ${c.line}`, color: c.sub, borderRadius: 1, padding: "5px 14px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>CANCEL</button>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {HEALTH_STATUSES.map((s) => (
+            <button key={s} onClick={() => setDraft((d) => ({ ...d, status: s }))}
+              style={{ background: (draft.status || status) === s ? HEALTH_COLOR[s] + "22" : "transparent", border: `1px solid ${(draft.status || status) === s ? HEALTH_COLOR[s] : c.line}`, color: HEALTH_COLOR[s], borderRadius: 1, padding: "5px 12px", cursor: "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>{s.toUpperCase()}</button>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+        {HEALTH_METRICS.map((m) => (
+          <div key={m.key} style={{ flex: "1 1 130px", minWidth: 130 }}>
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>{m.label}</div>
+            {editing ? (
+              <input value={draft[m.key] || ""} onChange={(e) => setDraft((d) => ({ ...d, [m.key]: e.target.value }))} placeholder={"target " + m.target}
+                style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "5px 8px", color: c.ink, fontSize: 12, fontFamily: sans, marginTop: 3 }} />
+            ) : (
+              <div style={{ fontFamily: serif, fontSize: 16, color: h[m.key] ? c.ink : c.sub, marginTop: 2 }}>{h[m.key] || "—"} <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>target {m.target}</span></div>
+            )}
+          </div>
+        ))}
+      </div>
+      {editing && (
+        <textarea value={draft.notes || ""} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} placeholder="Notes — performance notifications, suppressed listings, urgent Amazon notices…" rows={2}
+          style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 8px", color: c.ink, fontSize: 12, fontFamily: serif, marginTop: 10 }} />
+      )}
+      {!editing && h.notes && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginTop: 8 }}>{h.notes}</div>}
+      <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: "rgba(111,102,87,0.6)", marginTop: 8 }}>
+        Manual until the Seller Central health API is connected — update after the daily account check. Se actualiza a mano por ahora.
+      </div>
+    </div>
+  );
+}
+
+export default function AmazonProfit({ products = [], accountHealth = null, onSaveHealth = null }) {
   const [daily, setDaily] = useState({ loading: true, days: [], error: null });
   const [fin, setFin] = useState({ loading: true, data: null, error: null });
   const [ord, setOrd] = useState({ loading: true, orders: [], vineByDate: {}, vineUnitsByDate: {}, error: null });
@@ -196,6 +270,8 @@ export default function AmazonProfit({ products = [] }) {
           <div style={{ fontSize: 9, fontStyle: "italic", color: "rgba(111,102,87,0.55)", fontFamily: serif }}>{fetchedAt ? "datos en vivo de Amazon" : ""}</div>
         </div>
       </div>
+
+      <AccountHealth data={accountHealth} onSave={onSaveHealth} />
 
       {daily.error && <div style={{ ...card, borderLeft: `3px solid ${c.red}`, marginTop: 10 }}><span style={{ fontFamily: sans, fontSize: 11, color: c.red }}>{String(daily.error)}</span></div>}
 

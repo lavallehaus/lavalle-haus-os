@@ -10,10 +10,23 @@
 //
 // Needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, KV_REST_API_URL, KV_REST_API_TOKEN.
 
+import { createHmac } from "node:crypto";
+
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 const KEY = "google_oauth";
 const FOLDER_NAME = "Lavalle Haus — Statements";
+
+// ── APP LOCK ── same session check as /api/data: uploads land in the business
+// Drive folder, so only a logged-in session may use this. No APP_PASSWORD = off.
+const SESSION_SALT = "lavalle-haus-session-v1";
+function appToken() {
+  return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
+}
+function isAuthed(req) {
+  if (!process.env.APP_PASSWORD) return true;
+  return (req.headers["x-app-token"] || "") === appToken();
+}
 
 async function kvGet(key) {
   const r = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
@@ -59,6 +72,7 @@ async function ensureFolder(access, state) {
 }
 
 export default async function handler(req, res) {
+  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   const state = (await kvGet(KEY)) || {};
 
   if (req.method === "GET") {

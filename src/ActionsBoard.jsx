@@ -23,6 +23,9 @@ const input = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.i
 const selStyle = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
 
 const AVATAR_COLORS = ["#a07848", "#5a7a5a", "#9b5e5e", "#6b7a8c", "#8c6b7a", "#7a6b4a"];
+// Role structure per the Team Portal spec — stored now so permissions can be
+// enforced when per-user logins are enabled.
+const TEAM_ROLES = ["Owner / Admin", "Manager", "Team Member", "Viewer"];
 const SEV = { high: { label: "HIGH", color: c.red, rank: 0 }, med: { label: "MED", color: c.clay, rank: 1 }, low: { label: "LOW", color: c.sub, rank: 2 } };
 const STATUS = ["open", "doing", "done"];
 const isLive = (it) => it.status !== "done" && it.status !== "resolved";
@@ -57,7 +60,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   const [filter, setFilter] = useState("live"); // live | all | done
   const [showRecurring, setShowRecurring] = useState(false);
   const [draft, setDraft] = useState(null); // new manual item draft
-  const [member, setMember] = useState({ name: "", email: "" });
+  const [member, setMember] = useState({ name: "", email: "", role: "Team Member" });
   const [emailState, setEmailState] = useState({}); // itemId -> "sending"|"sent"|"err:..."
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
@@ -126,9 +129,10 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
   };
   const addMember = () => {
     if (!member.name.trim()) return;
-    const t = { id: uid("tm"), name: member.name.trim(), email: member.email.trim(), color: AVATAR_COLORS[state.team.length % AVATAR_COLORS.length] };
-    commit({ ...state, team: [...state.team, t] }); setMember({ name: "", email: "" });
+    const t = { id: uid("tm"), name: member.name.trim(), email: member.email.trim(), role: member.role || "Team Member", color: AVATAR_COLORS[state.team.length % AVATAR_COLORS.length] };
+    commit({ ...state, team: [...state.team, t] }); setMember({ name: "", email: "", role: "Team Member" });
   };
+  const setRole = (id, role) => commit({ ...state, team: state.team.map((t) => t.id === id ? { ...t, role } : t) });
   const removeMember = (id) => commit({ ...state, team: state.team.filter((t) => t.id !== id), items: state.items.map((it) => it.assigneeId === id ? { ...it, assigneeId: null } : it) });
   const [editId, setEditId] = useState(null);
   const [editVals, setEditVals] = useState({ name: "", email: "" });
@@ -261,6 +265,10 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: "1px solid #00000008" }}>
             <Avatar m={t} size={26} />
             <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, minWidth: 120 }}>{t.name}</span>
+            <select value={t.role || "Team Member"} onChange={(e) => setRole(t.id, e.target.value)} title="Role — controls what this person will see once per-user logins arrive"
+              style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, color: c.sub, fontFamily: sans, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>
+              {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
             <span style={{ fontFamily: sans, fontSize: 11, color: t.email ? c.sub : c.red, flex: 1, minWidth: 140 }}>{t.email || "no email — can't notify"}</span>
             <button onClick={() => startEdit(t)} style={btnGhost}>Edit</button>
             <button onClick={() => removeMember(t.id)} style={btnGhost}>Remove</button>

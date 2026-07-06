@@ -5,6 +5,19 @@
 // Setup: add ANTHROPIC_API_KEY in Vercel → Project → Settings → Environment Variables.
 // Frontend POSTs { pdfBase64, knownMerchants } and receives { transactions, usage }.
 
+import { createHmac } from "node:crypto";
+
+// ── APP LOCK ── same session check as /api/data: without it this endpoint is
+// an open Claude-API proxy on the business's key. No APP_PASSWORD = lock off.
+const SESSION_SALT = "lavalle-haus-session-v1";
+function appToken() {
+  return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
+}
+function isAuthed(req) {
+  if (!process.env.APP_PASSWORD) return true;
+  return (req.headers["x-app-token"] || "") === appToken();
+}
+
 const MODEL = "claude-sonnet-4-6"; // balanced + accurate; ~$3/$15 per 1M tokens
 const CATEGORIES = [
   "Revenue / Sales", "Refunds", "COGS / Materials", "Packaging", "Shipping / Postage",
@@ -14,6 +27,7 @@ const CATEGORIES = [
 ];
 
 export default async function handler(req, res) {
+  if (!isAuthed(req)) { res.status(401).json({ error: "Locked" }); return; }
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;

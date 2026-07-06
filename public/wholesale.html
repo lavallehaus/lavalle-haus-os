@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lavalle Haus — Wholesale Accounts / Cuentas de Mayoreo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,
+500;0,600;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4F1EA;--paper2:#FBFAF6;--header:#EDEAE3;--ink:#26221C;--soft:#6B6459;
+  --muted:#9A9387;--line:#DCD7CC;--gold:#A9873F;--terra:#9C4A39;--sage:#A7AC9D;--btn:#2A2620;
+  --serif:"EB Garamond",Georgia,serif;--sans:"Jost","Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:16px;
+  -webkit-font-smoothing:antialiased;font-feature-settings:"onum" 1;}
+a{color:inherit;text-decoration:none;}
+.wrap{max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,48px);}
+.util{background:var(--ink);color:var(--paper);font-family:var(--sans);font-size:10.5px;
+  letter-spacing:.18em;text-transform:uppercase;text-align:center;padding:8px;font-weight:300;}
+.util span{opacity:.72;}
+header{background:var(--header);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40;}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 0;flex-wrap:wrap;}
+.brand b{font-family:var(--serif);font-weight:500;letter-spacing:.36em;font-size:19px;display:block;padding-left:.36em;}
+.brand small{font-family:var(--sans);font-weight:300;font-size:9px;letter-spacing:.34em;color:var(--muted);text-
+transform:uppercase;display:block;margin-top:6px;padding-left:.34em;}
+.pills{display:flex;gap:10px;flex-wrap:wrap;}
+.pill{border:1px solid var(--line);background:var(--paper2);padding:8px 14px;text-align:center;min-width:74px;}
+.pill .n{font-family:var(--serif);font-size:21px;line-height:1;font-weight:500;}
+.pill .n.g{color:var(--gold);} .pill .n.s{color:#7d8a72;}
+.pill .l{font-family:var(--sans);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-
+top:5px;line-height:1.3;}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--header);}
+.tab{font-family:var(--sans);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);
+background:none;border:0;padding:14px 16px;cursor:pointer;white-space:nowrap;position:relative;transition:color .2s;}
+.tab .c{color:var(--muted);margin-left:6px;font-size:10px;} .tab:hover{color:var(--ink);} .tab.on{color:var(--ink);}
+.tab.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:var(--gold);}
+.titleblock{padding:34px 0 18px;}
+.titleblock h1{font-weight:500;font-size:clamp(28px,4vw,44px);margin:0;line-height:1.05;}
+.titleblock .es{font-style:italic;color:var(--soft);font-size:clamp(15px,2vw,19px);margin-top:6px;display:block;}
+.titleblock p{font-family:var(--sans);font-size:12px;color:var(--soft);max-width:64ch;margin:16px 0 0;line-
+
+height:1.7;letter-spacing:.01em;}
+.titleblock p .pes{display:block;color:var(--muted);}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:18px 0;border-top:1px solid var(--
+line);border-bottom:1px solid var(--line);margin-bottom:8px;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-family:var(--sans);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+select,input[type=search]{font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--paper2);border:1px
+solid var(--line);padding:9px 12px;min-width:150px;border-radius:0;-webkit-appearance:none;appearance:none;}
+input[type=search]{min-width:200px;}
+select:focus,input:focus,textarea:focus{outline:1px solid var(--gold);outline-offset:0;}
+.search{position:relative;flex:1;min-width:200px;} .search input{width:100%;}
+.count{margin-left:auto;font-family:var(--sans);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--
+soft);text-align:right;line-height:1.5;}
+.reset{font-family:var(--sans);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);
+background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer;padding:4px 2px;transition:color
+.2s,border-color .2s;height:34px;}
+.reset:hover{color:var(--ink);border-color:var(--gold);}
+main{padding-bottom:90px;}
+.group{margin-top:30px;}
+.group h2{font-family:var(--sans);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink);font-
+weight:500;margin:0 0 2px;padding-bottom:10px;border-bottom:1px solid var(--ink);display:flex;justify-content:space-
+between;align-items:baseline;}
+.group h2 .gc{color:var(--muted);font-size:10px;}
+.row{border-bottom:1px solid var(--line);padding:16px 4px;} .row:hover{background:var(--paper2);}
+.rtop{display:grid;grid-template-columns:1.5fr 2fr auto;gap:20px;align-items:start;}
+.rstore{display:flex;gap:10px;align-items:flex-start;}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:7px;flex:none;}
+.rstore .nm{font-size:19px;line-height:1.15;}
+.rstore .meta{font-family:var(--sans);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+margin-top:3px;}
+.rstore .links{margin-top:7px;display:flex;gap:14px;}
+.rstore .links a{font-family:var(--sans);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);
+border-bottom:1px solid var(--line);padding-bottom:1px;}
+.rstore .links a:hover{color:var(--gold);border-color:var(--gold);}
+.rdesc{font-size:15px;color:var(--soft);line-height:1.45;}
+.rdesc .note{display:block;margin-top:8px;font-style:italic;color:var(--ink);background:#F0E6CE63;border-left:2px solid
+var(--gold);padding:7px 11px;font-size:14px;}
+.rright{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:130px;}
+.chip{font-family:var(--sans);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;border:1px
+solid var(--line);white-space:nowrap;}
+.date{font-family:var(--sans);font-size:10.5px;color:var(--muted);letter-spacing:.05em;}
+.rctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1px dashed
+var(--line);}
+.rctl .lab{font-family:var(--sans);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+select.assignee{font-family:var(--sans);font-size:12px;min-width:210px;padding:7px 10px;}
+.emailbtn{font-family:var(--sans);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper);
+background:var(--btn);border:0;padding:9px 16px;cursor:pointer;transition:background .2s;}
+.emailbtn:hover{background:var(--gold);}
+.empty{padding:60px 0;text-align:center;color:var(--muted);font-style:italic;}
+footer{border-top:1px solid var(--line);background:var(--paper2);padding:26px 0;font-family:var(--sans);font-
+size:11px;letter-spacing:.06em;color:var(--muted);text-align:center;line-height:1.8;}
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(38,34,28,.55);display:none;align-items:flex-start;justify-content:
+center;z-index:100;padding:36px 16px;overflow:auto;}
+.overlay.on{display:flex;}
+.modal{background:var(--paper);max-width:780px;width:100%;border:1px solid var(--line);box-shadow:0 30px 80px
+rgba(38,34,28,.3);}
+.mhead{background:var(--header);border-bottom:1px solid var(--line);padding:20px 24px;display:flex;justify-
+content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+.mhead h3{margin:0;font-weight:500;font-size:23px;line-height:1.1;}
+.mhead .es{font-style:italic;color:var(--soft);font-size:13px;display:block;margin-top:3px;}
+.mhead .x{font-family:var(--sans);font-size:22px;color:var(--soft);background:none;border:0;cursor:pointer;line-height:
+1;}
+.mhead .x:hover{color:var(--ink);}
+.mtools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.sitebtn{font-family:var(--sans);font-size:10px;letter-spacing:.12em;text-transform:uppercase;background:var(--
+paper2);border:1px solid var(--line);padding:8px 13px;cursor:pointer;color:var(--soft);}
+.sitebtn:hover{border-color:var(--gold);color:var(--gold);}
+.langtog{display:flex;border:1px solid var(--line);}
+.langtog button{font-family:var(--sans);font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:var(--
+paper2);border:0;padding:8px 14px;cursor:pointer;color:var(--soft);}
+.langtog button.on{background:var(--btn);color:var(--paper);}
+.mbody{padding:6px 24px 24px;}
+.hint{font-family:var(--sans);font-size:10.5px;color:var(--muted);letter-spacing:.02em;line-height:1.6;margin:12px 0 0;}
+.emailcard{border:1px solid var(--line);margin-top:16px;background:var(--paper2);}
+.emailcard .eh{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-
+bottom:1px solid var(--line);background:var(--header);flex-wrap:wrap;}
+.emailcard .eh .et{font-family:var(--sans);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--
+ink);font-weight:500;}
+.ebtns{display:flex;gap:8px;flex-wrap:wrap;}
+.ebtns button{font-family:var(--sans);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:7px
+13px;cursor:pointer;border:1px solid var(--line);background:var(--paper2);color:var(--soft);}
+.ebtns .send{background:var(--btn);color:var(--paper);border-color:var(--btn);}
+.ebtns .send:hover{background:var(--gold);border-color:var(--gold);}
+.ebtns button:hover{border-color:var(--gold);color:var(--gold);}
+.ebtns .send:hover{color:var(--paper);}
+.fieldlab{font-family:var(--sans);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+padding:11px 14px 4px;}
+.subjin{width:calc(100% - 28px);margin:0 14px;font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--
+paper);border:1px solid var(--line);padding:9px 11px;}
+.ebodyedit{width:calc(100% - 28px);margin:6px 14px 14px;font-family:var(--serif);font-size:15px;line-height:1.
+55;color:var(--ink);background:var(--paper);border:1px solid var(--line);padding:11px 13px;resize:vertical;min-
+height:160px;}
+.resetlink{font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+background:none;border:0;cursor:pointer;padding:0 14px 12px;}
+.resetlink:hover{color:var(--terra);}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--
+btn);color:var(--paper);font-family:var(--sans);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+padding:12px 22px;opacity:0;transition:all .3s;z-index:200;text-align:center;}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:820px){
+  .rtop{grid-template-columns:1fr;gap:10px;}
+  .rright{align-items:flex-start;text-align:left;flex-direction:row;flex-wrap:wrap;}
+  select.assignee{min-width:0;flex:1;}
+}
+</style>
+</head>
+<body>
+<div class="util"><span>Wholesale Accounts &nbsp;·&nbsp; Cuentas de Mayoreo &nbsp;·&nbsp; 239 stores /
+tiendas</span></div>
+<header>
+  <div class="wrap mast">
+    <div class="brand"><b>LAVALLE&nbsp;HAUS</b><small>Wholesale Operating System / Sistema de
+Mayoreo</small></div>
+    <div class="pills" id="pills"></div>
+  </div>
+  <div class="wrap"><div class="tabs" id="tabs"></div></div>
+</header>
+<div class="wrap titleblock">
+  <h1>Retail Outreach<span class="es">Gestión de tiendas — por tipo de negocio</span></h1>
+  <p>Assign an owner, generate &amp; edit the three outreach emails, then send — each one tailored to the store.
+Filter by type, state, response, or owner.
+  <span class="pes">Asigna un responsable, genera y edita los tres correos, y envíalos — cada uno a la medida de la
+tienda. Filtra por tipo, estado, respuesta o responsable.</span></p>
+</div>
+<div class="wrap">
+  <div class="filters">
+    <div class="field"><label>Type / Tipo</label><select id="fType"></select></div>
+    <div class="field"><label>State / Estado</label><select id="fState"></select></div>
+    <div class="field"><label>Response / Respuesta</label><select id="fStatus"></select></div>
+    <div class="field"><label>Owner / Responsable</label><select id="fOwner"></select></div>
+    <div class="field search"><label>Search / Buscar</label><input type="search" id="fSearch" placeholder="Store,
+city, note… / Tienda, ciudad, nota…"></div>
+    <button class="reset" id="reset">Reset / Limpiar</button>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+<main class="wrap" id="list"></main>
+<footer>© 2026 Lavalle Haus &nbsp;·&nbsp; Owners &amp; email edits save in your browser / Responsables y
+ediciones se guardan en tu navegador<br>Records from the Refillery Haus outreach / Registros de la gestión de
+Refillery Haus</footer>
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const DATA = [{"type": "Grocer", "state": "California", "region": "Bay Area – Berkeley", "store": "Berkeley Bowl", "city":
+"Berkeley", "desc": "Renowned produce & natural products", "web": "berkeleybowl.com", "email": "", "date": "4/25/25",
+"status": "Contacted", "notes": "Emailed via website form"}, {"type": "Grocer", "state": "California", "region": "Bay Area – Berkeley", "store": "Berkeley Natural Grocery", "city": "Berkeley", "desc": "Community bulk & natural foods", "web":
+"naturalgrocery.com", "email": "", "date": "4/25/25", "status": "Contacted", "notes": "Emailed via website form"}, {"type":
+"Grocer", "state": "California", "region": "Bay Area – Berkeley", "store": "Monterey Market", "city": "Berkeley", "desc":
+"Produce & specialty staple", "web": "montereymarket.com", "email": "info@montereymarket.com", "date": "4/25/25",
+"status": "Contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Bay Area – Oakland", "store":
+"Farmer Joe's Marketplace", "city": "Oakland", "desc": "Family-owned diverse organic market", "web":
+"farmerjoesoakland.com", "email": "info@farmerjoesoakland.com", "date": "4/25/25", "status": "Contacted", "notes": ""},
+{"type": "Grocer", "state": "California", "region": "Bay Area – Oakland", "store": "Lakeshore Natural Foods", "city":
+"Oakland", "desc": "Independent health & wellness store", "web": "lakeshorenatural.com", "email": "", "date": "4/25/25",
+"status": "Contacted", "notes": "Emailed via website form"}, {"type": "Grocer", "state": "California", "region": "Bay Area – Oakland", "store": "Market Hall Foods", "city": "Oakland (Rockridge)", "desc": "Gourmet artisanal & imported foods",
+"web": "rockridgemarkethall.com", "email": "", "date": "4/25/25", "status": "Contacted", "notes": "Emailed via website form"}, {"type": "Grocer", "state": "California", "region": "Bay Area – San Francisco", "store": "Canyon Market", "city":
+"San Francisco", "desc": "Full-service natural & organic market", "web": "canyonmarket.com", "email": "", "date":
+"4/25/25", "status": "Contacted", "notes": "Emailed via website form"}, {"type": "Grocer", "state": "California", "region":
+"Bay Area – San Francisco", "store": "Gus's Community Market", "city": "San Francisco", "desc": "Family-owned grocer, fresh local produce", "web": "gussmarket.com", "email": "contact@gussmarket.com", "date": "4/25/25",
+"status": "Contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Carmel & Monterey", "store": "Grove Market", "city": "Pacific Grove", "desc": "Independent grocer, produce & deli", "web": "", "email": "", "date": "", "status":
+"Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Carmel & Monterey", "store":
+"Jerome's Carmel Valley Market", "city": "Carmel Valley", "desc": "Chef-owned, local/organic, natural meats", "web": "",
+"email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Carmel & Monterey", "store": "Monte Vista Market", "city": "Monterey", "desc": "Fresh produce, community-focused", "web": "",
+"email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Carmel & Monterey", "store": "Nielsen Brothers Market", "city": "Carmel", "desc": "Historic family grocer, fine wines", "web": "",
+"email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Carmel & Monterey", "store": "Troia's Market", "city": "Monterey", "desc": "Groceries & deli staple", "web": "", "email": "", "date":
+"", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Los Angeles", "store":
+"Golden Poppy Market", "city": "Cypress Park, LA", "desc": "Fresh produce, eco household goods", "web": "", "email":
+"", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Los Angeles",
+"store": "Jayde's Market", "city": "Bel Air", "desc": "Organic produce, gourmet deli, wines", "web": "", "email": "", "date":
+"", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Los Angeles", "store":
+"Joan's on Third", "city": "Third St, LA", "desc": "Artisan cheese, prepared foods", "web": "", "email": "", "date": "",
+"status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Los Angeles", "store": "L.A. Grocery & Café", "city": "Melrose Hill, LA", "desc": "3,500+ organic, natural wine, wellness", "web": "", "email": "",
+"date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Los Angeles",
+"store": "Monsieur Marcel Gourmet Market", "city": "Fairfax, LA", "desc": "French gourmet foods, cheese, wine", "web":
+"", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region":
+"Napa", "store": "Oakville Grocery", "city": "Oakville", "desc": "Historic gourmet & local wines", "web":
+"oakvillegrocery.com", "email": "info@oakvillegrocery.com", "date": "4/25/25", "status": "Contacted", "notes": ""},
+{"type": "Grocer", "state": "California", "region": "Sacramento", "store": "Corti Brothers", "city": "Sacramento", "desc":
+"Family gourmet, wines, imports", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Grocer", "state": "California", "region": "Sacramento", "store": "Nugget Markets", "city": "Davis/Sacramento", "desc":
+"Family-owned high-quality chain", "web": "nuggetmarket.com", "email": "", "date": "4/26/25", "status": "Contacted",
+"notes": ""}, {"type": "Grocer", "state": "California", "region": "Sacramento", "store": "Sacramento Natural Foods Co-op",
+"city": "Sacramento", "desc": "Member-owned organic co-op", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Barons Market", "city":
+"San Diego", "desc": "Independent natural & organic", "web": "", "email": "", "date": "", "status": "Not yet contacted",
+"notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Cardiff Seaside Market", "city":
+"Cardiff-by-the-Sea", "desc": "Independent, famous Tri-Tip", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Frazier Farms Market",
+"city": "Vista / Oceanside", "desc": "Family-owned organic, sustainable", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Gelson's Market",
+"city": "Pacific Beach", "desc": "Upscale organic & gourmet", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Jumbo's Naturally",
+"city": "San Diego", "desc": "Organic & natural grocer", "web": "", "email": "", "date": "", "status": "Not yet contacted",
+"notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Ocean Beach People's Organic Food Market", "city": "San Diego", "desc": "Member-owned organic co-op", "web": "", "email": "", "date": "", "status":
+"Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Specialty Produce", "city": "San Diego", "desc": "Wholesale produce open to public", "web": "", "email": "", "date": "", "status":
+"Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "The Mighty Bin",
+"city": "San Diego", "desc": "Zero-waste grocery store", "web": "", "email": "", "date": "", "status": "Not yet contacted",
+"notes": ""}, {"type": "Grocer", "state": "California", "region": "San Diego", "store": "Windmill Farms", "city": "Del Cerro",
+"desc": "Organic & community wellness", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""},
+{"type": "Grocer", "state": "California", "region": "Santa Cruz", "store": "Deluxe Foods of Aptos", "city": "Aptos", "desc":
+"Gourmet groceries & local products", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Grocer", "state": "California", "region": "Santa Cruz", "store": "Food Bin & Herb Room", "city": "Santa Cruz", "desc":
+"Natural/organic foods", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer",
+"state": "California", "region": "Santa Cruz", "store": "New Leaf", "city": "Santa Cruz", "desc": "Local grocery; vendor portal", "web": "newleaf.com", "email": "localfinds@newleaf.com", "date": "4/25/25", "status": "Contacted", "notes":
+"Submitted vendor profile"}, {"type": "Grocer", "state": "California", "region": "Santa Cruz", "store": "Shoppers Corner",
+"city": "Santa Cruz", "desc": "Family-owned, quality meats & produce", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Santa Cruz", "store": "Staff of Life", "city":
+"Santa Cruz", "desc": "Organic & bulk market", "web": "staffoflifemarket.com", "email": "info@staffoflifemarket.com",
+"date": "4/26/25", "status": "Contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "Sonoma", "store":
+"Glen Ellen Village Market / Gene's Fine Foods", "city": "Glen Ellen", "desc": "Neighborhood local & organic market (4 stores)", "web": "glenellenvillagemarket.org", "email": "", "date": "4/26/25", "status": "Contacted", "notes": ""}, {"type":
+"Grocer", "state": "California", "region": "Sonoma", "store": "Oliver's Market", "city": "Santa Rosa", "desc": "Employee- owned natural/organic", "web": "oliversmarket.com", "email": "dmadarang@oliversmarket.com", "date": "4/25/25",
+"status": "In discussion", "notes": "Shared with Wellness Coordinator Don Madarang; follow up June 2"}, {"type":
+"Grocer", "state": "California", "region": "Sonoma", "store": "Pacific Market", "city": "Santa Rosa", "desc": "Independent grocer, fresh produce", "web": "pacificmarket.org", "email": "", "date": "4/26/25", "status": "Contacted", "notes": ""},
+{"type": "Grocer", "state": "California", "region": "South Bay", "store": "Bianchini's Market", "city": "San Carlos", "desc":
+"Independent produce & deli", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Grocer", "state": "California", "region": "South Bay", "store": "Country Sun Natural Foods", "city": "Palo Alto", "desc":
+"Natural & organic foods", "web": "countrysun.com", "email": "lifestylegoods@countrysun.com", "date": "4/26/25",
+"status": "Contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "South Bay", "store": "Draeger's Market", "city": "San Mateo", "desc": "Upscale gourmet & fine wines", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "California", "region": "South Bay", "store": "New Seasons Market",
+"city": "San Jose", "desc": "Community sustainable store", "web": "", "email": "", "date": "", "status": "Not yet contacted",
+"notes": ""}, {"type": "Grocer", "state": "California", "region": "South Bay", "store": "Nob Hill Foods", "city": "South Bay",
+"desc": "Fresh-produce focused grocery", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""},
+{"type": "Grocer", "state": "California", "region": "South Bay", "store": "Roberts Market", "city": "Woodside", "desc":
+"Family-owned quality market", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Grocer", "state": "California", "region": "South Bay", "store": "The Market at Edgewood", "city": "Palo Alto", "desc":
+"Gourmet & specialty foods", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Grocer", "state": "Oregon", "region": "Oregon", "store": "Green Coast Market", "city": "Rockaway Beach", "desc":
+"Fresh, local & sustainable", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer",
+"state": "Oregon", "region": "Oregon", "store": "Oliver Lemon's", "city": "Sisters / Terrebonne", "desc": "Employee- owned, local & natural", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer",
+"state": "Oregon", "region": "Oregon", "store": "The Culinarium", "city": "Ashland", "desc": "Gourmet specialty, olive oils", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Grocer", "state": "Oregon",
+"region": "Oregon", "store": "World Foods Portland", "city": "Portland", "desc": "Specialty local & imported goods",
+"web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Spa & Wellness", "state": "Arizona",
+"region": "Carefree", "store": "CIVANA Wellness Resort and Spa", "city": "Carefree", "desc": "Wellness resort, meditation, spa", "web": "civanacarefree.com", "email": "retail@civanacarefree.com", "date": "5/8/25", "status":
+"Contacted", "notes": ""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Phoenix Metro", "store": "Castle Hot Springs", "city": "Morristown", "desc": "Hot-springs wellness resort", "web": "castlehotsprings.com", "email":
+"info@castlehotsprings.com", "date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Spa & Wellness", "state":
+"Arizona", "region": "Phoenix Metro", "store": "It's All About Your Holistic Studio", "city": "Phoenix", "desc": "Alternative & holistic health", "web": "itsallaboutyoustudio.com", "email": "info@itsallaboutyoustudio.com", "date": "5/8/25",
+"status": "Contacted", "notes": ""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Phoenix Metro", "store":
+"Sonoran Serenity Spa & Holistic Wellness", "city": "Mesa", "desc": "Holistic facials & therapeutic massage", "web":
+"sonoranserenityspa.com", "email": "info@sonoranserenityspa.com", "date": "5/8/25", "status": "Contacted", "notes":
+""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Scottsdale", "store": "DHH Med Spa", "city": "Scottsdale",
+"desc": "Award-winning med spa", "web": "dhhmedspa.com", "email": "", "date": "", "status": "Not a fit", "notes": "No email / no solicitation"}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Scottsdale", "store": "Natural Radiance Aesthetics & Wellness", "city": "Scottsdale", "desc": "Physician-directed medical aesthetics", "web":
+"naturalradiancemedspa.com", "email": "info@naturalradiancemedspa.com", "date": "5/8/25", "status": "Contacted",
+"notes": ""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Scottsdale", "store": "The Perfect Secret Med Spa",
+"city": "Scottsdale", "desc": "Injectables, laser, skincare", "web": "itstheperfectsecret.com", "email":
+"admin@itstheperfectsecret.com", "date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Spa & Wellness",
+"state": "Arizona", "region": "Sedona", "store": "Mii amo", "city": "Sedona", "desc": "Global-leading destination spa",
+"web": "miiamo.com", "email": "", "date": "5/8/25", "status": "Contacted", "notes": "Emailed via website form"}, {"type":
+"Spa & Wellness", "state": "Arizona", "region": "Sedona", "store": "Sedona's New Day Spa", "city": "Sedona", "desc":
+"Desert-nature & Native-inspired rituals", "web": "sedonanewdayspa.com", "email":
+"welcome@sedonanewdayspa.com", "date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Spa & Wellness",
+"state": "Arizona", "region": "Sedona", "store": "The Wilde Resort and Spa", "city": "Sedona", "desc": "Bodywork, meditation, sound healing", "web": "thewilderesort.com", "email": "talktous@thewilderesort.com", "date": "5/8/25",
+"status": "Contacted", "notes": ""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "Tucson", "store": "Miraval Arizona Resort & Spa", "city": "Tucson", "desc": "Wellness journey destination resort", "web": "hyatt.com", "email":
+"arizona.reservations@miravalresorts.com", "date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Spa & Wellness", "state": "Arizona", "region": "White Mountains", "store": "Vibrance Medical Spa", "city": "Show Low", "desc":
+"Locally owned medical & holistic", "web": "vibrancemedspaaz.com", "email": "office@vibrancemedspaaz.com",
+"date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Arizona", "region":
+"Northern AZ", "store": "Desert Refillery", "city": "Flagstaff", "desc": "Refillable & sustainable home goods", "web":
+"desertrefillery.com", "email": "", "date": "5/5/25", "status": "Contacted", "notes": "Emailed via contact page"}, {"type":
+"Refillery / Zero-Waste", "state": "Arizona", "region": "Tucson", "store": "Cero", "city": "Tucson", "desc": "Vegan zero- waste shop", "web": "cerotucson.com", "email": "hello@cerotucson.com", "date": "5/6/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – Berkeley", "store": "Fillgood",
+"city": "Berkeley", "desc": "Zero-waste refill, local delivery", "web": "fillgood.co", "email": "contact@fillgood.co", "date":
+"4/21/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California",
+"region": "Bay Area – East Bay", "store": "Alameda Natural Grocery", "city": "Alameda", "desc": "Bulk foods & eco products", "web": "", "email": "info@eastbaynaturalgrocers.com", "date": "4/22/25", "status": "Contacted", "notes": ""},
+{"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – East Bay", "store": "Mighty Market", "city":
+"Martinez", "desc": "Sustainable home goods & refill", "web": "mighty.market", "email": "hello@mighty.market", "date":
+"4/22/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California",
+"region": "Bay Area – East Bay", "store": "The Filling Station Goods", "city": "Benicia", "desc": "Bulk cleaning & personal care", "web": "thefillingstationgoods.com", "email": "hello@thefillingstationgoods.com", "date": "4/22/25",
+"status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region":
+"Bay Area – Oakland", "store": "Oaktown Spice Shop", "city": "Oakland", "desc": "Bulk herbs, spices, salts, teas",
+"web": "oaktownspiceshop.com", "email": "info@oaktownspiceshop.com", "date": "4/22/25", "status": "In discussion",
+"notes": "Evan forwarded to buyer Ray"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – Oakland", "store": "Re-Up Refills", "city": "Oakland", "desc": "Refill, local & minority-owned focus", "web":
+"wastewhat.org", "email": "sam@wastewhat.org", "date": "4/21/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – Oakland", "store": "The Food Mill",
+"city": "Oakland", "desc": "Bulk foods & eco household", "web": "thefoodmill.com", "email": "support@thefoodmill.com",
+"date": "4/22/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state":
+"California", "region": "Bay Area – Peninsula", "store": "Byrd's Filling Station", "city": "San Mateo", "desc": "Bulk food, cleaners, body care", "web": "byrdsfillingstation.com", "email": "info@byrdsfillingstation.com", "date": "4/21/25",
+"status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region":
+"Bay Area – San Francisco", "store": "Other Avenues Co-op", "city": "San Francisco", "desc": "Worker-owned co-op grocery", "web": "otheravenues.coop", "email": "info@otheravenues.coop", "date": "4/21/25", "status": "In discussion",
+"notes": "Sent full ingredient list to Celia; follow up sent"}, {"type": "Refillery / Zero-Waste", "state": "California",
+"region": "Bay Area – San Francisco", "store": "Rainbow Grocery Cooperative", "city": "San Francisco", "desc": "Co-op, bulk foods & eco goods", "web": "", "email": "", "date": "4/21/25", "status": "In discussion", "notes": "Anna forwarded to buyers twice; follow up in September"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – San Francisco", "store": "Simple", "city": "San Francisco", "desc": "Eco market, refillable home/body", "web": "simple- sf.com", "email": "shopsimple@simple-sf.com", "date": "4/21/25", "status": "Contacted", "notes": "Follow-up sent 5/8"},
+{"type": "Refillery / Zero-Waste", "state": "California", "region": "Bay Area – San Francisco", "store": "The Daisy Refillery", "city": "San Francisco", "desc": "Mobile zero-waste refill service", "web": "thedaisyrefillery.com", "email":
+"info@thedaisyrefillery.com", "date": "4/21/25", "status": "Declined", "notes": "Vendor app required proprietary sourcing info; opted out"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Carmel & Monterey", "store": "The Green Directive", "city": "Monterey", "desc": "Bulk household & personal care", "web": "", "email": "", "date": "", "status":
+"Closed", "notes": "Physical store closed"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Central Coast", "store": "Mayan Collective", "city": "Arroyo Grande", "desc": "Bulk goods + candle bar", "web": "", "email": "",
+"date": "", "status": "Not a fit", "notes": "Has own candle bar / makes own candles"}, {"type": "Refillery / Zero-Waste",
+"state": "California", "region": "Central Coast", "store": "Mission Refill", "city": "Goleta", "desc": "Bulk household & personal care", "web": "missionrefill.com", "email": "info@missionrefill.com", "date": "5/14/25", "status": "In discussion",
+"notes": "Open to scrub samples; quoted $14 tin / $175 bulk wholesale"}, {"type": "Refillery / Zero-Waste", "state":
+"California", "region": "Central Coast", "store": "Sunkissed Pantry", "city": "Santa Barbara", "desc": "Bulk foods & personal care", "web": "sunkissedpantry.com", "email": "", "date": "5/14/25", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Central Coast", "store": "The Refill Shoppe", "city": "Ventura", "desc": "Eco apothecary, 80+ refills", "web": "therefillshoppe.com", "email":
+"hi@therefillshoppe.com", "date": "5/14/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state":
+"California", "region": "Los Angeles", "store": "BYO Long Beach", "city": "Long Beach", "desc": "Plastic-free store, bath products", "web": "byolongbeach.com", "email": "hello@byolongbeach.com", "date": "5/13/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Los Angeles", "store": "Ethikli", "city": "Long Beach", "desc": "Bulk foods & personal care", "web": "ethikli.com", "email": "Katy@ethikli.com", "date": "5/14/25",
+"status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Los Angeles",
+"store": "My Zero Waste Store", "city": "Pasadena", "desc": "Refill, reuse, unpackaged store", "web":
+"myzerowastestore.com", "email": "myzwstore@gmail.com", "date": "5/14/25", "status": "Contacted", "notes": ""},
+{"type": "Refillery / Zero-Waste", "state": "California", "region": "Los Angeles", "store": "Re_Grocery", "city": "Los Angeles", "desc": "B-Corp organic package-free grocery", "web": "regrocery.co", "email": "hello@regrocery.co", "date":
+"5/13/25", "status": "Declined", "notes": "Joseph: not bringing new products now"}, {"type": "Refillery / Zero-Waste",
+"state": "California", "region": "Los Angeles", "store": "Sustain LA", "city": "Los Angeles", "desc": "Female-run plastic- free refill hub", "web": "sustainla.com", "email": "hello@sustainLA.com", "date": "5/13/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Los Angeles", "store": "The Well Refill",
+"city": "Topanga", "desc": "High-end skincare refill station", "web": "thewellrefill.com", "email": "work@thewellrefill.com",
+"date": "5/14/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region":
+"Napa", "store": "Juniper Station", "city": "Napa", "desc": "Eco refillable home & personal care", "web":
+"juniperstationnapa.com", "email": "hello@juniperstationnapa.com", "date": "4/22/25", "status": "Contacted", "notes":
+"Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Sacramento", "store": "Nudge Eco Store", "city": "Sacramento", "desc": "Bulk shower steamers & low-waste", "web": "nudgeecostore.com", "email":
+"nlee@nudgeecostore.com", "date": "5/14/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "California", "region": "Sacramento", "store": "Of Land and Sea Co.", "city": "Sacramento", "desc": "Bulk cleaning & personal care", "web": "oflandandseaco.com", "email": "", "date": "5/14/25", "status": "Contacted", "notes":
+"Emailed via contact page"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Sacramento", "store":
+"Refill Madness (Sacramento)", "city": "Sacramento", "desc": "Zero-waste refill store", "web":
+"refillmadnesssacramento.com", "email": "sloane@refillmadnesssacramento.com", "date": "5/14/25", "status": "Not a fit", "notes": "Email bounced; couldn't find correct address"}, {"type": "Refillery / Zero-Waste", "state": "California",
+"region": "Sacramento", "store": "Village General Store and Refillery", "city": "Roseville", "desc": "Bulk household & personal care", "web": "villagegeneralstore.co", "email": "hello@villagegeneralstore.co", "date": "5/14/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "San Diego", "store":
+"Earthwell Refill", "city": "San Diego", "desc": "Bulk household & personal care", "web": "earthwellrefill.com", "email":
+"earthwellrefill@gmail.com", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "California", "region": "San Diego", "store": "Origins Grocer", "city": "San Diego", "desc": "Bulk foods & personal care", "web": "originsgrocer.com", "email": "hello@originsgrocer.com", "date": "5/15/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "San Diego", "store": "Refill Pantry San Diego", "city": "San Diego", "desc": "Bulk household & personal care", "web": "refillpantrysd.com", "email":
+"refillpantrysd@gmail.com", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "California", "region": "Sierra", "store": "Gaia Soap Supply", "city": "Nevada City", "desc": "Bulk household & personal care", "web": "gaiasoapsupply.com", "email": "", "date": "5/14/25", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Sonoma", "store": "Community Market",
+"city": "Santa Rosa", "desc": "Bulk foods, cleaning & personal care", "web": "cmnaturalfoods.com", "email": "", "date":
+"5/14/25", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Refillery / Zero-Waste", "state":
+"California", "region": "Sonoma", "store": "Homebody Refill", "city": "Sebastopol", "desc": "Bulk refills, low-waste living",
+"web": "homebodyrefill.com", "email": "info@homebodyrefill.com", "date": "4/22/25", "status": "Contacted", "notes":
+"Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Sonoma", "store": "Refill Madness", "city": "Sonoma", "desc": "Zero-waste refillable goods", "web": "", "email": "sonomarefill@gmail.com",
+"date": "4/22/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state":
+"California", "region": "Sonoma", "store": "Refill Mercantile", "city": "Petaluma", "desc": "Curated low-waste refill store",
+"web": "refillmerc.com", "email": "hello@refillmerc.com", "date": "4/22/25", "status": "Contacted", "notes": "Follow up reminder 7/23"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "Sonoma", "store": "Sonoma County Trading", "city": "Sonoma County", "desc": "Bulk household & personal care", "web": "socotradingcompany.com",
+"email": "kim@socotradingcompany.com", "date": "5/14/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "South Bay", "store": "Ethos", "city": "Los Gatos", "desc": "Sustainable refill, social justice", "web": "ethossantacruz.com", "email": "hello@ethossantacruz.com", "date": "4/21/25", "status":
+"Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "South Bay",
+"store": "FillerUp Shop", "city": "Morgan Hill", "desc": "Bulk eco household & personal care", "web": "fillerup.shop",
+"email": "email@fillerup.shop", "date": "4/21/25", "status": "Contacted", "notes": "Follow-up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "South Bay", "store": "Right On Refillery", "city": "Los Altos", "desc": "Low- waste lifestyle & bulk refill", "web": "", "email": "", "date": "4/22/25", "status": "Contacted", "notes": "Emailed via website form"}, {"type": "Refillery / Zero-Waste", "state": "California", "region": "South Bay", "store": "The Ecology Center",
+"city": "San Juan Capistrano", "desc": "Bulk olive oils & low-waste goods", "web": "theecologycenter.org", "email": "",
+"date": "", "status": "Not a fit", "notes": "Non-profit"}, {"type": "Refillery / Zero-Waste", "state": "California", "region":
+"South Bay", "store": "The Source Zero", "city": "San Jose", "desc": "San Jose's first zero-waste store", "web":
+"thesourcezerosj.com", "email": "ruth@thesourcezerosj.com", "date": "4/21/25", "status": "Contacted", "notes": "Follow- up sent 5/8"}, {"type": "Refillery / Zero-Waste", "state": "Illinois", "region": "Illinois", "store": "Dill Pickle Food Co-Op",
+"city": "Chicago", "desc": "Community-owned grocery, bulk", "web": "dillpickle.coop", "email":
+"josh.jensen@dillpickle.coop", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Illinois", "region": "Illinois", "store": "Eco & The Flamingo", "city": "Chicago", "desc": "Chicago's first zero-waste store", "web": "theecoflamingo.com", "email": "hello@TheEcoFlamingo.com", "date": "5/15/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Illinois", "region": "Illinois", "store": "Gaia's Market & Refillery",
+"city": "Homewood", "desc": "Low-waste market w/ refill bar", "web": "gaiasmarket.com", "email":
+"gaiasmarketHF@gmail.com", "date": "5/15/25", "status": "Declined", "notes": "Sarah scaling down; will reach out in future"}, {"type": "Refillery / Zero-Waste", "state": "Illinois", "region": "Illinois", "store": "Greener Goods", "city":
+"Champaign", "desc": "Eco low-waste plastic-free shop", "web": "shopgreenergoodsmahomet.square.site", "email":
+"greener.goods.mahomet@gmail.com", "date": "5/15/25", "status": "In discussion", "notes": "Todd: discussing internally re: samples"}, {"type": "Refillery / Zero-Waste", "state": "Illinois", "region": "Illinois", "store": "The Refilleri", "city":
+"Chicago", "desc": "Refillable personal care & home", "web": "refilleri.com", "email": "Kelli@refilleri.com", "date":
+"5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Illinois", "region": "Illinois",
+"store": "The Unwaste Shop", "city": "Chicago", "desc": "Zero-waste refill station", "web": "theunwasteshop.com",
+"email": "hello@theunwasteshop.com", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero- Waste", "state": "Indiana", "region": "Indiana", "store": "Bloomingfoods Co-op Market", "city": "Bloomington", "desc":
+"Community-owned co-op grocery", "web": "bloomingfoods.coop", "email": "INFO@BLOOMINGFOODS.COOP",
+"date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Indiana", "region":
+"Indiana", "store": "Fresh Thyme Market", "city": "Multiple IN", "desc": "Bulk foods & coffee chain", "web":
+"freshthyme.com", "email": "sgordon@freshthyme.com", "date": "5/28/25", "status": "In discussion", "notes": "Directed to vendor portal; emailed Savia (candles)"}, {"type": "Refillery / Zero-Waste", "state": "Indiana", "region": "Indiana",
+"store": "Meli Market", "city": "Columbus", "desc": "Beginner-friendly eco products", "web": "melimarket.co", "email":
+"hello@melimarket.co", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state":
+"Indiana", "region": "Indiana", "store": "Sixth and Zero", "city": "Evansville", "desc": "Evansville's only refillery", "web":
+"sixthandzero.com", "email": "hello@sixthandzero.com", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type":
+"Refillery / Zero-Waste", "state": "Indiana", "region": "Indiana", "store": "The Green Bee", "city": "Goshen", "desc":
+"Zero-waste refillable shop", "web": "thegreenbee22.com", "email": "thegreenbee22@gmail.com", "date": "5/15/25",
+"status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "City Folk's Farm Shop", "city": "Columbus", "desc": "Bulk herbs, teas, personal care", "web": "cityfolksfarmshop.com", "email":
+"info@cityfolksfarmshop.com", "date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Ohio", "region": "Ohio", "store": "Cleveland Refill", "city": "Cleveland", "desc": "Family-owned refill & sustainability", "web": "clevelandrefill.com", "email": "clevelandrefill@gmail.com", "date": "5/28/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "For Their Future",
+"city": "Norwalk", "desc": "Bulk household & personal care", "web": "fortheirfutureco.com", "email":
+"hello@fortheirfutureco.com", "date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Ohio", "region": "Ohio", "store": "Forever Mindful", "city": "Warren", "desc": "Refillable household & personal care", "web": "forevermindful.shop", "email": "forevermindfulllc@gmail.com", "date": "5/28/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "Just Toledo", "city": "Toledo",
+"desc": "Zero-waste community store", "web": "justtoledo.net", "email": "justtoledostore@gmail.com", "date": "5/28/25",
+"status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "My Eco Shop", "city": "Akron", "desc": "Bulk household & personal care", "web": "myecoshop.me", "email":
+"support@myecoshopakron.com", "date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero- Waste", "state": "Ohio", "region": "Ohio", "store": "Reduce & Reuse Refillery", "city": "Dayton", "desc": "Home & body refillery", "web": "reducereuserefillery.com", "email": "", "date": "5/28/25", "status": "Contacted", "notes": "Filled online contact form"}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "Refill Goodness", "city":
+"Cleveland / Lakewood", "desc": "Refillable household & personal care", "web": "refillgoodness.com", "email":
+"refillgoodness@gmail.com", "date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Ohio", "region": "Ohio", "store": "Rewash Refillery", "city": "Columbus", "desc": "Clintonville sustainable refillery", "web": "rewashrefillery.com", "email": "hello@rewashrefillery.com", "date": "5/28/25", "status": "Contacted",
+"notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "Simply Zero", "city": "Cincinnati",
+"desc": "Zero-waste lifestyle & refillery", "web": "simplyzero.co", "email": "", "date": "5/28/25", "status": "Contacted",
+"notes": "Applied via Typeform"}, {"type": "Refillery / Zero-Waste", "state": "Ohio", "region": "Ohio", "store": "The Eco- Fill Shop", "city": "Bowling Green", "desc": "Bulk household & personal care", "web": "ecofillshop.com", "email":
+"joci@jociandfriendsllc.com", "date": "5/28/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Oregon", "region": "Oregon – Coast", "store": "Coos Head Food Co-op", "city": "Coos Bay", "desc": "Bulk foods, teas, soap", "web": "coosheadfood.coop", "email": "it@coosheadfoodcoop.org", "date": "5/15/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Oregon", "region": "Oregon – Coast", "store":
+"Oceana Foods", "city": "Newport", "desc": "Bulk foods, teas, coffee", "web": "oceanafoods.org", "email":
+"rhonda@oceanafoods.org", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste",
+"state": "Oregon", "region": "Oregon – Portland", "store": "Mama & Hapa's Zero Waste Shop", "city": "Portland", "desc":
+"Refill w/ RFID system, 3 locations", "web": "mamahapa.com", "email": "info@mamahapa.com", "date": "5/15/25",
+"status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Oregon", "region": "Oregon – Portland",
+"store": "Null Refillery", "city": "Portland", "desc": "Eco cleaning & body refills", "web": "nullrefillery.com", "email":
+"nullrefillery@gmail.com", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state":
+"Oregon", "region": "Oregon – Portland", "store": "The Realm Refillery", "city": "Portland", "desc": "Package-free groceries & refill", "web": "therealmrefillery.com", "email": "hello@therealmrefillery.com", "date": "5/15/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Oregon", "region": "Oregon – Portland", "store":
+"Way of Being", "city": "Portland", "desc": "Low-waste personal care & home", "web": "wayofbeing.co", "email":
+"hello@wayofbeing.co", "date": "5/15/25", "status": "Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state":
+"Oregon", "region": "Oregon – Southern", "store": "Ashland Food Co-op", "city": "Ashland", "desc": "Bulk foods & personal care co-op", "web": "ashlandfood.coop", "email": "orders@ashlandfood.coop", "date": "5/15/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Oregon", "region": "Oregon – Willamette", "store":
+"Mountain Rose Herbs Mercantile", "city": "Eugene", "desc": "Bulk herbs, teas, low-waste goods", "web":
+"mountainroseherbsmercantile.com", "email": "support@mountainroseherbs.com", "date": "5/15/25", "status":
+"Contacted", "notes": ""}, {"type": "Refillery / Zero-Waste", "state": "Oregon", "region": "Oregon – Willamette", "store":
+"Sustainable Rituals", "city": "McMinnville", "desc": "Refillable household & personal care", "web":
+"sustainablerituals.com", "email": "haley@sustainablerituals.com", "date": "5/15/25", "status": "Contacted", "notes": ""},
+{"type": "Gift Shop", "state": "Arizona", "region": "Phoenix Metro", "store": "Citrine Natural Beauty Bar", "city":
+"Phoenix", "desc": "Clean beauty, skincare & wellness", "web": "citrinenaturalskin.com", "email":
+"info@citrinebeautybar.com", "date": "5/5/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state": "Arizona",
+"region": "Phoenix Metro", "store": "Frances", "city": "Phoenix", "desc": "Modern boutique w/ vintage charm", "web":
+"shopfrancesboutique.com", "email": "info@francesvintage.com", "date": "5/5/25", "status": "Contacted", "notes": ""},
+{"type": "Gift Shop", "state": "Arizona", "region": "Phoenix Metro", "store": "Local Nomad", "city": "Phoenix", "desc":
+"Handcrafted small-batch gifts & clothing", "web": "localnomadshop.com", "email":
+"HELLO@LOCALNOMADSHOP.COM", "date": "5/5/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state":
+"Arizona", "region": "Phoenix Metro", "store": "Signatures", "city": "Phoenix", "desc": "Neighborhood boutique, Best of PHX 2024", "web": "shopsignatures.com", "email": "web@shopsignatures.com", "date": "5/5/25", "status": "Contacted",
+"notes": ""}, {"type": "Gift Shop", "state": "Arizona", "region": "Phoenix Metro", "store": "urbAna", "city": "Phoenix",
+"desc": "Sophisticated curated home/gifts", "web": "urbanashop.com", "email": "contactus@urbanashop.com", "date":
+"5/5/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state": "Arizona", "region": "Scottsdale", "store":
+"Giftology", "city": "Scottsdale", "desc": "Curated gift giving", "web": "giftologyaz.com", "email":
+"giftologyaz@gmail.com", "date": "5/5/25", "status": "In discussion", "notes": "Rupa: revisit Q4; follow up early Oct '25"}, {"type": "Gift Shop", "state": "California", "region": "Bay Area – San Francisco", "store": "Foggy Notion", "city":
+"San Francisco", "desc": "Sustainable handmade goods, candles", "web": "foggy-notion.com", "email": "info@foggy- notion.com", "date": "5/1/25", "status": "Declined", "notes": "Alissa: 'No thank you but good luck'. Re-engage when refills ready"}, {"type": "Gift Shop", "state": "California", "region": "Bay Area – San Francisco", "store": "Hilltop Gifts",
+"city": "San Francisco", "desc": "Home decor & personal accessory gifts", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Bay Area – San Francisco", "store":
+"Jenny Lemons", "city": "San Francisco", "desc": "Quirky food-themed accessories & home", "web":
+"jennylemons.com", "email": "hello@jennylemons.com", "date": "5/1/25", "status": "Contacted", "notes": ""}, {"type":
+"Gift Shop", "state": "California", "region": "Bay Area – San Francisco", "store": "Local Take", "city": "San Francisco",
+"desc": "SF-made art, apparel, gifts", "web": "localtakesf.com", "email": "info@localtakesf.com", "date": "5/1/25",
+"status": "Interested", "notes": "Jenn intrigued ('slightly scandalous'); samples sent to 4122 18th St"}, {"type": "Gift Shop", "state": "California", "region": "Bay Area – San Francisco", "store": "Post.Script", "city": "San Francisco", "desc":
+"Refined stationery, home goods, gifts", "web": "postscriptshop.com", "email": "hello@ps-sf.com", "date": "5/1/25",
+"status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Carmel & Monterey", "store":
+"AMI Carmel", "city": "Carmel", "desc": "'Best Gift Shop' Carmel Pine Cone 2024", "web": "amicarmel.com", "email":
+"ami.carmel.ami@gmail.com", "date": "5/12/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state":
+"California", "region": "Carmel & Monterey", "store": "Carmel Home Collection", "city": "Carmel", "desc": "Timeless coastal home & gifts", "web": "carmelhomecollection.com", "email": "info@carmelhomecollection.com", "date":
+"5/12/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Carmel & Monterey",
+"store": "Home Alchemy", "city": "Carmel", "desc": "Gifts, candles, decor, body care", "web":
+"homealchemycarmel.com", "email": "AlchemyCarmel@gmail.com", "date": "5/12/25", "status": "Contacted", "notes":
+""}, {"type": "Gift Shop", "state": "California", "region": "Carmel & Monterey", "store": "Host House Carmel", "city":
+"Carmel", "desc": "Home, serveware, hosting gifts", "web": "shophosthouse.com", "email":
+"hello@hosthousecarmel.com", "date": "5/12/25", "status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state":
+"California", "region": "Carmel & Monterey", "store": "Somewhere in Carmel", "city": "Carmel", "desc": "Cozy collective of artisan goods", "web": "somewhereincarmel.com", "email": "findme@somewhereincarmel.com", "date": "5/12/25",
+"status": "Contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Santa Cruz", "store": "Made in Santa Cruz", "city": "Santa Cruz", "desc": "Locally made products & souvenirs", "web": "", "email": "", "date": "",
+"status": "Not yet contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Santa Cruz", "store":
+"Magnolia Fine Gifts & Gallery", "city": "Santa Cruz", "desc": "Artisan gifts, candles, art pieces", "web": "", "email": "",
+"date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region": "Santa Cruz",
+"store": "Shay's Flowers and Gifts", "city": "Santa Cruz", "desc": "Floral arrangements & gifts", "web": "", "email": "",
+"date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Gift Shop", "state": "California", "region":
+"Watsonville/Capitola", "store": "Betty's Flowers and Gifts", "city": "Watsonville", "desc": "Flowers, houseplants, gift baskets", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Gift Shop", "state":
+"California", "region": "Watsonville/Capitola", "store": "Clementine & Co.", "city": "Capitola", "desc": "Curated gifts & specialty items", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Bay Area – Berkeley", "store": "A Priori", "city": "Berkeley", "desc": "Home decor store, sculptural objects", "web": "", "email": "", "date": "4/24/24", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Boutique / Concept", "state": "California", "region": "Bay Area – Berkeley", "store": "The Gardener", "city": "Berkeley", "desc": "Gardening, home goods & body care", "web": "thegardener.com", "email":
+"buying@thegardener.com", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state":
+"California", "region": "Bay Area – Oakland", "store": "Jessica Hische & Friends", "city": "Oakland", "desc": "Art, books, curated creative tools", "web": "jessicahische.com", "email": "studio@jessicahische.com", "date": "4/24/24", "status":
+"Contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Bay Area – Oakland", "store":
+"McMullen Boutique", "city": "Oakland", "desc": "Inclusive luxury concept shop", "web": "shopmcmullen.com", "email":
+"hello@shopmcmullen.com", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state":
+"California", "region": "Bay Area – San Francisco", "store": "ANOMIE", "city": "San Francisco", "desc": "Emerging independent brands", "web": "shopanomie.com", "email": "hello@shopanomie.com", "date": "4/24/24", "status":
+"Contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Bay Area – San Francisco",
+"store": "Hero Shop", "city": "San Francisco", "desc": "Concept store (ex-Vogue editor)", "web": "", "email": "", "date":
+"4/24/24", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Boutique / Concept", "state":
+"California", "region": "Bay Area – San Francisco", "store": "Le Point", "city": "San Francisco", "desc": "Modern minimalist fashion & accessories", "web": "shoplepoint.com", "email": "hello@shoplepoint.com", "date": "4/23/24",
+"status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Bay Area – San Francisco", "store": "March SF", "city": "San Francisco", "desc": "High-end minimalist boutique", "web": "marchsf.com",
+"email": "info@marchsf.com", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept",
+"state": "California", "region": "Bay Area – San Francisco", "store": "Rare Device", "city": "San Francisco", "desc":
+"Design store & gallery", "web": "raredevice.net", "email": "customerservice@raredevice.net", "date": "4/24/24",
+"status": "Contacted", "notes": "Also re-contacted 5/1/25"}, {"type": "Boutique / Concept", "state": "California", "region":
+"Bay Area – San Francisco", "store": "Reliquary", "city": "San Francisco", "desc": "Vintage & contemporary clothing",
+"web": "reliquarysf.com", "email": "info@reliquarysf.com", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type":
+"Boutique / Concept", "state": "California", "region": "Half Moon Bay", "store": "Jupiter & Main", "city": "Half Moon Bay",
+"desc": "Curated home goods & lifestyle", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes":
+"Website under construction until Spring '25"}, {"type": "Boutique / Concept", "state": "California", "region": "Los Angeles", "store": "Burro", "city": "Venice", "desc": "Bohemian coastal, candles & self-care", "web": "", "email": "",
+"date": "4/24/24", "status": "Contacted", "notes": "Emailed via contact page"}, {"type": "Boutique / Concept", "state":
+"California", "region": "Los Angeles", "store": "General Store", "city": "Venice", "desc": "Cult-favorite handmade lifestyle store", "web": "shop-generalstore.com", "email": "sales@shop-generalstore.com", "date": "4/24/24", "status":
+"Contacted", "notes": "Benchmark for brands like this"}, {"type": "Boutique / Concept", "state": "California", "region":
+"Los Angeles", "store": "Kitson", "city": "West Hollywood", "desc": "Fashion, beauty & novelty boutique", "web": "",
+"email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California",
+"region": "Los Angeles", "store": "Midland", "city": "Culver City / Silver Lake", "desc": "Desert-inspired slow fashion",
+"web": "shop-midland.com", "email": "howdy@shop-midland.com", "date": "4/24/24", "status": "Contacted", "notes":
+"Strongly aligned in tone & aesthetic"}, {"type": "Boutique / Concept", "state": "California", "region": "Los Angeles",
+"store": "Tansy", "city": "Silver Lake", "desc": "Plant & lifestyle ritual shop", "web": "shoptansy.com", "email":
+"support@shoptansy.com", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state":
+"California", "region": "Los Angeles", "store": "The Detox Market", "city": "West Hollywood", "desc": "Clean beauty concept store", "web": "", "email": "", "date": "4/24/24", "status": "Interested", "notes": "Positive reply; completed brand submission form"}, {"type": "Boutique / Concept", "state": "California", "region": "Los Angeles", "store": "Wild Flora",
+"city": "Studio City", "desc": "Floral studio + gift/lifestyle, candles", "web": "", "email": "", "date": "", "status": "Contacted",
+"notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Los Angeles", "store": "Wolf & Badger", "city":
+"West Hollywood", "desc": "Global marketplace, independent brands", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Marin", "store": "Blanc", "city":
+"San Anselmo", "desc": "Curated fashion & home goods", "web": "blancboutique.com", "email":
+"FASHION@BLANCBOUTIQUE.COM", "date": "4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Sacramento", "store": "R Cubed Lifestyle", "city": "Sacramento", "desc":
+"Curated gifts & clothing boutique", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Boutique / Concept", "state": "California", "region": "Santa Cruz", "store": "Home/Work", "city": "Santa Cruz", "desc":
+"Modern home goods & lifestyle", "web": "shophomework.com", "email": "hello@shophomework.com", "date":
+"4/24/24", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "California", "region": "Santa Cruz",
+"store": "Stripe", "city": "Santa Cruz", "desc": "Vintage & modern clothing, home, gifts", "web": "stripethestore.com",
+"email": "anne@stripethestore.com", "date": "5/8/25", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept",
+"state": "California", "region": "Santa Cruz", "store": "Wallflower Boutique", "city": "Santa Cruz", "desc": "Women's clothing & gifts", "web": "", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Boutique / Concept",
+"state": "California", "region": "Sierra", "store": "Kitkitdizzi", "city": "Nevada City", "desc": "Local artisan gifts & home goods", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept", "state":
+"California", "region": "Sonoma", "store": "Ooh La Luxe", "city": "Santa Rosa", "desc": "Trendy & classic clothing boutique", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept",
+"state": "Oregon", "region": "Oregon – Portland", "store": "Ecovibe", "city": "Portland", "desc": "Eco tableware, planters, furniture", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept",
+"state": "Oregon", "region": "Oregon – Portland", "store": "Notary Ceramics", "city": "Portland", "desc": "Minimalist pottery & home decor", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type": "Boutique / Concept", "state": "Oregon", "region": "Oregon – Portland", "store": "Tender Loving Empire", "city": "Portland", "desc":
+"Record label + handcrafted goods", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Boutique / Concept", "state": "Oregon", "region": "Oregon – Portland", "store": "Woonwinkel", "city": "Portland", "desc":
+"Design-forward home goods", "web": "", "email": "", "date": "", "status": "Not yet contacted", "notes": ""}, {"type":
+"Home & Lifestyle", "state": "California", "region": "Carmel & Monterey", "store": "Asilomar Gift Shop", "city": "Pacific Grove", "desc": "Conference grounds gift shop", "web": "visitasilomar.com", "email": "", "date": "", "status": "Contacted",
+"notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Carmel & Monterey", "store": "Carmel Bay Company", "city": "Carmel", "desc": "Home decor, gifts, local products", "web": "carmelbaycompany.com", "email": "",
+"date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Carmel & Monterey", "store": "Eco Carmel", "city": "Carmel", "desc": "Eco sustainable home & lifestyle", "web": "ecocarmel.com",
+"email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region":
+"Carmel & Monterey", "store": "Holman Ranch", "city": "Carmel Valley", "desc": "Winery; candle+wine ambiance",
+"web": "holmanranch.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state":
+"California", "region": "Carmel & Monterey", "store": "Jan de Luz Linens", "city": "Carmel-by-the-Sea", "desc": "Fine linens, gifting & self-care", "web": "jandeluzlinens.com", "email": "", "date": "", "status": "Contacted", "notes": ""},
+{"type": "Home & Lifestyle", "state": "California", "region": "Carmel & Monterey", "store": "Lula's Chocolates", "city":
+"Carmel", "desc": "Chocolatier; gift pairing", "web": "lulaschocolates.com", "email": "", "date": "", "status": "Contacted",
+"notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Carmel & Monterey", "store": "tancredi & Morgen", "city": "Carmel", "desc": "Home goods, candle pairs with decor", "web": "tancrediandmorgen.com", "email":
+"", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Marin",
+"store": "Bloomingayles", "city": "Mill Valley", "desc": "Eco floral & home goods", "web": "bloomingaylesmarin.com",
+"email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region":
+"Marin", "store": "Heath Ceramics", "city": "Sausalito", "desc": "Handcrafted sustainable ceramics", "web":
+"heathceramics.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state":
+"California", "region": "Marin", "store": "Margaret O'Leary", "city": "Mill Valley", "desc": "Sustainable high-quality knitwear", "web": "margaretoleary.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Marin", "store": "Pollen & Wool", "city": "Corte Madera", "desc": "Locally made eco-friendly goods", "web": "delilahstudios.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type":
+"Home & Lifestyle", "state": "California", "region": "Marin", "store": "Sausalito Books by the Bay", "city": "Sausalito",
+"desc": "Books + local artisan products", "web": "sausalitobooksbythebay.com", "email": "", "date": "", "status":
+"Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Marin", "store": "Studio 333", "city":
+"Sausalito", "desc": "Art/design gallery, sustainable goods", "web": "studio333.info", "email": "", "date": "", "status":
+"Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Marin", "store": "The Goods",
+"city": "Mill Valley", "desc": "Eco artisanal goods boutique", "web": "thegoodsmv.com", "email": "", "date": "", "status":
+"Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store": "Acres Home + Garden", "city": "Napa", "desc": "Napa Valley sustainable goods", "web": "acreshomeandgarden.com", "email": "",
+"date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store":
+"Blackbird of Calistoga", "city": "Calistoga", "desc": "Eco clothing & home goods", "web": "blackbirdofcalistoga.com",
+"email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region":
+"Napa", "store": "Elyse Walker", "city": "St. Helena", "desc": "Luxury boutique, sustainable focus", "web":
+"elysewalker.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state":
+"California", "region": "Napa", "store": "Erin Martin Design", "city": "Napa", "desc": "Sustainable high-quality home decor", "web": "erinmartin.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle",
+"state": "California", "region": "Napa", "store": "Napa General Store", "city": "Napa", "desc": "Rustic Napa Valley artisan goods", "web": "napageneralstore.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store": "Napa Valley Vintage Home", "city": "St. Helena", "desc":
+"Local & European artisanal goods", "web": "vintagehomenapavalley.com", "email": "", "date": "", "status": "Contacted",
+"notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store": "The French Laundry Garden Shop", "city": "Yountville", "desc": "Local artisanal home & garden", "web": "thomaskeller.com", "email": "", "date": "",
+"status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store": "The Olive Press", "city": "Napa", "desc": "Local artisanal olive oils", "web": "theolivepress.com", "email": "", "date": "", "status":
+"Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Napa", "store": "V Marketplace",
+"city": "Yountville", "desc": "Collection of artisanal boutiques", "web": "theestateyountville.com", "email": "", "date": "",
+"status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store":
+"Blue Eyed Girl", "city": "Laguna Niguel", "desc": "Clothing, candles & self-care", "web": "shopblueeyedgirl.com",
+"email": "", "date": "9/15/24", "status": "In discussion", "notes": "Alexis (mgr): district mgr to review"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Brick Market Boutique", "city": "Anaheim", "desc":
+"Clothing, candles & self-care", "web": "brickmarketboutique.com", "email": "", "date": "9/14/24", "status": "In discussion", "notes": "Alyssa: owner Jen may reach out"}, {"type": "Home & Lifestyle", "state": "California", "region":
+"Orange County", "store": "Callie Girl Boutique", "city": "Mission Viejo", "desc": "Clothing, candles & self-care", "web":
+"calliegirloc.com", "email": "", "date": "9/14/24", "status": "In discussion", "notes": "Mandy: owner back next day, likely display on counter"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Fleur De Lys", "city": "Costa Mesa", "desc": "Refined home goods boutique", "web": "shopfleurdelys.com", "email": "", "date":
+"9/13/24", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Juxtaposition Home", "city": "Newport Beach", "desc": "Home goods & lifestyle boutique", "web": "",
+"email": "", "date": "9/13/24", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California",
+"region": "Orange County", "store": "Magnolia Boutique", "city": "Arcadia", "desc": "Luxury curated home decor", "web":
+"magnoliaboutiquearcadia.com", "email": "", "date": "9/14/24", "status": "In discussion", "notes": "Dropped to employee; will show owner"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Olive Atelier",
+"city": "Orange County", "desc": "Artisan makers, hand-poured goods", "web": "", "email": "", "date": "9/13/24", "status":
+"Interested", "notes": "Susie (employee) received; buyer Kathy – loved the candles"}, {"type": "Home & Lifestyle",
+"state": "California", "region": "Orange County", "store": "Phyllisophical", "city": "Tustin", "desc": "Clothing, candles & self-care", "web": "shopphyllis.com", "email": "", "date": "9/14/24", "status": "In discussion", "notes": "Miriam: DM them on Instagram with differentiators"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store":
+"Seaside Gallery and Goods", "city": "Newport Beach", "desc": "High-quality locally crafted goods", "web":
+"seasidegalleryandgoods.com", "email": "", "date": "9/13/24", "status": "Contacted", "notes": "Basket dropped"}, {"type":
+"Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Shoppe Amber Interiors", "city":
+"Calabasas area", "desc": "Elevated home & lifestyle (well-known)", "web": "shoppeamberinteriors.com", "email":
+"buying@shoppeamberinteriors.com", "date": "9/15/24", "status": "Interested", "notes": "Employee loved candles & smell; forwarded to buyers Dalia/Monica/Kate"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Spice & Tulips", "city": "Tustin", "desc": "Artisanal self-care, flowers, candles", "web":
+"spiceandtulips.com", "email": "", "date": "9/14/24", "status": "In discussion", "notes": "Paris (employee) to give to manager"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Stevie Sister", "city":
+"Newport Beach", "desc": "Bohemian eco-conscious boutique", "web": "steviesister.com", "email": "", "date": "9/15/24",
+"status": "In discussion", "notes": "Nikki (employee) to give to owner"}, {"type": "Home & Lifestyle", "state": "California",
+"region": "Orange County", "store": "Trois Interiors", "city": "Laguna Niguel", "desc": "Home goods & lifestyle boutique",
+"web": "laguna.myshowroomsoftware.com", "email": "", "date": "9/13/24", "status": "Contacted", "notes": ""}, {"type":
+"Home & Lifestyle", "state": "California", "region": "Orange County", "store": "Tuvalu", "city": "Laguna Beach", "desc":
+"Coastal eco home boutique", "web": "tuvaluhome.com", "email": "", "date": "9/13/24", "status": "Declined", "notes":
+"Buyer declined; told them to keep basket as gift"}, {"type": "Home & Lifestyle", "state": "California", "region": "Orange County", "store": "j o l i e boutiques", "city": "Newport Beach", "desc": "Clothing, candles & self-care", "web":
+"jolieboutiques.com", "email": "", "date": "9/15/24", "status": "Contacted", "notes": "Staff unfriendly; low chance"},
+{"type": "Home & Lifestyle", "state": "California", "region": "Sonoma", "store": "Chateau Sonoma", "city": "Sonoma",
+"desc": "French-inspired sustainable home decor", "web": "chateausonoma.com", "email": "", "date": "4/24/24",
+"status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "Sonoma", "store": "La Dolce Vita Wine Lounge", "city": "Petaluma", "desc": "Wine lounge, local artisanal products", "web": "ldvwine.com",
+"email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region":
+"Sonoma", "store": "Petaluma Home and Garden", "city": "Petaluma", "desc": "Curated eco-friendly home goods",
+"web": "", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California",
+"region": "Sonoma", "store": "Summer Vine", "city": "Sonoma", "desc": "Eco home goods & gifts boutique", "web":
+"summervinesonoma.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle",
+"state": "California", "region": "South Bay", "store": "Domus", "city": "Los Gatos", "desc": "Kitchenware & unique gifts",
+"web": "", "email": "", "date": "", "status": "Not a fit", "notes": "Carries Rosy – circle back later"}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Kismet Boutique", "city": "Los Gatos", "desc": "Candles, home decor, self-care", "web": "kismetlg.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "La Jolie Maison", "city": "Morgan Hill", "desc": "Soaps, candles & home", "web": "maisona.shop", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Ladera Garden and Gifts", "city": "Palo Alto", "desc":
+"Garden, gifts & self-care", "web": "", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Leaf and Petal", "city": "Palo Alto", "desc": "Home & self- care boutique", "web": "lpetal.com", "email": "", "date": "", "status": "Contacted", "notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Makers Market", "city": "Santana Row, San Jose",
+"desc": "Local makers marketplace", "web": "makersmarket.us", "email": "", "date": "", "status": "Contacted", "notes":
+""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Romantiques", "city": "Los Gatos",
+"desc": "Self-care gifts & home decor", "web": "shopromantiques.com", "email": "", "date": "", "status": "Contacted",
+"notes": ""}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "The Butter Paddle", "city":
+"Los Gatos", "desc": "Home decor & gourmet gifts", "web": "butterpaddle.com", "email":
+"thebutterpaddle.orders@gmail.com", "date": "5/12/25", "status": "Contacted", "notes": "Carries Rosy – approach once full line ready"}, {"type": "Home & Lifestyle", "state": "California", "region": "South Bay", "store": "Viva O Sol", "city":
+"Los Gatos", "desc": "Home & self-care boutique", "web": "vivaosol.com", "email": "", "date": "", "status": "Contacted",
+"notes": ""}];
+const TYPES=["Grocer","Spa & Wellness","Refillery / Zero-Waste","Gift Shop","Boutique / Concept","Home & Lifestyle"];
+const TYPE_SHORT={"Grocer":"Grocers","Spa & Wellness":"Spas","Refillery / Zero-Waste":"Refilleries","Gift Shop":"Gift Shops","Boutique / Concept":"Boutiques","Home & Lifestyle":"Home"};
+const STATUS_META={"Interested":{es:"Interesada",color:"#7d8a72",fill:"#DCE5D7"},"In discussion":{es:"En conversación",color:"#A9873F",fill:"#F0E6CE"},"Declined":{es:"Rechazó",color:"#9C4A39",
+fill:"#EFD9D3"},"Contacted":{es:"Contactada",color:"#9A9387",fill:"#FBFAF6"},"Not yet contacted":{es:"Sin contactar",color:"#C2BCAF",fill:"#F4F1EA"},"Not a fit":{es:"No encaja",color:"#B0A99B",fill:"#ECEAE3"},"Closed":{es:" Cerrada",color:"#B0A99B",fill:"#E5E2DA"}};
+const STATUS_ORDER=["Interested","In discussion","Declined","Contacted","Not yet contacted","Not a fit","Closed"];
+const KEY="lh_wholesale_v2";
+let store2={employees:["Kiabeth","Kiaredza"],assignments:{},edits:{}};
+try{const s=JSON.parse(localStorage.getItem(KEY));if(s){store2.employees=s.employees||store2.
+employees;store2.assignments=s.assignments||{};store2.edits=s.edits||{};}}catch(e){}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(store2));}catch(e){}}
+const skey=d=>d.store+"|"+d.region;
+let state={type:"All",st:"All",status:"All",owner:"All",q:""};
+const byKey={};DATA.forEach(d=>byKey[skey(d)]=d);
+function buildPills(){
+  const total=DATA.length,warm=DATA.filter(d=>d.status==="Interested"||d.status==="In discussion").length;
+  const contacted=DATA.filter(d=>!["Not yet contacted","Not a fit","Closed"].includes(d.status)).length;
+  const states=new Set(DATA.map(d=>d.state)).size;
+  const pills=[["n",total,"Stores / Tiendas"],["",contacted,"Contacted / Contactadas"],["s",warm,"Warm / Cálidas"],
+["g",states,"States / Estados"]];
+  document.getElementById('pills').innerHTML=pills.map(([c,n,l])=>`<div class="pill"><div class="n ${c}">${n}</div>
+<div class="l">${l}</div></div>`).join('');
+}
+function buildTabs(){
+  const cc={};TYPES.forEach(t=>cc[t]=DATA.filter(d=>d.type===t).length);
+  let h=`<button class="tab ${state.type==='All'?'on':''}" data-t="All">All / Todas<span class="c">${DATA.length}</span>
+</button>`;
+  h+=TYPES.map(t=>`<button class="tab ${state.type===t?'on':''}" data-t="${t}">${TYPE_SHORT[t]}<span
+class="c">${cc[t]}</span></button>`).join('');
+  const el=document.getElementById('tabs');el.innerHTML=h;
+  el.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{state.type=b.dataset.t;document.getElementById(' fType').value=b.dataset.t;buildTabs();render();});
+}
+function buildSelects(){
+  const states=[...new Set(DATA.map(d=>d.state))].sort();
+  document.getElementById('fType').innerHTML=`<option value="All">All types / Todos</option>`+TYPES.map(t=>`
+<option value="${t}">${TYPE_SHORT[t]}</option>`).join('');
+  document.getElementById('fState').innerHTML=`<option value="All">All states / Todos</option>`+states.map(s=>
+`<option>${s}</option>`).join('');
+  document.getElementById('fStatus').innerHTML=`<option value="All">All responses /
+Todas</option>`+STATUS_ORDER.map(s=>`<option value="${s}">${s} / ${STATUS_META[s].es}</option>`).join('');
+  document.getElementById('fOwner').innerHTML=`<option value="All">All owners / Todos</option>`+store2.
+employees.map(e=>`<option>${e}</option>`).join('')+`<option value="__un">Unassigned / Sin asignar</option>`;
+}
+function filtered(){
+  const q=state.q.toLowerCase();
+  return DATA.filter(d=>{
+    if(state.type!=="All"&&d.type!==state.type)return false;
+    if(state.st!=="All"&&d.state!==state.st)return false;
+    if(state.status!=="All"&&d.status!==state.status)return false;
+    const a=store2.assignments[skey(d)]||"";
+    if(state.owner==="__un"&&a)return false;
+    if(state.owner!=="All"&&state.owner!=="__un"&&a!==state.owner)return false;
+    if(q){const hay=(d.store+' '+d.region+' '+d.city+' '+d.desc+' '+d.notes+' '+d.type+' '+a).toLowerCase();if(!hay.
+includes(q))return false;}
+    return true;
+  });
+}
+function assigneeSelect(d){
+  const cur=store2.assignments[skey(d)]||"";
+  let o=`<option value="" ${cur===""?'selected':''}>— Unassigned / Sin asignar —</option>`;
+  o+=store2.employees.map(e=>`<option ${cur===e?'selected':''}>${e}</option>`).join('');
+  o+=`<option value="__add">+ Add employee / Agregar empleado</option>`;
+  return `<select class="assignee" data-k="${encodeURIComponent(skey(d))}">${o}</select>`;
+}
+function render(){
+  const rows=filtered();
+  document.getElementById('count').textContent=`${rows.length} / ${DATA.length} shown · mostradas`;
+  const list=document.getElementById('list');
+  if(!rows.length){list.innerHTML=`<div class="empty">No stores match these filters. / Ninguna tienda coincide con
+estos filtros.</div>`;return;}
+  const groups={};rows.forEach(d=>{const k=d.state+" — "+d.region;(groups[k]=groups[k]||[]).push(d);});
+  let html='';
+  Object.keys(groups).sort().forEach(k=>{
+    const g=groups[k].sort((a,b)=>STATUS_ORDER.indexOf(a.status)-STATUS_ORDER.indexOf(b.status)||a.store.
+localeCompare(b.store));
+    html+=`<section class="group"><h2><span>${k}</span><span class="gc">${g.length}</span></h2>`;
+    g.forEach(d=>{
+      const m=STATUS_META[d.status]||STATUS_META["Contacted"];
+      const links=[];
+      if(d.web)links.push(`<a href="https://${d.web.replace(/^https?:\/\//,'')}" target="_blank" rel="noopener">Site /
+Sitio</a>`);
+      if(d.email)links.push(`<a href="mailto:${d.email}">Email / Correo</a>`);
+      const note=d.notes?`<span class="note">${d.notes}</span>`:'';
+      const chipColor=(m.color==='#C2BCAF'||m.color==='#B0A99B')?'#6B6459':m.color;
+      html+=`<div class="row"><div class="rtop">
+        <div class="rstore"><span class="dot" style="background:${m.color}"></span>
+          <div><div class="nm">${d.store}</div><div class="meta">${TYPE_SHORT[d.type]} · ${d.city||d.region}</div>
+<div class="links">${links.join('')}</div></div></div>
+        <div class="rdesc">${d.desc}${note}</div>
+        <div class="rright"><span class="chip" style="background:${m.fill};border-color:${m.color}55; color:${chipColor}">${d.status} / ${m.es}</span>${d.date?`<span class="date">${d.date}</span>`:''}</div>
+      </div><div class="rctl"><span class="lab">Owner / Responsable</span>${assigneeSelect(d)}
+        <button class="emailbtn" data-k="${encodeURIComponent(skey(d))}">✎ Generate emails / Generar
+correos</button></div></div>`;
+    });
+    html+=`</section>`;
+  });
+  list.innerHTML=html;
+}
+document.getElementById('list').addEventListener('change',e=>{
+  if(!e.target.classList.contains('assignee'))return;
+  const k=decodeURIComponent(e.target.dataset.k);let v=e.target.value;
+  if(v==="__add"){const name=(prompt("New employee name / Nombre del nuevo empleado:")||"").trim();
+    if(name){if(!store2.employees.includes(name))store2.employees.push(name);store2.
+assignments[k]=name;persist();buildSelects();render();}else render();return;}
+  store2.assignments[k]=v;persist();render();
+});
+/* ---------- custom emails ---------- */
+const VALUE={
+ "Grocer":{en:"a clean, essential-oil body care line your health & beauty shoppers can trust",es:"una línea de cuidado corporal limpio, con aceites esenciales, en la que sus clientes de salud y belleza pueden confiar"},
+ "Spa & Wellness":{en:"sensory, plastic-free rituals for your treatment rooms and retail shelf",es:"rituales sensoriales y sin plástico para sus salas de tratamiento y estante de retail"},
+ "Refillery / Zero-Waste":{en:"refill-first, low-waste body care made for shops like yours",es:"cuidado corporal pensado primero para refill y bajo desperdicio, hecho para tiendas como la suya"},
+ "Gift Shop":{en:"giftable, beautifully made candles and body care",es:"velas y cuidado corporal hermosamente hechos y listos para regalar"},
+ "Boutique / Concept":{en:"quiet, design-forward body care that fits a considered curation",es:"cuidado corporal sereno y enfocado en el diseño, ideal para una curaduría cuidada"},
+ "Home & Lifestyle":{en:"sensory, design-led body care that lives well beside elevated home goods",es:"cuidado corporal sensorial y enfocado en el diseño, que convive bien con artículos del hogar elevados"}};
+const PRODUCTS={en:"Our current collection:\n- The Evening Candle (soy & coconut, hand-poured)\n- Soaking Salts (Atlantic sea salt)\n- Daily Body Oil (cold-pressed argan)\n- Beldi Black Soap (Moroccan olive)",
+ es:"Nuestra colección actual:\n- Vela de noche (soya y coco, vertida a mano)\n- Sales de baño (sal marina del Atlántico)\n- Aceite corporal (argán prensado en frío)\n- Jabón negro Beldi (oliva marroquí)"};
+function lc(s){return s?s.charAt(0).toLowerCase()+s.slice(1):s;}
+function sig(who,lang){const n=who||(lang==='en'?'The Lavalle Haus team':'El equipo de Lavalle Haus');return lang==='en'?`Warmly,\n${n}\nLavalle Haus · 831.359.5978`:`Con cariño,\n${n}\nLavalle Haus · 831.359.5978`;}
+function tmpl(d,lang,i){
+  const who=store2.assignments[skey(d)]||"";
+  const val=(VALUE[d.type]||VALUE["Gift Shop"])[lang];
+  const descL=lc(d.desc||'');
+  const hi=lang==='en'?`Hi ${d.store} Team,`:`Hola equipo de ${d.store},`;
+  if(i===0){
+    const intro=lang==='en'?`We're the sisters behind Lavalle Haus, a California-based clean body care brand rooted in essential oils, plastic-free packaging, and quiet, considered design.`:`Somos las hermanas detrás de Lavalle Haus, una marca de cuidado corporal limpio de California, basada en aceites esenciales, empaque sin plástico y un diseño sereno y cuidado.`;     const custom=lang==='en'?`We spent time with ${d.store} — ${descL} — and it felt like a natural home for ${val}.`:`Pasamos tiempo conociendo ${d.store} — ${descL} — y nos pareció un hogar natural para ${val}.`;     const ask=lang==='en'?`We'd love to send a sample package if it feels like a fit for ${d.store}. You can view our
+catalog and line sheet here: (link)`:`Nos encantaría enviar un paquete de muestras si le parece adecuado para
+${d.store}. Puede ver nuestro catálogo y line sheet aquí: (enlace)`;
+    const sub=lang==='en'?`Lavalle Haus — clean body care for ${d.store}`:`Lavalle Haus — cuidado corporal limpio
+para ${d.store}`;
+    return {sub,body:[hi,'',intro,'',custom,'',PRODUCTS[lang],'',ask,'',sig(who,lang)].join('\n')};
+  }
+  if(i===1){
+    const sub=lang==='en'?`Following up — Lavalle Haus x ${d.store}`:`Dando seguimiento — Lavalle Haus x
+${d.store}`;
+    const body=lang==='en'?[hi,'',`Just circling back on our note from a few weeks ago — we still think ${val} would feel
+right at home at ${d.store}.`,'',`No pressure at all; we know how full your plate must be. Here's our catalog again: (link)`,'',sig(who,'en')].join('\n'):[hi,'',`Solo retomamos nuestra nota de hace unas semanas — seguimos pensando que ${val} encajaría muy bien en ${d.store}.`,'',`Sin ninguna presión; sabemos lo ocupados que deben estar. Aquí está nuestro catálogo de nuevo: (enlace)`,'',sig(who,'es')].join('\n');     return {sub,body};   }   const sub=lang==='en'?`One more hello — seasonal samples for ${d.store}`:`Un saludo más — muestras de temporada para ${d.store}`;   const body=lang==='en'?[hi,'',`Checking in one last time! We've just refreshed our seasonal scents and would love to
+send a sample set to ${d.store} if you're open to it.`,'',`We'd be honored to find a place on your shelves — and either
+way, thank you for the work you do.`,'',sig(who,'en')].join('\n'):[hi,'',`Le escribimos una última vez. Acabamos de renovar
+nuestros aromas de temporada y nos encantaría enviar un set de muestras a ${d.store} si está abierto a ello.`,'',`Sería
+un honor tener un lugar en sus estantes — y de cualquier modo, gracias por su trabajo.`,'',sig(who,'es')].join('\n');
+  return {sub,body};
+}
+function getMail(d,lang,i){
+  const k=skey(d);const e=store2.edits[k]&&store2.edits[k][lang]&&store2.edits[k][lang][i];
+  if(e)return e; return tmpl(d,lang,i);
+}
+function saveEdit(k,lang,i,subj,body){
+  store2.edits[k]=store2.edits[k]||{};store2.edits[k][lang]=store2.edits[k][lang]||{};
+  store2.edits[k][lang][i]={sub:subj,body:body};persist();
+}
+function clearEdit(k,lang,i){if(store2.edits[k]&&store2.edits[k][lang]){delete store2.edits[k][lang][i];persist();}}
+const LABELS=[{en:"1 · First email",es:"1 · Primer correo"},{en:"2 · Follow-up (1 month later)",es:"2 · Seguimiento (1 mes después)"},{en:"3 · Second follow-up (2 months later)",es:"3 · Segundo seguimiento (2 meses después)"}];
+let modalLang='en',modalKey=null;
+function openEmail(d){modalKey=skey(d);modalLang='en';renderModal();document.getElementById(' overlay').classList.add('on');}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function renderModal(){
+  const d=byKey[modalKey];const who=store2.assignments[skey(d)]||"";
+  const whoLine=who?`Owner / Responsable: ${who}`:`No owner assigned / Sin responsable asignado`;
+  const siteBtn=d.web?`<button class="sitebtn" id="siteB">⾭ View site / Ver sitio</button>`:`<button class="sitebtn"
+disabled style="opacity:.45">No site / Sin sitio</button>`;
+  const mailNote=d.email?`To / Para: ${d.email}`:`No email on file — add it in your mail app / Sin correo — agrégalo en
+tu app`;
+  let cards='';
+  for(let i=0;i<3;i++){
+    const e=getMail(d,modalLang,i);
+    cards+=`<div class="emailcard">
+      <div class="eh"><div class="et">${LABELS[i][modalLang]}</div>
+        <div class="ebtns">
+          <button class="send" data-i="${i}">✉ Send / Enviar</button>
+          <button class="copy" data-i="${i}">Copy / Copiar</button>
+        </div></div>
+      <div class="fieldlab">Subject / Asunto</div>
+      <input class="subjin" data-i="${i}" value="${esc(e.sub).replace(/"/g,'&quot;')}">
+      <div class="fieldlab">Message / Mensaje &nbsp;·&nbsp; editable</div>
+      <textarea class="ebodyedit" data-i="${i}" rows="${Math.max(9,e.body.split('\n').length+1)}">${esc(e.body)}
+</textarea>
+      <button class="resetlink" data-i="${i}">↺ Reset to template / Restaurar plantilla</button>
+    </div>`;
+  }
+  document.getElementById('modal').innerHTML=`
+    <div class="mhead">
+      <div><h3>${d.store}</h3><span class="es">${whoLine} &nbsp;·&nbsp; ${mailNote}</span></div>
+      <div class="mtools">${siteBtn}
+        <div class="langtog"><button data-l="en" class="${modalLang==='en'?'on':''}">EN</button><button data-l="es"
+class="${modalLang==='es'?'on':''}">ES</button></div>
+        <button class="x" id="closeM">×</button></div>
+    </div>
+    <div class="mbody">
+      <p class="hint">Each email is tailored to this store and fully editable. Tip: tap “View site”, skim what they sell, then
+tweak the message before sending.<br>Cada correo está a la medida de esta tienda y es editable. Consejo: abre “Ver
+sitio”, mira qué venden y ajusta el mensaje antes de enviar.</p>
+      ${cards}
+    </div>`;
+  document.getElementById('closeM').onclick=closeModal;
+  if(d.web){document.getElementById('siteB').onclick=()=>window.open('https://'+d.web.replace(/^https?:\/\//,''),'_blank','noopener');}
+  document.querySelectorAll('.langtog button').forEach(b=>b.onclick=()=>{modalLang=b.dataset.l;renderModal();});
+  // wire edits
+  document.querySelectorAll('.subjin,.ebodyedit').forEach(el=>el.oninput=()=>{
+    const i=+el.dataset.i;const subj=document.querySelector(`.subjin[data-i="${i}"]`).value;
+    const body=document.querySelector(`.ebodyedit[data-i="${i}"]`).value;saveEdit(skey(d),modalLang,i,subj,body);});
+  document.querySelectorAll('.copy').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;const s=cur(i);copyText('Subject: '+s.sub+'\n\n'+s.body);});
+  document.querySelectorAll('.send').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;const s=cur(i);sendMail(d,s.sub,s.
+body);});
+  document.querySelectorAll('.resetlink').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;clearEdit(skey(
+d),modalLang,i);renderModal();toast(modalLang==='en'?'Reset to template':'Plantilla restaurada');});
+}
+function cur(i){return {sub:document.querySelector(`.subjin[data-i="${i}"]`).value,body:document.querySelector(`.
+ebodyedit[data-i="${i}"]`).value};}
+function sendMail(d,subj,body){
+  const to=d.email||'';
+  const url=`mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  if(!to)toast(modalLang==='en'?'No email on file — add the recipient in your mail app':'Sin correo — agrega el destinatario en tu app');
+  window.location.href=url;
+}
+function closeModal(){document.getElementById('overlay').classList.remove('on');}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+document.getElementById('list').addEventListener('click',e=>{const b=e.target.closest('.emailbtn'
+);if(!b)return;openEmail(byKey[decodeURIComponent(b.dataset.k)]);});
+function copyText(t){const done=()=>toast(modalLang==='en'?'Copied to clipboard':'Copiado al portapapeles');
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done).catch(
+()=>fb(t,done));}else fb(t,done);}
+function fb(t,cb){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);
+ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb();}
+let tt;function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('on');
+clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('on'),1900);}
+document.getElementById('fType').onchange=e=>{state.type=e.target.value;buildTabs();render();};
+document.getElementById('fState').onchange=e=>{state.st=e.target.value;render();};
+document.getElementById('fStatus').onchange=e=>{state.status=e.target.value;render();};
+document.getElementById('fOwner').onchange=e=>{state.owner=e.target.value;render();};
+document.getElementById('fSearch').oninput=e=>{state.q=e.target.value;render();};
+document.getElementById('reset').onclick=()=>{state={type:"All",st:"All",status:"All",owner:"All",q:""};
+buildSelects();document.getElementById('fSearch').value="";buildTabs();render();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+buildPills();buildTabs();buildSelects();render();
+</script>
+</body>
+</html>
