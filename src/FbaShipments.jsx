@@ -6,11 +6,11 @@ import { useState, useEffect } from "react";
 // creation. Read-only against app data: no Redis writes (no undo needed).
 
 const c = {
-  bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
-  green: "#5a7a5a", clay: "#a07848", red: "#9b5e5e", card: "#efece5",
+  bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
+  green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 
 const STATUS_COLOR = {
   WORKING: c.clay, READY_TO_SHIP: c.clay, SHIPPED: c.green, IN_TRANSIT: c.green,
@@ -31,8 +31,8 @@ const PAGE_TYPES = [
 // writes to Amazon sits behind an explicit confirmation gate. Placement,
 // carrier and labels are Phase B2.
 const card = { background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 10 };
-const inputS = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "7px 9px", borderRadius: 1, boxSizing: "border-box" };
-const btnDark = { padding: "8px 18px", fontSize: 10, fontFamily: sans, letterSpacing: 2, cursor: "pointer", borderRadius: 1, border: "1px solid #1a1714", background: "#1a1714", color: "#f7f4ef", textTransform: "uppercase" };
+const inputS = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "7px 9px", borderRadius: 1, boxSizing: "border-box" };
+const btnDark = { padding: "8px 18px", fontSize: 10, fontFamily: sans, letterSpacing: 2, cursor: "pointer", borderRadius: 1, border: "1px solid #1A1A1A", background: "#1A1A1A", color: "#FFFFFF", textTransform: "uppercase" };
 const btnGhost = { padding: "8px 14px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
 
 function CreateShipmentWizard({ onPlanCreated }) {
@@ -563,11 +563,11 @@ export default function FbaShipments() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <select value={pageType} onChange={e => setPageType(e.target.value)}
-              style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "5px 6px", borderRadius: 1 }}>
+              style={{ background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "5px 6px", borderRadius: 1 }}>
               {PAGE_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
             <input value={count} onChange={e => setCount(e.target.value.replace(/[^0-9]/g, ""))} title="Number of boxes"
-              style={{ width: 44, background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "5px 6px", borderRadius: 1, textAlign: "center" }} />
+              style={{ width: 44, background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "5px 6px", borderRadius: 1, textAlign: "center" }} />
             <button onClick={() => getLabels(s.id)} disabled={busy === s.id}
               style={{ background: "transparent", border: `1px solid ${c.green}`, color: c.green, borderRadius: 1, padding: "5px 14px", cursor: busy === s.id ? "default" : "pointer", fontSize: 10, fontFamily: sans, letterSpacing: 1 }}>
               {busy === s.id ? "GENERATING…" : "⎙ BOX LABELS"}

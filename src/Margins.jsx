@@ -11,15 +11,15 @@ import { buildMarginsModel, num, SPEND_30 } from "./marginsCore.js";
 // Undo/Redo on every edit.
 
 const c = {
-  bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
-  green: "#5a7a5a", clay: "#a07848", red: "#9b5e5e", card: "#efece5",
+  bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
+  green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 const card = { background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 12 };
 const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
-const cellInput = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, boxSizing: "border-box", width: 64, fontFamily: sans, textAlign: "right" };
-const selStyle = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
+const cellInput = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, boxSizing: "border-box", width: 64, fontFamily: sans, textAlign: "right" };
+const selStyle = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
 
 const money = (v) => (v == null ? "—" : `$${Number(v).toFixed(2)}`);
 const pct = (v) => (v == null ? "—" : `${Number(v).toFixed(0)}%`);

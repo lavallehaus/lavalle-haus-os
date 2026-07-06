@@ -9,15 +9,15 @@ import { ASK_SUGGESTIONS } from "./businessBrain.js";
 // Desktop first; typography scales with the viewport for TVs, and after a few
 // idle minutes Ambient Mode slowly rotates through what matters.
 
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 
 // Atmospheric background themes (CSS-only; texture without distraction).
 const BACKGROUNDS = {
-  travertine: { label: "Travertine", day: "radial-gradient(ellipse at 50% 30%, #f4efe6 0%, #ece5d8 55%, #e3dbcb 100%)", night: "radial-gradient(ellipse at 50% 30%, #2c231b 0%, #241c15 55%, #1b150f 100%)" },
-  ceramic: { label: "Ceramic", day: "linear-gradient(170deg, #f6f2ea 0%, #efe9de 60%, #e8e0d2 100%)", night: "linear-gradient(170deg, #28201a 0%, #221a14 60%, #1a130e 100%)" },
-  botanical: { label: "Botanical", day: "radial-gradient(ellipse at 20% 15%, #eef0e6 0%, #f4f1e8 45%, #eae6d9 100%)", night: "radial-gradient(ellipse at 20% 15%, #232619 0%, #211c14 45%, #181410 100%)" },
-  stone: { label: "Stone", day: "linear-gradient(180deg, #f2efe9 0%, #e9e5dc 100%)", night: "linear-gradient(180deg, #26211c 0%, #1c1712 100%)" },
+  gallery: { label: "Gallery White", day: "radial-gradient(ellipse at 50% 30%, #FFFFFF 0%, #FAFAF9 55%, #F4F4F3 100%)", night: "radial-gradient(ellipse at 50% 30%, #2c231b 0%, #241c15 55%, #1b150f 100%)" },
+  travertine: { label: "Travertine", day: "radial-gradient(ellipse at 50% 30%, #FBFAF8 0%, #F5F3EF 55%, #EFEDE8 100%)", night: "radial-gradient(ellipse at 50% 30%, #2c231b 0%, #241c15 55%, #1b150f 100%)" },
+  ceramic: { label: "Ceramic", day: "linear-gradient(170deg, #FDFDFC 0%, #F6F6F4 60%, #F0F0EE 100%)", night: "linear-gradient(170deg, #28201a 0%, #221a14 60%, #1a130e 100%)" },
+  stone: { label: "Stone", day: "linear-gradient(180deg, #FAFAF9 0%, #F0F0EE 100%)", night: "linear-gradient(180deg, #26211c 0%, #1c1712 100%)" },
 };
 
 const AMBIENT_AFTER_MS = 3 * 60 * 1000; // idle minutes before ambient mode
@@ -26,7 +26,7 @@ const AMBIENT_STEP_MS = 12 * 1000;
 export default function CommandView({ model, themeId, onToggleTheme, onExit, onNavigate, onAsk }) {
   const t = BRAIN_THEMES[themeId] || BRAIN_THEMES.day;
   const [selected, setSelected] = useState(null);
-  const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "travertine"; } catch { return "travertine"; } });
+  const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "gallery"; } catch { return "gallery"; } });
   useEffect(() => { try { localStorage.setItem("lh_cv_bg", bg); } catch {} }, [bg]);
   const [q, setQ] = useState("");
   const [ambient, setAmbient] = useState(false);

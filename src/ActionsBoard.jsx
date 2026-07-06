@@ -12,17 +12,17 @@ import { useState, useMemo, useEffect } from "react";
 // The recurring bi-weekly ops review (the old checklist) lives at the bottom.
 
 const c = {
-  bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
-  green: "#5a7a5a", clay: "#a07848", red: "#9b5e5e", card: "#efece5",
+  bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
+  green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 const card = { background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 12 };
 const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
-const input = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "5px 7px", borderRadius: 1, boxSizing: "border-box", fontFamily: sans };
-const selStyle = { background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
+const input = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "5px 7px", borderRadius: 1, boxSizing: "border-box", fontFamily: sans };
+const selStyle = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1, fontFamily: sans };
 
-const AVATAR_COLORS = ["#a07848", "#5a7a5a", "#9b5e5e", "#6b7a8c", "#8c6b7a", "#7a6b4a"];
+const AVATAR_COLORS = ["#8F8676", "#5a7a5a", "#9b5e5e", "#6b7a8c", "#8c6b7a", "#7a6b4a"];
 // Role structure per the Team Portal spec — stored now so permissions can be
 // enforced when per-user logins are enabled.
 const TEAM_ROLES = ["Owner / Admin", "Manager", "Team Member", "Viewer"];
@@ -320,7 +320,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                 {it.detail && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub, marginTop: 2 }}>{it.detail}</div>}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                   {assignees.map((aid) => { const am = memberById[aid]; if (!am) return null; return (
-                    <span key={aid} title={am.email || "no email"} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#e5e1da", border: `1px solid ${c.line}`, borderRadius: 13, padding: "2px 7px 2px 2px" }}>
+                    <span key={aid} title={am.email || "no email"} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#F0F0EE", border: `1px solid ${c.line}`, borderRadius: 13, padding: "2px 7px 2px 2px" }}>
                       <Avatar m={am} size={18} />
                       <span style={{ fontFamily: sans, fontSize: 10, color: c.ink }}>{am.name.split(" ")[0]}</span>
                       <button onClick={() => dropAssignee(it.id, aid)} title="remove" style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12, lineHeight: 1 }}>×</button>

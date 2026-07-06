@@ -6,11 +6,11 @@ import { useState, useEffect } from "react";
 // Read-only — no Redis writes.
 
 const c = {
-  bg: "#f7f4ef", ink: "#1a1714", sub: "#8c7d6b", line: "#c8c2b8",
-  green: "#5a7a5a", clay: "#a07848", red: "#9b5e5e", card: "#efece5",
+  bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
+  green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 
 const money = (v) => (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -29,7 +29,7 @@ const FEE_LABEL = {
 // the figures are kept by hand here (placeholder integration) and the status
 // flows into the Business Brain + Executive Brief as a priority alert.
 const HEALTH_STATUSES = ["Healthy", "Needs Review", "At Risk", "Critical"];
-const HEALTH_COLOR = { "Healthy": "#5a7a5a", "Needs Review": "#a07848", "At Risk": "#b06a2e", "Critical": "#9b5e5e" };
+const HEALTH_COLOR = { "Healthy": "#5a7a5a", "Needs Review": "#8F8676", "At Risk": "#b06a2e", "Critical": "#9b5e5e" };
 const HEALTH_METRICS = [
   { key: "odr", label: "Order defect rate", target: "< 1%" },
   { key: "lateShipment", label: "Late shipment rate", target: "< 4%" },
@@ -305,7 +305,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => setChartSlide(0)} disabled={chartSlide === 0} style={{ background: "transparent", border: "none", color: chartSlide === 0 ? c.line : c.ink, fontSize: 18, cursor: chartSlide === 0 ? "default" : "pointer", padding: "0 4px" }}>‹</button>
           {["GROWTH CURVE", "NET PROFIT CURVE"].map((l, i) => (
-            <button key={l} onClick={() => setChartSlide(i)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${chartSlide === i ? "#1a1714" : c.line}`, background: chartSlide === i ? "#1a1714" : "transparent", color: chartSlide === i ? "#f7f4ef" : c.sub }}>{l}</button>
+            <button key={l} onClick={() => setChartSlide(i)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${chartSlide === i ? "#1A1A1A" : c.line}`, background: chartSlide === i ? "#1A1A1A" : "transparent", color: chartSlide === i ? "#FFFFFF" : c.sub }}>{l}</button>
           ))}
           <button onClick={() => setChartSlide(1)} disabled={chartSlide === 1} style={{ background: "transparent", border: "none", color: chartSlide === 1 ? c.line : c.ink, fontSize: 18, cursor: chartSlide === 1 ? "default" : "pointer", padding: "0 4px" }}>›</button>
         </div>
@@ -354,17 +354,17 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {["7D", "30D", "90D", "THIS MONTH", "LAST MONTH", "YTD", "DAY", "CUSTOM"].map(m => (
-                <button key={m} onClick={() => pickPeriod(m)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${periodMode === m ? "#1a1714" : c.line}`, background: periodMode === m ? "#1a1714" : "transparent", color: periodMode === m ? "#f7f4ef" : c.sub }}>{m}</button>
+                <button key={m} onClick={() => pickPeriod(m)} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${periodMode === m ? "#1A1A1A" : c.line}`, background: periodMode === m ? "#1A1A1A" : "transparent", color: periodMode === m ? "#FFFFFF" : c.sub }}>{m}</button>
               ))}
             </div>
             {(periodMode === "CUSTOM" || periodMode === "DAY") && (
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
                 <input type="date" value={pStart} onChange={e => { setPStart(e.target.value); if (periodMode === "DAY") setPEnd(e.target.value); }}
-                  style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />
+                  style={{ background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />
                 {periodMode === "CUSTOM" && <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>to</span>}
                 {periodMode === "CUSTOM" && <input type="date" value={pEnd} onChange={e => setPEnd(e.target.value)}
-                  style={{ background: "#e5e1da", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />}
-                <button onClick={() => loadPeriod(pStart, periodMode === "DAY" ? pStart : pEnd)} style={{ padding: "4px 14px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: "1px solid #1a1714", background: "#1a1714", color: "#f7f4ef" }}>APPLY</button>
+                  style={{ background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 11, padding: "4px 6px", borderRadius: 1 }} />}
+                <button onClick={() => loadPeriod(pStart, periodMode === "DAY" ? pStart : pEnd)} style={{ padding: "4px 14px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: "1px solid #1A1A1A", background: "#1A1A1A", color: "#FFFFFF" }}>APPLY</button>
               </div>
             )}
 
@@ -394,7 +394,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                     <g>
                       <line x1={pts[hoverIdx][0]} y1={PAD} x2={pts[hoverIdx][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
                       <circle cx={pts[hoverIdx][0]} cy={pts[hoverIdx][1]} r="4" fill={c.clay} />
-                      <text x={Math.min(W - 90, Math.max(90, pts[hoverIdx][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="monospace" fill={c.ink}>
+                      <text x={Math.min(W - 90, Math.max(90, pts[hoverIdx][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.ink}>
                         {pDays[hoverIdx].date.slice(5)} · {money(pDays[hoverIdx].real)}{pDays[hoverIdx].sales - pDays[hoverIdx].real > 0.005 ? ` (Amazon: ${money(pDays[hoverIdx].sales)})` : ""}
                       </text>
                     </g>
@@ -403,7 +403,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                     const pi = pDays.indexOf(peak);
                     return <g>
                       <circle cx={pts[pi][0]} cy={pts[pi][1]} r="3" fill={c.green} />
-                      <text x={Math.min(W - 70, Math.max(40, pts[pi][0]))} y={Math.max(12, pts[pi][1] - 8)} textAnchor="middle" fontSize="10" fontFamily="monospace" fill={c.sub}>{money(peak.real)}</text>
+                      <text x={Math.min(W - 70, Math.max(40, pts[pi][0]))} y={Math.max(12, pts[pi][1] - 8)} textAnchor="middle" fontSize="10" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.sub}>{money(peak.real)}</text>
                     </g>;
                   })()}
                   <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke={c.line} strokeWidth="1" />
@@ -495,7 +495,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {["MONTH", "QUARTER", "YEAR"].map(g => (
-                  <button key={g} onClick={() => { setNetGran(g); setHoverNet(null); }} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${netGran === g ? "#1a1714" : c.line}`, background: netGran === g ? "#1a1714" : "transparent", color: netGran === g ? "#f7f4ef" : c.sub }}>{g}</button>
+                  <button key={g} onClick={() => { setNetGran(g); setHoverNet(null); }} style={{ padding: "4px 12px", fontSize: 9, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${netGran === g ? "#1A1A1A" : c.line}`, background: netGran === g ? "#1A1A1A" : "transparent", color: netGran === g ? "#FFFFFF" : c.sub }}>{g}</button>
                 ))}
               </div>
             </div>
@@ -519,7 +519,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                   {hoverNet !== null && pts[hoverNet] && (
                     <g>
                       <line x1={pts[hoverNet][0]} y1={PAD} x2={pts[hoverNet][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
-                      <text x={Math.min(W - 110, Math.max(110, pts[hoverNet][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="monospace" fill={c.ink}>
+                      <text x={Math.min(W - 110, Math.max(110, pts[hoverNet][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.ink}>
                         {buckets[hoverNet].label} · net {money(buckets[hoverNet].net)}
                       </text>
                     </g>

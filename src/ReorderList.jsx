@@ -25,12 +25,12 @@ import { useState, useMemo, useEffect } from "react";
    ========================================================================== */
 
 const c = {
-  bg: "#f7f4ef", panel: "#fffdf9", ink: "#1a1714", sub: "#8c7d6b",
-  line: "#d8d1c4", lineSoft: "#ece7dd", clay: "#a07848", green: "#5a7a5a",
+  bg: "#FFFFFF", panel: "#fffdf9", ink: "#1A1A1A", sub: "#71716C",
+  line: "#d8d1c4", lineSoft: "#ece7dd", clay: "#8F8676", green: "#5a7a5a",
   red: "#9b5e5e", amber: "#b06a2e", slate: "#7a7a9a",
 };
-const serif = "'IM Fell English', Georgia, serif";
-const mono = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const mono = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 const faintEs = { fontFamily: serif, fontSize: 10.5, fontStyle: "italic", color: "rgba(140,125,107,0.7)", marginTop: 1 };
 
 const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -44,7 +44,7 @@ const S = {
   cap: { fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub },
   btn: { background: "transparent", border: `1px solid ${c.clay}`, color: c.clay, borderRadius: 2, padding: "5px 11px", cursor: "pointer", fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" },
   ghost: { background: "transparent", border: `1px solid ${c.line}`, color: c.sub, borderRadius: 2, padding: "5px 11px", cursor: "pointer", fontFamily: mono, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" },
-  input: { background: "#efece5", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 7px", borderRadius: 1, fontFamily: mono, width: 64, boxSizing: "border-box" },
+  input: { background: "#F4F4F3", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 7px", borderRadius: 1, fontFamily: mono, width: 64, boxSizing: "border-box" },
 };
 
 const STATUS = {
@@ -394,7 +394,7 @@ export default function ReorderList({
               </div>
             </div>
             {r.native && (
-              <div style={{ marginTop: 8, padding: "8px 11px", background: "#a0784812", border: `1px solid ${c.line}`, borderRadius: 2, fontSize: 12.5 }}>
+              <div style={{ marginTop: 8, padding: "8px 11px", background: "#8F867612", border: `1px solid ${c.line}`, borderRadius: 2, fontSize: 12.5 }}>
                 {num(r.recQty) > 0
                   ? <span><b style={{ color: c.clay }}>Amazon recommends sending in {r.recQty} units</b>{r.shipBy ? ` — ship to FBA by ${fmtDate(r.shipBy)}` : ""}{r.startProdBy ? `, so start production by ${fmtDate(r.startProdBy)}` : ""}.</span>
                   : r.noRec

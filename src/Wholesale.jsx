@@ -10,12 +10,12 @@ import { useState } from "react";
    ========================================================================== */
 
 const c = {
-  bg: "#f7f4ef", panel: "#fffdf9", ink: "#2b2620", sub: "#6f6657",
+  bg: "#FFFFFF", panel: "#fffdf9", ink: "#2b2620", sub: "#6f6657",
   line: "#e4ddd0", lineSoft: "#efe9de", clay: "#a8643c", gold: "#b08d57",
   green: "#5c7a52", yellow: "#b78b2e", red: "#a8483a",
 };
-const serif = "'IM Fell English', Georgia, 'Times New Roman', serif";
-const sans = "'IM Fell English', Georgia, serif";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 const faintEs = { fontFamily: sans, fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 1 };
 
 const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? 0 : Number(v));

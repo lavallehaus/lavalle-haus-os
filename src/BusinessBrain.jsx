@@ -7,16 +7,16 @@ import { ASK_SUGGESTIONS } from "./businessBrain.js";
 // The standard dashboard stays one click away — this is a navigation layer,
 // not a replacement.
 
-const serif = "'IM Fell English', Georgia, serif";
-const sans = "monospace";
+const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 
 // ── Day / Night themes ───────────────────────────────────────────────────────
 export const BRAIN_THEMES = {
   day: {
-    id: "day", bg: "#f7f4ef", card: "#efece5", ink: "#1a1714", sub: "#8c7d6b",
-    line: "#c8c2b8", accent: "#a07848", brass: "#a89060", green: "#5a7a5a", red: "#9b5e5e",
-    canvas: "radial-gradient(ellipse at 50% 38%, #f2eee6 0%, #f7f4ef 62%, #efeae1 100%)",
-    nodeBg: "#efece5", nodeBorder: "#c8c2b8", link: "#d5cfc3", halo: "rgba(168,144,96,0.16)",
+    id: "day", bg: "#FFFFFF", card: "#F4F4F3", ink: "#1A1A1A", sub: "#71716C",
+    line: "#E0E0DD", accent: "#8F8676", brass: "#A39B8B", green: "#5a7a5a", red: "#9b5e5e",
+    canvas: "radial-gradient(ellipse at 50% 38%, #FAFAF9 0%, #FFFFFF 62%, #F4F4F3 100%)",
+    nodeBg: "#FFFFFF", nodeBorder: "#E0E0DD", link: "#E5E5E2", halo: "rgba(163,155,139,0.14)",
   },
   night: {
     id: "night", bg: "#211a14", card: "#2b2219", ink: "#efe7da", sub: "#a8917a",
