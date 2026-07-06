@@ -2247,7 +2247,7 @@ return profitNode;
 }
 if (tab === "content") return (
 <SegTabs id="content" segments={[
-{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} teamNames={((dbState.actionsBoard || {}).team || []).map((t) => t.name)} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
+{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} team={(dbState.actionsBoard || {}).team || []} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "scheduler", label: "Publishing", render: () => <ContentScheduler /> },
 ]} />
 );
