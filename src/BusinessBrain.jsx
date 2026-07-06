@@ -352,6 +352,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           className="bb-center"
           data-bb-id="health"
           onClick={() => onSelect && onSelect("health")}
+          onTouchEnd={(e) => { if (!movedRef.current) { e.preventDefault(); onSelect && onSelect("health"); } }}
           aria-label={"Business Health " + model.healthScore + ", " + model.status}
           style={{
             position: "absolute", left: cx, top: cy, transform: "translate(-50%,-50%)",
@@ -377,6 +378,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
             data-bb-id={n.id}
             ref={(el) => (nodeRefs.current[i] = el)}
             onClick={() => onSelect && onSelect(n.id)}
+            onTouchEnd={(e) => { if (!movedRef.current) { e.preventDefault(); onSelect && onSelect(n.id); } }}
             onMouseEnter={() => { hoverRef.current = i; }}
             onMouseLeave={() => { hoverRef.current = -1; }}
             aria-label={n.label + (n.value ? ", " + n.value : "")}
