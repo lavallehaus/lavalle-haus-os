@@ -97,6 +97,8 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     setTransformed(Math.abs(v.x) > 2 || Math.abs(v.y) > 2 || Math.abs(v.z - 1) > 0.02);
   };
   const resetView = () => { viewRef.current = { x: 0, y: 0, z: 1 }; applyView(); };
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
   useEffect(() => {
     if (!pannable) return;
     const wrap = wrapRef.current;
@@ -105,6 +107,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     let start = null;   // one-finger drag origin {x, y, vx, vy}
     let pinch = null;   // two-finger base {d, z, mx, my, vx, vy}
     let lastTap = 0;
+    let tapTarget = null; // node/center the gesture started on — taps select it directly
     const clampView = (v) => {
       v.z = Math.min(2.4, Math.max(0.6, v.z));
       const lim = Math.max(wrap.clientWidth, wrap.clientHeight) * 0.6 * v.z;
@@ -115,7 +118,10 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
     const down = (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const v = viewRef.current;
-      if (pointers.size === 1) start = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y };
+      if (pointers.size === 1) {
+        start = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y };
+        tapTarget = e.target && e.target.closest ? e.target.closest("[data-bb-id]") : null;
+      }
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: v.z, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, vx: v.x, vy: v.y };
@@ -127,7 +133,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1 && start) {
         const dx = e.clientX - start.x, dy = e.clientY - start.y;
-        if (Math.hypot(dx, dy) > 10) movedRef.current = true;
+        if (Math.hypot(dx, dy) > (e.pointerType === "touch" ? 16 : 8)) movedRef.current = true;
         if (movedRef.current) {
           viewRef.current = clampView({ ...viewRef.current, x: start.vx + dx, y: start.vy + dy });
           applyView();
@@ -147,11 +153,18 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
       if (pointers.size === 0) {
         if (!movedRef.current) {
           const now = Date.now();
-          if (now - lastTap < 320) resetView(); // double-tap returns home
+          if (now - lastTap < 320 && !tapTarget) resetView(); // double-tap on empty space returns home
           lastTap = now;
+          // a clean tap on a node selects it directly — no reliance on the
+          // browser synthesizing a click while the node is drifting
+          if (tapTarget && onSelectRef.current) {
+            onSelectRef.current(tapTarget.getAttribute("data-bb-id"));
+            movedRef.current = true; // swallow the native click that may follow
+          }
         }
         start = null;
-        setTimeout(() => { movedRef.current = false; }, 0);
+        tapTarget = null;
+        setTimeout(() => { movedRef.current = false; }, 120);
       }
     };
     wrap.addEventListener("pointerdown", down);
@@ -337,6 +350,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
         {/* center — Business Health */}
         <button
           className="bb-center"
+          data-bb-id="health"
           onClick={() => onSelect && onSelect("health")}
           aria-label={"Business Health " + model.healthScore + ", " + model.status}
           style={{
@@ -360,6 +374,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           <button
             key={n.id}
             className="bb-node"
+            data-bb-id={n.id}
             ref={(el) => (nodeRefs.current[i] = el)}
             onClick={() => onSelect && onSelect(n.id)}
             onMouseEnter={() => { hoverRef.current = i; }}

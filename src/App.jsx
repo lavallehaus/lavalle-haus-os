@@ -1197,6 +1197,27 @@ One platform, industry modules — this app is the internal master; each version
 );
 }
 
+// ── SEGMENT TABS — quiet pill switcher inside a section ──────────────────────
+function SegTabs({ id, segments }) {
+  const [seg, setSeg] = useState(() => { try { return localStorage.getItem("lh_seg_" + id) || segments[0].id; } catch { return segments[0].id; } });
+  useEffect(() => { try { localStorage.setItem("lh_seg_" + id, seg); } catch {} }, [id, seg]);
+  const active = segments.find((s) => s.id === seg) || segments[0];
+  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+        {segments.map((s) => (
+          <button key={s.id} onClick={() => setSeg(s.id)}
+            style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${s.id === active.id ? "#1A1A1A" : "#E0E0DD"}`, background: s.id === active.id ? "#1A1A1A" : "transparent", color: s.id === active.id ? "#FFFFFF" : "#71716C" }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {active.render()}
+    </div>
+  );
+}
+
 // ── EMBEDDED PAGE — runs a self-contained public/ page inside a tab ───────────
 function EmbeddedPage({ src, title, openLabel = "Open full window" }) {
   return (
@@ -1707,6 +1728,7 @@ function LoginScreen() {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
 
   async function submit() {
     if (!pw || busy) return;
@@ -1737,15 +1759,25 @@ function LoginScreen() {
         <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
         <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase", color: "#1A1A1A" }}>Operating System</div>
         <div style={{ fontSize: 11, fontStyle: "italic", color: "#71716C", marginTop: 6, marginBottom: 22 }}>Private — enter the house password<br/>Privado — ingresa la contraseña de la casa</div>
+        <div style={{ position: "relative" }}>
         <input
-          type="password"
+          type={show ? "text" : "password"}
           value={pw}
           autoFocus
           onChange={e => setPw(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") submit(); }}
           placeholder="Password"
-          style={{ width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 12px", fontSize: 14, color: "#1A1A1A", textAlign: "center", letterSpacing: 2, outline: "none" }}
+          style={{ width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 38px 10px 38px", fontSize: 14, color: "#1A1A1A", textAlign: "center", letterSpacing: 2, outline: "none" }}
         />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          aria-label={show ? "Hide password" : "Show password"}
+          title={show ? "Hide password — ocultar" : "Show password — mostrar"}
+          style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: show ? "#1A1A1A" : "#9A9A95", padding: 4, lineHeight: 1 }}>
+          {show ? "🙈" : "👁"}
+        </button>
+        </div>
         <button onClick={submit} disabled={busy}
           style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
           {busy ? "Unlocking…" : "Enter"}
@@ -2119,16 +2151,11 @@ const NAV = [
 { id: "reorder", label: "Reorder List" },
 ] },
 { id: "growth", label: "Growth", labelEs: "Crecimiento", alert: openHighActions || null, subs: [
-{ id: "competitors", label: "Competitor Intel" },
-{ id: "creators", label: "Influencer / Creator" },
-{ id: "retail", label: "Retail Expansion" },
+{ id: "wholesalehub", label: "Wholesale" },
+{ id: "creative", label: "Creative Studio" },
 { id: "email", label: "Email / Retention" },
 { id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Action Items" },
-{ id: "wholesale", label: "Wholesale Accounts" },
-{ id: "wholesalepage", label: "Retail Outreach" },
-{ id: "outreachtimeline", label: "Outreach Timeline" },
-{ id: "poppy", label: "Poppy Studio" },
 ] },
 { id: "content", label: "Content", labelEs: "Contenido" },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
@@ -2246,18 +2273,28 @@ onRemoveAction={(id) => setDbState((prev) => { const board = prev.actionsBoard |
 />;
 }
 if (tab === "growth") {
-if (activeSub === "competitors") return <Tracker title="Competitor Intelligence" intro="Track rival launches, promos, pricing and packaging moves." columns={[{ key: "brand", label: "Brand", type: "text" }, { key: "update", label: "Update", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Launch", "Promo", "Pricing", "Packaging", "Other"] }, { key: "date", label: "Date", type: "text" }, { key: "link", label: "Link", type: "url" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.competitors || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, competitors: r }; dbSave(next); return next; })} addLabel="+ Add note" />;
-if (activeSub === "creators") return <Tracker title="Influencer / Creator Program" intro="Creators, deliverables, cost and the revenue they drive." columns={[{ key: "creator", label: "Creator", type: "text" }, { key: "handle", label: "Handle", type: "text" }, { key: "deliverables", label: "Deliverables", type: "text" }, { key: "cost", label: "Cost", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Pitched", "Confirmed", "Live", "Paid", "Done"] }, { key: "revenue", label: "Revenue", type: "number" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.creators || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, creators: r }; dbSave(next); return next; })} addLabel="+ Add creator" />;
-if (activeSub === "retail") return <Tracker title="Retail Expansion" intro="Atlas, Faire, spa accounts and independent retailers." columns={[{ key: "account", label: "Account", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Atlas", "Faire", "Spa", "Retailer", "Other"] }, { key: "location", label: "Location", type: "text" }, { key: "status", label: "Status", type: "select", options: ["Prospect", "Pitched", "Open", "Active", "Paused"] }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.retail || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, retail: r }; dbSave(next); return next; })} addLabel="+ Add account" />;
-if (activeSub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
-if (activeSub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
-if (activeSub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
-if (activeSub === "wholesale") return <Wholesale data={dbState.wholesale || []} onSave={(w) => { setDbState((prev) => { const next = { ...prev, wholesale: w }; dbSave(next); return next; }); }} />;
-// The two coded wholesale workspaces (bilingual, self-contained HTML from the
-// spec folder) run inside the app; owners/edits save in this browser.
-if (activeSub === "wholesalepage") return <EmbeddedPage src="/wholesale.html" title="Retail Outreach — store-by-store wholesale emails" openLabel="Open full window" />;
-if (activeSub === "outreachtimeline") return <EmbeddedPage src="/wholesale-outreach.html" title="Outreach Timeline — follow-up cadence per store" openLabel="Open full window" />;
-if (activeSub === "poppy") return <PoppyStudio />;
+// legacy saved sub ids map into the consolidated sections
+const GROWTH_LEGACY = { wholesale: "wholesalehub", wholesalepage: "wholesalehub", outreachtimeline: "wholesalehub", retail: "wholesalehub", poppy: "creative", competitors: "creative", creators: "creative" };
+const gsub = GROWTH_LEGACY[activeSub] || activeSub;
+if (gsub === "wholesalehub") return (
+<SegTabs id="wholesale" segments={[
+{ id: "accounts", label: "Accounts", render: () => <Wholesale data={dbState.wholesale || []} onSave={(wv) => { setDbState((prev) => { const next = { ...prev, wholesale: wv }; dbSave(next); return next; }); }} /> },
+{ id: "outreach", label: "Retail Outreach", render: () => <EmbeddedPage src="/wholesale.html" title="Store-by-store outreach emails — 239 stores by category" openLabel="Open full window" /> },
+{ id: "timeline", label: "Outreach Timeline", render: () => <EmbeddedPage src="/wholesale-outreach.html" title="Follow-up cadence per store — three-email timeline" openLabel="Open full window" /> },
+{ id: "retailexp", label: "Retail Expansion", render: () => <Tracker title="Retail Expansion" intro="Atlas, Faire, spa accounts and independent retailers." columns={[{ key: "account", label: "Account", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Atlas", "Faire", "Spa", "Retailer", "Other"] }, { key: "location", label: "Location", type: "text" }, { key: "status", label: "Status", type: "select", options: ["Prospect", "Pitched", "Open", "Active", "Paused"] }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.retail || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, retail: r }; dbSave(next); return next; })} addLabel="+ Add account" /> },
+]} />
+);
+if (gsub === "creative") return (
+<SegTabs id="creative" segments={[
+{ id: "poppy", label: "Poppy Framework", render: () => <PoppyStudio /> },
+{ id: "competitors", label: "Competitor Intel", render: () => <Tracker title="Competitor Intelligence" intro="Track rival launches, promos, pricing and packaging moves." columns={[{ key: "brand", label: "Brand", type: "text" }, { key: "update", label: "Update", type: "text" }, { key: "type", label: "Type", type: "select", options: ["Launch", "Promo", "Pricing", "Packaging", "Other"] }, { key: "date", label: "Date", type: "text" }, { key: "link", label: "Link", type: "url" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.competitors || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, competitors: r }; dbSave(next); return next; })} addLabel="+ Add note" /> },
+{ id: "creators", label: "Creators", render: () => <Tracker title="Influencer / Creator Program" intro="Creators, deliverables, cost and the revenue they drive." columns={[{ key: "creator", label: "Creator", type: "text" }, { key: "handle", label: "Handle", type: "text" }, { key: "deliverables", label: "Deliverables", type: "text" }, { key: "cost", label: "Cost", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Pitched", "Confirmed", "Live", "Paid", "Done"] }, { key: "revenue", label: "Revenue", type: "number" }, { key: "notes", label: "Notes", type: "text" }]} data={dbState.creators || []} onSave={(r) => setDbState((prev) => { const next = { ...prev, creators: r }; dbSave(next); return next; })} addLabel="+ Add creator" /> },
+]} />
+);
+if (gsub === "email") return <EmailRetention data={dbState.emailRetention || []} onSave={(r) => { setDbState((prev) => { const next = { ...prev, emailRetention: r }; dbSave(next); return next; }); }} />;
+if (gsub === "weeklynums") return <WeeklyTab weeks={weeks} setWeeks={setWeeks} dbState={dbState} setDbState={setDbState} />;
+if (gsub === "checklist") return <ActionsBoard data={dbState.actionsBoard || {}} flags={_marginFlags} recurring={CHECKLIST_ITEMS} onSave={(payload) => { setDbState((prev) => { const next = { ...prev, actionsBoard: payload }; dbSave(next); return next; }); }} />;
+return null;
 }
 if (tab === "materials") {
 if (activeSub === "priceoz") return <PriceOzTab />;

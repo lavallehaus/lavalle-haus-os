@@ -6,13 +6,12 @@
 <title>Lavalle Haus — Wholesale Accounts / Cuentas de Mayoreo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,
-500;0,600;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#F4F1EA;--paper2:#FBFAF6;--header:#EDEAE3;--ink:#26221C;--soft:#6B6459;
-  --muted:#9A9387;--line:#DCD7CC;--gold:#A9873F;--terra:#9C4A39;--sage:#A7AC9D;--btn:#2A2620;
-  --serif:"EB Garamond",Georgia,serif;--sans:"Jost","Helvetica Neue",Arial,sans-serif;
+  --paper:#FFFFFF;--paper2:#FAFAF9;--header:#F4F4F3;--ink:#1A1A1A;--soft:#71716C;
+  --muted:#9A9A95;--line:#E0E0DD;--gold:#8F8676;--terra:#9C4A39;--sage:#A7AC9D;--btn:#1A1A1A;
+  --serif:"Jost","Helvetica Neue",Arial,sans-serif;--sans:"Jost","Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box;}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:16px;
@@ -601,8 +600,8 @@ const DATA = [{"type": "Grocer", "state": "California", "region": "Bay Area – 
 "notes": ""}];
 const TYPES=["Grocer","Spa & Wellness","Refillery / Zero-Waste","Gift Shop","Boutique / Concept","Home & Lifestyle"];
 const TYPE_SHORT={"Grocer":"Grocers","Spa & Wellness":"Spas","Refillery / Zero-Waste":"Refilleries","Gift Shop":"Gift Shops","Boutique / Concept":"Boutiques","Home & Lifestyle":"Home"};
-const STATUS_META={"Interested":{es:"Interesada",color:"#7d8a72",fill:"#DCE5D7"},"In discussion":{es:"En conversación",color:"#A9873F",fill:"#F0E6CE"},"Declined":{es:"Rechazó",color:"#9C4A39",
-fill:"#EFD9D3"},"Contacted":{es:"Contactada",color:"#9A9387",fill:"#FBFAF6"},"Not yet contacted":{es:"Sin contactar",color:"#C2BCAF",fill:"#F4F1EA"},"Not a fit":{es:"No encaja",color:"#B0A99B",fill:"#ECEAE3"},"Closed":{es:" Cerrada",color:"#B0A99B",fill:"#E5E2DA"}};
+const STATUS_META={"Interested":{es:"Interesada",color:"#7d8a72",fill:"#DCE5D7"},"In discussion":{es:"En conversación",color:"#8F8676",fill:"#F0E6CE"},"Declined":{es:"Rechazó",color:"#9C4A39",
+fill:"#EFD9D3"},"Contacted":{es:"Contactada",color:"#9A9A95",fill:"#FAFAF9"},"Not yet contacted":{es:"Sin contactar",color:"#C2BCAF",fill:"#FFFFFF"},"Not a fit":{es:"No encaja",color:"#B0A99B",fill:"#ECEAE3"},"Closed":{es:" Cerrada",color:"#B0A99B",fill:"#E5E2DA"}};
 const STATUS_ORDER=["Interested","In discussion","Declined","Contacted","Not yet contacted","Not a fit","Closed"];
 const KEY="lh_wholesale_v2";
 let store2={employees:["Kiabeth","Kiaredza"],assignments:{},edits:{}};
@@ -681,7 +680,7 @@ localeCompare(b.store));
 Sitio</a>`);
       if(d.email)links.push(`<a href="mailto:${d.email}">Email / Correo</a>`);
       const note=d.notes?`<span class="note">${d.notes}</span>`:'';
-      const chipColor=(m.color==='#C2BCAF'||m.color==='#B0A99B')?'#6B6459':m.color;
+      const chipColor=(m.color==='#C2BCAF'||m.color==='#B0A99B')?'#71716C':m.color;
       html+=`<div class="row"><div class="rtop">
         <div class="rstore"><span class="dot" style="background:${m.color}"></span>
           <div><div class="nm">${d.store}</div><div class="meta">${TYPE_SHORT[d.type]} · ${d.city||d.region}</div>

@@ -4,11 +4,10 @@ scale=1.0">
 <title>Lavalle Haus, Outreach Timeline / Cronograma de Contacto</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com"
 crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,
-500;0,600;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-:root{--paper:#F4F1EA;--paper2:#FBFAF6;--header:#EDEAE3;--ink:#26221C;--soft:#6B6459;--muted:#9A9387;--line:
-#DCD7CC;--gold:#A9873F;--terra:#9C4A39;--sage:#7d8a72;--btn:#2A2620;--serif:"EB Garamond",Georgia,serif;--
+:root{--paper:#FFFFFF;--paper2:#FAFAF9;--header:#F4F4F3;--ink:#1A1A1A;--soft:#71716C;--muted:#9A9A95;--line:
+#E0E0DD;--gold:#8F8676;--terra:#9C4A39;--sage:#7d8a72;--btn:#1A1A1A;--serif:"Jost","Helvetica Neue",Arial,sans-serif;--
 sans:"Jost",Arial,sans-serif;--lw:250px;}
 *{box-sizing:border-box;}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:16px;-
 webkit-font-smoothing:antialiased;font-feature-settings:"onum" 1;}
@@ -63,7 +62,7 @@ weight:500;}
 .bdg{font-family:var(--sans);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border:1px
 solid var(--line);color:var(--soft);}
 .bdg.fit{border-color:#7d8a7255;background:#DCE5D755;color:var(--sage);}
-.bdg.like{border-color:#A9873f55;background:#F0E6CE66;color:var(--gold);}
+.bdg.like{border-color:#8F867655;background:#F0E6CE66;color:var(--gold);}
 .phwhy{font-family:var(--sans);font-size:11px;color:var(--soft);line-height:1.6;margin-top:8px;max-width:92ch;}
 .tlhead{position:relative;height:18px;margin:14px 0 2px;margin-left:var(--lw);}
 .tick{position:absolute;top:0;transform:translateX(-50%);font-family:var(--sans);font-size:9px;letter-spacing:.06em;text-
@@ -308,7 +307,7 @@ getDay()!==1)d.setDate(d.getDate()+1);return d;}
 function startDate(){return S.start?new Date(S.start+"T00:00:00"):defStart();}
 function planned(s,i){return new Date(startDate().getTime()+PHASES[s.phase].offset*DAY+i*GAP*DAY);}
 function fmt(d){return d.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',day:'numeric'});}
-function fmtL(d){return d.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',day:'numeric',year:' numeric'});}
+function fmtL(d){return d.toLocaleDateString(lang==='en'?'en-US':'es-MX',{month:'short',day:'numeric',year:'numeric'});}
 function iso(d){return d.toISOString().slice(0,10);}
 function stState(s){return (S.store[s.id]&&S.store[s.id].state)||'active';}
 function emailOf(s){return (S.store[s.id]&&S.store[s.id].email!=null)?S.store[s.id].email:s.email;}
