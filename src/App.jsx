@@ -22,6 +22,7 @@ import ReorderList from "./ReorderList.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
 import BusinessBrain from "./BusinessBrain.jsx";
 import CommandView from "./CommandView.jsx";
+import ContentScheduler from "./ContentScheduler.jsx";
 import { buildBrainModel } from "./businessBrain.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -2114,6 +2115,7 @@ const NAV = [
 { id: "wholesale", label: "Wholesale Accounts" },
 { id: "poppy", label: "Poppy Studio" },
 ] },
+{ id: "content", label: "Content", labelEs: "Contenido" },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
 { id: "materials", label: "Materials", labelEs: "Materiales", subs: [
 { id: "suppliers", label: "Supplier Database" },
@@ -2180,6 +2182,7 @@ if (activeSub === "finances" || activeSub === "bank" || activeSub === "pnl") ret
 if (activeSub === "finance") return <FinanceCash products={products} weeks={weeks} cogs={dbState.cogs || {}} pnl={dbState.pnl || {}} bankCash={dbState.bankCash || null} margins={dbState.margins || null} />;
 return profitNode;
 }
+if (tab === "content") return <ContentScheduler />;
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
 if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} initialQuestion={askSeed} onSeedConsumed={() => setAskSeed(null)} />;

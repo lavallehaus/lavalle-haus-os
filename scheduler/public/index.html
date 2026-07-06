@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scheduler</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar" id="topbar">
+    <div class="brand" id="bizSwitcher"></div>
+    <nav class="tabs">
+      <button class="tab active" data-view="calendar">Calendar</button>
+      <button class="tab" data-view="drafts">Drafts</button>
+      <button class="tab" data-view="library">Library</button>
+      <button class="tab" data-view="settings">Connections</button>
+    </nav>
+    <button class="btn primary" id="newPostBtn">■ New Post</button>
+  </header>
+  <main id="view"></main>
+</div>
+<!-- Composer modal -->
+<div class="modal-backdrop hidden" id="composerBackdrop">
+  <div class="modal composer" id="composer"></div>
+</div>
+<!-- Media picker modal -->
+<div class="modal-backdrop hidden" id="pickerBackdrop">
+  <div class="modal picker" id="picker"></div>
+</div>
+<!-- Editor modal -->
+<div class="modal-backdrop hidden" id="editorBackdrop">
+  <div class="modal editor" id="editor"></div>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

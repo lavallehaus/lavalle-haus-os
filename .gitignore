@@ -3,3 +3,8 @@ dist/
 .DS_Store
 .env
 .env.*
+scheduler/data/
+scheduler/media/
+scheduler/incoming/
+scheduler/bin/
+scheduler/__pycache__/
