@@ -74,12 +74,20 @@ function speak(text, enabled, lang = "en") {
     if (!enabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.98; u.pitch = 0.95;
+    u.rate = 0.97; u.pitch = 0.92; // a touch lower — a measured male register
     u.lang = lang === "es" ? "es-MX" : "en-US";
     const voices = window.speechSynthesis.getVoices();
-    const pick = lang === "es"
-      ? (voices.find((v) => /Paulina|Mónica|Monica|Google español/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("es")))
-      : (voices.find((v) => /Samantha|Serena|Google UK English Female|Google US English/i.test(v.name)) || voices.find((v) => v.lang && v.lang.startsWith("en")));
+    // The Steward has a male voice. Prefer named male voices, then any voice
+    // that reports male gender, then any voice in the right language.
+    const isLang = (v) => v.lang && v.lang.toLowerCase().startsWith(lang === "es" ? "es" : "en");
+    const named = lang === "es"
+      ? /Jorge|Juan|Diego|Carlos|Google español/i
+      : /\b(Tom|Aaron|Reed|Eddy|Rocko|Daniel|Alex|Fred|Google UK English Male)\b/i;
+    const pick =
+      voices.find((v) => isLang(v) && named.test(v.name)) ||
+      voices.find((v) => isLang(v) && /male/i.test(v.name) && !/female/i.test(v.name)) ||
+      voices.find((v) => named.test(v.name)) ||
+      voices.find(isLang);
     if (pick) u.voice = pick;
     window.speechSynthesis.speak(u);
   } catch (e) {}
