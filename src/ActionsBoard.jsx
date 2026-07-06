@@ -113,7 +113,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
     if (!t.email) return;
     setInviteState((s) => ({ ...s, [t.id]: "sending" }));
     try {
-      const r = await fetch("/api/data?op=invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: t.name, email: t.email, role: t.role || "Team Member" }) });
+      const r = await fetch("/api/data?op=invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: t.name, email: t.email, role: t.role || "Team Member", ...(t.pages && t.pages.length ? { pages: t.pages } : {}) }) });
       const d = await r.json();
       if (!r.ok) { setInviteState((s) => ({ ...s, [t.id]: "err:" + (d.error || r.status) })); return; }
       setInviteState((s) => ({ ...s, [t.id]: d.sent ? "sent" : { link: d.link, sendError: d.sendError } }));
@@ -150,6 +150,9 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
     } catch (e) {}
     setPagesSaving(false);
   };
+  // Pages chosen before the person is invited live on the roster member and
+  // ride along with the invite.
+  const setMemberPages = (id, pages) => commit({ ...state, team: state.team.map((m) => m.id === id ? { ...m, pages } : m) });
   // Role edits reach the live login too, not just the roster.
   const syncRole = async (t, role) => {
     const u = accessFor(t);
@@ -350,7 +353,9 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
               <>
                 <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: a.color }}>{st === "sent" ? "invite emailed ✓" : a.text}</span>
                 {(!u || u.revoked || !u.acceptedAt) && <button onClick={() => sendInvite(t)} disabled={st === "sending"} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>{st === "sending" ? "Inviting…" : (u && !u.revoked && u.invitedAt) ? "Re-invite" : "Invite"}</button>}
-                {u && !u.revoked && !/^owner/i.test(u.role || "") && <button onClick={() => setPagesOpen(pagesOpen === t.id ? null : t.id)} style={{ ...btnGhost, color: pagesOpen === t.id ? c.ink : c.sub, borderColor: (u.pages && u.pages.length) ? c.clay : c.line }} title="Choose exactly which pages this person sees">Pages{(u.pages && u.pages.length) ? " · " + u.pages.length : ""}</button>}
+                {!/^owner/i.test((u && !u.revoked && u.role) || t.role || "") && (() => { const pl = (u && !u.revoked) ? u.pages : t.pages; return (
+                  <button onClick={() => setPagesOpen(pagesOpen === t.id ? null : t.id)} style={{ ...btnGhost, color: pagesOpen === t.id ? c.ink : c.sub, borderColor: (pl && pl.length) ? c.clay : c.line }} title="Choose exactly which pages this person sees">Pages{(pl && pl.length) ? " · " + pl.length : ""}</button>
+                ); })()}
                 {u && !u.revoked && <button onClick={() => revokeAccess(t)} style={{ ...btnGhost, color: c.red }}>Revoke</button>}
               </>
             ); })()}
@@ -358,19 +363,23 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
             <button onClick={() => removeMember(t.id)} style={btnGhost}>Remove</button>
           </div>
           {canInvite && pagesOpen === t.id && (() => {
-            const u = accessFor(t);
-            if (!u || u.revoked) return null;
-            const custom = !!(u.pages && u.pages.length);
-            const effective = custom ? u.pages : (ROLE_DEFAULT_PAGES[u.role || t.role] || ROLE_DEFAULT_PAGES["Viewer"]);
+            const u0 = accessFor(t);
+            const u = (u0 && !u0.revoked) ? u0 : null; // live login vs pre-invite
+            const role = (u && u.role) || t.role || "Team Member";
+            if (/^owner/i.test(role)) return null;
+            const stored = u ? u.pages : t.pages;
+            const custom = !!(stored && stored.length);
+            const effective = custom ? stored : (ROLE_DEFAULT_PAGES[role] || ROLE_DEFAULT_PAGES["Viewer"]);
+            const apply = (pages) => u ? setPages(t, pages) : setMemberPages(t.id, pages);
             const toggle = (id) => {
               const next = effective.includes(id) ? effective.filter((x) => x !== id) : [...effective, id];
               if (!next.length) return; // a login always keeps at least one page
-              setPages(t, next);
+              apply(next);
             };
             return (
               <div style={{ padding: "2px 0 10px 36px" }}>
                 <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>
-                  {custom ? "Custom pages — only these tabs" : ("Role default (" + (u.role || t.role) + ") — tap to customize")}{pagesSaving ? " · saving…" : ""}
+                  {custom ? "Custom pages — only these tabs" : ("Role default (" + role + ") — tap to customize")}{pagesSaving ? " · saving…" : ""}
                 </div>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                   {APP_PAGES.map((p) => {
@@ -382,10 +391,11 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                       </button>
                     );
                   })}
-                  {custom && <button onClick={() => setPages(t, null)} disabled={pagesSaving} style={{ ...btnGhost, color: c.clay, borderColor: c.clay }}>Reset to role default</button>}
+                  {custom && <button onClick={() => apply(null)} disabled={pagesSaving} style={{ ...btnGhost, color: c.clay, borderColor: c.clay }}>Reset to role default</button>}
                 </div>
                 <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
-                  Applies the next time {t.name.split(" ")[0]} loads the app — no new invite needed.
+                  {u ? ("Applies the next time " + t.name.split(" ")[0] + " loads the app — no new invite needed.")
+                     : ("Saved on the roster — applies automatically when you invite " + t.name.split(" ")[0] + ".")}
                 </div>
               </div>
             );
