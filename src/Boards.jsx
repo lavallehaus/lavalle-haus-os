@@ -71,14 +71,14 @@ export default function Boards({ data, onSave, team = [] }) {
   // First run: seed from the Trello export; later runs merge covers/members once.
   useEffect(() => {
     (async () => {
-      if (boards && boards._mediaV2) return;
+      if (boards && boards._mediaV3) return;
       try {
         const seed = await fetch("/boards-seed.json").then((r) => r.json());
         if (!boards) {
           setBoards(seed);
           onSave && onSave(seed);
         } else {
-          const next = { ...boards, _mediaV2: true };
+          const next = { ...boards, _mediaV2: true, _mediaV3: true };
           for (const [key, sb] of Object.entries(seed)) {
             if (key.startsWith("_") || !next[key]) continue;
             const seedById = {};
@@ -86,7 +86,15 @@ export default function Boards({ data, onSave, team = [] }) {
             next[key] = { ...next[key], cards: next[key].cards.map((card) => {
               const sc = seedById[card.id];
               if (!sc) return card;
-              return { ...card, members: (card.members && card.members.length) ? card.members : (sc.members || []), cover: card.cover || sc.cover || null };
+              return {
+                ...card,
+                // restore the real notes if ours still carry the [link] placeholders
+                desc: sc.desc && (!card.desc || card.desc.includes("[link]")) ? sc.desc : card.desc,
+                links: (card.links && card.links.length) ? card.links : (sc.links || []),
+                attachments: (card.attachments && card.attachments.length) ? card.attachments : (sc.attachments || []),
+                members: (card.members && card.members.length) ? card.members : (sc.members || []),
+                cover: card.cover || sc.cover || null,
+              };
             }) };
           }
           setBoards(next);
@@ -250,20 +258,30 @@ export default function Boards({ data, onSave, team = [] }) {
 
       {!board ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-          {workspace.boards.map((key) => {
+          {[...workspace.boards, ...Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].ws === ws && !workspace.boards.includes(k))].map((key) => {
             const b = boards[key];
-            if (!b) return null;
+            if (!b || !b.lists) return null;
             const done = b.cards.filter((x) => x.done).length;
             return (
-              <button key={key} onClick={() => setOpen(key)}
-                style={{ textAlign: "left", background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: "18px 18px 14px", cursor: "pointer", minHeight: 92 }}>
-                <div style={{ fontFamily: sans, fontSize: 15, color: c.ink }}>{b.name}</div>
+              <div key={key} onClick={() => setOpen(key)}
+                style={{ position: "relative", textAlign: "left", background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: "18px 18px 14px", cursor: "pointer", minHeight: 92 }}>
+                <div style={{ position: "absolute", top: 10, right: 10, display: "flex", gap: 4 }}>
+                  <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 11, padding: 2 }}>✎</button>
+                  <button title="Delete board" onClick={(e) => { e.stopPropagation(); if (!confirm(`Delete the board "${b.name}"${b.cards.length ? " and its " + b.cards.length + " cards" : ""}?`)) return; const next = { ...boards }; delete next[key]; commit(next); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 12, padding: 2 }}>×</button>
+                </div>
+                <div style={{ fontFamily: sans, fontSize: 15, color: c.ink, paddingRight: 40 }}>{b.name}</div>
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 8 }}>
                   {b.lists.length} lists · {b.cards.length} cards{done ? " · " + done + " done" : ""}
                 </div>
-              </button>
+              </div>
             );
           })}
+          <button onClick={() => { const name = prompt("New board name"); if (!name || !name.trim()) return; const key = "b" + uid(); commit({ ...boards, [key]: { name: name.trim(), ws, lists: [{ id: uid(), name: "To do" }], cards: [] } }); }}
+            style={{ background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, minHeight: 92, cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>
+            + Board
+          </button>
         </div>
       ) : (
         <div>
@@ -290,7 +308,7 @@ export default function Boards({ data, onSave, team = [] }) {
                     {cards.map((card) => (
                       <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
                         style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden" }}>
-                        {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: 110, objectFit: "cover" }} />}
+                        {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />}
                         <div style={{ padding: "9px 11px" }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                             <button
@@ -308,6 +326,8 @@ export default function Boards({ data, onSave, team = [] }) {
                               ); })}
                               {card.due && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: new Date(card.due) < new Date() && !card.done ? c.red : c.sub }}>{new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
+                              {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
+                              {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
                                 <span key={"m" + i} title={m} style={{ fontFamily: sans, fontSize: 8, letterSpacing: 0.5, width: 18, height: 18, borderRadius: "50%", border: `1px solid ${c.taupe}`, color: c.taupe, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(m)}</span>
                               ))}
@@ -359,6 +379,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const [cover, setCover] = useState(card.cover || null);
   const [done, setDone] = useState(!!card.done);
   const [commentText, setCommentText] = useState("");
+  const [links, setLinks] = useState(card.links || []);
+  const [linkName, setLinkName] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const attachments = card.attachments || [];
   const input = { width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 13, color: c.ink, outline: "none" };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "14px 0 4px" };
   const addMember = (m) => { const v = (m || "").trim(); if (!v || members.includes(v)) return; setMembers([...members, v]); setMemberInput(""); };
@@ -380,7 +404,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         </button>
 
         <div style={label}>Cover photo</div>
-        {cover && <img src={cover} alt="" style={{ display: "block", width: "100%", height: 140, objectFit: "cover", borderRadius: 1, border: `1px solid ${c.line}`, marginBottom: 6 }} />}
+        {cover && <img src={cover} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain", background: c.bg, borderRadius: 1, border: `1px solid ${c.line}`, marginBottom: 6 }} />}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <label style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
             Upload
@@ -389,10 +413,41 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           {cover && <button onClick={() => setCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
 
+        {/* photo attachments — tap one to make it the cover */}
+        {attachments.length > 0 && (
+          <div>
+            <div style={label}>Photos ({attachments.length}) — tap to set as cover</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+              {attachments.map((a, i) => (
+                <img key={i} src={a} alt="" onClick={() => setCover(a)}
+                  style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === a ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
         <div style={label}>Notes</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+
+        {/* links */}
+        <div style={label}>Links</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+          {links.map((L, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 10px" }}>
+              <a href={L.u} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontFamily: sans, fontSize: 12, color: c.taupe, textDecoration: "underline", textUnderlineOffset: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🔗 {L.n || L.u}</a>
+              <button onClick={() => setLinks(links.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input style={{ ...input, flex: 1 }} placeholder="Link name" value={linkName} onChange={(e) => setLinkName(e.target.value)} />
+          <input style={{ ...input, flex: 2 }} placeholder="https://…" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && linkUrl.trim()) { setLinks([...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }]); setLinkName(""); setLinkUrl(""); } }} />
+          <button onClick={() => { if (!linkUrl.trim()) return; setLinks([...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }]); setLinkName(""); setLinkUrl(""); }}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
+        </div>
 
         {/* tags — neutral palette */}
         <div style={label}>Tags</div>
@@ -450,7 +505,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         <div style={label}>Due date</div>
         <input style={input} type="date" value={due} onChange={(e) => setDue(e.target.value)} />
 
-        <button onClick={() => { if (!name.trim() || !listId) return; onSave({ name: name.trim(), desc, due: due ? due + "T12:00:00.000Z" : null, labels, listId, members, cover, done, comments: card.comments || [] }, destBoard); }}
+        <button onClick={() => { if (!name.trim() || !listId) return; onSave({ name: name.trim(), desc, due: due ? due + "T12:00:00.000Z" : null, labels, listId, members, cover, done, links, attachments, comments: card.comments || [] }, destBoard); }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
         </button>
