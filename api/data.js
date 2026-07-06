@@ -38,7 +38,15 @@ async function getAuth(req) {
   const users = (await kvGet("lavalle_users")) || [];
   const u = users.find((x) => x.id === p.u);
   if (!u || u.revoked || !u.hash) return null;
-  return { role: u.role, name: u.name, email: u.email, userId: u.id, house: false };
+  return { role: u.role, name: u.name, email: u.email, userId: u.id, house: false, pages: u.pages || null };
+}
+// Per-person page overrides: null = the role's default set; an array = exactly
+// these tabs. Unknown ids are dropped; an empty result falls back to null.
+const PAGE_IDS = ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"];
+function cleanPages(v) {
+  if (!Array.isArray(v)) return null;
+  const out = v.filter((x) => PAGE_IDS.includes(x));
+  return out.length ? out : null;
 }
 const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
 const hashPassword = (pw, salt) => scryptSync(pw, salt, 64).toString("hex");
@@ -172,14 +180,14 @@ export default async function handler(req, res) {
     const pw = b.password || "";
     const email = (b.email || "").trim().toLowerCase();
     if (!email && process.env.APP_PASSWORD && pw === process.env.APP_PASSWORD) {
-      res.json({ token: appToken(), user: { name: "", role: "Owner / Admin", email: "" } });
+      res.json({ token: appToken(), user: { name: "", role: "Owner / Admin", email: "", pages: null } });
       return;
     }
     if (email && pw) {
       const users = (await kvGet("lavalle_users")) || [];
       const u = users.find((x) => (x.email || "").toLowerCase() === email);
       if (u && !u.revoked && u.hash && passwordMatches(pw, u.salt, u.hash)) {
-        res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email } });
+        res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null } });
         return;
       }
     }
@@ -212,7 +220,7 @@ export default async function handler(req, res) {
     u.inviteExp = null;
     u.acceptedAt = new Date().toISOString();
     await kvSet("lavalle_users", users);
-    res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email } });
+    res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null } });
     return;
   }
 
@@ -221,17 +229,17 @@ export default async function handler(req, res) {
 
   // Who am I — restores name/role on the client after a reload.
   if (req.method === "GET" && op === "me") {
-    res.json({ name: auth.name, role: auth.role, email: auth.email });
+    res.json({ name: auth.name, role: auth.role, email: auth.email, pages: auth.pages || null });
     return;
   }
 
   // ── Team access (owner-only ops) ─────────────────────────────────────────────
-  if (op === "invite" || op === "revoke" || op === "users") {
+  if (op === "invite" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can manage team access." }); return; }
     const users = (await kvGet("lavalle_users")) || [];
 
     if (req.method === "GET" && op === "users") {
-      res.json({ users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, invitedAt: u.invitedAt || null, acceptedAt: u.acceptedAt || null, revoked: !!u.revoked, inviteExpired: !!(u.inviteToken && u.inviteExp && Date.now() > u.inviteExp) })) });
+      res.json({ users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, invitedAt: u.invitedAt || null, acceptedAt: u.acceptedAt || null, pages: u.pages || null, revoked: !!u.revoked, inviteExpired: !!(u.inviteToken && u.inviteExp && Date.now() > u.inviteExp) })) });
       return;
     }
 
@@ -244,6 +252,7 @@ export default async function handler(req, res) {
       let u = users.find((x) => (x.email || "").toLowerCase() === email);
       if (!u) { u = { id: "usr_" + randomBytes(8).toString("hex") }; users.push(u); }
       u.name = name; u.email = email; u.role = role;
+      if (b.pages !== undefined) u.pages = cleanPages(b.pages);
       u.revoked = false;
       u.inviteToken = randomBytes(24).toString("hex");
       u.inviteExp = Date.now() + 14 * 86400000;
@@ -269,6 +278,30 @@ export default async function handler(req, res) {
         catch (e) { sendError = String(e).slice(0, 200); }
       } else { sendError = "RESEND_API_KEY not set"; }
       res.json({ ok: true, sent, sendError, link, user: { id: u.id, name, email, role } });
+      return;
+    }
+
+    // Role edits on the roster reach the live login (getAuth reads the store
+    // per request, so this applies on the member's next page load).
+    if (req.method === "POST" && op === "set_role") {
+      const b = req.body || {};
+      const u = users.find((x) => x.id === b.id);
+      if (!u) { res.status(404).json({ error: "No such user." }); return; }
+      if (!["Owner / Admin", "Manager", "Team Member", "Viewer"].includes(b.role)) { res.status(400).json({ error: "Unknown role." }); return; }
+      u.role = b.role;
+      await kvSet("lavalle_users", users);
+      res.json({ ok: true });
+      return;
+    }
+
+    // Per-person pages: exactly these tabs for this user; null = role default.
+    if (req.method === "POST" && op === "set_pages") {
+      const b = req.body || {};
+      const u = users.find((x) => x.id === b.id);
+      if (!u) { res.status(404).json({ error: "No such user." }); return; }
+      u.pages = cleanPages(b.pages);
+      await kvSet("lavalle_users", users);
+      res.json({ ok: true, pages: u.pages });
       return;
     }
 

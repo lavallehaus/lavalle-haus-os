@@ -2071,6 +2071,26 @@ useEffect(() => {
   return () => window.removeEventListener("lh-locked", onLock);
 }, []);
 
+// ── IDENTITY REFRESH ── role/pages edits on the roster apply on the member's
+// next page load, not their next login: re-pull who-am-I and update lh_user.
+const [, setMeVersion] = useState(0);
+useEffect(() => {
+  (async () => {
+    try {
+      const cur = JSON.parse(localStorage.getItem("lh_user") || "null");
+      if (!cur) return;
+      const r = await fetch("/api/data?op=me");
+      if (!r.ok) return;
+      const d = await r.json();
+      const next = { ...cur, name: d.name, role: d.role, email: d.email, pages: d.pages || null };
+      if (JSON.stringify(next) !== JSON.stringify(cur)) {
+        localStorage.setItem("lh_user", JSON.stringify(next));
+        setMeVersion(v => v + 1);
+      }
+    } catch (e) {}
+  })();
+}, []);
+
 // ── SELF-MAINTAINING CHANNEL TAGS ──
 // If the live sync returns a Shopify count for a product, that product is by
 // definition sold on Shopify — tag it automatically and persist, so channel
@@ -2287,8 +2307,12 @@ const ROLE_TABS = {
   "Viewer": ["content", "roadmap"],
 };
 const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
+// A per-person pages list (set on the Team roster) replaces the role default.
+const myPages = (!iAmOwner && me && Array.isArray(me.pages) && me.pages.length)
+  ? me.pages
+  : (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]);
 const visibleNav = NAV
-  .filter(n => iAmOwner || (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]).includes(n.id))
+  .filter(n => iAmOwner || myPages.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
 
 if (!visibleNav.some(n => n.id === tab)) { setTab(visibleNav[0].id); return null; }

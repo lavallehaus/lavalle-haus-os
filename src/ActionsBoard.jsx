@@ -26,6 +26,18 @@ const AVATAR_COLORS = ["#8F8676", "#5a7a5a", "#9b5e5e", "#6b7a8c", "#8c6b7a", "#
 // Role structure per the Team Portal spec — stored now so permissions can be
 // enforced when per-user logins are enabled.
 const TEAM_ROLES = ["Owner / Admin", "Manager", "Team Member", "Viewer"];
+// App pages a login can be granted (mirrors NAV in App.jsx + PAGE_IDS in api/data.js)
+const APP_PAGES = [
+  { id: "brain", label: "Business Brain" }, { id: "profit", label: "Sales" }, { id: "ads", label: "Ads" },
+  { id: "inventory", label: "Inventory" }, { id: "growth", label: "Growth" }, { id: "content", label: "Content" },
+  { id: "roadmap", label: "Roadmap" }, { id: "materials", label: "Materials" }, { id: "ai", label: "AI" },
+];
+const ROLE_DEFAULT_PAGES = {
+  "Owner / Admin": APP_PAGES.map((p) => p.id),
+  "Manager": APP_PAGES.map((p) => p.id),
+  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
+  "Viewer": ["content", "roadmap"],
+};
 const SEV = { high: { label: "HIGH", color: c.red, rank: 0 }, med: { label: "MED", color: c.clay, rank: 1 }, low: { label: "LOW", color: c.sub, rank: 2 } };
 const STATUS = ["open", "doing", "done"];
 const isLive = (it) => it.status !== "done" && it.status !== "resolved";
@@ -124,6 +136,28 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
     if (u.acceptedAt) return { text: "active — has own login", color: c.green };
     if (u.inviteExpired) return { text: "invite expired", color: c.red };
     return { text: "invited — waiting", color: c.clay };
+  };
+  // Per-person pages: which tabs this login sees (null = role default).
+  const [pagesOpen, setPagesOpen] = useState(null); // member id with the picker expanded
+  const [pagesSaving, setPagesSaving] = useState(false);
+  const setPages = async (t, pages) => {
+    const u = accessFor(t);
+    if (!u || pagesSaving) return;
+    setPagesSaving(true);
+    try {
+      await fetch("/api/data?op=set_pages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, pages }) });
+      await refreshAccess();
+    } catch (e) {}
+    setPagesSaving(false);
+  };
+  // Role edits reach the live login too, not just the roster.
+  const syncRole = async (t, role) => {
+    const u = accessFor(t);
+    if (!u) return;
+    try {
+      await fetch("/api/data?op=set_role", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, role }) });
+      refreshAccess();
+    } catch (e) {}
   };
 
   const sorted = useMemo(() => {
@@ -307,7 +341,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", flexWrap: "wrap" }}>
             <Avatar m={t} size={26} />
             <span style={{ fontFamily: serif, fontSize: 14, color: c.ink, minWidth: 120 }}>{t.name}</span>
-            <select value={t.role || "Team Member"} onChange={(e) => setRole(t.id, e.target.value)} title="Role — controls which tabs this person sees when they log in"
+            <select value={t.role || "Team Member"} onChange={(e) => { setRole(t.id, e.target.value); if (canInvite) syncRole(t, e.target.value); }} title="Role — controls which tabs this person sees when they log in"
               style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, color: c.sub, fontFamily: sans, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>
               {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
@@ -316,12 +350,46 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
               <>
                 <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: a.color }}>{st === "sent" ? "invite emailed ✓" : a.text}</span>
                 {(!u || u.revoked || !u.acceptedAt) && <button onClick={() => sendInvite(t)} disabled={st === "sending"} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>{st === "sending" ? "Inviting…" : (u && !u.revoked && u.invitedAt) ? "Re-invite" : "Invite"}</button>}
+                {u && !u.revoked && !/^owner/i.test(u.role || "") && <button onClick={() => setPagesOpen(pagesOpen === t.id ? null : t.id)} style={{ ...btnGhost, color: pagesOpen === t.id ? c.ink : c.sub, borderColor: (u.pages && u.pages.length) ? c.clay : c.line }} title="Choose exactly which pages this person sees">Pages{(u.pages && u.pages.length) ? " · " + u.pages.length : ""}</button>}
                 {u && !u.revoked && <button onClick={() => revokeAccess(t)} style={{ ...btnGhost, color: c.red }}>Revoke</button>}
               </>
             ); })()}
             <button onClick={() => startEdit(t)} style={btnGhost}>Edit</button>
             <button onClick={() => removeMember(t.id)} style={btnGhost}>Remove</button>
           </div>
+          {canInvite && pagesOpen === t.id && (() => {
+            const u = accessFor(t);
+            if (!u || u.revoked) return null;
+            const custom = !!(u.pages && u.pages.length);
+            const effective = custom ? u.pages : (ROLE_DEFAULT_PAGES[u.role || t.role] || ROLE_DEFAULT_PAGES["Viewer"]);
+            const toggle = (id) => {
+              const next = effective.includes(id) ? effective.filter((x) => x !== id) : [...effective, id];
+              if (!next.length) return; // a login always keeps at least one page
+              setPages(t, next);
+            };
+            return (
+              <div style={{ padding: "2px 0 10px 36px" }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>
+                  {custom ? "Custom pages — only these tabs" : ("Role default (" + (u.role || t.role) + ") — tap to customize")}{pagesSaving ? " · saving…" : ""}
+                </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  {APP_PAGES.map((p) => {
+                    const on = effective.includes(p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggle(p.id)} disabled={pagesSaving}
+                        style={{ border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? "#FFFFFF" : c.sub, borderRadius: 1, padding: "4px 10px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                  {custom && <button onClick={() => setPages(t, null)} disabled={pagesSaving} style={{ ...btnGhost, color: c.clay, borderColor: c.clay }}>Reset to role default</button>}
+                </div>
+                <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
+                  Applies the next time {t.name.split(" ")[0]} loads the app — no new invite needed.
+                </div>
+              </div>
+            );
+          })()}
           {canInvite && inviteState[t.id] && typeof inviteState[t.id] === "object" && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 0 8px 36px", flexWrap: "wrap" }}>
               <span style={{ fontFamily: sans, fontSize: 10.5, color: c.red }}>Email didn't send{inviteState[t.id].sendError ? " (" + inviteState[t.id].sendError + ")" : ""} — send them this private link instead:</span>
