@@ -316,6 +316,35 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Drive folder listing (Grid planner sync) ────────────────────────────────
+  // Lists image files in a Drive folder using the stored Google OAuth token.
+  // Needs the drive.readonly scope — if Google was connected before that scope
+  // was added, the query legally succeeds but only sees app-created files, so
+  // the UI treats an empty result as "reconnect Google".
+  if (op === "drive_list" && req.method === "POST") {
+    const folderId = ((req.body || {}).folderId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!folderId) { res.status(400).json({ error: "No folder id." }); return; }
+    const gstate = (await kvGet("google_oauth")) || {};
+    if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
+    try {
+      const tr = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || "", client_secret: process.env.GOOGLE_CLIENT_SECRET || "", refresh_token: gstate.refresh_token, grant_type: "refresh_token" }),
+      });
+      const td = await tr.json();
+      if (!td.access_token) { res.status(400).json({ error: "google_token_failed" }); return; }
+      const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+      const fr = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: "Bearer " + td.access_token } });
+      const fd = await fr.json();
+      if (!fr.ok) { res.status(400).json({ error: (fd.error && fd.error.message) || "drive_error" }); return; }
+      res.json({ files: (fd.files || []).filter((f) => (f.mimeType || "").startsWith("image/")).map((f) => ({ id: f.id, name: f.name })) });
+    } catch (e) {
+      res.status(500).json({ error: String(e).slice(0, 200) });
+    }
+    return;
+  }
+
   // ── Plaid ops (bank balances → cash runway) — owner-only financials ─────────
   if (PLAID_OPS.includes(op)) {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Bank data is only available to the owner." }); return; }
