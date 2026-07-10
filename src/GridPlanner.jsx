@@ -40,12 +40,23 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [syncing, setSyncing] = useState(false);
 
   // First run: seed The Fold July from the repo, same pattern as the boards.
+  // v2 adds verified pieces (cross-checked against thefoldlabel.com) + flags.
   useEffect(() => {
     (async () => {
-      if (state && state._v1) return;
+      if (state && state._v2) return;
       try {
         const seed = await fetch("/grid-seed.json").then((r) => r.json());
-        const next = { _v1: true, feeds: (state && state.feeds) || seed.feeds };
+        let next;
+        if (state && state._v1) {
+          const seedItem = {};
+          seed.feeds.forEach((f) => (f.items || []).forEach((it) => { seedItem[it.cardId] = it; }));
+          next = { ...state, _v2: true, feeds: (state.feeds || []).map((f) => ({ ...f, items: (f.items || []).map((it) => {
+            const s = seedItem[it.cardId];
+            return s ? { ...it, pieces: s.pieces || [], ...(s.flag ? { flag: s.flag } : {}) } : it;
+          }) })) };
+        } else {
+          next = { _v1: true, _v2: true, feeds: seed.feeds };
+        }
         setState(next);
         onSave && onSave(next);
       } catch (e) {}
@@ -196,7 +207,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: card.done ? "grayscale(0.15) brightness(0.92)" : "none" }} />
                   {icon && <span style={{ position: "absolute", top: 6, right: 7, color: "#FFFFFF", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>{icon}</span>}
                   {card.done && <span style={{ position: "absolute", top: 6, left: 7, color: "#FFFFFF", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>✓</span>}
-                  <span style={{ position: "absolute", bottom: 6, left: 7, fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: "#FFFFFF", textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{it.n}</span>
+                  <span style={{ position: "absolute", bottom: 6, left: 7, fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: "#FFFFFF", textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{it.n}{it.flag ? " ⚠" : ""}</span>
                   {card.due && (
                     <span style={{ position: "absolute", bottom: 6, right: 7, fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, padding: "2px 5px", borderRadius: 1, background: "rgba(26,26,26,0.72)", color: overdue ? "#e8b4b4" : "#FFFFFF" }}>
                       {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -219,6 +230,30 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
               <button onClick={() => setOpenItem(null)} style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 15 }}>×</button>
             </div>
             <img src={thumb(open.driveId, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
+
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Caption</div>
+            <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
+              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 10 }} />
+
+            {(open.pieces || []).length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Pieces in this post — verified on the site</div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  {open.pieces.map((p, i) => (
+                    <a key={i} href={"https://thefoldlabel.com/products/" + p.h} target="_blank" rel="noopener noreferrer"
+                      style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "4px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, color: c.ink, textDecoration: "none", background: c.bg }}>
+                      {p.t} ↗
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {open.flag && (
+              <div style={{ background: "#F7F0EE", border: `1px solid #E2D4CD`, borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 11.5, lineHeight: 1.5, color: c.red, marginBottom: 10 }}>
+                ⚠ {open.flag}
+              </div>
+            )}
+
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Schedule</div>
             <input type="date" value={openCard.due ? String(openCard.due).slice(0, 10) : ""} onChange={(e) => patchCard(open.cardId, { due: e.target.value || null })}
               style={{ boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 12, color: c.ink, outline: "none" }} />

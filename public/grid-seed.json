@@ -12,107 +12,233 @@
     {
      "cardId": "the-fold-c51",
      "n": 21,
-     "driveId": "1sFL2mCr7fuXjq_CrqqUmsc4X6q78oZsj"
+     "driveId": "1sFL2mCr7fuXjq_CrqqUmsc4X6q78oZsj",
+     "pieces": [
+      {
+       "t": "Sera Top",
+       "h": "sera-top"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c49",
      "n": 20,
-     "driveId": "1_geltz-2abPXVMQ0fdnqxwtDRLyMjcji"
+     "driveId": "1_geltz-2abPXVMQ0fdnqxwtDRLyMjcji",
+     "pieces": [
+      {
+       "t": "Selene Necklace",
+       "h": "selene-necklace"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c47",
      "n": 19,
-     "driveId": "1IIVkuNMq4HyfyjsQ9nVtNbRJxx2l84A-"
+     "driveId": "1IIVkuNMq4HyfyjsQ9nVtNbRJxx2l84A-",
+     "pieces": [
+      {
+       "t": "Luce Pants",
+       "h": "luce-pants"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c45",
      "n": 18,
-     "driveId": "1P1TqDsZUHTJIRBgSGWlJRoQCtZrjiyOC"
+     "driveId": "1P1TqDsZUHTJIRBgSGWlJRoQCtZrjiyOC",
+     "pieces": [
+      {
+       "t": "Lucia Dress",
+       "h": "lucia-dress"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c43",
      "n": 17,
-     "driveId": "1CTtcGL6RYwIHmsJbg6-5gcvmU7g6O62U"
+     "driveId": "1CTtcGL6RYwIHmsJbg6-5gcvmU7g6O62U",
+     "pieces": [
+      {
+       "t": "Iris Dress",
+       "h": "iris-dress"
+      },
+      {
+       "t": "Cora Bracelet",
+       "h": "cora-bracelet"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c41",
      "n": 16,
-     "driveId": "1D-sIjhkz3intR6-3uoO_hkYwlUWhpo5y"
+     "driveId": "1D-sIjhkz3intR6-3uoO_hkYwlUWhpo5y",
+     "pieces": [
+      {
+       "t": "Sera Top",
+       "h": "sera-top"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c39",
      "n": 15,
-     "driveId": "1J0PYZAUIgUkgETztqoZ9ZBRwduAh9OxC"
+     "driveId": "1J0PYZAUIgUkgETztqoZ9ZBRwduAh9OxC",
+     "pieces": [
+      {
+       "t": "Sable Pant",
+       "h": "sable-pant"
+      }
+     ],
+     "flag": "Caption doesn\u2019t name the piece \u2014 these read as the Sable Pant."
     },
     {
      "cardId": "the-fold-c37",
      "n": 14,
-     "driveId": "1tjCxZqruQ66XJJPR7eRd5Ayglxyf5M7s"
+     "driveId": "1tjCxZqruQ66XJJPR7eRd5Ayglxyf5M7s",
+     "pieces": [
+      {
+       "t": "Sable Pant",
+       "h": "sable-pant"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c35",
      "n": 13,
-     "driveId": "1PikNBLz8OKumjz-9X_wg4JPwCl5c5H0O"
+     "driveId": "1PikNBLz8OKumjz-9X_wg4JPwCl5c5H0O",
+     "pieces": [],
+     "flag": "Caption says \u201cnow live\u201d but no red strapless midi exists on the site \u2014 publish the product first (or hold the post), and name the piece in the caption."
     },
     {
      "cardId": "the-fold-c33",
      "n": 12,
-     "driveId": "1GdzaNogUFtZQUBDTnxHVVQDUF9wfeZPT"
+     "driveId": "1GdzaNogUFtZQUBDTnxHVVQDUF9wfeZPT",
+     "pieces": [
+      {
+       "t": "Sera Top",
+       "h": "sera-top"
+      },
+      {
+       "t": "Luce Pants",
+       "h": "luce-pants"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c31",
      "n": 11,
-     "driveId": "1QSmpmFJKCWUUyc5voQnmqC9rLykAt4uS"
+     "driveId": "1QSmpmFJKCWUUyc5voQnmqC9rLykAt4uS",
+     "pieces": [
+      {
+       "t": "Cora Bracelet",
+       "h": "cora-bracelet"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c29",
      "n": 10,
-     "driveId": "1ZPvKfbhaMhe95fhHsZ7c9f843xbeiPxk"
+     "driveId": "1ZPvKfbhaMhe95fhHsZ7c9f843xbeiPxk",
+     "pieces": [
+      {
+       "t": "Lucia Dress",
+       "h": "lucia-dress"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c26",
      "n": 9,
-     "driveId": "1iGWUF84TNzS1B83TAQIcdJCsd1yE3MBk"
+     "driveId": "1iGWUF84TNzS1B83TAQIcdJCsd1yE3MBk",
+     "pieces": [
+      {
+       "t": "Sera Top",
+       "h": "sera-top"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c24",
      "n": 8,
-     "driveId": "1R41ZKGhEFWBHY-wTeir25xYsV26x1a57"
+     "driveId": "1R41ZKGhEFWBHY-wTeir25xYsV26x1a57",
+     "pieces": [
+      {
+       "t": "Cora Bracelet",
+       "h": "cora-bracelet"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c22",
      "n": 7,
-     "driveId": "1vi8OYwvs4pC-UfvbeLgkbXXNNo040o1d"
+     "driveId": "1vi8OYwvs4pC-UfvbeLgkbXXNNo040o1d",
+     "pieces": [
+      {
+       "t": "Sable Pant",
+       "h": "sable-pant"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c20",
      "n": 6,
-     "driveId": "1nk-cAagJymlCQTHAR7ZkHg2Wk0ByCLoX"
+     "driveId": "1nk-cAagJymlCQTHAR7ZkHg2Wk0ByCLoX",
+     "pieces": []
     },
     {
      "cardId": "the-fold-c18",
      "n": 5,
-     "driveId": "1Vb2fnZ4ver1XTNS_rn3VAZY82GR63_v7"
+     "driveId": "1Vb2fnZ4ver1XTNS_rn3VAZY82GR63_v7",
+     "pieces": [
+      {
+       "t": "Olivia Dress",
+       "h": "olivia-dress"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c15",
      "n": 4,
-     "driveId": "1o7_MiuvvGB9MV64I3Bcw9coTQZD36cZ7"
+     "driveId": "1o7_MiuvvGB9MV64I3Bcw9coTQZD36cZ7",
+     "pieces": [
+      {
+       "t": "Margaux Blouse",
+       "h": "margaux-blouse"
+      },
+      {
+       "t": "Mira Earrings",
+       "h": "mira-earrings"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c12",
      "n": 3,
-     "driveId": "1WEfarg9ZblN1yRbS5xMEhHhOsCZmSrN1"
+     "driveId": "1WEfarg9ZblN1yRbS5xMEhHhOsCZmSrN1",
+     "pieces": [
+      {
+       "t": "Luce Pants",
+       "h": "luce-pants"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c8",
      "n": 2,
-     "driveId": "16j1SjH8SldXULmoBVhm_vuYg8Rn6rvVY"
+     "driveId": "16j1SjH8SldXULmoBVhm_vuYg8Rn6rvVY",
+     "pieces": [
+      {
+       "t": "Cora Bracelet",
+       "h": "cora-bracelet"
+      }
+     ]
     },
     {
      "cardId": "the-fold-c3",
      "n": 1,
-     "driveId": "1Rebm6zz5rNm4hV1OLr7iAhC9Lw5Y4Za7"
+     "driveId": "1Rebm6zz5rNm4hV1OLr7iAhC9Lw5Y4Za7",
+     "pieces": [],
+     "flag": "The earring featured (blue stone, gold setting) isn't on thefoldlabel.com \u2014 the site carries only the Selene, Cora and Mira."
     }
    ]
   }
