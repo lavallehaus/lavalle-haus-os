@@ -11,6 +11,8 @@ const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
 const thumb = (id, w) => `https://drive.google.com/thumbnail?id=${id}&sz=w${w || 800}`;
+// an item can carry its own hosted image (src) instead of a Drive file
+const imgOf = (it, w) => it.src || thumb(it.driveId, w);
 const folderIdFrom = (link) => {
   const m = (link || "").match(/folders\/([a-zA-Z0-9_-]{10,})/) || (link || "").match(/^([a-zA-Z0-9_-]{10,})$/);
   return m ? m[1] : null;
@@ -230,7 +232,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
                   onClick={() => setOpenItem(it.cardId)}
                   style={{ position: "relative", aspectRatio: aspect, cursor: "grab", outline: overIdx === i && dragIdx !== null && dragIdx !== i ? `2px solid ${c.ink}` : "none", outlineOffset: -2, opacity: dragIdx === i ? 0.4 : 1 }}>
-                  <img src={thumb(it.driveId, 800)} alt={card.name || ""} loading="lazy" draggable={false}
+                  <img src={imgOf(it, 800)} alt={card.name || ""} loading="lazy" draggable={false}
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: card.done ? "grayscale(0.15) brightness(0.92)" : "none" }} />
                   {icon && <span style={{ position: "absolute", top: 6, right: 7, color: "#FFFFFF", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>{icon}</span>}
                   {card.done && <span style={{ position: "absolute", top: 6, left: 7, color: "#FFFFFF", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>✓</span>}
@@ -275,7 +277,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   <div style={{ fontFamily: sans, fontSize: 12, color: k === today ? c.ink : c.sub, marginBottom: 5 }}>{d.getDate()}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
                     {posts.map(({ it, card }) => (
-                      <img key={it.cardId} src={thumb(it.driveId, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
+                      <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
                         style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}` }} />
                     ))}
                   </div>
@@ -310,7 +312,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                         <div style={{ fontFamily: sans, fontSize: 9, color: k === today ? c.ink : c.sub, textAlign: "right", paddingRight: 2 }}>{d}</div>
                         <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
                           {posts.slice(0, 2).map(({ it, card }) => (
-                            <img key={it.cardId} src={thumb(it.driveId, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
+                            <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
                               style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1 }} />
                           ))}
                           {posts.length > 2 && <span style={{ fontFamily: sans, fontSize: 8.5, color: c.sub, alignSelf: "center" }}>+{posts.length - 2}</span>}
@@ -341,7 +343,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                 return (
                   <div key={it.cardId} onClick={() => setOpenItem(it.cardId)}
                     style={{ display: "flex", alignItems: "center", gap: 10, background: idx === 0 ? c.card : c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 10px", cursor: "pointer" }}>
-                    <img src={thumb(it.driveId, 200)} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 1 }} />
+                    <img src={imgOf(it, 200)} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 1 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.name || "Post " + it.n}</div>
                       <div style={{ fontFamily: sans, fontSize: 10, color: overdue ? c.red : c.sub }}>
@@ -367,7 +369,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
               <div style={{ fontFamily: sans, fontSize: 15, color: c.ink }}>{openCard.name}</div>
               <button onClick={() => setOpenItem(null)} style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 15 }}>×</button>
             </div>
-            <img src={thumb(open.driveId, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
+            <img src={imgOf(open, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
 
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Caption</div>
             <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
