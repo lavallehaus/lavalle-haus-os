@@ -34,6 +34,9 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [openItem, setOpenItem] = useState(null); // cardId
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
+  const [calMode, setCalMode] = useState("week"); // week | month
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [overDay, setOverDay] = useState(null); // date key a tile is being dragged over
   const [syncOpen, setSyncOpen] = useState(false);
   const [folderLink, setFolderLink] = useState("");
   const [syncMsg, setSyncMsg] = useState(null);
@@ -137,6 +140,30 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const open = openItem ? items.find((x) => x.cardId === openItem) : null;
   const openCard = open ? cardById[open.cardId] : null;
 
+  // ── schedule model ── card.due ("YYYY-MM-DD…") drives everything
+  const keyOf = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const today = keyOf(new Date());
+  const dueKey = (card) => (card && card.due ? String(card.due).slice(0, 10) : null);
+  const withCards = items.map((it) => ({ it, card: cardById[it.cardId] || {} }));
+  const byDay = {};
+  withCards.forEach(({ it, card }) => { const k = dueKey(card); if (k) (byDay[k] = byDay[k] || []).push({ it, card }); });
+  const upNext = withCards
+    .filter(({ card }) => dueKey(card) && !card.done)
+    .sort((a, b) => (dueKey(a.card) < dueKey(b.card) ? -1 : 1));
+  const unscheduled = withCards.filter(({ card }) => !dueKey(card) && !card.done).length;
+  const dropOnDay = (k) => {
+    if (dragIdx == null) return;
+    const it = items[dragIdx];
+    if (it) patchCard(it.cardId, { due: k });
+    setDragIdx(null); setOverDay(null);
+  };
+  const dayCellDrag = (k) => ({
+    onDragOver: (e) => { e.preventDefault(); setOverDay(k); },
+    onDragLeave: () => setOverDay(null),
+    onDrop: (e) => { e.preventDefault(); dropOnDay(k); },
+  });
+  const fmtDay = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+
   return (
     <div>
       {/* toolbar */}
@@ -218,13 +245,124 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
             })}
           </div>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, padding: "10px 14px 12px" }}>
-            Drag tiles to replan the feed · tap one to schedule it
+            Drag tiles to rearrange · drop one on a calendar day to schedule it · tap for details
           </div>
         </div>
 
-        {/* detail sheet */}
-        {open && openCard ? (
-          <div style={{ flex: 1, minWidth: 280, maxWidth: 460, background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 18 }}>
+        {/* ── the schedule ── what goes up next + the calendar, side by side with the feed */}
+        <div style={{ flex: 1, minWidth: 300, maxWidth: 640 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe }}>Posting schedule</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
+              {["week", "month"].map((m) => (
+                <button key={m} onClick={() => setCalMode(m)}
+                  style={{ ...ghost, padding: "5px 12px", background: calMode === m ? c.ink : "transparent", color: calMode === m ? "#FFFFFF" : c.sub, borderColor: calMode === m ? c.ink : c.line }}>
+                  {m === "week" ? "Week" : "Month"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {calMode === "week" ? (
+            /* rolling 7 days at a glance */
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 16 }}>
+              {Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); const k = keyOf(d); const posts = byDay[k] || []; return (
+                <div key={k} {...dayCellDrag(k)}
+                  style={{ background: k === today ? c.card : c.bg, border: `1px solid ${overDay === k && dragIdx != null ? c.ink : c.line}`, borderRadius: 1, padding: "7px 5px 6px", minHeight: 86, textAlign: "center" }}>
+                  <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: k === today ? c.ink : c.sub }}>
+                    {d.toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                  <div style={{ fontFamily: sans, fontSize: 12, color: k === today ? c.ink : c.sub, marginBottom: 5 }}>{d.getDate()}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+                    {posts.map(({ it, card }) => (
+                      <img key={it.cardId} src={thumb(it.driveId, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
+                        style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}` }} />
+                    ))}
+                  </div>
+                </div>
+              ); })}
+            </div>
+          ) : (
+            /* month preview */
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <button onClick={() => setCalMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))} style={{ ...ghost, padding: "3px 10px" }}>←</button>
+                <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink }}>
+                  {new Date(calMonth.y, calMonth.m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <button onClick={() => setCalMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))} style={{ ...ghost, padding: "3px 10px" }}>→</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+                {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
+                  <div key={i} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, color: c.sub, textAlign: "center", padding: "2px 0" }}>{w}</div>
+                ))}
+                {(() => {
+                  const first = new Date(calMonth.y, calMonth.m, 1);
+                  const days = new Date(calMonth.y, calMonth.m + 1, 0).getDate();
+                  const cells = [];
+                  for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"pad" + i} />);
+                  for (let d = 1; d <= days; d++) {
+                    const k = keyOf(new Date(calMonth.y, calMonth.m, d));
+                    const posts = byDay[k] || [];
+                    cells.push(
+                      <div key={k} {...dayCellDrag(k)}
+                        style={{ background: k === today ? c.card : c.bg, border: `1px solid ${overDay === k && dragIdx != null ? c.ink : c.line}`, borderRadius: 1, minHeight: 58, padding: "3px 3px 4px" }}>
+                        <div style={{ fontFamily: sans, fontSize: 9, color: k === today ? c.ink : c.sub, textAlign: "right", paddingRight: 2 }}>{d}</div>
+                        <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
+                          {posts.slice(0, 2).map(({ it, card }) => (
+                            <img key={it.cardId} src={thumb(it.driveId, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
+                              style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1 }} />
+                          ))}
+                          {posts.length > 2 && <span style={{ fontFamily: sans, fontSize: 8.5, color: c.sub, alignSelf: "center" }}>+{posts.length - 2}</span>}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return cells;
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* up next — the queue in posting order */}
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>
+            Up next{unscheduled ? <span style={{ color: c.sub, textTransform: "none", letterSpacing: 0.5 }}> · {unscheduled} post{unscheduled === 1 ? "" : "s"} still need a date</span> : null}
+          </div>
+          {upNext.length === 0 ? (
+            <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
+              Nothing scheduled yet — drop a tile onto a calendar day, or tap a tile and pick a date.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {upNext.slice(0, 8).map(({ it, card }, idx) => {
+                const k = dueKey(card);
+                const overdue = k < today;
+                const d = fmtDay(k);
+                return (
+                  <div key={it.cardId} onClick={() => setOpenItem(it.cardId)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, background: idx === 0 ? c.card : c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 10px", cursor: "pointer" }}>
+                    <img src={thumb(it.driveId, 200)} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 1 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.name || "Post " + it.n}</div>
+                      <div style={{ fontFamily: sans, fontSize: 10, color: overdue ? c.red : c.sub }}>
+                        {overdue ? "overdue — " : idx === 0 ? "next up — " : ""}{d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      </div>
+                    </div>
+                    {it.flag && <span title={it.flag} style={{ fontSize: 11 }}>⚠</span>}
+                    <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{formatIcon(formatOf(card.name))}</span>
+                  </div>
+                );
+              })}
+              {upNext.length > 8 && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, paddingLeft: 2 }}>+ {upNext.length - 8} more scheduled</div>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* detail drawer — slides over so the calendar stays put */}
+      {open && openCard && (
+        <div onClick={() => setOpenItem(null)} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: "94vw", height: "100%", overflowY: "auto", background: c.card, borderLeft: `1px solid ${c.line}`, padding: 18, boxSizing: "border-box" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <div style={{ fontFamily: sans, fontSize: 15, color: c.ink }}>{openCard.name}</div>
               <button onClick={() => setOpenItem(null)} style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 15 }}>×</button>
@@ -268,13 +406,8 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
               Dates and posted-marks save straight onto the board card — the Boards view stays in step.
             </div>
           </div>
-        ) : (
-          <div style={{ flex: 1, minWidth: 240, fontFamily: serif, fontStyle: "italic", fontSize: 12.5, color: c.sub, lineHeight: 1.7, paddingTop: 8 }}>
-            This is the feed as it will look on Instagram — newest post top-left, pulled from “{board ? board.name : ""}” in board order, with the real photos from your Drive folder.
-            <br /><br />Tap a tile to give it a date or mark it posted. Drag tiles to try a different arrangement — the plan saves automatically for everyone.
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
