@@ -164,7 +164,13 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
         {/* the phone */}
         <div style={{ width: 400, maxWidth: "100%", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px 12px" }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", border: `1px solid ${c.taupe}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 12, letterSpacing: 1, color: c.taupe }}>TF</div>
+            {(() => { const avatar = feed.avatar || (feed.boardKey && feed.boardKey.startsWith("the-fold") ? "/fold-monogram.png" : null); return (
+              <div style={{ width: 44, height: 44, borderRadius: "50%", border: `1px solid ${c.line}`, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                {avatar
+                  ? <img src={avatar} alt="" style={{ width: "62%", height: "62%", objectFit: "contain" }} />
+                  : <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 1, color: c.taupe }}>{(feed.account || "?").slice(0, 2).toUpperCase()}</span>}
+              </div>
+            ); })()}
             <div>
               <div style={{ fontFamily: sans, fontSize: 13, color: c.ink }}>{feed.account}</div>
               <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{items.filter((x) => (cardById[x.cardId] || {}).done).length} posted · {items.filter((x) => !(cardById[x.cardId] || {}).done).length} planned</div>
