@@ -25,7 +25,7 @@ import CommandView from "./CommandView.jsx";
 import ContentScheduler from "./ContentScheduler.jsx";
 import Boards from "./Boards.jsx";
 import GridPlanner from "./GridPlanner.jsx";
-import { buildBrainModel } from "./businessBrain.js";
+import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
 const _nativeFetch = window.fetch.bind(window);
@@ -1750,6 +1750,125 @@ function LoginShell({ children }) {
   );
 }
 
+// ── TEAM LENS ─────────────────────────────────────────────────────────────────
+// Owner-only strip above the Business Brain: preview any member's brain —
+// which bubbles they see and their own health percentage — and grant or
+// remove bubbles right here (writes the same per-person page permissions the
+// Team roster uses). Also holds the tab ↔ Drive folder map so bubbles, app
+// tabs and Drive stay one taxonomy.
+const LENS_GROUPS = [
+  { tab: "profit", bubbles: "Revenue · Profit & Cash", tabLabel: "Sales" },
+  { tab: "ads", bubbles: "Marketing", tabLabel: "Ads" },
+  { tab: "inventory", bubbles: "Inventory", tabLabel: "Inventory" },
+  { tab: "growth", bubbles: "Operations · Wholesale", tabLabel: "Growth" },
+  { tab: "roadmap", bubbles: "Launches", tabLabel: "Roadmap" },
+];
+const LENS_ROLE_DEFAULT = {
+  "Owner / Admin": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
+  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
+  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
+  "Viewer": ["content", "roadmap"],
+};
+function TeamLens({ scoreFor, driveMap, onSaveDriveMap, navTabs }) {
+  const [open, setOpen] = useState(false);
+  const [users, setUsers] = useState(null);
+  const [sel, setSel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
+  const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  useEffect(() => {
+    if (open && users === null) {
+      fetch("/api/data?op=users").then((r) => r.json()).then((d) => setUsers((d.users || []).filter((u) => !u.revoked))).catch(() => setUsers([]));
+    }
+  }, [open, users]);
+  const u = (users || []).find((x) => x.id === sel) || null;
+  const pagesOf = (x) => (x.pages && x.pages.length ? x.pages : (LENS_ROLE_DEFAULT[x.role] || LENS_ROLE_DEFAULT["Viewer"]));
+  const pages = u ? pagesOf(u) : null;
+  const score = u ? scoreFor(pages) : null;
+  const toggle = async (tabId) => {
+    if (!u || busy) return;
+    const next = pages.includes(tabId) ? pages.filter((t) => t !== tabId) : [...pages, tabId];
+    if (!next.length) return;
+    setBusy(true);
+    try {
+      await fetch("/api/data?op=set_pages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, pages: next }) });
+      setUsers(users.map((x) => (x.id === u.id ? { ...x, pages: next } : x)));
+    } catch (e) {}
+    setBusy(false);
+  };
+  const chip = { border: "1px solid #E0E0DD", borderRadius: 1, padding: "5px 11px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", background: "transparent", color: "#71716C" };
+  return (
+    <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "8px 24px", fontFamily: sans }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676" }}>Team lens</span>
+        <button onClick={() => { setOpen(!open); setDriveOpen(false); }} style={{ ...chip, color: open ? "#1A1A1A" : "#71716C", borderColor: open ? "#8F8676" : "#E0E0DD" }}>
+          {open ? "Close" : "Preview a member's brain"}
+        </button>
+        <button onClick={() => { setDriveOpen(!driveOpen); setOpen(false); }} style={{ ...chip, color: driveOpen ? "#1A1A1A" : "#71716C", borderColor: driveOpen ? "#8F8676" : "#E0E0DD" }}>
+          {driveOpen ? "Close" : "Tab ↔ Drive map"}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ padding: "12px 0 8px" }}>
+          {users === null ? (
+            <span style={{ fontSize: 11, color: "#9A9A95" }}>Loading team…</span>
+          ) : users.length === 0 ? (
+            <span style={{ fontSize: 11, color: "#9A9A95" }}>No team logins yet — invite people from Growth → Action Items → Team.</span>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <select value={sel} onChange={(e) => setSel(e.target.value)}
+                style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, color: "#1A1A1A", fontFamily: sans, fontSize: 12, padding: "6px 9px" }}>
+                <option value="">Choose a member…</option>
+                {users.map((x) => <option key={x.id} value={x.id}>{x.name} — {x.role}</option>)}
+              </select>
+              {u && (
+                <>
+                  <span style={{ fontSize: 12, color: "#1A1A1A" }}>
+                    {u.name.split(" ")[0]}'s health: <b>{score}</b>
+                    <span style={{ color: "#9A9A95", fontSize: 10 }}> · from their bubbles only</span>
+                  </span>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {LENS_GROUPS.map((g) => {
+                      const on = pages.includes(g.tab);
+                      return (
+                        <button key={g.tab} onClick={() => toggle(g.tab)} disabled={busy} title={"On the " + g.tabLabel + " tab"}
+                          style={{ ...chip, background: on ? "#1A1A1A" : "transparent", color: on ? "#FFFFFF" : "#71716C", borderColor: on ? "#1A1A1A" : "#E0E0DD" }}>
+                          {g.bubbles}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span style={{ fontSize: 10, fontStyle: "italic", fontFamily: "Georgia, serif", color: "#8F8676" }}>
+                    Toggling a bubble grants or removes its app tab too — one permission, both places.
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {driveOpen && (
+        <div style={{ padding: "12px 0 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 10, fontStyle: "italic", fontFamily: "Georgia, serif", color: "#8F8676" }}>
+            Paste each tab's Drive folder link — a "Drive ⤴" chip appears on that tab for everyone who can see it.
+          </span>
+          {navTabs.map((t) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "#71716C", width: 110, flexShrink: 0 }}>{t.label}</span>
+              <input defaultValue={driveMap[t.id] || ""} placeholder="https://drive.google.com/drive/folders/…"
+                onBlur={(e) => { const v = e.target.value.trim(); if ((driveMap[t.id] || "") !== v) onSaveDriveMap({ ...driveMap, [t.id]: v || undefined }); }}
+                style={{ flex: 1, maxWidth: 480, background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "5px 9px", fontFamily: sans, fontSize: 11, color: "#1A1A1A", outline: "none" }} />
+              {driveMap[t.id] && <a href={driveMap[t.id]} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#8F8676" }}>open ⤴</a>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [mode, setMode] = useState("user"); // "user" = email + personal password · "house" = master key
   const [email, setEmail] = useState("");
@@ -2226,7 +2345,27 @@ const _liveActions = _storedActions.filter(a => a.status !== "done" && a.status 
 const openHighActions = _liveActions.length ? _liveActions.filter(a => a.severity === "high").length : _marginFlags.filter(f => f.severity === "high").length;
 
 // ── BUSINESS BRAIN MODEL — one live config drives the landing page + Command View ──
-const brainModel = buildBrainModel({
+// ── ROLE GATING (Team Portal spec) ── the house password and Owner / Admin see
+// everything; Managers see everything except bank + cash runway; Team Members
+// work in operations; Viewers get read-oriented spaces. Server enforces the
+// financial ops too — hiding tabs is presentation, not the lock.
+const me = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "null"); } catch { return null; } })();
+const myRole = (me && me.role) || "Owner / Admin";
+const iAmOwner = /^owner/i.test(myRole);
+const ROLE_TABS = {
+  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
+  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
+  "Viewer": ["content", "roadmap"],
+};
+const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
+// A per-person pages list (set on the Team roster) replaces the role default.
+const myPages = (!iAmOwner && me && Array.isArray(me.pages) && me.pages.length)
+  ? me.pages
+  : (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]);
+
+// The full signal set for the brain; staff get it through their lens so the
+// bubbles — and the percentage itself — are their own.
+const brainCtx = {
 businessName: "Lavalle Haus",
 products: products.map(p => ({ ...p, _status: stockStatus(p, shopify, amazon) })),
 campaigns,
@@ -2240,7 +2379,8 @@ accountHealth: dbState.amazonAccountHealth || null,
 cashRunwayWeeks: null,
 marginsSummary: _marginsModel.summary || null,
 metaAds: dbState.metaAds || [],
-});
+};
+const brainModel = buildBrainModel({ ...brainCtx, lensTabs: iAmOwner ? null : myPages });
 const goTo = (nav) => {
 if (!nav) return;
 setCommandView(false);
@@ -2295,25 +2435,10 @@ const NAV = [
 { id: "ai", label: "✦ AI", labelEs: "Asesor AI", subs: [{ id: "coo", label: "AI COO" }, { id: "advisor", label: "Advisor" }] },
 ];
 
-// ── ROLE GATING (Team Portal spec) ── the house password and Owner / Admin see
-// everything; Managers see everything except bank + cash runway; Team Members
-// work in operations; Viewers get read-oriented spaces. Server enforces the
-// financial ops too — hiding tabs is presentation, not the lock.
-const me = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "null"); } catch { return null; } })();
-const myRole = (me && me.role) || "Owner / Admin";
-const iAmOwner = /^owner/i.test(myRole);
-const ROLE_TABS = {
-  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
-  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
-  "Viewer": ["content", "roadmap"],
-};
-const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
-// A per-person pages list (set on the Team roster) replaces the role default.
-const myPages = (!iAmOwner && me && Array.isArray(me.pages) && me.pages.length)
-  ? me.pages
-  : (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]);
 const visibleNav = NAV
-  .filter(n => iAmOwner || myPages.includes(n.id))
+  // the Business Brain home is for everyone — its bubbles, insights and the
+  // health percentage itself already pass through the person's lens
+  .filter(n => iAmOwner || n.id === "brain" || myPages.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
 
 if (!visibleNav.some(n => n.id === tab)) { setTab(visibleNav[0].id); return null; }
@@ -2352,8 +2477,20 @@ function renderBody() {
 if (tab === "brain") {
 // Home IS the Command View experience, living under the main-tab header —
 // like a storefront homepage. Narrow screens get the vertical summary.
+// Owners get the Team lens strip: preview any member's bubbles + their own
+// percentage, and the tab ↔ Drive folder map.
+const lensStrip = iAmOwner ? (
+  <TeamLens
+    scoreFor={(tabs) => buildBrainModel({ ...brainCtx, lensTabs: tabs }).healthScore}
+    driveMap={dbState.driveMap || {}}
+    onSaveDriveMap={(dm) => setDbState((prev) => { const next = { ...prev, driveMap: dm }; dbSave(next); return next; })}
+    navTabs={NAV}
+  />
+) : null;
 if (typeof window !== "undefined" && window.innerWidth < 760) {
 return (
+<div>
+{lensStrip}
 <BusinessBrain
 model={brainModel}
 themeId={brainTheme}
@@ -2362,9 +2499,12 @@ onNavigate={goTo}
 onOpenCommand={() => setCommandView(true)}
 onAsk={askChief}
 />
+</div>
 );
 }
 return (
+<div>
+{lensStrip}
 <CommandView
 embedded
 model={brainModel}
@@ -2374,6 +2514,7 @@ onExit={() => {}}
 onNavigate={goTo}
 onAsk={askChief}
 />
+</div>
 );
 }
 if (tab === "profit") {
@@ -2517,13 +2658,19 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 </div>
 
 {/* TOP NAV — 7 permanent homes */}
-<div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto" }}>
+<div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", alignItems: "center" }}>
 {visibleNav.map(n => (
 <button key={n.id} onClick={() => setTab(n.id)} style={{ background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
 {n.label}
 {n.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{n.alert}</span>}
 </button>
 ))}
+{(dbState.driveMap || {})[tab] && (
+<a href={dbState.driveMap[tab]} target="_blank" rel="noopener noreferrer" title="This tab's Drive folder"
+style={{ marginLeft: "auto", flexShrink: 0, border: "1px solid #E0E0DD", borderRadius: 1, padding: "4px 10px", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#8F8676", textDecoration: "none", whiteSpace: "nowrap" }}>
+Drive ⤴
+</a>
+)}
 </div>
 
 {/* SUB NAV — appears for tabs that have sections */}

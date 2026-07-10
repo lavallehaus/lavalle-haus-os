@@ -40,9 +40,26 @@ export function buildHealth({ highFlags = 0, medFlags = 0, criticalStock = 0, pa
   return { score, status, notes };
 }
 
+// ── One taxonomy ─────────────────────────────────────────────────────────────
+// Every brain bubble lives in exactly one app tab; a staff member sees a
+// bubble iff they can see its tab, and (via dbState.driveMap) each tab can
+// point at its Drive folder — bubbles ↔ tabs ↔ Drive, one mental model.
+export const BUBBLE_TAB = {
+  revenue: "profit",
+  finance: "profit",
+  marketing: "ads",
+  inventory: "inventory",
+  operations: "growth",
+  projects: "roadmap",
+  growth: "growth",
+};
+
 // ── The Brain ────────────────────────────────────────────────────────────────
 // ctx is assembled in App.jsx from live state. Products arrive with a
 // precomputed `_status` (the same stockStatus the Inventory tab shows).
+// ctx.lensTabs (array of tab ids) applies a person's lens: only bubbles,
+// insights, priorities and health signals from those tabs — so a staff
+// member gets their own health percentage from just the world they run.
 export function buildBrainModel(ctx) {
   const {
     businessName = "Lavalle Haus",
@@ -50,8 +67,9 @@ export function buildBrainModel(ctx) {
     shopifySales = null, amazonSales = null,
     bankCash = null, pnl = {}, actionsBoard = {},
     wholesale = [], accountHealth = null, cashRunwayWeeks = null,
-    marginsSummary = null, metaAds = [],
+    marginsSummary = null, metaAds = [], lensTabs = null,
   } = ctx;
+  const see = (tab) => !lensTabs || lensTabs.includes(tab);
 
   const sellable = products.filter((p) => !p.isSample);
   const stockRisks = sellable.filter((p) => ["out", "low", "reorder"].includes(p._status));
@@ -101,10 +119,15 @@ export function buildBrainModel(ctx) {
   const team = actionsBoard.team || [];
   const memberName = (id) => { const m = team.find((t) => t.id === id); return m ? m.name : null; };
 
+  // A person's percentage only docks for signals inside their lens.
   const health = buildHealth({
-    highFlags: highFlags.length, medFlags: medFlags.length,
-    criticalStock: stockRisks.length, pausedCampaigns: paused.length,
-    runwayWeeks: cashRunwayWeeks, accountHealth, wowPct,
+    highFlags: see("profit") ? highFlags.length : 0,
+    medFlags: see("profit") ? medFlags.length : 0,
+    criticalStock: see("inventory") ? stockRisks.length : 0,
+    pausedCampaigns: see("ads") ? paused.length : 0,
+    runwayWeeks: see("profit") ? cashRunwayWeeks : null,
+    accountHealth: see("profit") ? accountHealth : null,
+    wowPct: see("profit") ? wowPct : null,
   });
 
   // ── Insights (right panel + Command View) — interpretation, not raw data ──
@@ -326,17 +349,22 @@ export function buildBrainModel(ctx) {
     },
   ];
 
+  const lensInsights = insights.filter((i) => !i.nav || see(i.nav.tab));
+  const lensNodes = nodes.filter((n) => see(BUBBLE_TAB[n.id] || "brain"));
+  const lensPriorities = see("growth") ? priorities : [];
+
   return {
     businessType: "commerce",
     businessName,
     healthScore: health.score,
     status: health.status,
     healthNotes: health.notes,
-    opportunities,
-    risks,
-    insights: insights.slice(0, 5),
-    priorities,
-    nodes,
+    opportunities: lensInsights.filter((i) => i.tone === "good").length,
+    risks: lensInsights.filter((i) => i.tone === "risk").length,
+    insights: lensInsights.slice(0, 5),
+    priorities: lensPriorities,
+    nodes: lensNodes,
+    lensed: !!lensTabs,
   };
 }
 
