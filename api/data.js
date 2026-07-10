@@ -195,6 +195,58 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── TikTok OAuth (Content Posting API) ───────────────────────────────────────
+  // Public endpoints reached via vercel.json rewrites (/api/tiktok-auth and
+  // /api/tiktok-callback) — folded in here to stay under the function cap.
+  // Token lands in KV as tiktok_oauth for Publishing to use.
+  if (req.method === "GET" && op === "tiktok_auth") {
+    const key = process.env.TIKTOK_CLIENT_KEY;
+    if (!key) { res.status(500).json({ error: "TIKTOK_CLIENT_KEY is not set in Vercel env vars yet." }); return; }
+    const csrf = randomBytes(16).toString("hex");
+    await kvSet("tiktok_csrf", { v: csrf, t: Date.now() });
+    const params = new URLSearchParams({
+      client_key: key,
+      response_type: "code",
+      scope: "user.info.basic,video.publish,video.upload",
+      redirect_uri: "https://lavalle-haus-os.vercel.app/api/tiktok-callback",
+      state: csrf,
+    });
+    res.writeHead(302, { Location: "https://www.tiktok.com/v2/auth/authorize/?" + params.toString() });
+    res.end();
+    return;
+  }
+  if (req.method === "GET" && op === "tiktok_callback") {
+    const page = (msg, ok) => '<!doctype html><html><body style="font-family:Georgia,serif;background:#FFFFFF;color:#1A1A1A;display:flex;align-items:center;justify-content:center;height:96vh"><div style="text-align:center;max-width:440px"><div style="font-family:Jost,Helvetica,Arial,sans-serif;letter-spacing:4px;font-size:11px;color:#8F8676">LAVALLE HAUS OS</div><h2 style="font-weight:400">' + (ok ? "TikTok connected." : "TikTok connection failed") + '</h2><p style="color:#71716C;line-height:1.7">' + msg + "</p></div></body></html>";
+    try {
+      if (req.query.error) { res.status(400).send(page(String(req.query.error_description || req.query.error), false)); return; }
+      const saved = (await kvGet("tiktok_csrf")) || {};
+      if (!req.query.state || req.query.state !== saved.v) { res.status(400).send(page("Security check failed — start again from /api/tiktok-auth.", false)); return; }
+      const r = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_key: process.env.TIKTOK_CLIENT_KEY || "",
+          client_secret: process.env.TIKTOK_CLIENT_SECRET || "",
+          code: req.query.code || "",
+          grant_type: "authorization_code",
+          redirect_uri: "https://lavalle-haus-os.vercel.app/api/tiktok-callback",
+        }),
+      });
+      const d = await r.json();
+      if (!d.access_token) { res.status(400).send(page("Token exchange failed: " + JSON.stringify(d).slice(0, 250), false)); return; }
+      await kvSet("tiktok_oauth", {
+        access_token: d.access_token, refresh_token: d.refresh_token,
+        open_id: d.open_id, scope: d.scope,
+        expires_in: d.expires_in, refresh_expires_in: d.refresh_expires_in,
+        savedAt: new Date().toISOString(),
+      });
+      res.send(page("The Fold's TikTok account is linked and the token is stored. Publishing can post once TikTok approves the app's audit — until then posts land as private drafts. You can close this tab.", true));
+    } catch (e) {
+      res.status(500).send(page(String(e).slice(0, 200), false));
+    }
+    return;
+  }
+
   // Invite details: lets the accept screen greet the person by name.
   if (req.method === "GET" && op === "invite_info") {
     const t = (req.query.invite || "").trim();

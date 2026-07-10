@@ -1,5 +1,18 @@
 {
   "crons": [
-    { "path": "/api/data", "schedule": "0 14 * * *" }
+    {
+      "path": "/api/data",
+      "schedule": "0 14 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/tiktok-auth",
+      "destination": "/api/data?op=tiktok_auth"
+    },
+    {
+      "source": "/api/tiktok-callback",
+      "destination": "/api/data?op=tiktok_callback"
+    }
   ]
 }
