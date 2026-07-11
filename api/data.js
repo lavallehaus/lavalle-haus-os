@@ -288,6 +288,35 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── TikTok connection status + sandbox test post (owner-only) ───────────────
+  if (op === "tiktok_status" && req.method === "GET") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view TikTok connection status." }); return; }
+    const fmt = (t) => (t && t.access_token ? { connected: true, open_id: t.open_id, scope: t.scope, savedAt: t.savedAt } : { connected: false });
+    res.json({ sandbox: fmt(await kvGet("tiktok_oauth_sandbox")), production: fmt(await kvGet("tiktok_oauth")) });
+    return;
+  }
+  if (op === "tiktok_test_post" && req.method === "POST") {
+    // Sends a draft to the sandbox account's TikTok inbox via the Content
+    // Posting API (video.upload scope) — used for the app-review demo.
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can post to TikTok." }); return; }
+    const tok = await kvGet("tiktok_oauth_sandbox");
+    if (!tok || !tok.access_token) { res.status(400).json({ error: "No sandbox token yet — run /api/tiktok-auth?sandbox=1 first." }); return; }
+    const b = req.body || {};
+    const endpoint = b.check
+      ? "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
+      : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
+    const payload = b.check
+      ? { publish_id: b.check }
+      : { source_info: { source: "PULL_FROM_URL", video_url: b.video_url || "https://lavalle-haus-os.vercel.app/tiktok-sample.mp4" } };
+    const r = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + tok.access_token, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    res.status(r.status).json(await r.json());
+    return;
+  }
+
   // ── Team access (owner-only ops) ─────────────────────────────────────────────
   if (op === "invite" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can manage team access." }); return; }

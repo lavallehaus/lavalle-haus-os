@@ -43,6 +43,24 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [folderLink, setFolderLink] = useState("");
   const [syncMsg, setSyncMsg] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [tiktok, setTiktok] = useState(null); // owner-only: {sandbox, production} connection state
+  const [ttMsg, setTtMsg] = useState(null);
+
+  // TikTok connection chip — status op is owner-only, so the chip simply
+  // stays hidden for staff. Sandbox flow until TikTok approves the app audit.
+  useEffect(() => {
+    fetch("/api/data?op=tiktok_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setTiktok(d)).catch(() => {});
+  }, []);
+  const ttConnected = !!(tiktok && ((tiktok.sandbox && tiktok.sandbox.connected) || (tiktok.production && tiktok.production.connected)));
+  const sendTestDraft = async () => {
+    setTtMsg({ t: "Sending a draft to the TikTok inbox…" });
+    try {
+      const r = await fetch("/api/data?op=tiktok_test_post", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const d = await r.json();
+      if (d.data && d.data.publish_id) setTtMsg({ t: "Draft sent — open the TikTok app inbox on the connected account to see it." });
+      else setTtMsg({ bad: true, t: "TikTok replied: " + JSON.stringify(d.error || d).slice(0, 180) });
+    } catch (e) { setTtMsg({ bad: true, t: String(e).slice(0, 180) }); }
+  };
 
   // First run: seed The Fold July from the repo, same pattern as the boards.
   // v2 adds verified pieces (cross-checked against thefoldlabel.com) + flags.
@@ -180,10 +198,17 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
         )}
         <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>@{feed.account} · {items.length} posts</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          {tiktok && !ttConnected && (
+            <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Link the TikTok account">♪ Connect TikTok</button>
+          )}
+          {ttConnected && (
+            <button onClick={sendTestDraft} style={ghost} title="Send a test draft to the connected TikTok inbox">♪ TikTok ✓ · Test draft</button>
+          )}
           <button onClick={() => setAspect(aspect === "1 / 1" ? "3 / 4" : "1 / 1")} style={ghost} title="Toggle tile shape">{aspect === "1 / 1" ? "◻ Square" : "▯ Portrait"}</button>
           <button onClick={() => { setSyncOpen(!syncOpen); setSyncMsg(null); setFolderLink(""); }} style={{ ...ghost, color: c.ink, borderColor: c.taupe }}>⟳ Sync from Drive</button>
         </div>
       </div>
+      {ttMsg && <div style={{ fontFamily: sans, fontSize: 11, color: ttMsg.bad ? c.red : c.green, marginBottom: 12 }}>{ttMsg.t}</div>}
 
       {syncOpen && (
         <div style={{ background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 16 }}>
