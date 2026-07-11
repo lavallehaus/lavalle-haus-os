@@ -295,6 +295,27 @@ export default async function handler(req, res) {
     res.json({ sandbox: fmt(await kvGet("tiktok_oauth_sandbox")), production: fmt(await kvGet("tiktok_oauth")) });
     return;
   }
+  if (op === "tiktok_revoke" && req.method === "POST") {
+    // Disconnect: revoke the grant with TikTok and clear the stored token.
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can disconnect TikTok." }); return; }
+    const sb = !((req.body || {}).production);
+    const kvKey = sb ? "tiktok_oauth_sandbox" : "tiktok_oauth";
+    const tok = await kvGet(kvKey);
+    if (tok && tok.access_token) {
+      await fetch("https://open.tiktokapis.com/v2/oauth/revoke/", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_key: (sb ? process.env.TIKTOK_SANDBOX_KEY : process.env.TIKTOK_CLIENT_KEY) || "",
+          client_secret: (sb ? process.env.TIKTOK_SANDBOX_SECRET : process.env.TIKTOK_CLIENT_SECRET) || "",
+          token: tok.access_token,
+        }),
+      }).catch(() => {});
+    }
+    await kvSet(kvKey, null);
+    res.json({ ok: true });
+    return;
+  }
   if (op === "tiktok_test_post" && req.method === "POST") {
     // Sends a draft to the sandbox account's TikTok inbox via the Content
     // Posting API (video.upload scope) — used for the app-review demo.
