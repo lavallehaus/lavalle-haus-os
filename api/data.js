@@ -53,6 +53,8 @@ const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
 // TikTok tokens: KV holds {open_id: token} per environment. Early builds stored
 // a single token object at the top level — migrate that shape on read.
 const tiktokAccounts = (v) => (!v ? {} : v.access_token ? { [v.open_id]: v } : v);
+// Instagram tokens: same shape, keyed by user_id.
+const igAccounts = (v) => (!v ? {} : v.access_token ? { [v.user_id]: v } : v);
 const hashPassword = (pw, salt) => scryptSync(pw, salt, 64).toString("hex");
 function passwordMatches(pw, salt, hash) {
   try {
@@ -115,6 +117,23 @@ async function runReminders(res) {
   const url = process.env.KV_REST_API_URL, token = process.env.KV_REST_API_TOKEN;
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+  // Keep Instagram long-lived tokens fresh (60-day expiry; refreshable after 24h).
+  try {
+    const igR = await fetch(`${url}/get/instagram_oauth`, { headers: { Authorization: `Bearer ${token}` } });
+    const igD = await igR.json();
+    const map = igD.result ? JSON.parse(igD.result) : null;
+    if (map && typeof map === "object" && !map.access_token) {
+      let refreshed = false;
+      for (const t of Object.values(map)) {
+        if (!t || !t.access_token || !t.long_lived) continue;
+        if (Date.now() - new Date(t.savedAt || 0).getTime() < 7 * 86400000) continue; // weekly is plenty
+        const rr = await fetch("https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=" + encodeURIComponent(t.access_token));
+        const rd = await rr.json();
+        if (rd.access_token) { t.access_token = rd.access_token; t.expires_in = rd.expires_in; t.savedAt = new Date().toISOString(); refreshed = true; }
+      }
+      if (refreshed) await fetch(`${url}/set/instagram_oauth`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(map) });
+    }
+  } catch {}
   if (!apiKey) { res.status(200).json({ ok: false, error: "RESEND_API_KEY not set" }); return; }
   try {
     const r = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
@@ -266,6 +285,66 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Instagram OAuth (Instagram API with Instagram Login) ────────────────────
+  // Meta app "Refillery Haus" → Instagram sub-app "Refillery Haus-IG".
+  // Same per-account pattern as TikTok: KV instagram_oauth = {user_id: token}.
+  // Long-lived tokens (~60 days) are refreshed by the daily cron.
+  if (req.method === "GET" && op === "instagram_auth") {
+    if (!process.env.IG_APP_ID) { res.status(500).json({ error: "IG_APP_ID is not set in Vercel env vars yet." }); return; }
+    const csrf = randomBytes(16).toString("hex");
+    await kvSet("instagram_csrf", { v: csrf, t: Date.now() });
+    const params = new URLSearchParams({
+      client_id: process.env.IG_APP_ID,
+      redirect_uri: "https://lavalle-haus-os.vercel.app/api/instagram-callback",
+      response_type: "code",
+      scope: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_messages",
+      state: csrf,
+      force_reauth: "true", // each brand account picks itself at login
+    });
+    res.writeHead(302, { Location: "https://www.instagram.com/oauth/authorize?" + params.toString() });
+    res.end();
+    return;
+  }
+  if (req.method === "GET" && op === "instagram_callback") {
+    const page = (msg, ok) => '<!doctype html><html><body style="font-family:Georgia,serif;background:#FFFFFF;color:#1A1A1A;display:flex;align-items:center;justify-content:center;height:96vh"><div style="text-align:center;max-width:440px"><div style="font-family:Jost,Helvetica,Arial,sans-serif;letter-spacing:4px;font-size:11px;color:#8F8676">LAVALLE HAUS OS</div><h2 style="font-weight:400">' + (ok ? "Instagram connected." : "Instagram connection failed") + '</h2><p style="color:#71716C;line-height:1.7">' + msg + "</p></div></body></html>";
+    try {
+      if (req.query.error) { res.status(400).send(page(String(req.query.error_description || req.query.error), false)); return; }
+      const saved = (await kvGet("instagram_csrf")) || {};
+      if (!req.query.state || req.query.state !== saved.v) { res.status(400).send(page("Security check failed — start again from /api/instagram-auth.", false)); return; }
+      const r = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: process.env.IG_APP_ID || "",
+          client_secret: process.env.IG_APP_SECRET || "",
+          grant_type: "authorization_code",
+          redirect_uri: "https://lavalle-haus-os.vercel.app/api/instagram-callback",
+          code: req.query.code || "",
+        }),
+      });
+      const d = await r.json();
+      if (!d.access_token) { res.status(400).send(page("Token exchange failed: " + JSON.stringify(d).slice(0, 250), false)); return; }
+      // Swap the 1-hour token for a ~60-day one; the cron keeps it fresh.
+      const llr = await fetch("https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=" + encodeURIComponent(process.env.IG_APP_SECRET || "") + "&access_token=" + encodeURIComponent(d.access_token));
+      const ll = await llr.json();
+      const token = ll.access_token || d.access_token;
+      let profile = {};
+      try { profile = await (await fetch("https://graph.instagram.com/v23.0/me?fields=user_id,username,name&access_token=" + encodeURIComponent(token))).json(); } catch {}
+      const uid = String(profile.user_id || d.user_id);
+      const map = igAccounts(await kvGet("instagram_oauth"));
+      map[uid] = {
+        access_token: token, user_id: uid, username: profile.username || null,
+        permissions: d.permissions || null, long_lived: !!ll.access_token,
+        expires_in: ll.expires_in || d.expires_in, savedAt: new Date().toISOString(),
+      };
+      await kvSet("instagram_oauth", map);
+      res.send(page((profile.username ? "@" + profile.username + " is" : "The account is") + " linked and the token is stored. You can close this tab.", true));
+    } catch (e) {
+      res.status(500).send(page(String(e).slice(0, 200), false));
+    }
+    return;
+  }
+
   // Invite details: lets the accept screen greet the person by name.
   if (req.method === "GET" && op === "invite_info") {
     const t = (req.query.invite || "").trim();
@@ -312,6 +391,12 @@ export default async function handler(req, res) {
       return { connected: accounts.length > 0, accounts };
     };
     res.json({ sandbox: fmt(await kvGet("tiktok_oauth_sandbox")), production: fmt(await kvGet("tiktok_oauth")) });
+    return;
+  }
+  if (op === "instagram_status" && req.method === "GET") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view Instagram connection status." }); return; }
+    const accounts = Object.values(igAccounts(await kvGet("instagram_oauth"))).map((t) => ({ user_id: t.user_id, username: t.username || null, savedAt: t.savedAt }));
+    res.json({ connected: accounts.length > 0, accounts });
     return;
   }
   if (op === "tiktok_revoke" && req.method === "POST") {

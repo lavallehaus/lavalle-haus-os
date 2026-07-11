@@ -18,6 +18,14 @@
     {
       "source": "/api/tiktok-callback",
       "destination": "/api/data?op=tiktok_callback"
+    },
+    {
+      "source": "/api/instagram-auth",
+      "destination": "/api/data?op=instagram_auth"
+    },
+    {
+      "source": "/api/instagram-callback",
+      "destination": "/api/data?op=instagram_callback"
     }
   ]
 }

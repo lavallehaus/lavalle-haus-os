@@ -46,10 +46,13 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [tiktok, setTiktok] = useState(null); // owner-only: {sandbox, production} connection state
   const [ttMsg, setTtMsg] = useState(null);
 
-  // TikTok connection chip — status op is owner-only, so the chip simply
-  // stays hidden for staff. Sandbox flow until TikTok approves the app audit.
+  const [insta, setInsta] = useState(null); // owner-only: {connected, accounts}
+
+  // Platform connection chips — status ops are owner-only, so the chips simply
+  // stay hidden for staff. TikTok runs sandbox until the app audit is approved.
   useEffect(() => {
     fetch("/api/data?op=tiktok_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setTiktok(d)).catch(() => {});
+    fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setInsta(d)).catch(() => {});
   }, []);
   const ttConnected = !!(tiktok && ((tiktok.sandbox && tiktok.sandbox.connected) || (tiktok.production && tiktok.production.connected)));
   const ttNames = tiktok
@@ -201,6 +204,15 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
         )}
         <span style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>@{feed.account} · {items.length} posts</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          {insta && !insta.connected && (
+            <button onClick={() => window.open("/api/instagram-auth", "_blank")} style={ghost} title="Link an Instagram business account">◉ Connect Instagram</button>
+          )}
+          {insta && insta.connected && (
+            <>
+              <span style={{ ...ghost, cursor: "default" }} title="Connected Instagram accounts">◉ IG ✓ · {insta.accounts.map((a) => a.username).filter(Boolean).join(", ") || insta.accounts.length}</span>
+              <button onClick={() => window.open("/api/instagram-auth", "_blank")} style={ghost} title="Connect another Instagram account or re-link this one">↻</button>
+            </>
+          )}
           {tiktok && !ttConnected && (
             <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Link the TikTok account">♪ Connect TikTok</button>
           )}
