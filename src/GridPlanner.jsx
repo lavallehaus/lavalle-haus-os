@@ -52,6 +52,9 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
     fetch("/api/data?op=tiktok_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setTiktok(d)).catch(() => {});
   }, []);
   const ttConnected = !!(tiktok && ((tiktok.sandbox && tiktok.sandbox.connected) || (tiktok.production && tiktok.production.connected)));
+  const ttNames = tiktok
+    ? [...((tiktok.production && tiktok.production.accounts) || []), ...((tiktok.sandbox && tiktok.sandbox.accounts) || [])].map((a) => a.display_name).filter(Boolean).join(", ")
+    : "";
   const sendTestDraft = async () => {
     setTtMsg({ t: "Sending a draft to the TikTok inbox…" });
     try {
@@ -203,8 +206,8 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
           )}
           {ttConnected && (
             <>
-              <button onClick={sendTestDraft} style={ghost} title="Send a test draft to the connected TikTok inbox">♪ TikTok ✓ · Test draft</button>
-              <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Re-link the TikTok account (expired token or switching accounts)">↻</button>
+              <button onClick={sendTestDraft} style={ghost} title={"Send a test draft to the connected TikTok inbox" + (ttNames ? " — connected: " + ttNames : "")}>♪ TikTok ✓{ttNames ? " · " + ttNames : ""} · Test draft</button>
+              <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Connect another TikTok account or re-link this one">↻</button>
             </>
           )}
           <button onClick={() => setAspect(aspect === "1 / 1" ? "3 / 4" : "1 / 1")} style={ghost} title="Toggle tile shape">{aspect === "1 / 1" ? "◻ Square" : "▯ Portrait"}</button>

@@ -49,6 +49,10 @@ function cleanPages(v) {
   return out.length ? out : null;
 }
 const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
+
+// TikTok tokens: KV holds {open_id: token} per environment. Early builds stored
+// a single token object at the top level — migrate that shape on read.
+const tiktokAccounts = (v) => (!v ? {} : v.access_token ? { [v.open_id]: v } : v);
 const hashPassword = (pw, salt) => scryptSync(pw, salt, 64).toString("hex");
 function passwordMatches(pw, salt, hash) {
   try {
@@ -237,13 +241,25 @@ export default async function handler(req, res) {
       });
       const d = await r.json();
       if (!d.access_token) { res.status(400).send(page("Token exchange failed: " + JSON.stringify(d).slice(0, 250), false)); return; }
-      await kvSet(sandbox ? "tiktok_oauth_sandbox" : "tiktok_oauth", {
+      // Tokens are stored per account (keyed by open_id) so @refilleryhaus and
+      // @thefoldlabel can both be connected without overwriting each other.
+      let profile = {};
+      try {
+        const ur = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url", { headers: { Authorization: "Bearer " + d.access_token } });
+        profile = (((await ur.json()) || {}).data || {}).user || {};
+      } catch {}
+      const kvKey = sandbox ? "tiktok_oauth_sandbox" : "tiktok_oauth";
+      const map = tiktokAccounts(await kvGet(kvKey));
+      map[d.open_id] = {
         access_token: d.access_token, refresh_token: d.refresh_token,
         open_id: d.open_id, scope: d.scope, sandbox,
         expires_in: d.expires_in, refresh_expires_in: d.refresh_expires_in,
+        display_name: profile.display_name || null, avatar_url: profile.avatar_url || null,
         savedAt: new Date().toISOString(),
-      });
-      res.send(page((sandbox ? "Sandbox connection complete — the test account is linked for the review demo." : "The TikTok account is linked and the token is stored. Publishing can post once TikTok approves the app's audit.") + " You can close this tab.", true));
+      };
+      await kvSet(kvKey, map);
+      const who = profile.display_name ? '"' + profile.display_name + '" is' : "The account is";
+      res.send(page((sandbox ? who + " linked in the sandbox for the review demo." : who + " linked and the token is stored. Publishing can post once TikTok approves the app's audit.") + " You can close this tab.", true));
     } catch (e) {
       res.status(500).send(page(String(e).slice(0, 200), false));
     }
@@ -291,28 +307,34 @@ export default async function handler(req, res) {
   // ── TikTok connection status + sandbox test post (owner-only) ───────────────
   if (op === "tiktok_status" && req.method === "GET") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view TikTok connection status." }); return; }
-    const fmt = (t) => (t && t.access_token ? { connected: true, open_id: t.open_id, scope: t.scope, savedAt: t.savedAt } : { connected: false });
+    const fmt = (v) => {
+      const accounts = Object.values(tiktokAccounts(v)).map((t) => ({ open_id: t.open_id, display_name: t.display_name || null, scope: t.scope, savedAt: t.savedAt }));
+      return { connected: accounts.length > 0, accounts };
+    };
     res.json({ sandbox: fmt(await kvGet("tiktok_oauth_sandbox")), production: fmt(await kvGet("tiktok_oauth")) });
     return;
   }
   if (op === "tiktok_revoke" && req.method === "POST") {
     // Disconnect: revoke the grant with TikTok and clear the stored token.
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can disconnect TikTok." }); return; }
-    const sb = !((req.body || {}).production);
+    const b = req.body || {};
+    const sb = !b.production;
     const kvKey = sb ? "tiktok_oauth_sandbox" : "tiktok_oauth";
-    const tok = await kvGet(kvKey);
-    if (tok && tok.access_token) {
+    const map = tiktokAccounts(await kvGet(kvKey));
+    for (const t of Object.values(map)) {
+      if (b.open_id && t.open_id !== b.open_id) continue; // no open_id = disconnect all
       await fetch("https://open.tiktokapis.com/v2/oauth/revoke/", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_key: (sb ? process.env.TIKTOK_SANDBOX_KEY : process.env.TIKTOK_CLIENT_KEY) || "",
           client_secret: (sb ? process.env.TIKTOK_SANDBOX_SECRET : process.env.TIKTOK_CLIENT_SECRET) || "",
-          token: tok.access_token,
+          token: t.access_token,
         }),
       }).catch(() => {});
+      delete map[t.open_id];
     }
-    await kvSet(kvKey, null);
+    await kvSet(kvKey, map);
     res.json({ ok: true });
     return;
   }
@@ -320,9 +342,10 @@ export default async function handler(req, res) {
     // Sends a draft to the sandbox account's TikTok inbox via the Content
     // Posting API (video.upload scope) — used for the app-review demo.
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can post to TikTok." }); return; }
-    const tok = await kvGet("tiktok_oauth_sandbox");
-    if (!tok || !tok.access_token) { res.status(400).json({ error: "No sandbox token yet — run /api/tiktok-auth?sandbox=1 first." }); return; }
     const b = req.body || {};
+    const accts = Object.values(tiktokAccounts(await kvGet("tiktok_oauth_sandbox")));
+    const tok = b.open_id ? accts.find((t) => t.open_id === b.open_id) : accts[0];
+    if (!tok) { res.status(400).json({ error: "No sandbox token yet — run /api/tiktok-auth?sandbox=1 first." }); return; }
     if (b.check) {
       const r = await fetch("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
         method: "POST",
