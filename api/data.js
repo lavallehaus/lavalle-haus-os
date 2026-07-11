@@ -302,18 +302,34 @@ export default async function handler(req, res) {
     const tok = await kvGet("tiktok_oauth_sandbox");
     if (!tok || !tok.access_token) { res.status(400).json({ error: "No sandbox token yet — run /api/tiktok-auth?sandbox=1 first." }); return; }
     const b = req.body || {};
-    const endpoint = b.check
-      ? "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
-      : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
-    const payload = b.check
-      ? { publish_id: b.check }
-      : { source_info: { source: "PULL_FROM_URL", video_url: b.video_url || "https://lavalle-haus-os.vercel.app/tiktok-sample.mp4" } };
-    const r = await fetch(endpoint, {
+    if (b.check) {
+      const r = await fetch("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + tok.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ publish_id: b.check }),
+      });
+      res.status(r.status).json(await r.json());
+      return;
+    }
+    // FILE_UPLOAD (not PULL_FROM_URL): the sandbox app has no verified URL
+    // properties of its own, so we stream the bytes up ourselves.
+    const vid = await fetch(b.video_url || "https://lavalle-haus-os.vercel.app/tiktok-sample.mp4");
+    if (!vid.ok) { res.status(400).json({ error: "Could not fetch the sample video (" + vid.status + ")." }); return; }
+    const buf = Buffer.from(await vid.arrayBuffer());
+    const init = await fetch("https://open.tiktokapis.com/v2/post/publish/inbox/video/init/", {
       method: "POST",
       headers: { Authorization: "Bearer " + tok.access_token, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ source_info: { source: "FILE_UPLOAD", video_size: buf.length, chunk_size: buf.length, total_chunk_count: 1 } }),
     });
-    res.status(r.status).json(await r.json());
+    const initD = await init.json();
+    const uploadUrl = initD.data && initD.data.upload_url;
+    if (!uploadUrl) { res.status(init.status).json(initD); return; }
+    const put = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "video/mp4", "Content-Range": "bytes 0-" + (buf.length - 1) + "/" + buf.length },
+      body: buf,
+    });
+    res.json({ data: { publish_id: initD.data.publish_id, upload_status: put.status } });
     return;
   }
 
