@@ -55,6 +55,90 @@ const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
 const tiktokAccounts = (v) => (!v ? {} : v.access_token ? { [v.open_id]: v } : v);
 // Instagram tokens: same shape, keyed by user_id.
 const igAccounts = (v) => (!v ? {} : v.access_token ? { [v.user_id]: v } : v);
+
+// ── Instagram content publishing ─────────────────────────────────────────────
+// Two-step Graph flow: create a media container, wait for it to process, then
+// publish it. Returns {ok, mediaId} or {ok:false, error}.
+async function igPublishPhoto(tok, imageUrl, caption) {
+  const base = "https://graph.instagram.com/v23.0";
+  const create = await fetch(`${base}/${tok.user_id}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ image_url: imageUrl, caption: caption || "", access_token: tok.access_token }),
+  });
+  const cd = await create.json();
+  if (!cd.id) return { ok: false, error: "container: " + JSON.stringify(cd.error || cd).slice(0, 220) };
+  for (let i = 0; i < 10; i++) {
+    const s = await (await fetch(`${base}/${cd.id}?fields=status_code&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+    if (s.status_code === "FINISHED") break;
+    if (s.status_code === "ERROR") return { ok: false, error: "processing failed — check the image URL is public JPEG" };
+    await new Promise((z) => setTimeout(z, 2000));
+  }
+  const pub = await fetch(`${base}/${tok.user_id}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ creation_id: cd.id, access_token: tok.access_token }),
+  });
+  const pd = await pub.json();
+  if (!pd.id) return { ok: false, error: "publish: " + JSON.stringify(pd.error || pd).slice(0, 220) };
+  return { ok: true, mediaId: pd.id };
+}
+
+// Publish every armed, due grid item (or one specific item when `only` is set).
+// Mutates the lavalle_data blob in KV and returns a summary.
+async function publishDueItems(only) {
+  const data = (await kvGet("lavalle_data")) || null;
+  const blob = Array.isArray(data) ? data[0] : data;
+  if (!blob || !blob.gridPlanner) return { published: 0, failed: [], note: "no grid data" };
+  const tokens = Object.values(igAccounts(await kvGet("instagram_oauth")));
+  // Dedupe ledger: survives the app clobbering grid state from a stale tab, so
+  // a post can never fire twice even if pub.status gets reverted client-side.
+  const ledger = (await kvGet("lavalle_published")) || {};
+  const now = Date.now();
+  const results = { published: 0, failed: [], skipped: 0, items: [] };
+  let changed = false, ledgerChanged = false;
+  for (const feed of blob.gridPlanner.feeds || []) {
+    const tok = tokens.find((t) => (t.username || "").toLowerCase() === (feed.account || "").toLowerCase());
+    const board = blob.boards && blob.boards[feed.boardKey];
+    const cards = {}; ((board && board.cards) || []).forEach((x) => { cards[x.id] = x; });
+    for (const it of feed.items || []) {
+      const isOnly = only && only.feedId === feed.id && only.cardId === it.cardId;
+      if (only && !isOnly) continue;
+      // "Post now" (only) works regardless of pub state — the client may not
+      // have synced yet; the ledger below still guarantees no double-post.
+      const p = it.pub || (isOnly ? { at: new Date().toISOString(), auto: false, status: "scheduled" } : null);
+      if (!p || p.status !== "scheduled") continue;
+      const ledgerKey = feed.id + ":" + it.cardId;
+      if (ledger[ledgerKey]) {
+        // Already went out in a previous run — re-mark the item, never re-post.
+        it.pub = { ...p, status: "published", mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at };
+        results.items.push({ feedId: feed.id, cardId: it.cardId, ok: true, mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at, already: true });
+        changed = true;
+        continue;
+      }
+      if (!only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
+      const card = cards[it.cardId] || {};
+      const fail = (error) => { it.pub = { ...p, status: "failed", error, failedAt: new Date().toISOString() }; results.failed.push({ card: card.name || it.cardId, error }); results.items.push({ feedId: feed.id, cardId: it.cardId, ok: false, error }); changed = true; };
+      if (!tok) { fail("no Instagram token for @" + feed.account); continue; }
+      if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
+      const imageUrl = it.src ? "https://lavalle-haus-os.vercel.app" + it.src : "https://drive.google.com/thumbnail?id=" + it.driveId + "&sz=w2000";
+      const r = await igPublishPhoto(tok, imageUrl, card.desc || "");
+      if (r.ok) {
+        const publishedAt = new Date().toISOString();
+        ledger[ledgerKey] = { mediaId: r.mediaId, at: publishedAt };
+        ledgerChanged = true;
+        await kvSet("lavalle_published", ledger); // persist immediately — dedupe beats blob consistency
+        it.pub = { ...p, status: "published", mediaId: r.mediaId, publishedAt };
+        card.done = true;
+        results.published++;
+        results.items.push({ feedId: feed.id, cardId: it.cardId, ok: true, mediaId: r.mediaId, publishedAt });
+        changed = true;
+      } else fail(r.error);
+    }
+  }
+  if (changed) await kvSet("lavalle_data", Array.isArray(data) ? [blob] : blob);
+  return results;
+}
 const hashPassword = (pw, salt) => scryptSync(pw, salt, 64).toString("hex");
 function passwordMatches(pw, salt, hash) {
   try {
@@ -134,6 +218,9 @@ async function runReminders(res) {
       if (refreshed) await fetch(`${url}/set/instagram_oauth`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(map) });
     }
   } catch {}
+  // Backup sweep for scheduled posts (primary trigger is the 15-min GitHub
+  // Actions pinger; this daily pass catches anything missed).
+  try { await publishDueItems(); } catch {}
   if (!apiKey) { res.status(200).json({ ok: false, error: "RESEND_API_KEY not set" }); return; }
   try {
     const r = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
@@ -195,6 +282,18 @@ export default async function handler(req, res) {
     return runReminders(res);
   }
   const op = (req.query && req.query.op) || "";
+
+  // Scheduled publishing: hit every 15 min by the GitHub Actions pinger.
+  // Guarded by its own key so it can run headless without a user session.
+  if (op === "publish_due" && req.method === "POST") {
+    if (!process.env.PUBLISH_KEY || req.headers["x-publish-key"] !== process.env.PUBLISH_KEY) {
+      res.status(403).json({ error: "Bad publish key" });
+      return;
+    }
+    try { res.json(await publishDueItems()); }
+    catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
+    return;
+  }
 
   // ── Auth (public ops) ────────────────────────────────────────────────────────
   // Login: house password (owner master key) or personal email + password.
@@ -397,6 +496,15 @@ export default async function handler(req, res) {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view Instagram connection status." }); return; }
     const accounts = Object.values(igAccounts(await kvGet("instagram_oauth"))).map((t) => ({ user_id: t.user_id, username: t.username || null, savedAt: t.savedAt }));
     res.json({ connected: accounts.length > 0, accounts });
+    return;
+  }
+  if (op === "publish_item" && req.method === "POST") {
+    // "Post now" from the Grid drawer — publishes one item immediately.
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can publish posts." }); return; }
+    const b = req.body || {};
+    if (!b.feedId || !b.cardId) { res.status(400).json({ error: "feedId and cardId are required." }); return; }
+    try { res.json(await publishDueItems({ feedId: b.feedId, cardId: b.cardId })); }
+    catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
     return;
   }
   if (op === "tiktok_revoke" && req.method === "POST") {

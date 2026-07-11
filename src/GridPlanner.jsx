@@ -45,6 +45,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [syncing, setSyncing] = useState(false);
   const [tiktok, setTiktok] = useState(null); // owner-only: {sandbox, production} connection state
   const [ttMsg, setTtMsg] = useState(null);
+  const [postingNow, setPostingNow] = useState(false);
 
   const [insta, setInsta] = useState(null); // owner-only: {connected, accounts}
 
@@ -114,6 +115,14 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
     save({ ...state, feeds: feeds.map((f) => f.id === feed.id ? { ...f, ...patch } : f) });
   };
 
+  const patchItem = (cardId, patch) => {
+    patchFeed({ items: feed.items.map((x) => (x.cardId === cardId ? { ...x, ...patch } : x)) });
+  };
+
+  // Auto-publish helpers: pub.at is a real instant (ISO); inputs speak local time.
+  const timeOf = (iso) => { if (!iso) return "10:00"; const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+  const combineAt = (dateStr, timeStr) => new Date(dateStr + "T" + (timeStr || "10:00")).toISOString();
+
   const reorder = (from, to) => {
     if (from === to || from == null || to == null) return;
     const items = [...feed.items];
@@ -177,10 +186,14 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
     .filter(({ card }) => dueKey(card) && !card.done)
     .sort((a, b) => (dueKey(a.card) < dueKey(b.card) ? -1 : 1));
   const unscheduled = withCards.filter(({ card }) => !dueKey(card) && !card.done).length;
+  const dropOnDayKeepPub = (it, k) => {
+    // dragging an armed post to a new day keeps its time-of-day
+    if (it && it.pub && it.pub.status === "scheduled") patchItem(it.cardId, { pub: { ...it.pub, at: combineAt(k, timeOf(it.pub.at)) } });
+  };
   const dropOnDay = (k) => {
     if (dragIdx == null) return;
     const it = items[dragIdx];
-    if (it) patchCard(it.cardId, { due: k });
+    if (it) { patchCard(it.cardId, { due: k }); dropOnDayKeepPub(it, k); }
     setDragIdx(null); setOverDay(null);
   };
   const dayCellDrag = (k) => ({
@@ -281,8 +294,9 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   {card.done && <span style={{ position: "absolute", top: 6, left: 7, color: "#FFFFFF", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>✓</span>}
                   <span style={{ position: "absolute", bottom: 6, left: 7, fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: "#FFFFFF", textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{it.n}{it.flag ? " ⚠" : ""}</span>
                   {card.due && (
-                    <span style={{ position: "absolute", bottom: 6, right: 7, fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, padding: "2px 5px", borderRadius: 1, background: "rgba(26,26,26,0.72)", color: overdue ? "#e8b4b4" : "#FFFFFF" }}>
-                      {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    <span style={{ position: "absolute", bottom: 6, right: 7, fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, padding: "2px 5px", borderRadius: 1, background: "rgba(26,26,26,0.72)", color: it.pub && it.pub.status === "failed" ? "#e8b4b4" : overdue ? "#e8b4b4" : "#FFFFFF" }}
+                      title={it.pub ? (it.pub.status === "scheduled" && it.pub.auto ? "Auto-publishes " + new Date(it.pub.at).toLocaleString() : it.pub.status === "failed" ? "Publish failed — open for details" : it.pub.status === "published" ? "Published automatically" : "") : ""}>
+                      {it.pub && it.pub.status === "failed" ? "✗ " : it.pub && it.pub.auto && it.pub.status === "scheduled" ? "⏱ " : ""}{new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </span>
                   )}
                 </div>
@@ -437,10 +451,63 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
               </div>
             )}
 
-            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Schedule</div>
-            <input type="date" value={openCard.due ? String(openCard.due).slice(0, 10) : ""} onChange={(e) => patchCard(open.cardId, { due: e.target.value || null })}
-              style={{ boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 12, color: c.ink, outline: "none" }} />
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Schedule — @{feed.account}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="date" value={openCard.due ? String(openCard.due).slice(0, 10) : ""}
+                onChange={(e) => {
+                  const v = e.target.value || null;
+                  patchCard(open.cardId, { due: v });
+                  if (open.pub && open.pub.status === "scheduled") patchItem(open.cardId, { pub: v ? { ...open.pub, at: combineAt(v, timeOf(open.pub.at)) } : null });
+                }}
+                style={{ boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 12, color: c.ink, outline: "none" }} />
+              <input type="time" value={open.pub && open.pub.at ? timeOf(open.pub.at) : "10:00"} disabled={!openCard.due}
+                onChange={(e) => { if (openCard.due && open.pub && open.pub.status === "scheduled") patchItem(open.cardId, { pub: { ...open.pub, at: combineAt(String(openCard.due).slice(0, 10), e.target.value) } }); }}
+                style={{ boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 12, color: c.ink, outline: "none", opacity: openCard.due ? 1 : 0.4 }} />
+            </div>
+
+            {/* auto-publish: nothing goes out unless this is armed, per post */}
+            {(!open.pub || open.pub.status === "scheduled") && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: openCard.due ? "pointer" : "default", opacity: openCard.due ? 1 : 0.45 }}>
+                <input type="checkbox" checked={!!(open.pub && open.pub.auto)} disabled={!openCard.due}
+                  onChange={(e) => {
+                    if (!openCard.due) return;
+                    patchItem(open.cardId, { pub: e.target.checked ? { at: combineAt(String(openCard.due).slice(0, 10), open.pub ? timeOf(open.pub.at) : "10:00"), auto: true, status: "scheduled" } : null });
+                  }} />
+                <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>
+                  Auto-publish to Instagram {open.pub && open.pub.auto && open.pub.at ? "— " + new Date(open.pub.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                </span>
+              </label>
+            )}
+            {!openCard.due && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 4 }}>Pick a date to enable auto-publish.</div>}
+            {open.pub && open.pub.status === "published" && (
+              <div style={{ fontFamily: sans, fontSize: 12, color: c.green, marginTop: 10 }}>✓ Posted to @{feed.account} · {new Date(open.pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            )}
+            {open.pub && open.pub.status === "failed" && (
+              <div style={{ background: "#F7F0EE", border: "1px solid #E2D4CD", borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 11.5, lineHeight: 1.5, color: c.red, marginTop: 10 }}>
+                ✗ Publish failed: {open.pub.error}
+                <button onClick={() => patchItem(open.cardId, { pub: { at: open.pub.at, auto: open.pub.auto, status: "scheduled" } })} style={{ ...ghost, marginLeft: 8, padding: "3px 8px" }}>Retry</button>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 14 }}>
+              {(!open.pub || open.pub.status !== "published") && (
+                <button disabled={postingNow}
+                  onClick={async () => {
+                    if (!window.confirm('Post "' + openCard.name + '" to @' + feed.account + " on Instagram right now?")) return;
+                    setPostingNow(true);
+                    const pub = { at: new Date().toISOString(), auto: false, status: "scheduled" };
+                    try {
+                      const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedId: feed.id, cardId: open.cardId }) });
+                      const d = await r.json();
+                      const res = (d.items || [])[0];
+                      if (res && res.ok) { patchItem(open.cardId, { pub: { ...pub, status: "published", mediaId: res.mediaId, publishedAt: res.publishedAt } }); patchCard(open.cardId, { done: true }); }
+                      else patchItem(open.cardId, { pub: { ...pub, status: "failed", error: (res && res.error) || d.error || "no response for this post" } });
+                    } catch (e) { patchItem(open.cardId, { pub: { ...pub, status: "failed", error: String(e).slice(0, 160) } }); }
+                    setPostingNow(false);
+                  }}
+                  style={{ ...ghost, color: "#FFFFFF", background: c.ink, borderColor: c.ink, opacity: postingNow ? 0.5 : 1 }}>
+                  {postingNow ? "Posting…" : "◉ Post now"}
+                </button>
+              )}
               <button onClick={() => patchCard(open.cardId, { done: !openCard.done })} style={{ ...ghost, color: openCard.done ? c.sub : c.green, borderColor: openCard.done ? c.line : c.green }}>
                 {openCard.done ? "Mark not posted" : "✓ Mark posted"}
               </button>

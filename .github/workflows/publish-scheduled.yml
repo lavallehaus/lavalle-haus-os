@@ -1,0 +1,17 @@
+name: Publish scheduled posts
+# Vercel Hobby crons only run daily, so this pinger fires the publish sweep
+# every 15 minutes. GitHub may delay scheduled runs a few minutes under load —
+# fine for social posting.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger publish sweep
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=publish_due" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}"
