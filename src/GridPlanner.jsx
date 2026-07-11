@@ -202,7 +202,10 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
             <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Link the TikTok account">♪ Connect TikTok</button>
           )}
           {ttConnected && (
-            <button onClick={sendTestDraft} style={ghost} title="Send a test draft to the connected TikTok inbox">♪ TikTok ✓ · Test draft</button>
+            <>
+              <button onClick={sendTestDraft} style={ghost} title="Send a test draft to the connected TikTok inbox">♪ TikTok ✓ · Test draft</button>
+              <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Re-link the TikTok account (expired token or switching accounts)">↻</button>
+            </>
           )}
           <button onClick={() => setAspect(aspect === "1 / 1" ? "3 / 4" : "1 / 1")} style={ghost} title="Toggle tile shape">{aspect === "1 / 1" ? "◻ Square" : "▯ Portrait"}</button>
           <button onClick={() => { setSyncOpen(!syncOpen); setSyncMsg(null); setFolderLink(""); }} style={{ ...ghost, color: c.ink, borderColor: c.taupe }}>⟳ Sync from Drive</button>
