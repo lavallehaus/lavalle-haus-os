@@ -121,7 +121,7 @@ function fileToCover(file, cb, maxW = 700, q = 0.82) {
   fr.readAsDataURL(file);
 }
 
-export default function Boards({ data, onSave, team = [] }) {
+export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true } }) {
   const [boards, setBoards] = useState(data || null);
   const [loading, setLoading] = useState(!data);
   const [past, setPast] = useState([]);
@@ -134,6 +134,21 @@ export default function Boards({ data, onSave, team = [] }) {
   useEffect(() => { try { if (me) localStorage.setItem("lh_me", me); } catch {} }, [me]);
   const [bgMenu, setBgMenu] = useState(false);
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
+  const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
+
+  // Board access — board.access = null/[] means everyone with the Content tab;
+  // otherwise only the listed roster members (and the owner) see the board.
+  const canSee = (b) => {
+    if (!b) return false;
+    if (viewer.owner || !b.access || !b.access.length) return true;
+    return b.access.some((n) => n === viewer.name || (viewer.email && n.toLowerCase() === viewer.email.toLowerCase()));
+  };
+  const toggleAccess = (boardKey, memberName) => {
+    const b = boards[boardKey];
+    const cur = b.access || [];
+    const next = cur.includes(memberName) ? cur.filter((x) => x !== memberName) : [...cur, memberName];
+    commit({ ...boards, [boardKey]: { ...b, access: next.length ? next : null } });
+  };
 
   // Link assets: walk <asset root>/<Month>/<Reels|Carousels> in Drive and stamp
   // each "Post N" card with a direct link to its numbered file.
@@ -228,7 +243,8 @@ export default function Boards({ data, onSave, team = [] }) {
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture((f) => f.slice(1)); setPast((p) => [...p.slice(-49), boards]); setBoards(nxt); onSave && onSave(nxt); };
 
   const workspace = WORKSPACES.find((w) => w.id === ws) || WORKSPACES[0];
-  const board = open && boards ? boards[open] : null;
+  const _openBoard = open && boards ? boards[open] : null;
+  const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
 
   const memberPool = useMemo(() => {
     const set = new Set(team.map((t) => t.name).filter(Boolean));
@@ -376,7 +392,7 @@ export default function Boards({ data, onSave, team = [] }) {
 
       {!board ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-          {[...workspace.boards, ...Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].ws === ws && !workspace.boards.includes(k))].map((key) => {
+          {[...workspace.boards, ...Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].ws === ws && !workspace.boards.includes(k))].filter((key) => canSee(boards[key])).map((key) => {
             const b = boards[key];
             if (!b || !b.lists) return null;
             const done = b.cards.filter((x) => x.done).length;
@@ -393,6 +409,31 @@ export default function Boards({ data, onSave, team = [] }) {
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 8 }}>
                   {b.lists.length} lists · {b.cards.length} cards{done ? " · " + done + " done" : ""}
                 </div>
+                {viewer.owner && (
+                  <div style={{ position: "relative", marginTop: 8 }}>
+                    <button title="Who can open this board" onClick={(e) => { e.stopPropagation(); setAccessMenu(accessMenu === key ? null : key); }}
+                      style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: b.access && b.access.length ? c.taupe : c.sub, cursor: "pointer" }}>
+                      👥 {b.access && b.access.length ? b.access.length + " member" + (b.access.length > 1 ? "s" : "") : "Everyone"}
+                    </button>
+                    {accessMenu === key && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 80, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 12, width: 220 }}>
+                        <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>Who can open this board</div>
+                        <button onClick={() => { commit({ ...boards, [key]: { ...b, access: null } }); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", background: !b.access || !b.access.length ? c.card : "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "6px 9px", fontFamily: sans, fontSize: 11.5, color: c.ink, cursor: "pointer", marginBottom: 6 }}>
+                          {!b.access || !b.access.length ? "✓ " : ""}Everyone with the Content tab
+                        </button>
+                        {team.map((t) => (
+                          <label key={t.id || t.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={!!(b.access || []).includes(t.name)} onChange={() => toggleAccess(key, t.name)} />
+                            <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>{t.name}</span>
+                          </label>
+                        ))}
+                        {!team.length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add people on the Team roster first.</div>}
+                        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 6 }}>Checking names hides this board from everyone else. You always see everything.</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -474,10 +515,18 @@ export default function Boards({ data, onSave, team = [] }) {
                                   style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▸ Asset</a>
                               )}
                               {card.pub && card.pub.status === "scheduled" && card.pub.auto && card.pub.at && (
-                                <span title={"Auto-publishes to @" + card.pub.account + " " + new Date(card.pub.at).toLocaleString()} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.green }}>⏱ {new Date(card.pub.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                                <span title={"Auto-publishes to " + (card.pub.platform || "Instagram") + " @" + card.pub.account + " · " + new Date(card.pub.at).toLocaleString()}
+                                  style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 0.8, color: "#FFFFFF", background: c.green, borderRadius: 6, padding: "2px 7px" }}>
+                                  ⏱ {card.pub.platform === "tiktok" ? "TikTok" : "IG"} @{card.pub.account} · {new Date(card.pub.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} {new Date(card.pub.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                </span>
                               )}
-                              {card.pub && card.pub.status === "published" && <span title={"Posted to @" + card.pub.account} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.green }}>✓ posted</span>}
-                              {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish</span>}
+                              {card.pub && card.pub.status === "published" && (
+                                <span title={"Posted to " + (card.pub.platform || "Instagram") + " @" + card.pub.account + " · " + new Date(card.pub.publishedAt).toLocaleString()}
+                                  style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 0.8, color: c.green, border: `1px solid ${c.green}`, borderRadius: 6, padding: "2px 7px" }}>
+                                  ✓ {card.pub.platform === "tiktok" ? "TikTok" : "IG"} @{card.pub.account}
+                                </span>
+                              )}
+                              {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
