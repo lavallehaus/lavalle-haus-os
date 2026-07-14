@@ -1302,8 +1302,8 @@ function GlobalSearch({ nav, dbState, onGo }) {
     (((dbState || {}).gridPlanner || {}).feeds || []).forEach((f) => (f.items || []).forEach((it) => gridCardIds.add(it.cardId)));
     Object.entries((dbState || {}).boards || {}).forEach(([, b]) => {
       (b.cards || []).forEach((cd) => {
-        add(cd.name, (cd.desc || "") + " " + (b.name || ""), "Card · " + (b.name || "Boards"), { tab: "content", seg: { id: "content", seg: "boards" } });
-        if (gridCardIds.has(cd.id)) add(cd.name, cd.desc || "", "Post · Grid", { tab: "content", seg: { id: "content", seg: "grid" } });
+        add(cd.name, (cd.hook || "") + " " + (cd.desc || "") + " " + (b.name || ""), "Card · " + (b.name || "Boards"), { tab: "content", seg: { id: "content", seg: "boards" } });
+        if (gridCardIds.has(cd.id)) add(cd.name, (cd.hook || "") + " " + (cd.desc || ""), "Post · Grid", { tab: "content", seg: { id: "content", seg: "grid" } });
       });
     });
     ((dbState || {}).wholesale || []).forEach((r) => add(r.account || r.name, r.notes, "Wholesale account", { tab: "growth", sub: "wholesalehub", seg: { id: "wholesale", seg: "accounts" } }));

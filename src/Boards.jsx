@@ -75,16 +75,46 @@ const normLabel = (lb) => {
 };
 const labelText = (hex) => (hex === "#8F8676" || hex === "#1A1A1A" ? "#FFFFFF" : "#1A1A1A");
 
-function fileToCover(file, cb) {
+// Board backgrounds — Trello-style picker: upload a photo or pick a tone.
+const BG_PRESETS = [
+  { id: "ivory", css: "linear-gradient(165deg,#EDE9E2,#DDD5C8)" },
+  { id: "sand", css: "linear-gradient(165deg,#E3DCCC,#CDBBA7)" },
+  { id: "sage", css: "linear-gradient(165deg,#D9DED2,#B9C2B1)" },
+  { id: "slate", css: "linear-gradient(165deg,#D6DBDE,#AEB8BE)" },
+  { id: "night", css: "linear-gradient(165deg,#3A3A38,#1E1E1D)" },
+];
+const boardBgStyle = (bg) => !bg ? {} : bg.startsWith("linear-gradient") || bg.startsWith("#")
+  ? { background: bg }
+  : { backgroundImage: `url(${bg})`, backgroundSize: "cover", backgroundPosition: "center" };
+
+// Asset links — Drive convention: <asset root>/<Month>/<Reels|Carousels>/<postNumber>.*
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const monthOf = (cardName, listName) => {
+  const t = ((cardName || "") + " " + (listName || "")).toLowerCase();
+  return MONTH_NAMES.find((m) => t.includes(m)) || null;
+};
+const postNumOf = (cardName) => { const m = /post\s*(\d+)/i.exec(cardName || ""); return m ? m[1] : null; };
+const isReelCard = (cardName) => /\[(.*reel.*)\]/i.test(cardName || "");
+const isCarouselCard = (cardName) => /\[(.*carousel.*)\]/i.test(cardName || "");
+const driveIdFrom = (link) => ((link || "").match(/[-\w]{25,}/) || [])[0] || null;
+const firstVideoUrl = (text) => (String(text || "").match(URL_RX) || []).find((u) => /tiktok\.com|instagram\.com|youtu/.test(u)) || null;
+async function driveLs(folderId) {
+  const r = await fetch("/api/data?op=drive_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderId, all: true }) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || ("drive_list " + r.status));
+  return d.files || [];
+}
+
+function fileToCover(file, cb, maxW = 700, q = 0.82) {
   const fr = new FileReader();
   fr.onload = () => {
     const img = new Image();
     img.onload = () => {
-      const s = Math.min(1, 700 / img.width);
+      const s = Math.min(1, maxW / img.width);
       const cv = document.createElement("canvas");
       cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-      cb(cv.toDataURL("image/jpeg", 0.82));
+      cb(cv.toDataURL("image/jpeg", q));
     };
     img.src = fr.result;
   };
@@ -102,6 +132,59 @@ export default function Boards({ data, onSave, team = [] }) {
   const [editCard, setEditCard] = useState(null);
   const [me, setMe] = useState(() => { try { return localStorage.getItem("lh_me") || ""; } catch { return ""; } });
   useEffect(() => { try { if (me) localStorage.setItem("lh_me", me); } catch {} }, [me]);
+  const [bgMenu, setBgMenu] = useState(false);
+  const [linking, setLinking] = useState(null); // progress text while Link assets runs
+
+  // Link assets: walk <asset root>/<Month>/<Reels|Carousels> in Drive and stamp
+  // each "Post N" card with a direct link to its numbered file.
+  const runLinkAssets = async (boardKey) => {
+    const b = boards[boardKey];
+    let root = b.assetRoot;
+    if (!root) {
+      root = prompt("Paste the Drive folder that holds the month folders (April, May, June…)");
+      if (!root || !driveIdFrom(root)) return;
+    }
+    setLinking("Reading Drive…");
+    try {
+      const listName = {}; b.lists.forEach((l) => { listName[l.id] = l.name; });
+      const months = [...new Set(b.cards.map((cd) => monthOf(cd.name, listName[cd.listId])).filter(Boolean))];
+      const rootEntries = await driveLs(driveIdFrom(root));
+      const monthMaps = {};
+      for (const m of months) {
+        const mf = rootEntries.find((f) => f.folder && f.name.toLowerCase().includes(m));
+        if (!mf) continue;
+        const inside = await driveLs(mf.id);
+        const map = { reels: {}, carousels: {} };
+        for (const kind of ["reels", "carousels"]) {
+          const sub = inside.find((f) => f.folder && new RegExp(kind.slice(0, -1), "i").test(f.name));
+          if (!sub) continue;
+          map[kind + "Id"] = sub.id;
+          (await driveLs(sub.id)).forEach((f) => { const n = /^(\d+)/.exec(f.name); if (n && !map[kind][n[1]]) map[kind][n[1]] = f; });
+        }
+        monthMaps[m] = map;
+        setLinking("Reading Drive… " + m + " ✓");
+      }
+      let linked = 0;
+      const cards = b.cards.map((cd) => {
+        const m = monthOf(cd.name, listName[cd.listId]); const num = postNumOf(cd.name);
+        if (!m || !num || !monthMaps[m]) return cd;
+        const map = monthMaps[m];
+        const kind = isCarouselCard(cd.name) && !isReelCard(cd.name) ? "carousels" : "reels";
+        const hit = map[kind][num] || map[kind === "reels" ? "carousels" : "reels"][num];
+        const url = hit ? (hit.folder ? "https://drive.google.com/drive/folders/" + hit.id : "https://drive.google.com/file/d/" + hit.id + "/view")
+          : map[kind + "Id"] ? "https://drive.google.com/drive/folders/" + map[kind + "Id"] : null;
+        if (!url || cd.assetUrl === url) return cd;
+        linked++;
+        return { ...cd, assetUrl: url };
+      });
+      commit({ ...boards, [boardKey]: { ...b, assetRoot: root, cards } });
+      setLinking(null);
+      alert(linked + " cards linked to their Drive assets.");
+    } catch (e) {
+      setLinking(null);
+      alert(String(e.message || e).includes("google") ? "Google Drive isn't connected — open /api/google-auth once, then run this again." : "Link assets failed: " + (e.message || e));
+    }
+  };
 
   // First run: seed from the Trello export; later runs merge covers/members once.
   useEffect(() => {
@@ -319,19 +402,41 @@ export default function Boards({ data, onSave, team = [] }) {
           </button>
         </div>
       ) : (
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ borderRadius: 8, padding: 12, margin: "0 -8px", ...boardBgStyle(board.bg) }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: board.bg ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: board.bg ? "blur(6px)" : "none", WebkitBackdropFilter: board.bg ? "blur(6px)" : "none", borderRadius: 8, padding: board.bg ? "8px 12px" : "0 0 2px" }}>
             <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0 }}>← {workspace.label}</button>
             <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{board.cards.length} cards</div>
-            <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
-              style={{ ...ghost, marginLeft: "auto" }}>+ List</button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", position: "relative" }}>
+              <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "⛓ Link assets"}</button>
+              <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
+              <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
+                style={ghost}>+ List</button>
+              {bgMenu && (
+                <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 60, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 12, width: 230 }}>
+                  <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Board background</div>
+                  <label style={{ display: "block", textAlign: "center", border: `1px solid ${c.line}`, borderRadius: 6, padding: "8px 0", fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer", marginBottom: 8 }}>
+                    ⇪ Upload photo
+                    <input type="file" accept="image/*" style={{ display: "none" }}
+                      onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, (dataUrl) => { patchBoard(open, { bg: dataUrl }); setBgMenu(false); }, 1600, 0.7); }} />
+                  </label>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    {BG_PRESETS.map((p) => (
+                      <button key={p.id} title={p.id} onClick={() => { patchBoard(open, { bg: p.css }); setBgMenu(false); }}
+                        style={{ flex: 1, height: 34, borderRadius: 6, border: board.bg === p.css ? `2px solid ${c.ink}` : `1px solid ${c.line}`, background: p.css, cursor: "pointer" }} />
+                    ))}
+                  </div>
+                  {board.bg && <button onClick={() => { patchBoard(open, { bg: null }); setBgMenu(false); }}
+                    style={{ width: "100%", background: "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "7px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove background</button>}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16 }}>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
             {board.lists.map((l) => {
               const cards = board.cards.filter((x) => x.listId === l.id);
               return (
-                <div key={l.id} style={{ flex: "0 0 268px", background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 10px 10px" }}>
+                <div key={l.id} style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: board.bg ? "rgba(244,244,243,0.93)" : c.card, backdropFilter: board.bg ? "blur(3px)" : "none", WebkitBackdropFilter: board.bg ? "blur(3px)" : "none", border: `1px solid ${c.line}`, borderRadius: 10, padding: "12px 10px 10px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px" }}>
                     <div style={{ flex: 1, fontFamily: sans, fontSize: 10, letterSpacing: 1.8, textTransform: "uppercase", color: c.ink }}>
                       {l.name} <span style={{ color: c.sub }}>· {cards.length}</span>
@@ -342,7 +447,7 @@ export default function Boards({ data, onSave, team = [] }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 330px)", overflowY: "auto" }}>
                     {cards.map((card) => (
                       <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
-                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden" }}>
+                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)" }}>
                         {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />}
                         <div style={{ padding: "9px 11px" }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -354,12 +459,20 @@ export default function Boards({ data, onSave, team = [] }) {
                             </button>
                             <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: card.done ? "line-through" : "none" }}>{card.name}</div>
                           </div>
-                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0)) && (
+                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
                               {(card.labels || []).slice(0, 4).map((lb, i) => { const L = normLabel(lb); return (
                                 <span key={i} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: labelText(L.c), background: L.c, borderRadius: 1, padding: "2px 7px" }}>{L.n}</span>
                               ); })}
                               {card.due && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: new Date(card.due) < new Date() && !card.done ? c.red : c.sub }}>{new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                              {(card.exampleUrl || firstVideoUrl(card.desc)) && (
+                                <a href={card.exampleUrl || firstVideoUrl(card.desc)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Example video"
+                                  style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▷ Example</a>
+                              )}
+                              {card.assetUrl && (
+                                <a href={card.assetUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Open this post's asset in Drive"
+                                  style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▸ Asset</a>
+                              )}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
@@ -402,7 +515,9 @@ export default function Boards({ data, onSave, team = [] }) {
 
 function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onDelete, onComment }) {
   const [name, setName] = useState(card.name);
+  const [hook, setHook] = useState(card.hook || "");
   const [desc, setDesc] = useState(card.desc || "");
+  const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
   const [due, setDue] = useState(card.due ? card.due.slice(0, 10) : "");
   const [labels, setLabels] = useState((card.labels || []).map(normLabel));
   const [labelName, setLabelName] = useState("");
@@ -445,6 +560,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             Upload
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, setCover); }} />
           </label>
+          {cover && (
+            <a href={cover} download={(card.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"}
+              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, textDecoration: "none" }}>
+              ⤓ Download
+            </a>
+          )}
           {cover && <button onClick={() => setCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
 
@@ -463,19 +584,47 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
-        <div style={label}>Notes</div>
+        <div style={label}>Hook</div>
+        <input style={input} placeholder="The first line that stops the scroll…" value={hook} onChange={(e) => setHook(e.target.value)} />
+        <div style={label}>Caption</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         <NotesLinks text={desc} />
+
+        {/* the two standing buttons: reference video + this post's Drive asset */}
+        <div style={label}>Example video</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input style={{ ...input, flex: 1 }} placeholder="https://www.tiktok.com/…" value={exampleUrl} onChange={(e) => setExampleUrl(e.target.value)} />
+          {exampleUrl.trim() && (
+            <a href={exampleUrl.trim()} target="_blank" rel="noopener noreferrer"
+              style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>▷ Open</a>
+          )}
+        </div>
+        <div style={label}>Post asset</div>
+        {card.assetUrl ? (
+          <a href={card.assetUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>
+            ▸ Open {isCarouselCard(card.name) && !isReelCard(card.name) ? "carousel" : "reel"} in Drive
+          </a>
+        ) : (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>
+            Not linked yet — use "⛓ Link assets" on the board to match this card's number to its Drive file.
+          </div>
+        )}
 
         {/* links */}
         <div style={label}>Links</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
-          {links.map((L, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 10px" }}>
-              <a href={L.u} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontFamily: sans, fontSize: 12, color: c.taupe, textDecoration: "underline", textUnderlineOffset: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🔗 {L.n || L.u}</a>
-              <button onClick={() => setLinks(links.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
-            </div>
-          ))}
+          {links.map((L, i) => {
+            const m = linkMeta(L.u);
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 10px" }}>
+                <a href={L.u} target="_blank" rel="noopener noreferrer" title={L.u} style={{ flex: 1, fontFamily: sans, fontSize: 12, color: c.ink, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ color: c.taupe }}>{m.icon}</span> {L.n && L.n !== L.u ? L.n : m.label} <span style={{ color: c.taupe }}>↗</span>
+                </a>
+                <button onClick={() => setLinks(links.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
+              </div>
+            );
+          })}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <input style={{ ...input, flex: 1 }} placeholder="Link name" value={linkName} onChange={(e) => setLinkName(e.target.value)} />
@@ -519,15 +668,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             </span>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input style={{ ...input, flex: 1 }} list="lh-member-pool" placeholder="Tag a person…" value={memberInput}
-            onChange={(e) => setMemberInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addMember(memberInput); }} />
-          <button onClick={() => addMember(memberInput)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
-        </div>
-        <datalist id="lh-member-pool">
-          {memberPool.map((m) => <option key={m} value={m} />)}
-        </datalist>
+        <select style={{ ...input, color: c.sub }} value=""
+          onChange={(e) => { if (e.target.value === "__custom") { const v = prompt("Name to tag"); if (v && v.trim()) addMember(v); } else if (e.target.value) addMember(e.target.value); }}>
+          <option value="">+ Assign a team member…</option>
+          {memberPool.filter((m) => !members.includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}
+          <option value="__custom">Someone not on the roster…</option>
+        </select>
 
         {/* board + list (move across boards) */}
         <div style={label}>Board</div>
@@ -541,7 +687,14 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         <div style={label}>Due date</div>
         <input style={input} type="date" value={due} onChange={(e) => setDue(e.target.value)} />
 
-        <button onClick={() => { if (!name.trim() || !listId) return; onSave({ name: name.trim(), desc, due: due ? due + "T12:00:00.000Z" : null, labels, listId, members, cover, done, links, attachments, comments: card.comments || [] }, destBoard); }}
+        <button onClick={() => {
+          if (!name.trim() || !listId) return;
+          // Fold in anything still sitting in the add-rows — a typed tag or link
+          // shouldn't vanish just because Add wasn't pressed before Save.
+          const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
+          const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
+        }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
         </button>

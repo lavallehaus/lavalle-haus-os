@@ -675,7 +675,11 @@ export default async function handler(req, res) {
       const fr = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: "Bearer " + td.access_token } });
       const fd = await fr.json();
       if (!fr.ok) { res.status(400).json({ error: (fd.error && fd.error.message) || "drive_error" }); return; }
-      res.json({ files: (fd.files || []).filter((f) => (f.mimeType || "").startsWith("image/")).map((f) => ({ id: f.id, name: f.name })) });
+      const wantAll = !!(req.body || {}).all; // asset linking needs folders + videos too
+      const files = (fd.files || [])
+        .filter((f) => wantAll || (f.mimeType || "").startsWith("image/"))
+        .map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder" }));
+      res.json({ files });
     } catch (e) {
       res.status(500).json({ error: String(e).slice(0, 200) });
     }

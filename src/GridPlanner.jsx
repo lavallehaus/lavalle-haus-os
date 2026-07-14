@@ -430,6 +430,9 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
             </div>
             <img src={imgOf(open, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
 
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Hook</div>
+            <input value={openCard.hook || ""} onChange={(e) => patchCard(open.cardId, { hook: e.target.value })} placeholder="The first line that stops the scroll…"
+              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, color: c.ink, outline: "none", marginBottom: 10 }} />
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Caption</div>
             <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
               style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 4 }} />
