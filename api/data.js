@@ -136,6 +136,50 @@ async function publishDueItems(only) {
       } else fail(r.error);
     }
   }
+  // Board cards can publish too (card.pub, set from the card sheet) — same
+  // rules as grid items, media = the card's cover photo.
+  for (const [bKey, board] of Object.entries(blob.boards || {})) {
+    if (bKey.startsWith("_") || !board || !board.cards) continue;
+    for (const card of board.cards) {
+      const isOnly = only && only.boardKey === bKey && only.cardId === card.id;
+      if (only && !isOnly) continue;
+      const p = card.pub || (isOnly ? { at: new Date().toISOString(), auto: false, status: "scheduled", account: only.account } : null);
+      if (!p || p.status !== "scheduled") continue;
+      if (isOnly && only.account) p.account = only.account;
+      const ledgerKey = "card:" + bKey + ":" + card.id;
+      if (ledger[ledgerKey]) {
+        card.pub = { ...p, status: "published", mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at };
+        results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at, already: true });
+        changed = true;
+        continue;
+      }
+      if (!only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
+      const fail = (error) => { card.pub = { ...p, status: "failed", error, failedAt: new Date().toISOString() }; results.failed.push({ card: card.name || card.id, error }); results.items.push({ boardKey: bKey, cardId: card.id, ok: false, error }); changed = true; };
+      const tok = tokens.find((t) => (t.username || "").toLowerCase() === (p.account || "").toLowerCase());
+      if (!tok) { fail("no Instagram token for @" + (p.account || "?")); continue; }
+      if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
+      let imageUrl = null;
+      if (typeof card.cover === "string") {
+        if (card.cover.startsWith("data:")) imageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
+        else if (card.cover.startsWith("/")) imageUrl = "https://lavalle-haus-os.vercel.app" + card.cover;
+        else if (card.cover.includes("drive.google.com")) { const id = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (id) imageUrl = "https://drive.google.com/thumbnail?id=" + id + "&sz=w2000"; }
+        else if (card.cover.startsWith("http")) imageUrl = card.cover;
+      }
+      if (!imageUrl) { fail("card needs a cover photo to post"); continue; }
+      const caption = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+      const r = await igPublishPhoto(tok, imageUrl, caption);
+      if (r.ok) {
+        const publishedAt = new Date().toISOString();
+        ledger[ledgerKey] = { mediaId: r.mediaId, at: publishedAt };
+        await kvSet("lavalle_published", ledger);
+        card.pub = { ...p, status: "published", mediaId: r.mediaId, publishedAt };
+        card.done = true;
+        results.published++;
+        results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: r.mediaId, publishedAt });
+        changed = true;
+      } else fail(r.error);
+    }
+  }
   if (changed) await kvSet("lavalle_data", Array.isArray(data) ? [blob] : blob);
   return results;
 }
@@ -444,6 +488,21 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Card cover as a real image URL — Instagram's servers fetch media by URL,
+  // and board covers live as data URLs inside the KV blob.
+  if (req.method === "GET" && op === "card_media") {
+    const data = await kvGet("lavalle_data");
+    const blob = Array.isArray(data) ? data[0] : data;
+    const board = blob && blob.boards && blob.boards[req.query.board];
+    const card = board && (board.cards || []).find((x) => x.id === req.query.card);
+    const m = card && typeof card.cover === "string" && /^data:(image\/[\w+]+);base64,(.+)$/.exec(card.cover);
+    if (!m) { res.status(404).send("no cover"); return; }
+    res.setHeader("Content-Type", m[1]);
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(Buffer.from(m[2], "base64"));
+    return;
+  }
+
   // Invite details: lets the accept screen greet the person by name.
   if (req.method === "GET" && op === "invite_info") {
     const t = (req.query.invite || "").trim();
@@ -502,8 +561,8 @@ export default async function handler(req, res) {
     // "Post now" from the Grid drawer — publishes one item immediately.
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can publish posts." }); return; }
     const b = req.body || {};
-    if (!b.feedId || !b.cardId) { res.status(400).json({ error: "feedId and cardId are required." }); return; }
-    try { res.json(await publishDueItems({ feedId: b.feedId, cardId: b.cardId })); }
+    if (!(b.feedId || b.boardKey) || !b.cardId) { res.status(400).json({ error: "feedId (grid) or boardKey (boards) plus cardId are required." }); return; }
+    try { res.json(await publishDueItems(b.boardKey ? { boardKey: b.boardKey, cardId: b.cardId, account: b.account } : { feedId: b.feedId, cardId: b.cardId })); }
     catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
     return;
   }

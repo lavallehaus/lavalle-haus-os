@@ -473,6 +473,11 @@ export default function Boards({ data, onSave, team = [] }) {
                                 <a href={card.assetUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Open this post's asset in Drive"
                                   style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▸ Asset</a>
                               )}
+                              {card.pub && card.pub.status === "scheduled" && card.pub.auto && card.pub.at && (
+                                <span title={"Auto-publishes to @" + card.pub.account + " " + new Date(card.pub.at).toLocaleString()} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.green }}>⏱ {new Date(card.pub.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                              )}
+                              {card.pub && card.pub.status === "published" && <span title={"Posted to @" + card.pub.account} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.green }}>✓ posted</span>}
+                              {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
@@ -518,6 +523,11 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const [hook, setHook] = useState(card.hook || "");
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
+  const [pub, setPub] = useState(card.pub || null);
+  const [pubAccounts, setPubAccounts] = useState(null); // connected IG accounts (owner only — 403 hides the section)
+  const [postingNow, setPostingNow] = useState(false);
+  useEffect(() => { fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setPubAccounts(d.accounts || [])).catch(() => {}); }, []);
+  const dtLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const [due, setDue] = useState(card.due ? card.due.slice(0, 10) : "");
   const [labels, setLabels] = useState((card.labels || []).map(normLabel));
   const [labelName, setLabelName] = useState("");
@@ -611,6 +621,64 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           </div>
         )}
 
+        {/* publish straight from the card — same engine as the Grid */}
+        {pubAccounts && pubAccounts.length > 0 && !isNew && (
+          <>
+            <div style={label}>Publish to Instagram</div>
+            {pub && pub.status === "published" ? (
+              <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            ) : (
+              <>
+                {pub && pub.status === "failed" && (
+                  <div style={{ background: "#F7F0EE", border: "1px solid #E2D4CD", borderRadius: 1, padding: "8px 11px", fontFamily: sans, fontSize: 11.5, lineHeight: 1.5, color: c.red, marginBottom: 6 }}>
+                    ✗ {pub.error}
+                    <button onClick={() => setPub({ ...pub, status: "scheduled", error: null })} style={{ marginLeft: 8, border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "2px 8px", fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Retry</button>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <select style={{ ...input, width: "auto", flex: "0 0 auto" }} value={(pub && pub.account) || pubAccounts[0].username}
+                    onChange={(e) => setPub({ ...(pub || { status: "scheduled", auto: false }), account: e.target.value })}>
+                    {pubAccounts.map((a) => <option key={a.user_id} value={a.username}>@{a.username}</option>)}
+                    <option value="" disabled>TikTok — pending approval</option>
+                  </select>
+                  <input type="datetime-local" style={{ ...input, width: "auto", flex: 1, minWidth: 170 }} value={dtLocal(pub && pub.at)}
+                    onChange={(e) => setPub({ ...(pub || { auto: false }), status: "scheduled", account: (pub && pub.account) || pubAccounts[0].username, at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: pub && pub.at ? "pointer" : "default", opacity: pub && pub.at ? 1 : 0.45 }}>
+                  <input type="checkbox" checked={!!(pub && pub.auto)} disabled={!(pub && pub.at)}
+                    onChange={(e) => setPub({ ...pub, auto: e.target.checked, status: "scheduled", account: pub.account || pubAccounts[0].username })} />
+                  <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>
+                    Auto-publish{pub && pub.auto && pub.at ? " — " + new Date(pub.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : " at the scheduled time"}
+                  </span>
+                </label>
+                <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+                  <button disabled={postingNow || !cover}
+                    onClick={async () => {
+                      const account = (pub && pub.account) || pubAccounts[0].username;
+                      if (!window.confirm('Post "' + name + '" to @' + account + " on Instagram right now? (Posts the last saved cover + hook + caption.)")) return;
+                      setPostingNow(true);
+                      try {
+                        const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
+                        const d = await r.json();
+                        const item = (d.items || [])[0];
+                        if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }); setDone(true); }
+                        else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
+                      } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
+                      setPostingNow(false);
+                    }}
+                    style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow || !cover ? 0.5 : 1 }}>
+                    {postingNow ? "Posting…" : "◉ Post now"}
+                  </button>
+                  {!cover && <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add a cover photo to post.</span>}
+                </div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6 }}>
+                  Schedules save with the card. Photo posts only for now — Reels go out when TikTok/IG video is approved.
+                </div>
+              </>
+            )}
+          </>
+        )}
+
         {/* links */}
         <div style={label}>Links</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
@@ -693,7 +761,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, pub: pub || null, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
