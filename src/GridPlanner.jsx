@@ -29,6 +29,8 @@ const formatIcon = (fmt) => /reel/i.test(fmt) ? "▶" : /carousel/i.test(fmt) ? 
 
 const ghost = { border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" };
 
+import { NotesLinks } from "./Boards.jsx";
+
 export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [state, setState] = useState(data || null);
   const [feedId, setFeedId] = useState(null);
@@ -430,7 +432,8 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
 
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Caption</div>
             <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
-              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 10 }} />
+              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 4 }} />
+            <div style={{ marginBottom: 10 }}><NotesLinks text={openCard.desc} /></div>
 
             {(open.pieces || []).length > 0 && (
               <div style={{ marginBottom: 10 }}>

@@ -19,6 +19,41 @@ export const WORKSPACES = [
 const uid = () => "bc" + Math.random().toString(36).slice(2, 9);
 const initials = (name) => (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
+// URLs pasted into Notes become tappable chips. Real <a> tags matter here:
+// on the phone a genuine tap on a tiktok.com / drive.google.com link hands
+// off to the TikTok / Google Drive app via universal links.
+export const URL_RX = /https?:\/\/[^\s<>")\]]+/g;
+export const linkMeta = (u) => {
+  try {
+    const h = new URL(u).hostname.replace(/^www\./, "");
+    if (h.includes("tiktok.com")) return { icon: "♪", label: "TikTok" };
+    if (h === "drive.google.com") return { icon: "▸", label: u.includes("/folders/") ? "Drive folder" : "Drive file" };
+    if (h === "docs.google.com") return { icon: "▸", label: u.includes("/spreadsheets/") ? "Google Sheet" : "Google Doc" };
+    if (h.includes("instagram.com")) return { icon: "◉", label: "Instagram" };
+    if (h.includes("pinterest.")) return { icon: "◌", label: "Pinterest" };
+    if (h.includes("thefoldlabel.com")) return { icon: "⌂", label: "The Fold site" };
+    if (h.includes("refilleryhaus.com")) return { icon: "⌂", label: "Refillery site" };
+    return { icon: "🔗", label: h };
+  } catch { return { icon: "🔗", label: String(u).slice(0, 30) }; }
+};
+export function NotesLinks({ text }) {
+  const urls = [...new Set(String(text || "").match(URL_RX) || [])];
+  if (!urls.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6, marginBottom: 4 }}>
+      {urls.map((u, i) => {
+        const m = linkMeta(u);
+        return (
+          <a key={i} href={u} target="_blank" rel="noopener noreferrer" title={u}
+            style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "5px 11px", fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, color: c.ink, textDecoration: "none", background: c.bg, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: c.taupe }}>{m.icon}</span> {m.label} ↗
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 // The Row palette — neutral label colors only.
 export const LABEL_PALETTE = [
   { c: "#E9E6DF", t: "#1A1A1A", name: "Ivory" },
@@ -430,6 +465,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
         <div style={label}>Notes</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        <NotesLinks text={desc} />
 
         {/* links */}
         <div style={label}>Links</div>
