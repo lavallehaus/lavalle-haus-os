@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import ProfitMatrix from "./ProfitMatrix.jsx";
 import CogsBuilder from "./CogsBuilder.jsx";
 import AICoo from "./AICoo.jsx";
@@ -1200,9 +1200,219 @@ One platform, industry modules — this app is the internal master; each version
 }
 
 // ── SEGMENT TABS — quiet pill switcher inside a section ──────────────────────
+// ── GLOBAL SEARCH — jump to any tab, sub-tab, section or record ──────────────
+// Every destination carries keywords so plain-language searches land ("posting
+// schedule" → Content › Grid, "stockists" → Growth › Wholesale › Accounts).
+const SEARCH_SEG_GROUPS = {
+  content: { tab: "content", sub: null, segs: [
+    { id: "boards", label: "Boards", kw: "trello cards content planning covers photos posts july august fold refillery" },
+    { id: "grid", label: "Grid", kw: "plann instagram posting schedule calendar posts auto publish auto-publish feed preview connect tiktok post now grid planner" },
+    { id: "scheduler", label: "Publishing", kw: "scheduler cross post threads youtube shorts pinterest facebook publish" },
+  ] },
+  wholesale: { tab: "growth", sub: "wholesalehub", segs: [
+    { id: "accounts", label: "Accounts", kw: "wholesale accounts stockists stores b2b buyers" },
+    { id: "outreach", label: "Retail Outreach", kw: "outreach emails stores pitch templates" },
+    { id: "timeline", label: "Outreach Timeline", kw: "follow up cadence timeline gantt sequence" },
+    { id: "retailexp", label: "Retail Expansion", kw: "atlas faire spa retailers expansion accounts" },
+  ] },
+  creative: { tab: "growth", sub: "creative", segs: [
+    { id: "poppy", label: "Poppy Framework", kw: "creative studio framework angles hooks ad creative" },
+    { id: "competitors", label: "Competitor Intel", kw: "rivals competitors launches promos pricing intel" },
+    { id: "creators", label: "Creators", kw: "influencers ugc creators collabs creator program" },
+  ] },
+};
+const SEARCH_KW = {
+  brain: "home health score bubbles dashboard overview command view steward revenue profit marketing inventory wholesale launches operations team lens drive map",
+  profit: "sales revenue money income",
+  "profit.matrix": "profit by product matrix contribution",
+  "profit.amazondaily": "amazon daily sales numbers",
+  "profit.pricing": "prices price list msrp",
+  "profit.cogs": "cost of goods costs unit economics",
+  "profit.margins": "margin calculator gross net",
+  "profit.finances": "bank pnl profit and loss statements plaid transactions",
+  "profit.finance": "cash runway burn rate months",
+  ads: "advertising marketing campaigns spend",
+  "ads.ppc": "amazon ppc acos campaigns bids",
+  "ads.keywords": "keyword library search terms seo ranking",
+  "ads.meta": "facebook instagram meta shopify ads roas cpa",
+  "ads.google": "google adwords search ads",
+  "ads.b2b": "b2b faire wholesale advertising",
+  inventory: "stock inventory sku units warehouse",
+  "inventory.fba": "fba amazon stock levels weeks of supply at risk",
+  "inventory.products": "finished goods sellable products quantity",
+  "inventory.packaging": "pouches jars bottles labels pumps lids cartons packaging components",
+  "inventory.raw": "raw materials ingredients bulk",
+  "inventory.inbound": "shipments inbound fba transfers receiving",
+  "inventory.listings": "listing manager amazon listings edit",
+  "inventory.createlisting": "create new listing launch",
+  "inventory.reorder": "reorder restock purchase order list low stock",
+  growth: "growth marketing expansion",
+  "growth.wholesalehub": "wholesale stockists retail stores outreach faire atlas",
+  "growth.creative": "creative studio poppy competitors creators ugc influencers",
+  "growth.email": "email retention klaviyo flows newsletters welcome series",
+  "growth.weeklynums": "weekly numbers kpis metrics scorecard",
+  "growth.checklist": "action items tasks team todo assignments due dates reminders",
+  content: "content social posts instagram tiktok boards grid publishing",
+  roadmap: "roadmap plan phases milestones vision",
+  materials: "materials suppliers ingredients",
+  "materials.suppliers": "supplier database vendors contacts moq",
+  "materials.priceoz": "price per ounce oz cost calculator",
+  ai: "ai chief advisor coo ask assistant",
+  "ai.coo": "ai coo operations recommendations briefing",
+  "ai.advisor": "advisor chat ask chief questions",
+};
+
+function GlobalSearch({ nav, dbState, onGo }) {
+  const [q, setQ] = useState("");
+  const [openList, setOpenList] = useState(false);
+  const [hi, setHi] = useState(0);
+  const boxRef = useRef(null);
+  const inputRef = useRef(null);
+  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const allowed = useMemo(() => new Set(nav.map((n) => n.id)), [nav]);
+
+  // Pages index: tabs, sub-tabs, and the pill sections inside Content/Growth.
+  const pages = useMemo(() => {
+    const out = [];
+    nav.forEach((n) => {
+      out.push({ label: n.label, path: n.label, hay: (n.labelEs || "") + " " + (SEARCH_KW[n.id] || ""), dest: { tab: n.id } });
+      (n.subs || []).forEach((s) => out.push({ label: s.label, path: n.label + " › " + s.label, hay: SEARCH_KW[n.id + "." + s.id] || "", dest: { tab: n.id, sub: s.id } }));
+    });
+    Object.entries(SEARCH_SEG_GROUPS).forEach(([gid, g]) => {
+      const parent = nav.find((n) => n.id === g.tab);
+      if (!parent) return;
+      if (g.sub && !(parent.subs || []).some((s) => s.id === g.sub)) return;
+      const subLabel = g.sub ? ((parent.subs || []).find((s) => s.id === g.sub) || {}).label : null;
+      g.segs.forEach((sg) => out.push({
+        label: sg.label,
+        path: parent.label + (subLabel ? " › " + subLabel : "") + " › " + sg.label,
+        hay: sg.kw,
+        dest: { tab: g.tab, sub: g.sub, seg: { id: gid, seg: sg.id } },
+      }));
+    });
+    return out;
+  }, [nav]);
+
+  // Records index: cards, posts, accounts, people, products… each points at
+  // every section where it lives (a grid post appears under Boards AND Grid).
+  const records = useMemo(() => {
+    const out = [];
+    const add = (label, extra, type, dest) => { if (label && allowed.has(dest.tab)) out.push({ label: String(label).slice(0, 70), hay: extra || "", type, path: null, dest }); };
+    const gridCardIds = new Set();
+    (((dbState || {}).gridPlanner || {}).feeds || []).forEach((f) => (f.items || []).forEach((it) => gridCardIds.add(it.cardId)));
+    Object.entries((dbState || {}).boards || {}).forEach(([, b]) => {
+      (b.cards || []).forEach((cd) => {
+        add(cd.name, (cd.desc || "") + " " + (b.name || ""), "Card · " + (b.name || "Boards"), { tab: "content", seg: { id: "content", seg: "boards" } });
+        if (gridCardIds.has(cd.id)) add(cd.name, cd.desc || "", "Post · Grid", { tab: "content", seg: { id: "content", seg: "grid" } });
+      });
+    });
+    ((dbState || {}).wholesale || []).forEach((r) => add(r.account || r.name, r.notes, "Wholesale account", { tab: "growth", sub: "wholesalehub", seg: { id: "wholesale", seg: "accounts" } }));
+    ((dbState || {}).retail || []).forEach((r) => add(r.account, r.location, "Retail expansion", { tab: "growth", sub: "wholesalehub", seg: { id: "wholesale", seg: "retailexp" } }));
+    ((dbState || {}).creators || []).forEach((r) => add(r.creator || r.handle, r.handle, "Creator", { tab: "growth", sub: "creative", seg: { id: "creative", seg: "creators" } }));
+    ((dbState || {}).competitors || []).forEach((r) => add(r.brand, r.update, "Competitor note", { tab: "growth", sub: "creative", seg: { id: "creative", seg: "competitors" } }));
+    ((dbState || {}).packagingItems || []).forEach((r) => add(r.component, r.supplier, "Packaging", { tab: "inventory", sub: "packaging" }));
+    ((dbState || {}).b2bAds || []).forEach((r) => add(r.campaign, r.channel, "B2B campaign", { tab: "ads", sub: "b2b" }));
+    (((dbState || {}).actionsBoard || {}).team || []).forEach((t) => add(t.name, t.email, "Team member", { tab: "growth", sub: "checklist" }));
+    (((dbState || {}).actionsBoard || {}).items || []).forEach((t) => add(t.title || t.name, t.notes, "Action item", { tab: "growth", sub: "checklist" }));
+    return out;
+  }, [dbState, allowed]);
+
+  const results = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (query.length < 2) return [];
+    const toks = query.split(/\s+/);
+    const rank = (e) => {
+      const label = e.label.toLowerCase();
+      const hay = label + " " + (e.path || "").toLowerCase() + " " + e.hay.toLowerCase();
+      let total = 0;
+      for (const t of toks) {
+        let s = 0;
+        if (label === t) s = 100;
+        else if (label.startsWith(t)) s = 85;
+        else if (label.split(/\W+/).some((w) => w.startsWith(t))) s = 70;
+        else if (label.includes(t)) s = 55;
+        else if (hay.split(/\W+/).some((w) => w.startsWith(t))) s = 40;
+        else if (hay.includes(t)) s = 25;
+        if (!s) return 0;
+        total += s;
+      }
+      return total + (e.path ? 5 : 0); // pages edge out records on ties
+    };
+    const scored = [];
+    pages.forEach((e) => { const s = rank(e); if (s) scored.push({ ...e, s, group: "Pages" }); });
+    records.forEach((e) => { const s = rank(e); if (s) scored.push({ ...e, s, group: "In your data" }); });
+    scored.sort((a, b) => b.s - a.s);
+    return scored.slice(0, 12);
+  }, [q, pages, records]);
+
+  useEffect(() => setHi(0), [q]);
+
+  // ⌘K (or plain "/" outside a field) puts the cursor in the search box.
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = /input|textarea|select/i.test((e.target || {}).tagName || "") || (e.target || {}).isContentEditable;
+      if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
+        e.preventDefault();
+        inputRef.current && inputRef.current.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => {
+    const onClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpenList(false); };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const go = (r) => { setOpenList(false); setQ(""); onGo(r.dest); };
+  let lastGroup = null;
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", flex: "1 1 220px", minWidth: 170, maxWidth: 340 }}>
+      <input ref={inputRef} value={q} placeholder="Search the OS…  ⌘K"
+        onChange={(e) => { setQ(e.target.value); setOpenList(true); }}
+        onFocus={() => setOpenList(true)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+          else if (e.key === "Enter" && results[hi]) go(results[hi]);
+          else if (e.key === "Escape") { setOpenList(false); e.target.blur(); }
+        }}
+        style={{ width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "9px 13px", fontFamily: sansF, fontSize: 12, color: "#1A1A1A", outline: "none" }} />
+      {openList && q.trim().length >= 2 && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, minWidth: 300, background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, boxShadow: "0 10px 30px rgba(26,26,26,0.10)", zIndex: 500, maxHeight: 380, overflowY: "auto" }}>
+          {results.length === 0 && <div style={{ padding: "12px 14px", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: "#8A8A85" }}>Nothing matches — try another word.</div>}
+          {results.map((r, i) => {
+            const header = r.group !== lastGroup ? r.group : null;
+            lastGroup = r.group;
+            return (
+              <div key={i}>
+                {header && <div style={{ padding: "8px 14px 3px", fontFamily: sansF, fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B" }}>{header}</div>}
+                <div onMouseEnter={() => setHi(i)} onMouseDown={(e) => { e.preventDefault(); go(r); }}
+                  style={{ padding: "8px 14px", cursor: "pointer", background: i === hi ? "#F4F1EC" : "transparent" }}>
+                  <div style={{ fontFamily: sansF, fontSize: 12.5, color: "#1A1A1A" }}>{r.label}</div>
+                  <div style={{ fontFamily: sansF, fontSize: 10, color: "#8A8A85", marginTop: 1 }}>{r.path || r.type}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SegTabs({ id, segments }) {
   const [seg, setSeg] = useState(() => { try { return localStorage.getItem("lh_seg_" + id) || segments[0].id; } catch { return segments[0].id; } });
   useEffect(() => { try { localStorage.setItem("lh_seg_" + id, seg); } catch {} }, [id, seg]);
+  // Global search deep-links into a segment via this event (works when the
+  // group is already mounted; fresh mounts pick the target up from localStorage).
+  useEffect(() => {
+    const onSeg = (e) => { if (e.detail && e.detail.id === id && segments.some((s) => s.id === e.detail.seg)) setSeg(e.detail.seg); };
+    window.addEventListener("lh-seg", onSeg);
+    return () => window.removeEventListener("lh-seg", onSeg);
+  }, [id, segments]);
   const active = segments.find((s) => s.id === seg) || segments[0];
   const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
   return (
@@ -2393,6 +2603,17 @@ setAskSeed(question);
 setTab("ai");
 setSub(s => ({ ...s, ai: "advisor" }));
 };
+// Search results land here: tab, optional sub-tab, optional pill section.
+const goSearch = (dest) => {
+setCommandView(false);
+setTab(dest.tab);
+if (dest.sub) setSub((s) => ({ ...s, [dest.tab]: dest.sub }));
+if (dest.seg) {
+try { localStorage.setItem("lh_seg_" + dest.seg.id, dest.seg.seg); } catch {}
+// brief delay so a freshly mounted SegTabs is listening before the event fires
+setTimeout(() => window.dispatchEvent(new CustomEvent("lh-seg", { detail: dest.seg })), 80);
+}
+};
 
 // ── 8-TAB OPERATING SYSTEM NAV (each metric has one permanent home) ──
 const NAV = [
@@ -2633,6 +2854,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
 {me && me.name && <div style={{ fontSize: 11, fontStyle: "italic", color: "#8F8676", marginTop: 3 }}>{timeOfDay}, {me.name.split(" ")[0]}.</div>}
 </button>
+<GlobalSearch nav={visibleNav} dbState={dbState} onGo={goSearch} />
 <div style={{ display: "flex", gap: 8 }}>
 {[
 { label: "SKUs", value: products.length, color: "#71716C" },
