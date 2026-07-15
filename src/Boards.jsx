@@ -1204,7 +1204,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
                   <button disabled={postingNow} onClick={() => runPost(false)}
                     style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
                     {postingNow ? "Checking…" : "↻ Check & finish posting"}</button>
-                  <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined, cloudId: undefined, mp4Url: undefined })}
+                  <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined, convId: undefined, mp4Url: undefined })}
                     style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>

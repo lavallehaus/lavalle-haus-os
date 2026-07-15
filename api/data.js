@@ -127,15 +127,49 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer) {
 // the source (from drive_video) and kicks off the transform; later calls poll
 // the derived MP4 URL. Returns { mp4Url } when ready, { converting, publicId }
 // while transcoding, or { error }. publicId threads the job across sweeps.
-async function cloudinaryConvert(sourceUrl, publicId) {
+// Mux (pay-as-you-go, no size cap). First call creates an asset from the source
+// (drive_video) with an H.264 MP4 rendition; later calls poll until ready.
+async function muxConvert(sourceUrl, jobId) {
+  const id = process.env.MUX_TOKEN_ID, secret = process.env.MUX_TOKEN_SECRET;
+  if (!id || !secret) return { error: "Mux isn't set up yet — add MUX_TOKEN_ID / MUX_TOKEN_SECRET in Vercel" };
+  const auth = "Basic " + Buffer.from(id + ":" + secret).toString("base64");
+  if (!jobId) {
+    const r = await fetch("https://api.mux.com/video/v1/assets", {
+      method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ input: sourceUrl, playback_policy: ["public"], mp4_support: "standard" }),
+    });
+    const d = await r.json();
+    if (!d.data || !d.data.id) return { error: "mux create: " + JSON.stringify(d.error || d).slice(0, 200) };
+    return { converting: true, jobId: d.data.id };
+  }
+  const r = await fetch("https://api.mux.com/video/v1/assets/" + jobId, { headers: { Authorization: auth } });
+  const d = await r.json();
+  const a = d.data;
+  if (!a) return { error: "mux: asset not found" };
+  if (a.status === "errored") return { error: "mux processing errored — " + JSON.stringify(a.errors || {}).slice(0, 140) };
+  if (a.status !== "ready") return { converting: true, jobId };
+  const pb = (a.playback_ids || []).find((x) => x.policy === "public") || (a.playback_ids || [])[0];
+  if (!pb) return { converting: true, jobId };
+  const mp4Url = "https://stream.mux.com/" + pb.id + "/high.mp4"; // static rendition; 404s until ready
+  const h = await fetch(mp4Url, { headers: { Range: "bytes=0-1" } });
+  if (h.ok || h.status === 206) return { mp4Url, jobId };
+  return { converting: true, jobId };
+}
+async function muxDelete(jobId) {
+  const id = process.env.MUX_TOKEN_ID, secret = process.env.MUX_TOKEN_SECRET;
+  if (!id || !secret || !jobId) return;
+  try { await fetch("https://api.mux.com/video/v1/assets/" + jobId, { method: "DELETE", headers: { Authorization: "Basic " + Buffer.from(id + ":" + secret).toString("base64") } }); } catch {}
+}
+// Cloudinary alternate (free tier, ~100MB video cap).
+async function cloudinaryConvert(sourceUrl, jobId) {
   const cloud = process.env.CLOUDINARY_CLOUD_NAME, key = process.env.CLOUDINARY_API_KEY, secret = process.env.CLOUDINARY_API_SECRET;
-  if (!cloud || !key || !secret) return { error: "video auto-convert isn't set up yet — add CLOUDINARY_CLOUD_NAME / _API_KEY / _API_SECRET in Vercel" };
+  if (!cloud || !key || !secret) return { error: "Cloudinary isn't set up" };
   const xform = "vc_h264,ac_aac,f_mp4";
   const derivedUrl = (pid) => `https://res.cloudinary.com/${cloud}/video/upload/${xform}/${pid}.mp4`;
   const ready = async (pid) => { const h = await fetch(derivedUrl(pid), { headers: { Range: "bytes=0-1" } }); return h.ok || h.status === 206; };
-  if (publicId) {
-    if (await ready(publicId)) return { mp4Url: derivedUrl(publicId), publicId };
-    return { converting: true, publicId };
+  if (jobId) {
+    if (await ready(jobId)) return { mp4Url: derivedUrl(jobId), jobId };
+    return { converting: true, jobId };
   }
   const ts = Math.floor(Date.now() / 1000);
   const signature = createHash("sha1").update(`timestamp=${ts}${secret}`).digest("hex");
@@ -145,8 +179,14 @@ async function cloudinaryConvert(sourceUrl, publicId) {
   });
   const d = await r.json();
   if (!d.public_id) return { error: "cloudinary: " + JSON.stringify(d.error || d).slice(0, 200) };
-  if (await ready(d.public_id)) return { mp4Url: derivedUrl(d.public_id), publicId: d.public_id };
-  return { converting: true, publicId: d.public_id };
+  if (await ready(d.public_id)) return { mp4Url: derivedUrl(d.public_id), jobId: d.public_id };
+  return { converting: true, jobId: d.public_id };
+}
+// Pick whichever transcoder is configured (Mux preferred), else signal "none".
+async function videoTranscode(sourceUrl, jobId) {
+  if (process.env.MUX_TOKEN_ID && process.env.MUX_TOKEN_SECRET) return muxConvert(sourceUrl, jobId);
+  if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) return cloudinaryConvert(sourceUrl, jobId);
+  return { none: true };
 }
 
 // Publish every armed, due grid item (or one specific item when `only` is set).
@@ -240,22 +280,19 @@ async function publishDueItems(only) {
         let videoUrl = p.mp4Url;
         if (!videoUrl) {
           const src = "https://lavalle-haus-os.vercel.app/api/data?op=drive_video&id=" + reelId;
-          const transcoderOn = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
-          if (transcoderOn) {
-            const conv = await cloudinaryConvert(src, p.cloudId);
-            if (conv.error) { fail(conv.error); continue; }
-            if (conv.converting) { card.pub = { ...p, status: "converting", cloudId: conv.publicId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
-            videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, cloudId: conv.publicId };
-          } else {
-            videoUrl = src; // no transcoder configured — post the file as-is (works when it's already H.264 MP4, e.g. exported from the editor)
-          }
+          const conv = await videoTranscode(src, p.convId);
+          if (conv.none) { videoUrl = src; } // no transcoder configured — post the file as-is (works when it's already H.264 MP4)
+          else if (conv.error) { fail(conv.error); continue; }
+          else if (conv.converting) { card.pub = { ...p, status: "converting", convId: conv.jobId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
+          else { videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, convId: conv.jobId }; }
         }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId);
         if (rr.ok) {
           const publishedAt = new Date().toISOString();
           ledger[ledgerKey] = { mediaId: rr.mediaId, at: publishedAt };
           await kvSet("lavalle_published", ledger);
-          card.pub = { ...p, status: "published", mediaId: rr.mediaId, publishedAt, containerId: undefined };
+          await muxDelete(p.convId); // reel is live — drop the temp Mux asset so it doesn't accrue storage
+          card.pub = { ...p, status: "published", mediaId: rr.mediaId, publishedAt, containerId: undefined, convId: undefined, mp4Url: undefined };
           card.done = true;
           results.published++;
           results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: rr.mediaId, publishedAt });
