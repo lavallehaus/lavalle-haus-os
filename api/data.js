@@ -570,19 +570,32 @@ export default async function handler(req, res) {
         const prof = await (await fetch(`${base}/me?fields=username,followers_count,media_count&access_token=${encodeURIComponent(t.access_token)}`)).json();
         const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=15&access_token=${encodeURIComponent(t.access_token)}`)).json();
         const light = req.query.light === "1"; // brain view: skip per-media insight calls
+        // Friendly post kind — what she asked for instead of "feed".
+        const kindOf = (m) => m.media_type === "CAROUSEL_ALBUM" ? "Carousel"
+          : (m.media_product_type === "REELS" || m.media_type === "VIDEO") ? "Reel"
+          : m.media_type === "IMAGE" ? "Static post" : (m.media_product_type || m.media_type || "Post");
         const items = [];
         for (const m of (media.data || []).slice(0, 12)) {
-          let ins = null;
+          const fullCaption = m.caption || "";
+          const tags = (fullCaption.match(/#[\wÀ-ɏ]+/g) || []);
+          const captionNoTags = fullCaption.replace(/#[\wÀ-ɏ]+/g, "").replace(/\s+/g, " ").trim();
           if (light) { items.push({ id: m.id, likes: m.like_count ?? null, comments: m.comments_count ?? null, at: m.timestamp }); continue; }
+          let ins = null;
+          const fetchIns = async (metrics) => {
+            const d = await (await fetch(`${base}/${m.id}/insights?metric=${metrics.join(",")}&access_token=${encodeURIComponent(t.access_token)}`)).json();
+            if (d.error) throw new Error(d.error.message || "insights");
+            const o = {}; (d.data || []).forEach((x) => { o[x.name] = x.values && x.values[0] ? x.values[0].value : null; });
+            return o;
+          };
           try {
-            const metrics = (m.media_type === "VIDEO" ? ["saved", "reach", "ig_reels_avg_watch_time"] : ["saved", "reach"]).join(",");
-            const d = await (await fetch(`${base}/${m.id}/insights?metric=${metrics}&access_token=${encodeURIComponent(t.access_token)}`)).json();
-            if (d.data) { ins = {}; d.data.forEach((x) => { ins[x.name] = x.values && x.values[0] ? x.values[0].value : null; }); }
+            const base2 = m.media_type === "VIDEO" || m.media_product_type === "REELS" ? ["saved", "reach", "views", "ig_reels_avg_watch_time"] : ["saved", "reach", "views"];
+            try { ins = await fetchIns(base2); }
+            catch { ins = await fetchIns(base2.filter((x) => x !== "views")); } // older accounts: no unified views metric
           } catch {}
           items.push({
-            id: m.id, caption: (m.caption || "").slice(0, 90), type: m.media_product_type || m.media_type,
+            id: m.id, kind: kindOf(m), caption: captionNoTags.slice(0, 110), hashtags: tags, hashtagCount: tags.length,
             likes: m.like_count ?? null, comments: m.comments_count ?? null, at: m.timestamp, permalink: m.permalink || null,
-            saved: ins ? (ins.saved ?? null) : null, reach: ins ? (ins.reach ?? null) : null,
+            saved: ins ? (ins.saved ?? null) : null, reach: ins ? (ins.reach ?? null) : null, views: ins ? (ins.views ?? null) : null,
             avgWatchSec: ins && ins.ig_reels_avg_watch_time != null ? Math.round(ins.ig_reels_avg_watch_time / 1000) : null,
           });
         }
@@ -596,6 +609,39 @@ export default async function handler(req, res) {
       }
     }
     res.json({ accounts: out, tiktok: "pending_review" });
+    return;
+  }
+  if (op === "ig_comments" && req.method === "GET") {
+    // Comments on one post, for the Analytics reply dropdown (owner-only).
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can read comments." }); return; }
+    const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const tok = accts.find((t) => (t.username || "").toLowerCase() === (req.query.account || "").toLowerCase()) || accts[0];
+    if (!tok) { res.status(400).json({ error: "No connected account." }); return; }
+    try {
+      const d = await (await fetch(`https://graph.instagram.com/v23.0/${req.query.media}/comments?fields=id,text,username,timestamp,like_count,replies{id,text,username,timestamp}&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+      if (d.error) { res.status(400).json({ error: d.error.message || "comments" }); return; }
+      res.json({ comments: (d.data || []).map((cc) => ({ id: cc.id, text: cc.text, username: cc.username, at: cc.timestamp, likes: cc.like_count ?? null, replies: ((cc.replies && cc.replies.data) || []).map((r) => ({ id: r.id, text: r.text, username: r.username, at: r.timestamp })) })) });
+    } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
+    return;
+  }
+  if (op === "ig_reply" && req.method === "POST") {
+    // Reply to a comment — posts straight to Instagram (manage_comments scope).
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can reply." }); return; }
+    const b = req.body || {};
+    if (!b.commentId || !(b.message || "").trim()) { res.status(400).json({ error: "commentId and message are required." }); return; }
+    const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const tok = accts.find((t) => (t.username || "").toLowerCase() === (b.account || "").toLowerCase()) || accts[0];
+    if (!tok) { res.status(400).json({ error: "No connected account." }); return; }
+    try {
+      const r = await fetch(`https://graph.instagram.com/v23.0/${b.commentId}/replies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ message: b.message.trim(), access_token: tok.access_token }),
+      });
+      const d = await r.json();
+      if (!d.id) { res.status(400).json({ error: (d.error && d.error.message) || "reply failed" }); return; }
+      res.json({ ok: true, id: d.id });
+    } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
     return;
   }
   if (op === "publish_item" && req.method === "POST") {

@@ -350,8 +350,10 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   <div style={{ fontFamily: sans, fontSize: 12, color: k === today ? c.ink : c.sub, marginBottom: 5 }}>{d.getDate()}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
                     {posts.map(({ it, card }) => (
-                      <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
-                        style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}` }} />
+                      <div key={it.cardId} onClick={() => setOpenItem(it.cardId)} title={card.name} style={{ position: "relative", cursor: "pointer" }}>
+                        <img src={imgOf(it, 200)} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}`, display: "block" }} />
+                        {it.n != null && <span style={{ position: "absolute", left: 1, bottom: 1, fontFamily: sans, fontSize: 7.5, color: "#FFF", background: "rgba(26,26,26,0.7)", borderRadius: 1, padding: "0 3px", lineHeight: 1.4 }}>#{it.n}</span>}
+                      </div>
                     ))}
                     {(boardPubsByDay[k] || []).map(({ card: cd }, bi) => cd.cover ? (
                       <img key={"bp" + bi} src={cd.cover} alt="" title={pubTitle(cd)}
@@ -373,35 +375,45 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                 </span>
                 <button onClick={() => setCalMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))} style={{ ...ghost, padding: "3px 10px" }}>→</button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-                {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
-                  <div key={i} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, color: c.sub, textAlign: "center", padding: "2px 0" }}>{w}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w, i) => (
+                  <div key={i} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, padding: "2px 4px 6px" }}>{w}</div>
                 ))}
                 {(() => {
                   const first = new Date(calMonth.y, calMonth.m, 1);
                   const days = new Date(calMonth.y, calMonth.m + 1, 0).getDate();
                   const cells = [];
+                  const timeOf = (iso) => iso ? new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : null;
+                  // one Plann-style row: cover + #number + caption + time
+                  const PostRow = ({ cover, num, name, time, tone, done, onClick, title }) => (
+                    <div onClick={onClick} title={title}
+                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 2, cursor: onClick ? "pointer" : "default", background: c.bg, border: `1px solid ${c.line}`, borderLeft: `3px solid ${tone}`, opacity: done ? 0.55 : 1 }}>
+                      {cover ? <img src={cover} alt="" style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 1, flexShrink: 0 }} />
+                        : <span style={{ width: 30, height: 30, borderRadius: 1, background: c.card, flexShrink: 0 }} />}
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: "block", fontFamily: sans, fontSize: 10, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{num ? <b>#{num}</b> : ""} {name}</span>
+                        {time && <span style={{ display: "block", fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, color: c.sub }}>{time}</span>}
+                      </span>
+                    </div>
+                  );
                   for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"pad" + i} />);
                   for (let d = 1; d <= days; d++) {
                     const k = keyOf(new Date(calMonth.y, calMonth.m, d));
-                    const posts = byDay[k] || [];
+                    const gridPosts = byDay[k] || [];
+                    const bPosts = boardPubsByDay[k] || [];
+                    const rows = [];
+                    gridPosts.forEach(({ it, card }) => rows.push(
+                      <PostRow key={it.cardId} cover={imgOf(it, 200)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done ? c.green : c.taupe} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
+                    ));
+                    bPosts.forEach(({ card: cd }, bi) => rows.push(
+                      <PostRow key={"bp" + bi} cover={cd.cover} num={(cd.name.match(/post\s*(\d+)/i) || [])[1]} name={"@" + (cd.pub.account || "?")} time={timeOf(cd.pub.at)} tone={cd.pub.status === "published" ? c.green : c.taupe} title={pubTitle(cd)} />
+                    ));
                     cells.push(
                       <div key={k} {...dayCellDrag(k)}
-                        style={{ background: k === today ? c.card : c.bg, border: `1px solid ${overDay === k && dragIdx != null ? c.ink : c.line}`, borderRadius: 1, minHeight: 58, padding: "3px 3px 4px" }}>
-                        <div style={{ fontFamily: sans, fontSize: 9, color: k === today ? c.ink : c.sub, textAlign: "right", paddingRight: 2 }}>{d}</div>
-                        <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
-                          {posts.slice(0, 2).map(({ it, card }) => (
-                            <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
-                              style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1 }} />
-                          ))}
-                          {(boardPubsByDay[k] || []).slice(0, 2).map(({ card: cd }, bi) => cd.cover ? (
-                            <img key={"bp" + bi} src={cd.cover} alt="" title={pubTitle(cd)}
-                              style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, border: `1.5px solid ${cd.pub.status === "published" ? c.green : c.taupe}` }} />
-                          ) : (
-                            <span key={"bp" + bi} title={pubTitle(cd)} style={{ width: 8, height: 8, borderRadius: "50%", background: cd.pub.status === "published" ? c.green : c.taupe, alignSelf: "center" }} />
-                          ))}
-                          {(posts.length > 2 || (boardPubsByDay[k] || []).length > 2) && <span style={{ fontFamily: sans, fontSize: 8.5, color: c.sub, alignSelf: "center" }}>+{Math.max(0, posts.length - 2) + Math.max(0, (boardPubsByDay[k] || []).length - 2)}</span>}
-                        </div>
+                        style={{ background: k === today ? c.card : c.bg, border: `1px solid ${overDay === k && dragIdx != null ? c.ink : c.line}`, borderRadius: 3, minHeight: 96, padding: "5px 5px 6px", display: "flex", flexDirection: "column", gap: 3 }}>
+                        <div style={{ fontFamily: sans, fontSize: 10, color: k === today ? c.ink : c.sub, fontWeight: k === today ? 600 : 400, textAlign: "right", paddingRight: 2 }}>{d}</div>
+                        {rows.slice(0, 3)}
+                        {rows.length > 3 && <div style={{ fontFamily: sans, fontSize: 9, color: c.sub, paddingLeft: 4 }}>+{rows.length - 3} more</div>}
                       </div>
                     );
                   }
