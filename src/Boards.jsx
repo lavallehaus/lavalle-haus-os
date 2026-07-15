@@ -144,6 +144,22 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [me, setMe] = useState(() => { try { return localStorage.getItem("lh_me") || ""; } catch { return ""; } });
   useEffect(() => { if (viewer.name && viewer.name !== me) setMe(viewer.name); }, [viewer.name]); // eslint-disable-line
   useEffect(() => { try { if (me) localStorage.setItem("lh_me", me); } catch {} }, [me]);
+  // Auto-advance in-flight posts (converting → uploading → posted) so reels finish
+  // on their own — no manual tap. Owner only; runs every ~22s while the app is open.
+  const boardsRef = useRef(boards); boardsRef.current = boards;
+  useEffect(() => {
+    if (!viewer.owner) return;
+    const tick = async () => {
+      const b = boardsRef.current || {};
+      const inflight = [];
+      for (const bk in b) for (const cd of ((b[bk] && b[bk].cards) || [])) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) inflight.push({ bk, id: cd.id, account: cd.pub.account });
+      if (!inflight.length) return;
+      for (const x of inflight) { try { await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json", "x-app-token": localStorage.getItem("lh_token") || "" }, body: JSON.stringify({ boardKey: x.bk, cardId: x.id, account: x.account }) }); } catch {} }
+      try { const fresh = await (await fetch("/api/data", { cache: "no-store" })).json(); if (fresh && fresh.boards) setBoards(fresh.boards); } catch {}
+    };
+    const t = setInterval(tick, 22000);
+    return () => clearInterval(t);
+  }, [viewer.owner]);
   // Tapping the Boards sub-tab always lands on this home (Content Brain view),
   // even if a board was left open.
   useEffect(() => {
@@ -920,14 +936,23 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                                 </span>
                               )}
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
-                              {card.pub && card.pub.status === "converting" && <span title="Converting the video to H.264 for Instagram" style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.taupe }}>◔ converting video</span>}
-                              {card.pub && card.pub.status === "processing" && <span title="Instagram is processing the Reel video" style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.taupe }}>◔ uploading reel</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>📎 {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
                                 <span key={"m" + i} style={{ display: "inline-flex" }}><Avatar member={teamByName[m] || { name: m }} size={20} ring="#FFFFFF" /></span>
                               ))}
+                            </div>
+                          )}
+                          {card.pub && (card.pub.status === "converting" || card.pub.status === "processing") && (
+                            <div style={{ marginTop: 8, paddingLeft: 24 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 8.5, letterSpacing: 0.8, textTransform: "uppercase", color: c.taupe, marginBottom: 3 }}>
+                                <span>◔ {card.pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"}</span>
+                                <span>{card.pub.status === "converting" ? "Step 1 of 2" : "Step 2 of 2"}</span>
+                              </div>
+                              <div style={{ height: 4, background: "#EEECE6", borderRadius: 3, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: card.pub.status === "converting" ? "45%" : "85%", background: c.taupe, borderRadius: 3, transition: "width .5s ease" }} />
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1048,10 +1073,28 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      onPatch({ name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, done, links, checklist, pub: pub || null });
+      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, links, checklist };
+      // While a post is mid-flight the server owns pub/done — don't let auto-save
+      // overwrite "converting/processing/published" with a stale local copy.
+      const serverOwned = pub && (pub.status === "converting" || pub.status === "processing" || pub.status === "published");
+      if (!serverOwned) { patch.pub = pub || null; patch.done = done; }
+      onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
   }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub]);
+  // While a post is converting/processing, poll the server so the OPEN card
+  // reflects progress and flips to Posted (green check) on its own.
+  useEffect(() => {
+    if (isNew || !pub || (pub.status !== "converting" && pub.status !== "processing")) return;
+    const t = setInterval(async () => {
+      try {
+        const fresh = await (await fetch("/api/data", { cache: "no-store" })).json();
+        const cc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id);
+        if (cc && cc.pub) { setPub(cc.pub); if (cc.pub.status === "published") setDone(true); }
+      } catch {}
+    }, 12000);
+    return () => clearInterval(t);
+  }, [pub && pub.status, isNew]);
   // Publish now (or resume a Reel that's still processing) — keeps the IG
   // container id so a slow video finishes on the next tap without re-uploading.
   const runPost = async (confirm) => {
@@ -1199,13 +1242,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
               <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
             ) : pub && (pub.status === "converting" || pub.status === "processing") ? (
               <div>
-                <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5, marginBottom: 8 }}>◔ {pub.status === "converting" ? "Converting the video to H.264 for @" + pub.account + " — a large file can take a couple of minutes." : "Instagram is processing the Reel for @" + pub.account + " — almost there."} Tap below to check and finish it.</div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>
+                  <span>◔ {pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"}</span>
+                  <span>{pub.status === "converting" ? "Step 1 of 2" : "Step 2 of 2"}</span>
+                </div>
+                <div style={{ height: 6, background: "#EEECE6", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ height: "100%", width: pub.status === "converting" ? "45%" : "85%", background: c.taupe, borderRadius: 4, transition: "width .5s ease" }} />
+                </div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub, marginBottom: 8 }}>Finishing automatically — you can close this; it'll post to @{pub.account} on its own and the card's green check ticks when it's live. (A large video can take a couple of minutes.)</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button disabled={postingNow} onClick={() => runPost(false)}
-                    style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
-                    {postingNow ? "Checking…" : "↻ Check & finish posting"}</button>
+                    style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
+                    {postingNow ? "Checking…" : "↻ Check now"}</button>
                   <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined, convId: undefined, mp4Url: undefined })}
-                    style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
+                    style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
             ) : (
