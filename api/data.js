@@ -1,4 +1,4 @@
-import { createHmac, scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
@@ -122,6 +122,33 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer) {
   return { ok: true, mediaId: pd.id };
 }
 
+// Transcode a video to H.264 MP4 via Cloudinary so Instagram's Reel API accepts
+// it (phone .mov files are usually HEVC, which IG rejects). First call uploads
+// the source (from drive_video) and kicks off the transform; later calls poll
+// the derived MP4 URL. Returns { mp4Url } when ready, { converting, publicId }
+// while transcoding, or { error }. publicId threads the job across sweeps.
+async function cloudinaryConvert(sourceUrl, publicId) {
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME, key = process.env.CLOUDINARY_API_KEY, secret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloud || !key || !secret) return { error: "video auto-convert isn't set up yet — add CLOUDINARY_CLOUD_NAME / _API_KEY / _API_SECRET in Vercel" };
+  const xform = "vc_h264,ac_aac,f_mp4";
+  const derivedUrl = (pid) => `https://res.cloudinary.com/${cloud}/video/upload/${xform}/${pid}.mp4`;
+  const ready = async (pid) => { const h = await fetch(derivedUrl(pid), { headers: { Range: "bytes=0-1" } }); return h.ok || h.status === 206; };
+  if (publicId) {
+    if (await ready(publicId)) return { mp4Url: derivedUrl(publicId), publicId };
+    return { converting: true, publicId };
+  }
+  const ts = Math.floor(Date.now() / 1000);
+  const signature = createHash("sha1").update(`timestamp=${ts}${secret}`).digest("hex");
+  const r = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/video/upload`, {
+    method: "POST",
+    body: new URLSearchParams({ file: sourceUrl, api_key: key, timestamp: String(ts), signature }),
+  });
+  const d = await r.json();
+  if (!d.public_id) return { error: "cloudinary: " + JSON.stringify(d.error || d).slice(0, 200) };
+  if (await ready(d.public_id)) return { mp4Url: derivedUrl(d.public_id), publicId: d.public_id };
+  return { converting: true, publicId: d.public_id };
+}
+
 // Publish every armed, due grid item (or one specific item when `only` is set).
 // Mutates the lavalle_data blob in KV and returns a summary.
 async function publishDueItems(only) {
@@ -187,8 +214,8 @@ async function publishDueItems(only) {
       // "Post now" (isOnly) forces a fresh attempt even from a failed/old state —
       // otherwise a failed card could never be retried. Already-published stays
       // safe via the ledger check below (no double post).
-      if (isOnly && p && p.status !== "processing") p = { ...p, status: "scheduled", error: null };
-      if (!p || (p.status !== "scheduled" && p.status !== "processing")) continue;
+      if (isOnly && p && p.status !== "processing" && p.status !== "converting") p = { ...p, status: "scheduled", error: null };
+      if (!p || (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting")) continue;
       if (isOnly && only.account) p.account = only.account;
       const ledgerKey = "card:" + bKey + ":" + card.id;
       if (ledger[ledgerKey]) {
@@ -207,8 +234,17 @@ async function publishDueItems(only) {
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) {
         const reelId = ((card.assetUrl || "").match(/\/d\/([-\w]{20,})/) || [])[1];
         if (!reelId) { fail("no Reel video file is linked — the card points at a folder, not a .mov; link the file first"); continue; }
-        const videoUrl = "https://lavalle-haus-os.vercel.app/api/data?op=drive_video&id=" + reelId;
         const rcap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        // Auto-convert the .mov to H.264 MP4 (Cloudinary) before Instagram — IG's
+        // Reel API rejects HEVC. Skip if already converted (p.mp4Url).
+        let videoUrl = p.mp4Url;
+        if (!videoUrl) {
+          const src = "https://lavalle-haus-os.vercel.app/api/data?op=drive_video&id=" + reelId;
+          const conv = await cloudinaryConvert(src, p.cloudId);
+          if (conv.error) { fail(conv.error); continue; }
+          if (conv.converting) { card.pub = { ...p, status: "converting", cloudId: conv.publicId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
+          videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, cloudId: conv.publicId };
+        }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId);
         if (rr.ok) {
           const publishedAt = new Date().toISOString();

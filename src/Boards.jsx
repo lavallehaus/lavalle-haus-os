@@ -920,6 +920,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                                 </span>
                               )}
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
+                              {card.pub && card.pub.status === "converting" && <span title="Converting the video to H.264 for Instagram" style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.taupe }}>◔ converting video</span>}
                               {card.pub && card.pub.status === "processing" && <span title="Instagram is processing the Reel video" style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.taupe }}>◔ uploading reel</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
@@ -1056,14 +1057,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const runPost = async (confirm) => {
     const account = (pub && pub.account) || (pubAccounts && pubAccounts[0] && pubAccounts[0].username);
     if (!account) return;
-    if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video + caption — Instagram may take a minute to process before it goes live." : "Posts the last saved cover + hook + caption."))) return;
+    if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video (auto-converts to H.264 first) + caption — a large video can take a minute or two." : "Posts the last saved cover + hook + caption."))) return;
     setPostingNow(true);
     try {
       const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
       const d = await r.json();
       const item = (d.items || [])[0];
-      if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt, containerId: undefined }); setDone(true); }
-      else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing", containerId: item.containerId }); }
+      // Re-read the pub the server just saved — it holds the convert/container ids
+      // that a partial local update would otherwise wipe via auto-save.
+      let sp = null;
+      try { const fresh = await (await fetch("/api/data", { cache: "no-store" })).json(); const cc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id); sp = cc && cc.pub; } catch {}
+      if (sp) { setPub(sp); if (sp.status === "published") setDone(true); }
+      else if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }); setDone(true); }
+      else if (item && item.converting) { setPub({ ...(pub || {}), account, status: "converting" }); }
+      else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing" }); }
       else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
     } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
     setPostingNow(false);
@@ -1190,14 +1197,14 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             <div style={label}>Publish to Instagram</div>
             {pub && pub.status === "published" ? (
               <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
-            ) : pub && pub.status === "processing" ? (
+            ) : pub && (pub.status === "converting" || pub.status === "processing") ? (
               <div>
-                <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5, marginBottom: 8 }}>◔ Uploading Reel to @{pub.account} — Instagram is processing the video (a large file can take a few minutes). Tap below to check and finish it.</div>
+                <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5, marginBottom: 8 }}>◔ {pub.status === "converting" ? "Converting the video to H.264 for @" + pub.account + " — a large file can take a couple of minutes." : "Instagram is processing the Reel for @" + pub.account + " — almost there."} Tap below to check and finish it.</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button disabled={postingNow} onClick={() => runPost(false)}
                     style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
                     {postingNow ? "Checking…" : "↻ Check & finish posting"}</button>
-                  <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined })}
+                  <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined, cloudId: undefined, mp4Url: undefined })}
                     style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
