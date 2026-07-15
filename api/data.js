@@ -218,6 +218,35 @@ async function kvSet(key, value) {
     body: JSON.stringify(value),
   });
 }
+// Cached Google access token — board covers stream through /api/data?op=drive_img
+// which hits Drive per image, so refreshing the token every call would be brutal.
+let _gCache = { token: null, exp: 0 };
+async function googleToken() {
+  const now = Date.now();
+  if (_gCache.token && _gCache.exp > now + 30000) return _gCache.token;
+  const gstate = (await kvGet("google_oauth")) || {};
+  if (!gstate.refresh_token) return null;
+  const tr = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || "", client_secret: process.env.GOOGLE_CLIENT_SECRET || "", refresh_token: gstate.refresh_token, grant_type: "refresh_token" }),
+  });
+  const td = await tr.json();
+  if (!td.access_token) return null;
+  _gCache = { token: td.access_token, exp: now + (td.expires_in || 3500) * 1000 };
+  return td.access_token;
+}
+async function driveListFolder(folderId, token) {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: "Bearer " + token } });
+  const d = await r.json();
+  return (d.files || []).map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder" }));
+}
+// Which Drive "Cover Photos" root each brand board pulls monthly covers from.
+// A board can override with board.coverPhotosFolder; this is the built-in default.
+const COVER_ROOTS = { "refillery-haus": "1oce4jwPbTB7x-_OSMzJhpvoXFVAaXVGL" };
+const MONTH_RX = /^(january|february|march|april|may|june|july|august|september|october|november|december)$/i;
+
 async function plaid(path, body) {
   const r = await fetch(`${PLAID_BASE}${path}`, {
     method: "POST",
@@ -500,6 +529,25 @@ export default async function handler(req, res) {
     res.setHeader("Content-Type", m[1]);
     res.setHeader("Cache-Control", "public, max-age=300");
     res.send(Buffer.from(m[2], "base64"));
+    return;
+  }
+
+  // Stream a Drive image by file id via the app's Google token — lets a board
+  // card cover be a tiny reference (?op=drive_img&id=…) instead of inline base64,
+  // and renders for every viewer (server holds the token). Unauthenticated like
+  // card_media, since <img> tags can't send the x-app-token header.
+  if (req.method === "GET" && op === "drive_img") {
+    const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!id) { res.status(400).send("no id"); return; }
+    try {
+      const token = await googleToken();
+      if (!token) { res.status(400).send("google_not_connected"); return; }
+      const ir = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: "Bearer " + token } });
+      if (!ir.ok) { res.status(ir.status).send("drive_fail"); return; }
+      res.setHeader("Content-Type", ir.headers.get("content-type") || "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(Buffer.from(await ir.arrayBuffer()));
+    } catch (e) { res.status(500).send("err"); }
     return;
   }
 
@@ -876,6 +924,53 @@ export default async function handler(req, res) {
         .filter((f) => wantAll || (f.mimeType || "").startsWith("image/"))
         .map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder" }));
       res.json({ files });
+    } catch (e) {
+      res.status(500).json({ error: String(e).slice(0, 200) });
+    }
+    return;
+  }
+
+  // ── Sync covers from Drive (owner-only) ───────────────────────────────────
+  // For each month-named column on a brand board, pull that month's subfolder
+  // from the brand's "Cover Photos" root and set each "Post N" card's cover to
+  // the matching numbered file (1–21). Re-runnable: drop a new cover in the
+  // folder, hit sync, and it lands on the right card. Also refreshes the
+  // Schedule grid feed for that account.
+  if (op === "sync_covers" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const boardKey = String((req.body || {}).boardKey || "");
+    const data = await kvGet("lavalle_data");
+    const blob = Array.isArray(data) ? data[0] : data;
+    const board = blob && blob.boards && blob.boards[boardKey];
+    if (!board) { res.status(404).json({ error: "No such board." }); return; }
+    const root = board.coverPhotosFolder || COVER_ROOTS[boardKey];
+    if (!root) { res.status(400).json({ error: "No Cover Photos folder is set for this board yet." }); return; }
+    const token = await googleToken();
+    if (!token) { res.status(400).json({ error: "google_not_connected" }); return; }
+    try {
+      const monthLists = (board.lists || []).filter((l) => MONTH_RX.test(String(l.name || "").trim()));
+      if (!monthLists.length) { res.status(400).json({ error: "This board has no month-named columns to sync." }); return; }
+      const rootChildren = await driveListFolder(root, token);
+      const report = [];
+      for (const list of monthLists) {
+        const mname = String(list.name).trim().toLowerCase();
+        const sub = rootChildren.find((f) => f.folder && f.name.trim().toLowerCase() === mname);
+        if (!sub) { report.push({ month: list.name, status: "no folder in Drive" }); continue; }
+        const files = await driveListFolder(sub.id, token);
+        const byN = {};
+        files.filter((f) => !f.folder).forEach((f) => { const mm = /^(\d+)\b/.exec(f.name); if (mm) byN[+mm[1]] = f.id; });
+        const cards = (board.cards || []).filter((c) => c.listId === list.id);
+        let covered = 0;
+        for (const c of cards) {
+          const mm = /post\s*(\d+)/i.exec(c.name || "");
+          if (!mm) continue;
+          const n = +mm[1];
+          if (byN[n]) { c.cover = "/api/data?op=drive_img&id=" + byN[n]; covered++; }
+        }
+        report.push({ month: list.name, files: Object.keys(byN).length, covered });
+      }
+      await kvSet("lavalle_data", Array.isArray(data) ? [blob] : blob);
+      res.json({ report });
     } catch (e) {
       res.status(500).json({ error: String(e).slice(0, 200) });
     }

@@ -375,6 +375,27 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     }
   };
 
+  // Sync covers: pull the numbered files from this brand's Cover Photos ▸ <Month>
+  // folder and stamp each "Post N" card's cover. Re-runnable whenever The Loft
+  // drops new covers in the folder.
+  const runSyncCovers = async (boardKey) => {
+    setLinking("Syncing covers…");
+    try {
+      const tok = localStorage.getItem("lh_token") || "";
+      const r = await fetch("/api/data?op=sync_covers", { method: "POST", headers: { "Content-Type": "application/json", "x-app-token": tok }, body: JSON.stringify({ boardKey }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || ("sync " + r.status));
+      const fresh = await (await fetch("/api/data")).json();
+      if (fresh && fresh.boards) setBoards(fresh.boards);
+      setLinking(null);
+      const msg = (d.report || []).map((x) => x.month + ": " + (x.covered != null ? x.covered + "/" + x.files + " covered" : x.status)).join(" · ");
+      alert("Covers synced from Drive — " + (msg || "done"));
+    } catch (e) {
+      setLinking(null);
+      alert(String(e.message || e).includes("google") ? "Google Drive isn't connected — open /api/google-auth once, then run this again." : "Sync covers failed: " + (e.message || e));
+    }
+  };
+
   // First run: seed from the Trello export; later runs merge covers/members once.
   useEffect(() => {
     (async () => {
@@ -751,6 +772,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 </div>
               )}
               <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "⛓ Link assets"}</button>
+              {viewer.owner && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
                 style={ghost}>+ List</button>
