@@ -144,6 +144,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
   const [membersMenu, setMembersMenu] = useState(false); // open-board header member panel
+  const [profileMember, setProfileMember] = useState(null); // member name whose Trello-style profile card is open
+  const [profileActivity, setProfileActivity] = useState(false);
   const [listMenu, setListMenu] = useState(null); // list id whose ⋯ menu is open
   const [dragCard, setDragCard] = useState(null); // card id being dragged (Trello drag & drop)
   const [dropHint, setDropHint] = useState(null); // card id we'd drop before, or "list:<id>" for end-of-list
@@ -464,9 +466,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
         {WORKSPACES.map((w) => (
           <button key={w.id} onClick={() => { setWs(w.id); setOpen(null); }}
-            style={{ textAlign: "left", padding: "10px 18px", borderRadius: 1, cursor: "pointer", border: `1px solid ${w.id === ws ? c.ink : c.line}`, background: w.id === ws ? c.ink : "transparent" }}>
-            <div style={{ fontFamily: sans, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: w.id === ws ? c.bg : c.ink }}>{w.label}</div>
-            <div style={{ fontFamily: sans, fontSize: 10, color: w.id === ws ? "rgba(255,255,255,0.65)" : c.sub, marginTop: 1 }}>{w.tagline}</div>
+            style={{ textAlign: "left", padding: "10px 18px", borderRadius: 1, cursor: "pointer", border: `1px solid ${w.id === ws ? c.ink : c.line}`, background: c.bg, boxShadow: w.id === ws ? "0 2px 8px rgba(26,26,26,0.10)" : "none" }}>
+            <div style={{ fontFamily: sans, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, fontWeight: w.id === ws ? 500 : 400 }}>{w.label}</div>
+            <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 1 }}>{w.tagline}</div>
           </button>
         ))}
       </div>
@@ -542,7 +544,57 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   </button>
                 );
               })()}
-              {membersMenu && (
+              {membersMenu && profileMember && (() => {
+                // Trello's member profile card: banner, big avatar, @handle, actions.
+                const t = teamByName[profileMember] || { name: profileMember };
+                const handle = "@" + ((t.email && !/^(info|ops|hello|contact)@/.test(t.email)) ? t.email.split("@")[0] : (t.name || "").toLowerCase().replace(/[^a-z0-9]+/g, ""));
+                const canEditPhoto = viewer.owner || t.name === viewer.name;
+                const myCards = board.cards.filter((cd) => (cd.members || []).includes(t.name));
+                const activity = board.cards.flatMap((cd) => (cd.comments || []).filter((x) => x.by === t.name).map((x) => ({ ...x, cardName: cd.name }))).sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 5);
+                const row = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "12px 16px", fontFamily: sans, fontSize: 13.5, color: "#F2F0EC", cursor: "pointer" };
+                return (
+                  <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 300, borderRadius: 10, overflow: "hidden", boxShadow: "0 14px 40px rgba(26,26,26,0.3)" }}>
+                    <div style={{ position: "relative", height: 78, background: "linear-gradient(120deg, #CDBBA7, #8F8676)" }}>
+                      <button onClick={() => { setProfileMember(null); setProfileActivity(false); }}
+                        style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, background: "rgba(0,0,0,0.15)", border: "1.5px solid rgba(255,255,255,0.8)", borderRadius: 6, color: "#FFFFFF", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
+                      <div style={{ position: "absolute", left: 16, top: 26, display: "flex", gap: 14, alignItems: "center" }}>
+                        <Avatar member={t} size={68} ring="#FFFFFF" />
+                        <div>
+                          <div style={{ fontFamily: sans, fontSize: 16, fontWeight: 600, color: "#FFFFFF", textShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>{t.name}</div>
+                          <div style={{ fontFamily: sans, fontSize: 11.5, color: "rgba(255,255,255,0.9)" }}>{handle}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ background: "#2B2A28", padding: "26px 0 8px" }}>
+                      {canEditPhoto ? (
+                        <label style={{ ...row, boxSizing: "border-box" }}>
+                          Edit profile info
+                          <span style={{ display: "block", fontFamily: sans, fontSize: 10.5, color: "rgba(242,240,236,0.55)", marginTop: 2 }}>{t.avatar ? "Change their photo" : "Upload their photo"} · {t.email || "no email on roster"}</span>
+                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, (u) => setAvatar(t.name, u), 200, 0.8); }} />
+                        </label>
+                      ) : (
+                        <div style={{ ...row, cursor: "default" }}>{t.email || "no email on roster"}</div>
+                      )}
+                      <div style={{ height: 1, background: "rgba(255,255,255,0.12)", margin: "2px 16px" }} />
+                      <button onClick={() => setProfileActivity(!profileActivity)} style={row}>View member's board activity</button>
+                      {profileActivity && (
+                        <div style={{ padding: "0 16px 10px" }}>
+                          <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "rgba(242,240,236,0.5)", margin: "4px 0 6px" }}>On {myCards.length} card{myCards.length === 1 ? "" : "s"} here</div>
+                          {myCards.slice(0, 4).map((cd) => <div key={cd.id} style={{ fontFamily: sans, fontSize: 11.5, color: "#F2F0EC", padding: "2px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· {cd.name}</div>)}
+                          {activity.length > 0 && <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "rgba(242,240,236,0.5)", margin: "8px 0 6px" }}>Recent activity</div>}
+                          {activity.map((a, i) => (
+                            <div key={i} style={{ fontFamily: sans, fontSize: 11, color: "rgba(242,240,236,0.8)", padding: "2px 0" }}>
+                              {a.sys ? a.text : '"' + String(a.text).slice(0, 50) + '"'} <span style={{ color: "rgba(242,240,236,0.45)" }}>— {a.cardName ? String(a.cardName).slice(0, 26) : ""}{a.at ? " · " + new Date(a.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
+                            </div>
+                          ))}
+                          {!myCards.length && !activity.length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: "rgba(242,240,236,0.6)" }}>Nothing on this board yet.</div>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {membersMenu && !profileMember && (
                 <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 14, width: 270 }}>
                   <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Board members</div>
                   {viewer.owner && (
@@ -556,11 +608,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     const canEditPhoto = viewer.owner || t.name === viewer.name;
                     return (
                       <div key={t.id || t.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", opacity: inBoard ? 1 : 0.45 }}>
-                        <Avatar member={t} size={40} ring={c.line} />
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: "block", fontFamily: sans, fontSize: 13, fontWeight: 500, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
-                          <span style={{ display: "block", fontFamily: sans, fontSize: 10.5, color: c.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.email || (t.role || "team member")}</span>
-                        </span>
+                        <button onClick={() => { setProfileMember(t.name); setProfileActivity(false); }} title="View profile"
+                          style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                          <Avatar member={t} size={40} ring={c.line} />
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: "block", fontFamily: sans, fontSize: 13, fontWeight: 500, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                            <span style={{ display: "block", fontFamily: sans, fontSize: 10.5, color: c.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.email || (t.role || "team member")}</span>
+                          </span>
+                        </button>
                         {canEditPhoto && (
                           <label title="Upload their profile photo" style={{ border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
                             {t.avatar ? "Photo ✓" : "+ Photo"}
@@ -611,12 +666,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } setDragCard(null); setDropHint(null); }}
-                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(29,32,34,0.90)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 12, padding: "12px 10px 10px", outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2 }}>
+                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 12, padding: "12px 10px 10px", outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative" }}>
-                    <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: "#E8E6E1" }}>
-                      {l.name} <span style={{ color: "#9A968F", fontSize: 11 }}>{cards.length}</span>
+                    <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: c.ink }}>
+                      {l.name} <span style={{ color: c.sub, fontSize: 11 }}>{cards.length}</span>
                     </div>
-                    <button onClick={() => setListMenu(listMenu === l.id ? null : l.id)} title="List actions" style={{ background: "none", border: "none", cursor: "pointer", color: "#9A968F", fontSize: 14, padding: "0 4px", lineHeight: 1 }}>⋯</button>
+                    <button onClick={() => setListMenu(listMenu === l.id ? null : l.id)} title="List actions" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 14, padding: "0 4px", lineHeight: 1 }}>⋯</button>
                     {listMenu === l.id && (
                       <div style={{ position: "absolute", top: "calc(100% + 2px)", right: 0, zIndex: 60, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.18)", padding: 6, width: 150 }}>
                         <button onClick={() => { setListMenu(null); renameList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, cursor: "pointer" }}>Rename list</button>
@@ -709,7 +764,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     ))}
                   </div>
                   <button onClick={() => setEditCard({ boardKey: open, listId: l.id, isNew: true })}
-                    style={{ width: "100%", marginTop: 6, textAlign: "left", background: "transparent", border: "none", borderRadius: 8, color: "#B9B6AF", fontFamily: sans, fontSize: 12.5, padding: "7px 8px", cursor: "pointer" }}>+ Add a card</button>
+                    style={{ width: "100%", marginTop: 6, textAlign: "left", background: "transparent", border: "none", borderRadius: 8, color: c.sub, fontFamily: sans, fontSize: 12.5, padding: "7px 8px", cursor: "pointer" }}>+ Add a card</button>
                 </div>
               );
             })}
