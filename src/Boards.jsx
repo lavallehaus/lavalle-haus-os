@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
 // The Trello workspaces, brought home. Three businesses, each with its boards;
@@ -147,6 +147,49 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [listMenu, setListMenu] = useState(null); // list id whose ⋯ menu is open
   const [dragCard, setDragCard] = useState(null); // card id being dragged (Trello drag & drop)
   const [dropHint, setDropHint] = useState(null); // card id we'd drop before, or "list:<id>" for end-of-list
+  const [touchDrag, setTouchDrag] = useState(null); // card id being long-press dragged (phone)
+  const [touchPos, setTouchPos] = useState(null); // finger position for the drag ghost
+  const touchTimer = useRef(null);
+  const touchStartPos = useRef(null);
+  const suppressClick = useRef(0);
+
+  // Long-press drag on touch screens, like the Trello app: hold a card ~0.4s,
+  // then slide it anywhere. Native listeners because React's are passive and
+  // the page must stop scrolling while a card is in hand.
+  useEffect(() => {
+    if (!touchDrag) return;
+    const hintFor = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return null;
+      const cardEl = el.closest("[data-dragcard]");
+      if (cardEl && cardEl.dataset.dragcard !== touchDrag) return { type: "card", cardId: cardEl.dataset.dragcard, listId: cardEl.dataset.draglist };
+      const colEl = el.closest("[data-dragcol]");
+      if (colEl) return { type: "list", listId: colEl.dataset.dragcol };
+      return null;
+    };
+    const onMove = (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      setTouchPos({ x: t.clientX, y: t.clientY });
+      const h = hintFor(t.clientX, t.clientY);
+      setDropHint(h ? (h.type === "card" ? h.cardId : "list:" + h.listId) : null);
+    };
+    const onEnd = (e) => {
+      const t = (e.changedTouches || [])[0];
+      const h = t ? hintFor(t.clientX, t.clientY) : null;
+      if (h) moveCard(touchDrag, h.listId, h.type === "card" ? h.cardId : null);
+      suppressClick.current = Date.now();
+      setTouchDrag(null); setDragCard(null); setDropHint(null); setTouchPos(null);
+    };
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", onEnd);
+    return () => {
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, [touchDrag, boards, open]); // eslint-disable-line
 
   // Trello-style drag & drop: drop on a card inserts before it, drop on the
   // list body appends. Order lives in the board's cards array.
@@ -562,7 +605,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             {board.lists.map((l) => {
               const cards = board.cards.filter((x) => x.listId === l.id);
               return (
-                <div key={l.id}
+                <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } setDragCard(null); setDropHint(null); }}
                   style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(29,32,34,0.90)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 12, padding: "12px 10px 10px", outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2 }}>
@@ -580,18 +623,36 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 330px)", overflowY: "auto" }}>
                     {cards.map((card) => (
-                      <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
+                      <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
+                        onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
                         draggable
                         onDragStart={(e) => { setDragCard(card.id); e.dataTransfer.effectAllowed = "move"; }}
                         onDragEnd={() => { setDragCard(null); setDropHint(null); }}
                         onDragOver={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); setDropHint(card.id); } }}
                         onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); moveCard(dragCard, l.id, card.id); } setDragCard(null); setDropHint(null); }}
-                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: dragCard === card.id ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2 }}>
+                        onTouchStart={(e) => {
+                          const t = e.touches[0];
+                          touchStartPos.current = { x: t.clientX, y: t.clientY };
+                          clearTimeout(touchTimer.current);
+                          touchTimer.current = setTimeout(() => {
+                            setTouchDrag(card.id); setDragCard(card.id); setTouchPos({ x: t.clientX, y: t.clientY });
+                            if (navigator.vibrate) navigator.vibrate(30);
+                          }, 400);
+                        }}
+                        onTouchMove={(e) => {
+                          if (touchDrag) return;
+                          const t = e.touches[0]; const s = touchStartPos.current;
+                          if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 8) clearTimeout(touchTimer.current);
+                        }}
+                        onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
+                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />}
                         <div style={{ padding: "9px 11px" }}>
                           {(card.labels || []).length > 0 && (
-                            <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
-                              {(card.labels || []).slice(0, 6).map((lb, i) => { const L = normLabel(lb); return <span key={i} title={L.n} style={{ width: 34, height: 7, borderRadius: 4, background: L.c, display: "inline-block" }} />; })}
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
+                              {(card.labels || []).slice(0, 6).map((lb, i) => { const L = normLabel(lb); return (
+                                <span key={i} style={{ fontFamily: sans, fontSize: 9.5, fontWeight: 500, letterSpacing: 0.5, color: labelText(L.c), background: L.c, borderRadius: 4, padding: "3px 8px" }}>{L.n}</span>
+                              ); })}
                             </div>
                           )}
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -650,6 +711,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               );
             })}
           </div>
+          {touchDrag && touchPos && (() => {
+            const cd = board.cards.find((x) => x.id === touchDrag);
+            return cd ? (
+              <div style={{ position: "fixed", left: touchPos.x - 70, top: touchPos.y - 60, zIndex: 400, pointerEvents: "none", width: 140, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 14px 34px rgba(0,0,0,0.3)", overflow: "hidden", transform: "rotate(3deg)" }}>
+                {cd.cover && <img src={cd.cover} alt="" style={{ display: "block", width: "100%", height: 54, objectFit: "cover" }} />}
+                <div style={{ padding: "7px 10px", fontFamily: sans, fontSize: 10.5, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cd.name}</div>
+              </div>
+            ) : null;
+          })()}
           {narrow && (
             <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", gap: 8, alignItems: "center", background: "rgba(29,32,34,0.95)", borderRadius: 24, padding: "8px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
               <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", color: "#E8E6E1", fontFamily: sans, fontSize: 12, cursor: "pointer", padding: 0 }}>☰ Boards</button>
