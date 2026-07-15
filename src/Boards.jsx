@@ -501,6 +501,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     setEditCard(null);
   };
 
+  // Persist a single field (e.g. cover) immediately, without closing the sheet —
+  // so a change survives even if the sheet is dismissed by tapping the backdrop.
+  const patchCard = (partial) => {
+    if (!editCard || editCard.isNew) return;
+    const bk = editCard.boardKey;
+    if (!boards[bk]) return;
+    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === editCard.cardId ? { ...x, ...partial } : x)) });
+  };
+
   const deleteCard = () => {
     const bk = editCard.boardKey;
     const card = boards[bk].cards.find((x) => x.id === editCard.cardId);
@@ -955,6 +964,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           me={me}
           onClose={() => setEditCard(null)}
           onSave={saveCard}
+          onPatch={patchCard}
           onDuplicate={editCard.isNew ? null : () => { duplicateCard(editCard.boardKey, editCard.cardId); setEditCard(null); }}
           onDelete={editCard.isNew ? null : deleteCard}
           onComment={(text) => addComment(editCard.boardKey, editCard.cardId, text)}
@@ -964,7 +974,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   );
 }
 
-function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onDelete, onComment, onDuplicate }) {
+function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [desc, setDesc] = useState(card.desc || "");
@@ -993,6 +1003,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const attachments = card.attachments || [];
   const input = { width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 13, color: c.ink, outline: "none" };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "14px 0 4px" };
+  // Set the cover AND persist it right away for existing cards, so the change
+  // sticks even if the sheet is dismissed by tapping outside instead of Save.
+  const applyCover = (val) => { setCover(val); if (!isNew && onPatch) onPatch({ cover: val || null }); };
   const addMember = (m) => { const v = (m || "").trim(); if (!v || members.includes(v)) return; setMembers([...members, v]); setMemberInput(""); };
   const addLabel = () => { const n = labelName.trim(); if (!n) return; setLabels([...labels, { n, c: labelColor }]); setLabelName(""); };
   const destLists = (boardsIndex[destBoard] || {}).lists || [];
@@ -1016,7 +1029,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <label style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
             Upload
-            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, setCover); }} />
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, applyCover); }} />
           </label>
           {cover && (
             <a href={cover} download={(card.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"}
@@ -1024,16 +1037,16 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
               ⤓ Download
             </a>
           )}
-          {cover && <button onClick={() => setCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
+          {cover && <button onClick={() => applyCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
 
         {/* photo attachments — tap one to make it the cover */}
         {attachments.length > 0 && (
           <div>
-            <div style={label}>Photos ({attachments.length}) — tap to set as cover</div>
+            <div style={label}>Photos ({attachments.length}) — tap one to set as cover{!isNew ? " (saves instantly)" : ""}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
               {attachments.map((a, i) => (
-                <img key={i} src={a} alt="" onClick={() => setCover(a)}
+                <img key={i} src={a} alt="" onClick={() => applyCover(a)}
                   style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === a ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
               ))}
             </div>
