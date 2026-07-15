@@ -969,10 +969,9 @@ export default async function handler(req, res) {
           const n = +mm[1];
           if (byN[n]) {
             c.cover = "/api/data?op=drive_img&id=" + byN[n];
-            // Also drop the cover's Drive link on the card so assets are traceable
-            // at a glance (alongside the reel/carousel link from Link assets).
-            const coverU = "https://drive.google.com/file/d/" + byN[n] + "/view";
-            c.links = [{ n: "Cover photo", u: coverU }, ...((c.links || []).filter((l) => l.n !== "Cover photo"))];
+            // Also set the "Open cover photo in Drive" button's target so assets
+            // are one tap away (alongside the reel/carousel button from Link assets).
+            c.coverUrl = "https://drive.google.com/file/d/" + byN[n] + "/view";
             covered++;
           }
         }

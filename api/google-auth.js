@@ -6,9 +6,10 @@
 // Needs GOOGLE_CLIENT_ID set in Vercel env vars.
 
 const REDIRECT = "https://lavalle-haus-os.vercel.app/api/google-callback";
-// drive.file = statement uploads; drive.readonly = listing the Grid-planner
-// photo folders she shares. Reconnecting once re-consents to both.
-const SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
+// Full Drive scope: the app renames/moves/renumbers grid covers & reels in the
+// brand folders (not just files it created). Reconnect once at /api/google-auth
+// to re-consent and mint a fresh refresh token with this scope.
+const SCOPE = "https://www.googleapis.com/auth/drive";
 
 export default function handler(req, res) {
   const clientId = process.env.GOOGLE_CLIENT_ID;

@@ -1022,6 +1022,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const [links, setLinks] = useState(card.links || []);
   const [linkName, setLinkName] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  // Two Drive-asset buttons — cover photo + reel/carousel — each editable inline.
+  const coverLinkOf = (cd) => cd.coverUrl || ((cd.links || []).find((l) => /cover/i.test(l.n)) || {}).u || "";
+  const [coverUrl, setCoverUrl] = useState(coverLinkOf(card));
+  const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
+  const [editCover, setEditCover] = useState(false);
+  const [editAsset, setEditAsset] = useState(false);
   const attachments = card.attachments || [];
   const input = { width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 13, color: c.ink, outline: "none" };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "14px 0 4px" };
@@ -1114,16 +1120,39 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           )}
         </div>
         <div style={label}>Post asset</div>
-        {card.assetUrl ? (
-          <a href={card.assetUrl} target="_blank" rel="noopener noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>
-            ▸ Open {isCarouselCard(card.name) && !isReelCard(card.name) ? "carousel" : "reel"} in Drive
-          </a>
-        ) : (
-          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>
-            Not linked yet — use "⛓ Link assets" on the board to match this card's number to its Drive file.
-          </div>
-        )}
+        {(() => {
+          // One editable Drive button. url/setUrl live in state; the pencil (top
+          // right) reveals an input to paste/replace the link the button opens.
+          const btnRow = (title, url, setUrl, editing, setEditing, field) => (
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              {url ? (
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 34px 9px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>
+                  ▸ Open {title} in Drive
+                </a>
+              ) : (
+                <div style={{ display: "inline-flex", alignItems: "center", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "9px 34px 9px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, background: "transparent" }}>
+                  No {title} link yet
+                </div>
+              )}
+              <button onClick={() => setEditing(!editing)} title={"Edit " + title + " link"}
+                style={{ position: "absolute", top: 8, right: 8, background: "transparent", border: "none", color: editing ? c.ink : c.sub, cursor: "pointer", fontSize: 13, lineHeight: 1 }}>✎</button>
+              {editing && (
+                <input autoFocus value={url} placeholder="Paste the Drive link…" onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { const v = url.trim() || null; if (!isNew && onPatch) onPatch({ [field]: v }); setEditing(false); } }}
+                  onBlur={() => { const v = url.trim() || null; if (!isNew && onPatch) onPatch({ [field]: v }); }}
+                  style={{ ...input, marginTop: 6 }} />
+              )}
+            </div>
+          );
+          const reelLabel = isCarouselCard(card.name) && !isReelCard(card.name) ? "carousel" : "reel";
+          return (
+            <div>
+              {btnRow("cover photo", coverUrl, setCoverUrl, editCover, setEditCover, "coverUrl")}
+              {btnRow(reelLabel, assetUrlState, setAssetUrlState, editAsset, setEditAsset, "assetUrl")}
+            </div>
+          );
+        })()}
 
         {/* publish straight from the card — same engine as the Grid */}
         {pubAccounts && pubAccounts.length > 0 && !isNew && (
@@ -1271,7 +1300,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
