@@ -220,7 +220,7 @@ async function publishDueItems(only) {
           results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: rr.mediaId, publishedAt });
         } else if (rr.pending) {
           card.pub = { ...p, status: "processing", containerId: rr.containerId };
-          results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true });
+          results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, containerId: rr.containerId });
         } else fail(rr.error);
         changed = true;
         continue;

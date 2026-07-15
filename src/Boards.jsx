@@ -1051,6 +1051,23 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
     }, 600);
     return () => clearTimeout(t);
   }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub]);
+  // Publish now (or resume a Reel that's still processing) — keeps the IG
+  // container id so a slow video finishes on the next tap without re-uploading.
+  const runPost = async (confirm) => {
+    const account = (pub && pub.account) || (pubAccounts && pubAccounts[0] && pubAccounts[0].username);
+    if (!account) return;
+    if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video + caption — Instagram may take a minute to process before it goes live." : "Posts the last saved cover + hook + caption."))) return;
+    setPostingNow(true);
+    try {
+      const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
+      const d = await r.json();
+      const item = (d.items || [])[0];
+      if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt, containerId: undefined }); setDone(true); }
+      else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing", containerId: item.containerId }); }
+      else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
+    } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
+    setPostingNow(false);
+  };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 94vw)", height: "100%", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px", overflowY: "auto" }}>
@@ -1174,7 +1191,16 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             {pub && pub.status === "published" ? (
               <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
             ) : pub && pub.status === "processing" ? (
-              <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5 }}>◔ Uploading Reel to @{pub.account} — Instagram is processing the video. It posts automatically once that finishes (usually within a minute); the daily sync completes any still processing.</div>
+              <div>
+                <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5, marginBottom: 8 }}>◔ Uploading Reel to @{pub.account} — Instagram is processing the video (a large file can take a few minutes). Tap below to check and finish it.</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button disabled={postingNow} onClick={() => runPost(false)}
+                    style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
+                    {postingNow ? "Checking…" : "↻ Check & finish posting"}</button>
+                  <button onClick={() => setPub({ ...pub, status: "scheduled", containerId: undefined })}
+                    style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
+                </div>
+              </div>
             ) : (
               <>
                 {pub && pub.status === "failed" && (
@@ -1200,22 +1226,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
                   </span>
                 </label>
                 <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-                  <button disabled={postingNow || !cover}
-                    onClick={async () => {
-                      const account = (pub && pub.account) || pubAccounts[0].username;
-                      const reelPost = isReelCard(card.name);
-                      if (!window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (reelPost ? "Uploads the linked Reel video + caption — Instagram may take a minute to process before it goes live." : "Posts the last saved cover + hook + caption."))) return;
-                      setPostingNow(true);
-                      try {
-                        const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
-                        const d = await r.json();
-                        const item = (d.items || [])[0];
-                        if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }); setDone(true); }
-                        else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing" }); }
-                        else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
-                      } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
-                      setPostingNow(false);
-                    }}
+                  <button disabled={postingNow || !cover} onClick={() => runPost(true)}
                     style={{ background: c.ink, color: c.bg, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: postingNow || !cover ? 0.5 : 1 }}>
                     {postingNow ? "Posting…" : "◉ Post now"}
                   </button>
