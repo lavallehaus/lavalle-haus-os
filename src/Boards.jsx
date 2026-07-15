@@ -580,8 +580,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             const done = b.cards.filter((x) => x.done).length;
             return (
               <div key={key} onClick={() => openBoard(key)}
-                style={{ position: "relative", textAlign: "left", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, overflow: "hidden", cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.05)" }}>
-                <div style={{ height: 88, position: "relative", ...tileBg(b) }}>
+                style={{ position: "relative", textAlign: "left", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.05)", zIndex: accessMenu === key ? 90 : "auto" }}>
+                <div style={{ height: 88, position: "relative", borderRadius: "7px 7px 0 0", overflow: "hidden", ...tileBg(b) }}>
                   <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4 }}>
                     <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
                       style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 11, padding: "3px 7px" }}>✎</button>

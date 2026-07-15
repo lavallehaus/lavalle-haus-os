@@ -2134,21 +2134,26 @@ function LoginScreen() {
           onChange={e => setPw(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") submit(); }}
           placeholder="Password"
-          style={loginInput}
+          style={{ ...loginInput, paddingRight: 78 }}
         />
         <button
           type="button"
           onClick={() => setShow(s => !s)}
           aria-label={show ? "Hide password" : "Show password"}
           title={show ? "Hide password — ocultar" : "Show password — mostrar"}
-          style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: show ? "#1A1A1A" : "#9A9A95", padding: 4, lineHeight: 1 }}>
-          {show ? "🙈" : "👁"}
+          style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
+          {show ? "Hide" : "👁 Show"}
         </button>
         </div>
         <button onClick={submit} disabled={busy} style={loginBtn}>
           {busy ? "Unlocking…" : "Enter"}
         </button>
-        {err && <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{err}</div>}
+        {err && (
+          <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+            {err}
+            {mode === "user" && <div style={{ marginTop: 6, color: "#8F8676", fontStyle: "italic", fontFamily: "Georgia, serif" }}>Forgot it? Ask the owner to resend your invite — the link lets you set a fresh password.</div>}
+          </div>
+        )}
         <button onClick={() => { setMode(m => m === "user" ? "house" : "user"); setErr(null); setPw(""); }}
           style={{ marginTop: 16, background: "none", border: "none", cursor: "pointer", fontSize: 10, letterSpacing: 1, color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
           {mode === "user" ? "Use the house password instead" : "Sign in with your email instead"}
@@ -2207,10 +2212,10 @@ function AcceptInvite({ invite }) {
           <div style={{ fontSize: 12, fontStyle: "italic", color: "#71716C", marginTop: 10 }}>Welcome, {info.name}.</div>
           <div style={{ fontSize: 11, color: "#8F8676", marginTop: 4, marginBottom: 18 }}>{info.email} · {info.role}<br/>Choose your password — elige tu contraseña</div>
           <div style={{ position: "relative", marginBottom: 8 }}>
-            <input type={show ? "text" : "password"} value={pw} autoFocus onChange={(e) => setPw(e.target.value)} placeholder="New password (8+ characters)" style={loginInput} />
+            <input type={show ? "text" : "password"} value={pw} autoFocus onChange={(e) => setPw(e.target.value)} placeholder="New password (8+ characters)" style={{ ...loginInput, paddingRight: 78 }} />
             <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? "Hide password" : "Show password"}
-              style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: show ? "#1A1A1A" : "#9A9A95", padding: 4, lineHeight: 1 }}>
-              {show ? "🙈" : "👁"}
+              style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
+              {show ? "Hide" : "👁 Show"}
             </button>
           </div>
           <input type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder="Repeat password" style={loginInput} />
