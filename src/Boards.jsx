@@ -258,6 +258,30 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     };
   }, [touchDragList, boards, open]); // eslint-disable-line
 
+  // Move a whole list — cards and all — to another board (Trello's Move list).
+  const moveListToBoard = (listId, destKey) => {
+    const src = boards[open];
+    const dest = boards[destKey];
+    const list = src.lists.find((l) => l.id === listId);
+    if (!list || !dest || destKey === open) return;
+    const movingCards = src.cards.filter((cd) => cd.listId === listId);
+    commit({
+      ...boards,
+      [open]: { ...src, lists: src.lists.filter((l) => l.id !== listId), cards: src.cards.filter((cd) => cd.listId !== listId) },
+      [destKey]: { ...dest, lists: [...dest.lists, list], cards: [...dest.cards, ...movingCards] },
+    });
+  };
+
+  // Duplicate a card in place (Trello's Copy).
+  const duplicateCard = (boardKey, cardId) => {
+    const b = boards[boardKey];
+    const src = b.cards.find((x) => x.id === cardId);
+    if (!src) return;
+    const clone = { ...src, id: uid(), name: src.name + " (copy)", done: false, pub: null, comments: [], members: src.members || [] };
+    const i = b.cards.findIndex((x) => x.id === cardId);
+    patchBoard(boardKey, { cards: [...b.cards.slice(0, i + 1), clone, ...b.cards.slice(i + 1)] });
+  };
+
   // Trello-style drag & drop: drop on a card inserts before it, drop on the
   // list body appends. Order lives in the board's cards array.
   const moveCard = (cardId, toListId, beforeCardId) => {
@@ -775,9 +799,16 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     </div>
                     <button onClick={() => setListMenu(listMenu === l.id ? null : l.id)} title="List actions" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 14, padding: "0 4px", lineHeight: 1 }}>⋯</button>
                     {listMenu === l.id && (
-                      <div style={{ position: "absolute", top: "calc(100% + 2px)", right: 0, zIndex: 60, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.18)", padding: 6, width: 150 }}>
+                      <div style={{ position: "absolute", top: "calc(100% + 2px)", right: 0, zIndex: 60, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.18)", padding: 6, width: 190 }}>
                         <button onClick={() => { setListMenu(null); renameList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, cursor: "pointer" }}>Rename list</button>
-                        <button onClick={() => { setListMenu(null); deleteList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.red, cursor: "pointer" }}>Delete list</button>
+                        <div style={{ borderTop: `1px solid ${c.line}`, margin: "4px 6px", paddingTop: 4 }}>
+                          <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, padding: "2px 4px 4px" }}>Move list to board</div>
+                          {Object.entries(boards).filter(([k, b2]) => !k.startsWith("_") && b2 && b2.lists && k !== open && canSee(b2)).map(([k, b2]) => (
+                            <button key={k} onClick={() => { setListMenu(null); if (confirm('Move "' + l.name + '" and its ' + cards.length + ' cards to "' + b2.name + '"?')) moveListToBoard(l.id, k); }}
+                              style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "6px 10px", fontFamily: sans, fontSize: 11.5, color: c.ink, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>→ {b2.name}</button>
+                          ))}
+                        </div>
+                        <button onClick={() => { setListMenu(null); deleteList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.red, cursor: "pointer", borderTop: `1px solid ${c.line}` }}>Delete list</button>
                       </div>
                     )}
                   </div>
@@ -824,7 +855,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             </button>
                             <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: card.done ? "line-through" : "none" }}>{card.name}</div>
                           </div>
-                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc)) && (
+                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
                               {card.due && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: card.done ? "#DFE8DF" : new Date(card.due) < new Date() ? "#F3E3E0" : "#EEECE6", color: card.done ? c.green : new Date(card.due) < new Date() ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
@@ -832,6 +863,11 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                                 </span>
                               )}
                               {(card.hook || card.desc) && <span title="Has hook/caption" style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>≡</span>}
+                              {(card.checklist || []).length > 0 && (
+                                <span title="Checklist" style={{ fontFamily: sans, fontSize: 9, color: (card.checklist || []).every((x) => x.done) ? "#FFFFFF" : c.sub, background: (card.checklist || []).every((x) => x.done) ? c.green : "transparent", border: (card.checklist || []).every((x) => x.done) ? "none" : `1px solid ${c.line}`, borderRadius: 4, padding: "1px 6px" }}>
+                                  ☑ {(card.checklist || []).filter((x) => x.done).length}/{(card.checklist || []).length}
+                                </span>
+                              )}
                               {(card.exampleUrl || firstVideoUrl(card.desc)) && (
                                 <a href={card.exampleUrl || firstVideoUrl(card.desc)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Example video"
                                   style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▷ Example</a>
@@ -919,6 +955,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           me={me}
           onClose={() => setEditCard(null)}
           onSave={saveCard}
+          onDuplicate={editCard.isNew ? null : () => { duplicateCard(editCard.boardKey, editCard.cardId); setEditCard(null); }}
           onDelete={editCard.isNew ? null : deleteCard}
           onComment={(text) => addComment(editCard.boardKey, editCard.cardId, text)}
         />
@@ -927,11 +964,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   );
 }
 
-function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onDelete, onComment }) {
+function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onDelete, onComment, onDuplicate }) {
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
+  const [checklist, setChecklist] = useState(card.checklist || []);
+  const [checkInput, setCheckInput] = useState("");
   const [pub, setPub] = useState(card.pub || null);
   const [pubAccounts, setPubAccounts] = useState(null); // connected IG accounts (owner only — 403 hides the section)
   const [postingNow, setPostingNow] = useState(false);
@@ -1008,6 +1047,27 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
         <div style={label}>Caption</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         <NotesLinks text={desc} />
+
+        {/* checklist — the film → edit → post steps live on the card */}
+        <div style={label}>Checklist{checklist.length ? " · " + checklist.filter((x) => x.done).length + "/" + checklist.length : ""}</div>
+        {checklist.length > 0 && (
+          <div style={{ height: 5, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 3, marginBottom: 8, overflow: "hidden" }}>
+            <div style={{ width: (checklist.filter((x) => x.done).length / checklist.length) * 100 + "%", height: "100%", background: c.green, transition: "width 0.3s ease" }} />
+          </div>
+        )}
+        {checklist.map((it) => (
+          <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "3px 0" }}>
+            <input type="checkbox" checked={!!it.done} onChange={() => setChecklist(checklist.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)))} />
+            <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: it.done ? c.sub : c.ink, textDecoration: it.done ? "line-through" : "none" }}>{it.t}</span>
+            <button onClick={() => setChecklist(checklist.filter((x) => x.id !== it.id))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: checklist.length ? 6 : 0 }}>
+          <input style={{ ...input, flex: 1 }} placeholder="Add a step… (film, edit, approve)" value={checkInput} onChange={(e) => setCheckInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && checkInput.trim()) { setChecklist([...checklist, { id: uid(), t: checkInput.trim(), done: false }]); setCheckInput(""); } }} />
+          <button onClick={() => { if (!checkInput.trim()) return; setChecklist([...checklist, { id: uid(), t: checkInput.trim(), done: false }]); setCheckInput(""); }}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
+        </div>
 
         {/* the two standing buttons: reference video + this post's Drive asset */}
         <div style={label}>Example video</div>
@@ -1145,12 +1205,18 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             </span>
           ))}
         </div>
-        <select style={{ ...input, color: c.sub }} value=""
-          onChange={(e) => { if (e.target.value === "__custom") { const v = prompt("Name to tag"); if (v && v.trim()) addMember(v); } else if (e.target.value) addMember(e.target.value); }}>
-          <option value="">+ Assign a team member…</option>
-          {memberPool.filter((m) => !members.includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}
-          <option value="__custom">Someone not on the roster…</option>
-        </select>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select style={{ ...input, color: c.sub, flex: 1 }} value=""
+            onChange={(e) => { if (e.target.value === "__custom") { const v = prompt("Name to tag"); if (v && v.trim()) addMember(v); } else if (e.target.value) addMember(e.target.value); }}>
+            <option value="">+ Assign a team member…</option>
+            {memberPool.filter((m) => !members.includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="__custom">Someone not on the roster…</option>
+          </select>
+          {me && !members.includes(me) && (
+            <button onClick={() => addMember(me)} title="Add yourself to this card"
+              style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>⊕ Join</button>
+          )}
+        </div>
 
         {/* board + list (move across boards) */}
         <div style={label}>Board</div>
@@ -1170,11 +1236,17 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, pub: pub || null, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
         </button>
+        {!isNew && onDuplicate && (
+          <button onClick={onDuplicate}
+            style={{ display: "block", width: "100%", marginTop: 8, padding: "10px 0", background: "transparent", color: c.ink, border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
+            ⧉ Duplicate card
+          </button>
+        )}
         {onDelete && (
           <button onClick={() => { if (confirm("Delete this card?")) onDelete(); }}
             style={{ display: "block", width: "100%", marginTop: 8, padding: "10px 0", background: "transparent", color: c.red, border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
