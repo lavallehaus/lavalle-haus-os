@@ -1038,6 +1038,18 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
   const addLabel = () => { const n = labelName.trim(); if (!n) return; setLabels([...labels, { n, c: labelColor }]); setLabelName(""); };
   const destLists = (boardsIndex[destBoard] || {}).lists || [];
   const comments = (card.comments || []);
+  // Auto-save: persist an existing card ~0.6s after the last edit, so nobody has
+  // to press Save. Skips the first render and new (unsaved) cards.
+  const autoSkip = useRef(true);
+  useEffect(() => {
+    if (isNew || !onPatch) return;
+    if (autoSkip.current) { autoSkip.current = false; return; }
+    const t = setTimeout(() => {
+      if (!name.trim()) return;
+      onPatch({ name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, done, links, checklist, pub: pub || null });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub]);
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 94vw)", height: "100%", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px", overflowY: "auto" }}>
@@ -1303,7 +1315,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [] }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
-          {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Save"}
+          {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
         </button>
         {!isNew && onDuplicate && (
           <button onClick={onDuplicate}
