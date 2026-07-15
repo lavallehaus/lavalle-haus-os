@@ -618,9 +618,12 @@ export default async function handler(req, res) {
     const tok = accts.find((t) => (t.username || "").toLowerCase() === (req.query.account || "").toLowerCase()) || accts[0];
     if (!tok) { res.status(400).json({ error: "No connected account." }); return; }
     try {
-      const d = await (await fetch(`https://graph.instagram.com/v23.0/${req.query.media}/comments?fields=id,text,username,timestamp,like_count,replies{id,text,username,timestamp}&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+      // `from{id,username}` returns the commenter identity where the platform
+      // allows it; `username` is the older/simpler field. Use whichever fills.
+      const d = await (await fetch(`https://graph.instagram.com/v23.0/${req.query.media}/comments?fields=id,text,username,from{id,username},timestamp,like_count,replies{id,text,username,from{id,username},timestamp}&access_token=${encodeURIComponent(tok.access_token)}`)).json();
       if (d.error) { res.status(400).json({ error: d.error.message || "comments" }); return; }
-      res.json({ comments: (d.data || []).map((cc) => ({ id: cc.id, text: cc.text, username: cc.username, at: cc.timestamp, likes: cc.like_count ?? null, replies: ((cc.replies && cc.replies.data) || []).map((r) => ({ id: r.id, text: r.text, username: r.username, at: r.timestamp })) })) });
+      const name = (x) => (x.from && x.from.username) || x.username || null;
+      res.json({ comments: (d.data || []).map((cc) => ({ id: cc.id, text: cc.text, username: name(cc), at: cc.timestamp, likes: cc.like_count ?? null, replies: ((cc.replies && cc.replies.data) || []).map((r) => ({ id: r.id, text: r.text, username: name(r), at: r.timestamp })) })) });
     } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
     return;
   }

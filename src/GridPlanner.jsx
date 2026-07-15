@@ -106,6 +106,33 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
     if (board && board.cards) board.cards.forEach((x) => { m[x.id] = x; });
     return m;
   }, [board]);
+  // Resolve a tile's image: explicit src → the board card's cover → Drive thumb.
+  // (Lets auto-built brand feeds show board cover photos without duplicating them.)
+  const imgOf = (it, w) => it.src || (cardById[it.cardId] && cardById[it.cardId].cover) || thumb(it.driveId, w);
+
+  // Auto-build one grid feed per brand from its board's cover photos, so every
+  // connected account has a grid in the dropdown — not just The Fold.
+  useEffect(() => {
+    if (!boards || !state) return;
+    const defs = [
+      { id: "feed-lavalle-sisters", name: "Lavalle Sisters", account: "lavallesisters", boardKey: "lavalle-sisters" },
+      { id: "feed-refillery-haus", name: "Lavalle Haus", account: "refilleryhaus", boardKey: "refillery-haus" },
+    ];
+    const existing = state.feeds || [];
+    const additions = [];
+    for (const def of defs) {
+      if (existing.some((f) => f.boardKey === def.boardKey)) continue;
+      const b = boards[def.boardKey];
+      if (!b || !b.cards) continue;
+      const items = b.cards
+        .filter((cd) => cd.cover && !/^(links|hashtags|strategy)/i.test(cd.name || ""))
+        .map((cd) => ({ cardId: cd.id, n: (String(cd.name || "").match(/post\s*(\d+)/i) || [])[1] || null }))
+        .sort((a, z) => (Number(a.n) || 999) - (Number(z.n) || 999));
+      if (items.length) additions.push({ ...def, items });
+    }
+    if (additions.length) save({ ...state, feeds: [...existing, ...additions] });
+    /* eslint-disable-next-line */
+  }, [boards, state && state.feeds && state.feeds.length]);
 
   const patchCard = (cardId, patch) => {
     if (!board || !onSaveBoards) return;
