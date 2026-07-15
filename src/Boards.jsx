@@ -212,6 +212,52 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     };
   }, [touchDrag, boards, open]); // eslint-disable-line
 
+  // Lists reorder like Trello too — drag a column by its header (long-press on phones).
+  const [dragList, setDragList] = useState(null);
+  const [touchDragList, setTouchDragList] = useState(null);
+  const moveList = (listId, beforeListId) => {
+    const b = boards[open];
+    const moving = b.lists.find((x) => x.id === listId);
+    if (!moving || listId === beforeListId) return;
+    let rest = b.lists.filter((x) => x.id !== listId);
+    if (beforeListId) {
+      const i = rest.findIndex((x) => x.id === beforeListId);
+      rest = i === -1 ? [...rest, moving] : [...rest.slice(0, i), moving, ...rest.slice(i)];
+    } else rest = [...rest, moving];
+    patchBoard(open, { lists: rest });
+  };
+  useEffect(() => {
+    if (!touchDragList) return;
+    const colFor = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return null;
+      const colEl = el.closest("[data-dragcol]");
+      return colEl && colEl.dataset.dragcol !== touchDragList ? colEl.dataset.dragcol : null;
+    };
+    const onMove = (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      setTouchPos({ x: t.clientX, y: t.clientY });
+      const c2 = colFor(t.clientX, t.clientY);
+      setDropHint(c2 ? "listmove:" + c2 : null);
+    };
+    const onEnd = (e) => {
+      const t = (e.changedTouches || [])[0];
+      const c2 = t ? colFor(t.clientX, t.clientY) : null;
+      if (c2) moveList(touchDragList, c2);
+      suppressClick.current = Date.now();
+      setTouchDragList(null); setDragList(null); setDropHint(null); setTouchPos(null);
+    };
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", onEnd);
+    return () => {
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, [touchDragList, boards, open]); // eslint-disable-line
+
   // Trello-style drag & drop: drop on a card inserts before it, drop on the
   // list body appends. Order lives in the board's cards array.
   const moveCard = (cardId, toListId, beforeCardId) => {
@@ -700,10 +746,30 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               const cards = board.cards.filter((x) => x.listId === l.id);
               return (
                 <div key={l.id} data-dragcol={l.id}
-                  onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } }}
-                  onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } setDragCard(null); setDropHint(null); }}
-                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 12, padding: "12px 10px 10px", outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative" }}>
+                  onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
+                  onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } else if (dragList && dragList !== l.id) { e.preventDefault(); moveList(dragList, l.id); } setDragCard(null); setDragList(null); setDropHint(null); }}
+                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 12, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
+                  <div
+                    draggable
+                    onDragStart={(e) => { e.stopPropagation(); setDragList(l.id); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragEnd={() => { setDragList(null); setDropHint(null); }}
+                    onTouchStart={(e) => {
+                      const t0 = e.touches[0];
+                      touchStartPos.current = { x: t0.clientX, y: t0.clientY };
+                      clearTimeout(touchTimer.current);
+                      touchTimer.current = setTimeout(() => {
+                        setTouchDragList(l.id); setDragList(l.id); setTouchPos({ x: t0.clientX, y: t0.clientY });
+                        if (navigator.vibrate) navigator.vibrate(30);
+                      }, 400);
+                    }}
+                    onTouchMove={(e) => {
+                      if (touchDragList) return;
+                      const t0 = e.touches[0]; const s = touchStartPos.current;
+                      if (s && Math.hypot(t0.clientX - s.x, t0.clientY - s.y) > 8) clearTimeout(touchTimer.current);
+                    }}
+                    onTouchEnd={() => { if (!touchDragList) clearTimeout(touchTimer.current); }}
+                    title="Drag to reorder this list"
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative", cursor: "grab", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                     <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: c.ink }}>
                       {l.name} <span style={{ color: c.sub, fontSize: 11 }}>{cards.length}</span>
                     </div>
@@ -804,7 +870,23 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 </div>
               );
             })}
+            {dragList && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDropHint("listmove:end"); }}
+                onDrop={(e) => { e.preventDefault(); moveList(dragList, null); setDragList(null); setDropHint(null); }}
+                style={{ flex: "0 0 90px", alignSelf: "stretch", minHeight: 120, border: `2px dashed ${dropHint === "listmove:end" ? "#A39B8B" : c.line}`, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>
+                End
+              </div>
+            )}
           </div>
+          {touchDragList && touchPos && (() => {
+            const l0 = board.lists.find((x) => x.id === touchDragList);
+            return l0 ? (
+              <div style={{ position: "fixed", left: touchPos.x - 60, top: touchPos.y - 46, zIndex: 400, pointerEvents: "none", background: "rgba(250,249,247,0.97)", border: `1px solid ${c.line}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(0,0,0,0.3)", padding: "10px 16px", transform: "rotate(2deg)", fontFamily: sans, fontSize: 12, fontWeight: 500, color: c.ink, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                ⣿ {l0.name}
+              </div>
+            ) : null;
+          })()}
           {touchDrag && touchPos && (() => {
             const cd = board.cards.find((x) => x.id === touchDrag);
             return cd ? (
