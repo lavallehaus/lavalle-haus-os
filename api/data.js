@@ -129,8 +129,10 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer) {
 // while transcoding, or { error }. publicId threads the job across sweeps.
 // Mux (pay-as-you-go, no size cap). First call creates an asset from the source
 // (drive_video) with an H.264 MP4 rendition; later calls poll until ready.
+const MUX_ID = () => process.env.MUX_TOKEN_ID || process.env.MUXTOKENID;
+const MUX_SECRET = () => process.env.MUX_TOKEN_SECRET || process.env.MUXTOKENSECRET;
 async function muxConvert(sourceUrl, jobId) {
-  const id = process.env.MUX_TOKEN_ID, secret = process.env.MUX_TOKEN_SECRET;
+  const id = MUX_ID(), secret = MUX_SECRET();
   if (!id || !secret) return { error: "Mux isn't set up yet — add MUX_TOKEN_ID / MUX_TOKEN_SECRET in Vercel" };
   const auth = "Basic " + Buffer.from(id + ":" + secret).toString("base64");
   if (!jobId) {
@@ -156,7 +158,7 @@ async function muxConvert(sourceUrl, jobId) {
   return { converting: true, jobId };
 }
 async function muxDelete(jobId) {
-  const id = process.env.MUX_TOKEN_ID, secret = process.env.MUX_TOKEN_SECRET;
+  const id = MUX_ID(), secret = MUX_SECRET();
   if (!id || !secret || !jobId) return;
   try { await fetch("https://api.mux.com/video/v1/assets/" + jobId, { method: "DELETE", headers: { Authorization: "Basic " + Buffer.from(id + ":" + secret).toString("base64") } }); } catch {}
 }
@@ -184,7 +186,7 @@ async function cloudinaryConvert(sourceUrl, jobId) {
 }
 // Pick whichever transcoder is configured (Mux preferred), else signal "none".
 async function videoTranscode(sourceUrl, jobId) {
-  if (process.env.MUX_TOKEN_ID && process.env.MUX_TOKEN_SECRET) return muxConvert(sourceUrl, jobId);
+  if (MUX_ID() && MUX_SECRET()) return muxConvert(sourceUrl, jobId);
   if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) return cloudinaryConvert(sourceUrl, jobId);
   return { none: true };
 }
