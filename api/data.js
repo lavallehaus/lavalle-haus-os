@@ -183,7 +183,11 @@ async function publishDueItems(only) {
     for (const card of board.cards) {
       const isOnly = only && only.boardKey === bKey && only.cardId === card.id;
       if (only && !isOnly) continue;
-      const p = card.pub || (isOnly ? { at: new Date().toISOString(), auto: false, status: "scheduled", account: only.account } : null);
+      let p = card.pub || (isOnly ? { at: new Date().toISOString(), auto: false, status: "scheduled", account: only.account } : null);
+      // "Post now" (isOnly) forces a fresh attempt even from a failed/old state —
+      // otherwise a failed card could never be retried. Already-published stays
+      // safe via the ledger check below (no double post).
+      if (isOnly && p && p.status !== "processing") p = { ...p, status: "scheduled", error: null };
       if (!p || (p.status !== "scheduled" && p.status !== "processing")) continue;
       if (isOnly && only.account) p.account = only.account;
       const ledgerKey = "card:" + bKey + ":" + card.id;
