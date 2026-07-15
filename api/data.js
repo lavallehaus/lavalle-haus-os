@@ -967,7 +967,14 @@ export default async function handler(req, res) {
           const mm = /post\s*(\d+)/i.exec(c.name || "");
           if (!mm) continue;
           const n = +mm[1];
-          if (byN[n]) { c.cover = "/api/data?op=drive_img&id=" + byN[n]; covered++; }
+          if (byN[n]) {
+            c.cover = "/api/data?op=drive_img&id=" + byN[n];
+            // Also drop the cover's Drive link on the card so assets are traceable
+            // at a glance (alongside the reel/carousel link from Link assets).
+            const coverU = "https://drive.google.com/file/d/" + byN[n] + "/view";
+            c.links = [{ n: "Cover photo", u: coverU }, ...((c.links || []).filter((l) => l.n !== "Cover photo"))];
+            covered++;
+          }
         }
         report.push({ month: list.name, files: Object.keys(byN).length, covered });
       }
