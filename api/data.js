@@ -611,6 +611,20 @@ export default async function handler(req, res) {
     res.json({ accounts: out, tiktok: "pending_review" });
     return;
   }
+  if (op === "ig_grid" && req.method === "GET") {
+    // The account's real, currently-live Instagram grid — for the Schedule
+    // tab's "Live" view (owner-only).
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view the live grid." }); return; }
+    const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const tok = accts.find((t) => (t.username || "").toLowerCase() === (req.query.account || "").toLowerCase()) || accts[0];
+    if (!tok) { res.status(400).json({ error: "No connected account." }); return; }
+    try {
+      const d = await (await fetch(`https://graph.instagram.com/v23.0/me/media?fields=id,media_type,media_product_type,media_url,thumbnail_url,permalink,caption,timestamp&limit=18&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+      if (d.error) { res.status(400).json({ error: d.error.message || "media" }); return; }
+      res.json({ posts: (d.data || []).map((m) => ({ id: m.id, img: m.media_type === "VIDEO" ? (m.thumbnail_url || m.media_url) : m.media_url, permalink: m.permalink, caption: (m.caption || "").slice(0, 60), at: m.timestamp, kind: m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : (m.media_product_type === "REELS" || m.media_type === "VIDEO") ? "Reel" : "Static" })) });
+    } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
+    return;
+  }
   if (op === "ig_comments" && req.method === "GET") {
     // Comments on one post, for the Analytics reply dropdown (owner-only).
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can read comments." }); return; }

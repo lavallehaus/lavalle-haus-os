@@ -48,6 +48,8 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const [tiktok, setTiktok] = useState(null); // owner-only: {sandbox, production} connection state
   const [ttMsg, setTtMsg] = useState(null);
   const [postingNow, setPostingNow] = useState(false);
+  const [gridMode, setGridMode] = useState("planned"); // planned | live
+  const [liveGrid, setLiveGrid] = useState({}); // account -> {loading|posts|error}
 
   const [insta, setInsta] = useState(null); // owner-only: {connected, accounts}
 
@@ -110,13 +112,31 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   // (Lets auto-built brand feeds show board cover photos without duplicating them.)
   const imgOf = (it, w) => it.src || (cardById[it.cardId] && cardById[it.cardId].cover) || thumb(it.driveId, w);
 
+  // Live grid — the account's real Instagram feed, fetched on demand.
+  const acct = feed && feed.account;
+  const loadLive = () => {
+    if (!acct || (liveGrid[acct] && (liveGrid[acct].posts || liveGrid[acct].loading))) return;
+    setLiveGrid((s) => ({ ...s, [acct]: { loading: true } }));
+    fetch("/api/data?op=ig_grid&account=" + encodeURIComponent(acct))
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => setLiveGrid((s) => ({ ...s, [acct]: ok ? { posts: d.posts || [] } : { error: d.error || "couldn't load" } })))
+      .catch((e) => setLiveGrid((s) => ({ ...s, [acct]: { error: String(e) } })));
+  };
+  // one neutral status tag per tile — Live (posted) / Scheduled (armed) / Planned
+  const tileTag = (it, card) => {
+    if (card.done || (it.pub && it.pub.status === "published")) return { t: "Live", bg: "#5a7a5a" };
+    if (it.pub && it.pub.auto && it.pub.status === "scheduled") return { t: "Scheduled", bg: "#8F8676" };
+    return { t: "Planned", bg: "#B4AFA4" };
+  };
+
   // Auto-build one grid feed per brand from its board's cover photos, so every
   // connected account has a grid in the dropdown — not just The Fold.
   useEffect(() => {
     if (!boards || !state) return;
+    // Lavalle Sisters builds from its board covers; Lavalle Haus is sourced
+    // from a dedicated Drive grid folder (written separately), so it's not here.
     const defs = [
       { id: "feed-lavalle-sisters", name: "Lavalle Sisters", account: "lavallesisters", boardKey: "lavalle-sisters" },
-      { id: "feed-refillery-haus", name: "Lavalle Haus", account: "refilleryhaus", boardKey: "refillery-haus" },
     ];
     const existing = state.feeds || [];
     const additions = [];
@@ -310,11 +330,35 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   : <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 1, color: c.taupe }}>{(feed.account || "?").slice(0, 2).toUpperCase()}</span>}
               </div>
             ); })()}
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontFamily: sans, fontSize: 13, color: c.ink }}>{feed.account}</div>
               <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{items.filter((x) => (cardById[x.cardId] || {}).done).length} posted · {items.filter((x) => !(cardById[x.cardId] || {}).done).length} planned</div>
             </div>
+            {/* live (present grid) ⇄ planning grid */}
+            <div style={{ display: "flex", border: `1px solid ${c.line}`, borderRadius: 2, overflow: "hidden" }}>
+              {[{ id: "planned", label: "Planning" }, { id: "live", label: "Live" }].map((m) => (
+                <button key={m.id} onClick={() => { setGridMode(m.id); if (m.id === "live") loadLive(); }}
+                  style={{ background: gridMode === m.id ? c.ink : "transparent", color: gridMode === m.id ? "#FFFFFF" : c.sub, border: "none", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", padding: "5px 9px", cursor: "pointer" }}>{m.label}</button>
+              ))}
+            </div>
           </div>
+          {gridMode === "live" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, background: c.bg }}>
+              {(() => {
+                const lg = liveGrid[acct];
+                if (!lg || lg.loading) return <div style={{ gridColumn: "1 / -1", padding: 26, textAlign: "center", fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Reading the live grid…</div>;
+                if (lg.error) return <div style={{ gridColumn: "1 / -1", padding: 26, textAlign: "center", fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.red }}>{lg.error}</div>;
+                if (!lg.posts.length) return <div style={{ gridColumn: "1 / -1", padding: 26, textAlign: "center", fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>No posts on this account yet.</div>;
+                return lg.posts.map((p) => (
+                  <a key={p.id} href={p.permalink} target="_blank" rel="noopener noreferrer" title={p.caption} style={{ position: "relative", aspectRatio: aspect, display: "block" }}>
+                    <img src={p.img} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                    <span style={{ position: "absolute", top: 5, left: 5, fontFamily: sans, fontSize: 7.5, letterSpacing: 0.5, textTransform: "uppercase", color: "#FFFFFF", background: "#5a7a5a", borderRadius: 1, padding: "1px 5px" }}>Live</span>
+                    {p.kind === "Reel" && <span style={{ position: "absolute", top: 5, right: 6, color: "#FFFFFF", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>▶</span>}
+                  </a>
+                ));
+              })()}
+            </div>
+          ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, background: c.bg }}>
             {items.map((it, i) => {
               const card = cardById[it.cardId] || {};
@@ -334,7 +378,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                   <img src={imgOf(it, 800)} alt={card.name || ""} loading="lazy" draggable={false}
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: card.done ? "grayscale(0.15) brightness(0.92)" : "none" }} />
                   {icon && <span style={{ position: "absolute", top: 6, right: 7, color: "#FFFFFF", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>{icon}</span>}
-                  {card.done && <span style={{ position: "absolute", top: 6, left: 7, color: "#FFFFFF", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.55)" }}>✓</span>}
+                  {(() => { const tg = tileTag(it, card); return <span style={{ position: "absolute", top: 6, left: 6, fontFamily: sans, fontSize: 7.5, letterSpacing: 0.5, textTransform: "uppercase", color: "#FFFFFF", background: tg.bg, borderRadius: 1, padding: "1px 5px" }}>{tg.t}</span>; })()}
                   <span style={{ position: "absolute", bottom: 6, left: 7, fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: "#FFFFFF", textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{it.n}{it.flag ? " ⚠" : ""}</span>
                   {card.due && (
                     <span style={{ position: "absolute", bottom: 6, right: 7, fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, padding: "2px 5px", borderRadius: 1, background: "rgba(26,26,26,0.72)", color: it.pub && it.pub.status === "failed" ? "#e8b4b4" : overdue ? "#e8b4b4" : "#FFFFFF" }}
@@ -346,8 +390,9 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
               );
             })}
           </div>
+          )}
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, padding: "10px 14px 12px" }}>
-            Drag tiles to rearrange · drop one on a calendar day to schedule it · tap for details
+            {gridMode === "live" ? "Your live Instagram feed — tap a post to open it." : "Green = live · taupe = scheduled · light = planned. Drag to rearrange · drop on a day to schedule."}
           </div>
         </div>
 
