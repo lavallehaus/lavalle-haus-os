@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ContentBrain from "./ContentBrain.jsx";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
 // The Trello workspaces, brought home. Three businesses, each with its boards;
@@ -215,28 +216,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   }, []);
   const teamByName = useMemo(() => { const m = {}; team.forEach((t) => { m[t.name] = t; }); return m; }, [team]);
 
-  // Account health for the home page: what's armed to post, what still needs a slot.
-  const [connAccounts, setConnAccounts] = useState(null); // owner-only; staff see workspace counts without account cards
-  useEffect(() => {
-    fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setConnAccounts((d.accounts || []).map((a) => a.username))).catch(() => {});
-  }, []);
-  const health = useMemo(() => {
-    if (!boards) return null;
-    const allCards = Object.entries(boards).filter(([k, b]) => !k.startsWith("_") && b && b.cards).flatMap(([k, b]) => b.cards.map((cd) => ({ ...cd, _ws: b.ws || k })));
-    const gridItems = ((gridPlanner && gridPlanner.feeds) || []).flatMap((f) => (f.items || []).map((it) => ({ ...it, _account: f.account })));
-    const perAccount = (acct) => {
-      const armed = allCards.filter((cd) => cd.pub && cd.pub.auto && cd.pub.status === "scheduled" && (cd.pub.account || "").toLowerCase() === acct.toLowerCase()).length
-        + gridItems.filter((it) => it.pub && it.pub.auto && it.pub.status === "scheduled" && (it._account || "").toLowerCase() === acct.toLowerCase()).length;
-      const posted30 = allCards.filter((cd) => cd.pub && cd.pub.status === "published" && (cd.pub.account || "").toLowerCase() === acct.toLowerCase() && Date.now() - new Date(cd.pub.publishedAt || 0) < 30 * 86400000).length
-        + gridItems.filter((it) => it.pub && it.pub.status === "published" && (it._account || "").toLowerCase() === acct.toLowerCase() && Date.now() - new Date(it.pub.publishedAt || 0) < 30 * 86400000).length;
-      return { armed, posted30 };
-    };
-    const unscheduled = WORKSPACES.map((w) => ({
-      label: w.label,
-      count: allCards.filter((cd) => cd._ws === w.id && /post\s*\d+/i.test(cd.name || "") && !cd.done && !(cd.pub && ((cd.pub.status === "scheduled" && cd.pub.auto) || cd.pub.status === "published"))).length,
-    })).filter((x) => x.count > 0);
-    return { perAccount, unscheduled };
-  }, [boards, gridPlanner]);
+  // Account health now lives in the ContentBrain component on the home page.
   const setAvatar = (memberName, dataUrl) => {
     if (!onSaveTeam) return;
     onSaveTeam(team.map((t) => (t.name === memberName ? { ...t, avatar: dataUrl } : t)));
@@ -488,38 +468,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       {/* home: every workspace and its boards on one page — Trello's "Boards" home */}
       {!board ? (
         <div>
-          {/* account health — what's armed, what's posted, what still needs a slot */}
-          {health && (connAccounts || (health.unscheduled.length > 0)) && (
-            <div style={{ marginBottom: 26 }}>
-              <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Account health</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-                {(connAccounts || []).map((acct) => {
-                  const h = health.perAccount(acct);
-                  return (
-                    <div key={acct} style={{ background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: "13px 16px" }}>
-                      <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink, marginBottom: 6 }}>◉ @{acct} <span style={{ fontSize: 9.5, color: c.sub }}>Instagram</span></div>
-                      <div style={{ fontFamily: sans, fontSize: 11.5, color: h.armed ? c.green : c.red }}>{h.armed} scheduled to post</div>
-                      <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 2 }}>{h.posted30} posted in the last 30 days</div>
-                    </div>
-                  );
-                })}
-                {connAccounts && (
-                  <div style={{ background: c.card, border: `1px dashed ${c.line}`, borderRadius: 1, padding: "13px 16px", opacity: 0.75 }}>
-                    <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink, marginBottom: 6 }}>♪ TikTok</div>
-                    <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>Counts appear when TikTok approves the app review.</div>
-                  </div>
-                )}
-                {health.unscheduled.length > 0 && (
-                  <div style={{ background: "#F7F4EE", border: `1px solid ${c.line}`, borderRadius: 1, padding: "13px 16px" }}>
-                    <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>Still to schedule</div>
-                    {health.unscheduled.map((u) => (
-                      <div key={u.label} style={{ fontFamily: sans, fontSize: 11.5, color: c.ink, padding: "1px 0" }}>{u.label}: <span style={{ color: c.red }}>{u.count} post{u.count === 1 ? "" : "s"}</span></div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* the Content Brain — Business Brain's node map for the three accounts */}
+          <ContentBrain boards={boards} gridPlanner={gridPlanner} />
           {WORKSPACES.map((w) => (
             <div key={w.id} style={{ marginBottom: 30 }}>
               <div style={{ marginBottom: 10 }}>

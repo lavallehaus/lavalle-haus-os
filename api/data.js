@@ -569,9 +569,11 @@ export default async function handler(req, res) {
       try {
         const prof = await (await fetch(`${base}/me?fields=username,followers_count,media_count&access_token=${encodeURIComponent(t.access_token)}`)).json();
         const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=15&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        const light = req.query.light === "1"; // brain view: skip per-media insight calls
         const items = [];
         for (const m of (media.data || []).slice(0, 12)) {
           let ins = null;
+          if (light) { items.push({ id: m.id, likes: m.like_count ?? null, comments: m.comments_count ?? null, at: m.timestamp }); continue; }
           try {
             const metrics = (m.media_type === "VIDEO" ? ["saved", "reach", "ig_reels_avg_watch_time"] : ["saved", "reach"]).join(",");
             const d = await (await fetch(`${base}/${m.id}/insights?metric=${metrics}&access_token=${encodeURIComponent(t.access_token)}`)).json();
