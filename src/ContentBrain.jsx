@@ -36,11 +36,23 @@ export default function ContentBrain({ boards, gridPlanner }) {
   useEffect(() => { try { localStorage.setItem("lh_cb_theme", themeId); } catch {} }, [themeId]);
   const t = BRAIN_THEMES[themeId] || BRAIN_THEMES.day;
 
+  const [conn, setConn] = useState(null); // {ig:[usernames], tiktok:[names]} — owner only
+  const loadConn = () => {
+    Promise.all([
+      fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch("/api/data?op=tiktok_status").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([ig, tk]) => {
+      if (!ig && !tk) return;
+      const tkAll = tk ? [...((tk.production && tk.production.accounts) || []), ...((tk.sandbox && tk.sandbox.accounts) || [])] : [];
+      setConn({ ig: ((ig && ig.accounts) || []).map((a) => (a.username || "").toLowerCase()), tiktok: tkAll.map((a) => (a.display_name || "").toLowerCase()) });
+    });
+  };
   useEffect(() => {
-    fetch("/api/data?op=ig_insights&light=1")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setLive(d.accounts || []))
-      .catch(() => {});
+    fetch("/api/data?op=ig_insights&light=1").then((r) => (r.ok ? r.json() : null)).then((d) => d && setLive(d.accounts || [])).catch(() => {});
+    loadConn();
+    const onFocus = () => loadConn();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   const model = useMemo(() => {
@@ -116,6 +128,28 @@ export default function ContentBrain({ boards, gridPlanner }) {
           {themeId === "day" ? "◐ Night" : "◑ Day"}
         </button>
       </div>
+
+      {/* account connections — one row per brand, connect where missing */}
+      {conn && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {BRANDS.filter((b) => view === "all" || b.ws === view).map((b) => {
+            const igOn = b.ig && conn.ig.includes(b.ig);
+            return (
+              <div key={b.ws} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, borderRadius: 2, padding: "6px 10px", background: t.card }}>
+                <span style={{ fontFamily: sans, fontSize: 10.5, color: t.ink }}>{b.label}</span>
+                {igOn ? (
+                  <span title={"@" + b.ig + " connected"} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: t.green }}>◉ IG ✓</span>
+                ) : (
+                  <button onClick={() => { window.open("/api/instagram-auth", "_blank"); }} title={"Connect this brand's Instagram (log in as @" + (b.ig || "the account") + ")"}
+                    style={{ fontFamily: sans, fontSize: 9, letterSpacing: 0.5, border: `1px solid ${t.brass}`, borderRadius: 1, padding: "3px 8px", background: "transparent", color: t.ink, cursor: "pointer" }}>◉ Connect Instagram</button>
+                )}
+                <span title="TikTok connects once its app review is approved" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 0.5, color: t.sub, opacity: 0.7 }}>♪ TikTok — review pending</span>
+              </div>
+            );
+          })}
+          <button onClick={loadConn} title="Refresh connection status" style={{ alignSelf: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", border: "none", background: "transparent", color: t.sub, cursor: "pointer" }}>↻ Refresh</button>
+        </div>
+      )}
 
       <div style={{ position: "relative", borderRadius: 4, overflow: "hidden", border: `1px solid ${t.line}`, background: t.canvas }}>
         <BrainCanvas
