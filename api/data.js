@@ -90,14 +90,16 @@ async function igPublishPhoto(tok, imageUrl, caption) {
 // the 60s function budget, then publishes. If it's still processing when the
 // budget runs out, it returns { pending, containerId } so a later sweep finishes
 // it — no re-upload, no double post. The video is served publicly by drive_video.
-async function igPublishReel(tok, videoUrl, caption, existingContainer) {
+async function igPublishReel(tok, videoUrl, caption, existingContainer, coverUrl) {
   const base = "https://graph.instagram.com/v23.0";
   let cid = existingContainer;
   if (!cid) {
+    const params = { media_type: "REELS", video_url: videoUrl, caption: caption || "", share_to_feed: "true", access_token: tok.access_token };
+    if (coverUrl) params.cover_url = coverUrl; // use the card's assigned cover photo as the Reel cover
     const create = await fetch(`${base}/${tok.user_id}/media`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ media_type: "REELS", video_url: videoUrl, caption: caption || "", share_to_feed: "true", access_token: tok.access_token }),
+      body: new URLSearchParams(params),
     });
     const cd = await create.json();
     if (!cd.id) return { ok: false, error: "container: " + JSON.stringify(cd.error || cd).slice(0, 220) };
@@ -288,7 +290,15 @@ async function publishDueItems(only) {
           else if (conv.converting) { card.pub = { ...p, status: "converting", convId: conv.jobId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
           else { videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, convId: conv.jobId }; }
         }
-        const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId);
+        // The Reel cover = the card's assigned cover photo (else IG picks a video frame).
+        let coverImageUrl = null;
+        if (typeof card.cover === "string") {
+          if (card.cover.startsWith("data:")) coverImageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
+          else if (card.cover.startsWith("/")) coverImageUrl = "https://lavalle-haus-os.vercel.app" + card.cover;
+          else if (card.cover.includes("drive.google.com")) { const cid2 = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (cid2) coverImageUrl = "https://drive.google.com/thumbnail?id=" + cid2 + "&sz=w1200"; }
+          else if (card.cover.startsWith("http")) coverImageUrl = card.cover;
+        }
+        const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
           const publishedAt = new Date().toISOString();
           ledger[ledgerKey] = { mediaId: rr.mediaId, at: publishedAt };
