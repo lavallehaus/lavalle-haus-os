@@ -240,10 +240,15 @@ async function publishDueItems(only) {
         let videoUrl = p.mp4Url;
         if (!videoUrl) {
           const src = "https://lavalle-haus-os.vercel.app/api/data?op=drive_video&id=" + reelId;
-          const conv = await cloudinaryConvert(src, p.cloudId);
-          if (conv.error) { fail(conv.error); continue; }
-          if (conv.converting) { card.pub = { ...p, status: "converting", cloudId: conv.publicId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
-          videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, cloudId: conv.publicId };
+          const transcoderOn = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+          if (transcoderOn) {
+            const conv = await cloudinaryConvert(src, p.cloudId);
+            if (conv.error) { fail(conv.error); continue; }
+            if (conv.converting) { card.pub = { ...p, status: "converting", cloudId: conv.publicId }; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, converting: true }); changed = true; continue; }
+            videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, cloudId: conv.publicId };
+          } else {
+            videoUrl = src; // no transcoder configured — post the file as-is (works when it's already H.264 MP4, e.g. exported from the editor)
+          }
         }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId);
         if (rr.ok) {
