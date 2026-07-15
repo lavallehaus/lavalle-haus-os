@@ -112,6 +112,7 @@ async function publishDueItems(only) {
       if (ledger[ledgerKey]) {
         // Already went out in a previous run — re-mark the item, never re-post.
         it.pub = { ...p, status: "published", mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at };
+        it.live = true; // once posted, drop out of the Planning grid → Live view
         results.items.push({ feedId: feed.id, cardId: it.cardId, ok: true, mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at, already: true });
         changed = true;
         continue;
@@ -129,6 +130,7 @@ async function publishDueItems(only) {
         ledgerChanged = true;
         await kvSet("lavalle_published", ledger); // persist immediately — dedupe beats blob consistency
         it.pub = { ...p, status: "published", mediaId: r.mediaId, publishedAt };
+        it.live = true; // once posted, drop out of the Planning grid → Live view
         card.done = true;
         results.published++;
         results.items.push({ feedId: feed.id, cardId: it.cardId, ok: true, mediaId: r.mediaId, publishedAt });
@@ -980,7 +982,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url") {
+  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -1007,6 +1009,16 @@ export default async function handler(req, res) {
         const r = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,parents", {
           method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
           body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: parent ? [parent] : undefined }),
+        });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
+        res.json(d); return;
+      }
+      if (op === "drive_trash") {
+        const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?supportsAllDrives=true&fields=id,name,trashed`, {
+          method: "PATCH", headers: { ...AUTH, "Content-Type": "application/json" },
+          body: JSON.stringify({ trashed: true }),
         });
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }

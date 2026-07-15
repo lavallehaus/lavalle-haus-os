@@ -221,6 +221,10 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   if (!feed) return <div style={{ fontFamily: sans, fontSize: 12, letterSpacing: 2, color: c.sub, textAlign: "center", padding: 50 }}>PREPARING THE GRID…</div>;
 
   const items = feed.items || [];
+  // Once a post is live (published), it drops out of the Planning grid — it now
+  // lives in the "Live" view, pulled from the real IG feed. A post goes live when
+  // it's marked it.live (set by the publish sweep, or when it's detected on IG).
+  const plannedItems = items.filter((it) => !it.live);
   const open = openItem ? items.find((x) => x.cardId === openItem) : null;
   const openCard = open ? cardById[open.cardId] : null;
 
@@ -332,7 +336,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
             ); })()}
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: sans, fontSize: 13, color: c.ink }}>{feed.account}</div>
-              <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{items.filter((x) => (cardById[x.cardId] || {}).done).length} posted · {items.filter((x) => !(cardById[x.cardId] || {}).done).length} planned</div>
+              <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{items.filter((x) => x.live).length} live · {plannedItems.length} planned</div>
             </div>
             {/* live (present grid) ⇄ planning grid */}
             <div style={{ display: "flex", border: `1px solid ${c.line}`, borderRadius: 2, overflow: "hidden" }}>
@@ -360,7 +364,7 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
             </div>
           ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, background: c.bg }}>
-            {items.map((it, i) => {
+            {plannedItems.map((it, i) => {
               const card = cardById[it.cardId] || {};
               const fmt = formatOf(card.name);
               const icon = formatIcon(fmt);
