@@ -139,8 +139,26 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   useEffect(() => { try { localStorage.setItem("lh_boards_ws", ws); } catch {} }, [ws]);
   const [open, setOpen] = useState(null);
   const [editCard, setEditCard] = useState(null);
+  // Comment/activity attribution follows the login; localStorage only backs up
+  // house-password sessions that have no personal name.
   const [me, setMe] = useState(() => { try { return localStorage.getItem("lh_me") || ""; } catch { return ""; } });
+  useEffect(() => { if (viewer.name && viewer.name !== me) setMe(viewer.name); }, [viewer.name]); // eslint-disable-line
   useEffect(() => { try { if (me) localStorage.setItem("lh_me", me); } catch {} }, [me]);
+  // Tapping the Boards sub-tab always lands on this home (Content Brain view),
+  // even if a board was left open.
+  useEffect(() => {
+    const onSeg = (e) => { if (e.detail && e.detail.id === "content" && e.detail.seg === "boards") setOpen(null); };
+    window.addEventListener("lh-seg-click", onSeg);
+    return () => window.removeEventListener("lh-seg-click", onSeg);
+  }, []);
+
+  // Recently viewed — per person, like Trello's home strip.
+  const [recents, setRecents] = useState(() => { try { return JSON.parse(localStorage.getItem("lh_recent_boards") || "[]"); } catch { return []; } });
+  const openBoard = (key) => {
+    setOpen(key);
+    setRecents((r) => { const next = [key, ...r.filter((x) => x !== key)].slice(0, 6); try { localStorage.setItem("lh_recent_boards", JSON.stringify(next)); } catch {} return next; });
+  };
+  const tileBg = (b) => (b && b.bg ? boardBgStyle(b.bg) : { background: "linear-gradient(150deg,#EDE9E2,#DDD5C8)" });
   const [bgMenu, setBgMenu] = useState(false);
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
@@ -452,17 +470,11 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
 
   return (
     <div>
-      {/* undo / redo + who am I */}
+      {/* undo / redo — identity comes from the login now, no picker needed */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <button onClick={undo} disabled={!past.length} style={{ ...ghost, color: past.length ? c.sub : c.line, cursor: past.length ? "pointer" : "default" }}>Undo</button>
         <button onClick={redo} disabled={!future.length} style={{ ...ghost, color: future.length ? c.sub : c.line, cursor: future.length ? "pointer" : "default" }}>Redo</button>
         <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, opacity: 0.7 }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>You are</span>
-          <input list="lh-me-pool" value={me} onChange={(e) => setMe(e.target.value)} placeholder="your name"
-            style={{ background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 11.5, color: c.ink, outline: "none", width: 130 }} />
-          <datalist id="lh-me-pool">{memberPool.map((m) => <option key={m} value={m} />)}</datalist>
-        </div>
       </div>
 
       {/* home: every workspace and its boards on one page — Trello's "Boards" home */}
@@ -470,6 +482,21 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
         <div>
           {/* the Content Brain — Business Brain's node map for the three accounts */}
           <ContentBrain boards={boards} gridPlanner={gridPlanner} />
+
+          {/* recently viewed — Trello's home strip, personal to each member */}
+          {recents.filter((k) => boards[k] && boards[k].lists && canSee(boards[k])).length > 0 && (
+            <div style={{ marginBottom: 26 }}>
+              <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>🕐 Recently viewed</div>
+              <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+                {recents.filter((k) => boards[k] && boards[k].lists && canSee(boards[k])).slice(0, 6).map((k) => (
+                  <div key={k} onClick={() => openBoard(k)} style={{ flex: "0 0 172px", borderRadius: 8, overflow: "hidden", border: `1px solid ${c.line}`, background: c.bg, cursor: "pointer" }}>
+                    <div style={{ height: 62, ...tileBg(boards[k]) }} />
+                    <div style={{ padding: "8px 12px", fontFamily: sans, fontSize: 12, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{boards[k].name}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {WORKSPACES.map((w) => (
             <div key={w.id} style={{ marginBottom: 30 }}>
               <div style={{ marginBottom: 10 }}>
@@ -482,16 +509,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             if (!b || !b.lists) return null;
             const done = b.cards.filter((x) => x.done).length;
             return (
-              <div key={key} onClick={() => setOpen(key)}
-                style={{ position: "relative", textAlign: "left", background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: "18px 18px 14px", cursor: "pointer", minHeight: 92 }}>
-                <div style={{ position: "absolute", top: 10, right: 10, display: "flex", gap: 4 }}>
-                  <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 11, padding: 2 }}>✎</button>
-                  <button title="Delete board" onClick={(e) => { e.stopPropagation(); if (!confirm(`Delete the board "${b.name}"${b.cards.length ? " and its " + b.cards.length + " cards" : ""}?`)) return; const next = { ...boards }; delete next[key]; commit(next); }}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 12, padding: 2 }}>×</button>
+              <div key={key} onClick={() => openBoard(key)}
+                style={{ position: "relative", textAlign: "left", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, overflow: "hidden", cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.05)" }}>
+                <div style={{ height: 88, position: "relative", ...tileBg(b) }}>
+                  <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4 }}>
+                    <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
+                      style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 11, padding: "3px 7px" }}>✎</button>
+                    <button title="Delete board" onClick={(e) => { e.stopPropagation(); if (!confirm(`Delete the board "${b.name}"${b.cards.length ? " and its " + b.cards.length + " cards" : ""}?`)) return; const next = { ...boards }; delete next[key]; commit(next); }}
+                      style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 12, padding: "3px 7px" }}>×</button>
+                  </div>
                 </div>
-                <div style={{ fontFamily: sans, fontSize: 15, color: c.ink, paddingRight: 40 }}>{b.name}</div>
-                <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 8 }}>
+                <div style={{ padding: "10px 14px 12px" }}>
+                <div style={{ fontFamily: sans, fontSize: 14.5, color: c.ink }}>{b.name}</div>
+                <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 5 }}>
                   {b.lists.length} lists · {b.cards.length} cards{done ? " · " + done + " done" : ""}
                 </div>
                 {viewer.owner && (
@@ -519,6 +549,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     )}
                   </div>
                 )}
+                </div>
               </div>
             );
           })}
@@ -786,7 +817,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           {narrow && (
             <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", gap: 8, alignItems: "center", background: "rgba(29,32,34,0.95)", borderRadius: 24, padding: "8px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
               <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", color: "#E8E6E1", fontFamily: sans, fontSize: 12, cursor: "pointer", padding: 0 }}>☰ Boards</button>
-              <select value={open} onChange={(e) => setOpen(e.target.value)} title="Switch boards"
+              <select value={open} onChange={(e) => openBoard(e.target.value)} title="Switch boards"
                 style={{ background: "transparent", color: "#E8E6E1", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 14, fontFamily: sans, fontSize: 12, padding: "3px 8px", maxWidth: 160 }}>
                 {Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].lists && canSee(boards[k])).map((k) => <option key={k} value={k} style={{ color: "#1A1A1A" }}>{boards[k].name}</option>)}
               </select>

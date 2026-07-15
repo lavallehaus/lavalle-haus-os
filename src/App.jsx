@@ -1420,7 +1420,7 @@ function SegTabs({ id, segments }) {
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
         {segments.map((s) => (
-          <button key={s.id} onClick={() => setSeg(s.id)}
+          <button key={s.id} onClick={() => { setSeg(s.id); window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id, seg: s.id } })); }}
             style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${s.id === active.id ? "#1A1A1A" : "#E0E0DD"}`, background: s.id === active.id ? "#1A1A1A" : "transparent", color: s.id === active.id ? "#FFFFFF" : "#71716C" }}>
             {s.label}
           </button>

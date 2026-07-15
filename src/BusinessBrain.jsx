@@ -77,7 +77,7 @@ function useMotionCss() {
 // heartbeat, and the whole field leans gently toward the cursor. All motion is
 // driven by one requestAnimationFrame loop that writes straight to the DOM
 // (no re-renders), and prefers-reduced-motion freezes everything.
-export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520, pannable = false, deluxe = false }) {
+export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, height = 520, pannable = false, deluxe = false, centerTitle = "Business Health", centerCaption = null, centerPurpose = HEALTH_PURPOSE }) {
   useMotionCss();
   const wrapRef = useRef(null);
   const fieldRef = useRef(null);
@@ -415,7 +415,7 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
           data-bb-id="health"
           onClick={() => selectNode("health")}
           onTouchEnd={(e) => { if (!movedRef.current) { if (e.target.closest && e.target.closest("[data-bb-purpose]")) return; e.preventDefault(); selectNode("health"); } }}
-          aria-label={"Business Health " + model.healthScore + ", " + model.status}
+          aria-label={centerTitle + " " + model.healthScore + ", " + model.status}
           style={{
             position: "absolute", left: cx, top: cy, transform: "translate(-50%,-50%)",
             width: centerR * 2, height: centerR * 2, borderRadius: "50%",
@@ -424,15 +424,15 @@ export function BrainCanvas({ model, theme: t, scale = 1, selectedId, onSelect, 
             animation: "bbBreathe 6s ease-in-out infinite",
             boxShadow: t.coreShadow || "0 8px 30px rgba(0,0,0,0.08)",
           }}>
-          <div style={{ fontFamily: sans, fontSize: 9 * scale + 1, letterSpacing: 2.5, textTransform: "uppercase", color: t.sub }}>Business Health</div>
+          <div style={{ fontFamily: sans, fontSize: 9 * scale + 1, letterSpacing: 2.5, textTransform: "uppercase", color: t.sub }}>{centerTitle}</div>
           <div style={{ fontFamily: serif, fontWeight: 300, fontSize: 47 * scale, color: t.ink, lineHeight: 1.02 }}>{model.healthScore}</div>
           <div style={{ fontFamily: sans, fontSize: 10 * scale + 1, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>{model.status}</div>
           <div style={{ fontFamily: sans, fontSize: 8 * scale + 1, letterSpacing: 1, color: t.sub, marginTop: 5 }}>
-            {model.opportunities} opportunities · {model.risks} risk{model.risks === 1 ? "" : "s"}
+            {centerCaption != null ? centerCaption : model.opportunities + " opportunities · " + model.risks + " risk" + (model.risks === 1 ? "" : "s")}
           </div>
-          <div data-bb-purpose="health" title="What this measures · Qué mide"
-            onClick={(e) => { e.stopPropagation(); togglePurpose(e, "health", HEALTH_PURPOSE); }}
-            style={{ fontSize: 11 * scale, color: t.accent, marginTop: 3, lineHeight: 1, padding: "2px 10px" }}>▾</div>
+          {centerPurpose && <div data-bb-purpose="health" title="What this measures · Qué mide"
+            onClick={(e) => { e.stopPropagation(); togglePurpose(e, "health", centerPurpose); }}
+            style={{ fontSize: 11 * scale, color: t.accent, marginTop: 3, lineHeight: 1, padding: "2px 10px" }}>▾</div>}
         </button>
 
         {/* major nodes */}
