@@ -7,6 +7,7 @@
 "preview": "vite preview"
 },
 "dependencies": {
+"jimp": "0.22.12",
 "react": "^18.2.0",
 "react-dom": "^18.2.0"
 },

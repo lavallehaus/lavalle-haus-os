@@ -319,7 +319,7 @@ async function publishDueItems(only) {
         const slides = (await driveListFolder(folderId, token)).filter((f) => !f.folder)
           .sort((a, b) => ((parseInt(a.name) || 999) - (parseInt(b.name) || 999)) || a.name.localeCompare(b.name)).slice(0, 10);
         if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
-        const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id);
+        const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id + "&fit=igfeed");
         const ccap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
         const cr = await igPublishCarousel(tok, imageUrls, ccap);
         if (cr.ok) {
@@ -380,7 +380,7 @@ async function publishDueItems(only) {
       let imageUrl = null;
       if (typeof card.cover === "string") {
         if (card.cover.startsWith("data:")) imageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
-        else if (card.cover.startsWith("/")) imageUrl = "https://lavalle-haus-os.vercel.app" + card.cover;
+        else if (card.cover.startsWith("/")) imageUrl = "https://lavalle-haus-os.vercel.app" + card.cover + (card.cover.includes("op=drive_img") ? "&fit=igfeed" : "");
         else if (card.cover.includes("drive.google.com")) { const id = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (id) imageUrl = "https://drive.google.com/thumbnail?id=" + id + "&sz=w2000"; }
         else if (card.cover.startsWith("http")) imageUrl = card.cover;
       }
@@ -763,9 +763,24 @@ export default async function handler(req, res) {
       if (!token) { res.status(400).send("google_not_connected"); return; }
       const ir = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: "Bearer " + token } });
       if (!ir.ok) { res.status(ir.status).send("drive_fail"); return; }
-      res.setHeader("Content-Type", ir.headers.get("content-type") || "image/jpeg");
+      let buf = Buffer.from(await ir.arrayBuffer());
+      let ctype = ir.headers.get("content-type") || "image/jpeg";
+      // fit=igfeed → center-crop into Instagram's feed-safe range. Loft slides are
+      // often 2:3 (taller than IG's 4:5 limit); the API won't crop, so IG pads
+      // them with black side-bars. Pre-cropping to 4:5 fills the frame like the
+      // native app does. Also caps too-wide images at 1.91:1.
+      if (String(req.query.fit || "") === "igfeed") {
+        try {
+          const Jimp = (await import("jimp")).default;
+          const img = await Jimp.read(buf);
+          const w = img.getWidth(), h = img.getHeight(), ar = w / h;
+          if (ar < 0.8) { img.cover(1080, 1350); buf = await img.getBufferAsync(Jimp.MIME_JPEG); ctype = "image/jpeg"; }
+          else if (ar > 1.91) { img.cover(1080, Math.round(1080 / 1.91)); buf = await img.getBufferAsync(Jimp.MIME_JPEG); ctype = "image/jpeg"; }
+        } catch (e) { /* fall back to the original image if processing fails */ }
+      }
+      res.setHeader("Content-Type", ctype);
       res.setHeader("Cache-Control", "public, max-age=3600");
-      res.send(Buffer.from(await ir.arrayBuffer()));
+      res.send(buf);
     } catch (e) { res.status(500).send("err"); }
     return;
   }
