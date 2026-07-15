@@ -885,7 +885,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy") {
+  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -927,6 +927,29 @@ export default async function handler(req, res) {
         });
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
+        res.json(d); return;
+      }
+      if (op === "drive_upload_url") {
+        // Fetch an image by URL (e.g. a live IG grid image — an already-edited,
+        // logo-overlaid crop) and store a durable copy in Drive, numbered by grid
+        // position. Lets us persist covers that only exist as posted edits.
+        const url = String(b.url || "");
+        const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const name = String(b.name || "cover.jpg").slice(0, 120);
+        if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: "bad url" }); return; }
+        const ir = await fetch(url);
+        if (!ir.ok) { res.status(400).json({ error: "fetch_image_failed " + ir.status }); return; }
+        const ct = ir.headers.get("content-type") || "image/jpeg";
+        const buf = Buffer.from(await ir.arrayBuffer());
+        const boundary = "lhb" + buf.length.toString(36);
+        const meta = JSON.stringify({ name, parents: parent ? [parent] : undefined });
+        const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${ct}\r\n\r\n`;
+        const body = Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
+        const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", {
+          method: "POST", headers: { ...AUTH, "Content-Type": `multipart/related; boundary=${boundary}` }, body,
+        });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "upload_error", detail: d.error }); return; }
         res.json(d); return;
       }
     } catch (e) {
