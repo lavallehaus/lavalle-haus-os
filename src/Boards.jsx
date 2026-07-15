@@ -920,6 +920,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                                 </span>
                               )}
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
+                              {card.pub && card.pub.status === "processing" && <span title="Instagram is processing the Reel video" style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.taupe }}>◔ uploading reel</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>📎 {(card.attachments || []).length}</span>}
@@ -1172,6 +1173,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             <div style={label}>Publish to Instagram</div>
             {pub && pub.status === "published" ? (
               <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            ) : pub && pub.status === "processing" ? (
+              <div style={{ fontFamily: sans, fontSize: 12, color: c.taupe, lineHeight: 1.5 }}>◔ Uploading Reel to @{pub.account} — Instagram is processing the video. It posts automatically once that finishes (usually within a minute); the daily sync completes any still processing.</div>
             ) : (
               <>
                 {pub && pub.status === "failed" && (
@@ -1200,13 +1203,15 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
                   <button disabled={postingNow || !cover}
                     onClick={async () => {
                       const account = (pub && pub.account) || pubAccounts[0].username;
-                      if (!window.confirm('Post "' + name + '" to @' + account + " on Instagram right now? (Posts the last saved cover + hook + caption.)")) return;
+                      const reelPost = isReelCard(card.name);
+                      if (!window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (reelPost ? "Uploads the linked Reel video + caption — Instagram may take a minute to process before it goes live." : "Posts the last saved cover + hook + caption."))) return;
                       setPostingNow(true);
                       try {
                         const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
                         const d = await r.json();
                         const item = (d.items || [])[0];
                         if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }); setDone(true); }
+                        else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing" }); }
                         else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
                       } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
                       setPostingNow(false);
@@ -1217,7 +1222,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
                   {!cover && <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add a cover photo to post.</span>}
                 </div>
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6 }}>
-                  Schedules save with the card. Photo posts only for now — Reels go out when TikTok/IG video is approved.
+                  Schedules save with the card. Photos post instantly; Reels upload the linked .mov and post once Instagram finishes processing the video (can take a minute). TikTok still pending approval.
                 </div>
               </>
             )}

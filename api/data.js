@@ -1,4 +1,5 @@
 import { createHmac, scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
+import { Readable } from "node:stream";
 
 // ── APP LOCK ──────────────────────────────────────────────────────────────────
 // Two ways in: the house password (owner master key, legacy token) or a
@@ -84,6 +85,43 @@ async function igPublishPhoto(tok, imageUrl, caption) {
   return { ok: true, mediaId: pd.id };
 }
 
+// Publish a Reel. Video processing is async, so this creates the container (or
+// reuses one from a prior run via `existingContainer`), polls up to ~40s within
+// the 60s function budget, then publishes. If it's still processing when the
+// budget runs out, it returns { pending, containerId } so a later sweep finishes
+// it — no re-upload, no double post. The video is served publicly by drive_video.
+async function igPublishReel(tok, videoUrl, caption, existingContainer) {
+  const base = "https://graph.instagram.com/v23.0";
+  let cid = existingContainer;
+  if (!cid) {
+    const create = await fetch(`${base}/${tok.user_id}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ media_type: "REELS", video_url: videoUrl, caption: caption || "", share_to_feed: "true", access_token: tok.access_token }),
+    });
+    const cd = await create.json();
+    if (!cd.id) return { ok: false, error: "container: " + JSON.stringify(cd.error || cd).slice(0, 220) };
+    cid = cd.id;
+  }
+  let status = "";
+  for (let i = 0; i < 13; i++) {
+    const s = await (await fetch(`${base}/${cid}?fields=status_code&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+    status = s.status_code;
+    if (status === "FINISHED") break;
+    if (status === "ERROR" || status === "EXPIRED") return { ok: false, error: "video processing " + status + " — the file may not be a valid Reel (MP4/MOV, H.264)" };
+    await new Promise((z) => setTimeout(z, 3000));
+  }
+  if (status !== "FINISHED") return { ok: false, pending: true, containerId: cid };
+  const pub = await fetch(`${base}/${tok.user_id}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ creation_id: cid, access_token: tok.access_token }),
+  });
+  const pd = await pub.json();
+  if (!pd.id) return { ok: false, error: "publish: " + JSON.stringify(pd.error || pd).slice(0, 220) };
+  return { ok: true, mediaId: pd.id };
+}
+
 // Publish every armed, due grid item (or one specific item when `only` is set).
 // Mutates the lavalle_data blob in KV and returns a summary.
 async function publishDueItems(only) {
@@ -117,7 +155,7 @@ async function publishDueItems(only) {
         changed = true;
         continue;
       }
-      if (!only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
+      if (p.status === "scheduled" && !only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
       const card = cards[it.cardId] || {};
       const fail = (error) => { it.pub = { ...p, status: "failed", error, failedAt: new Date().toISOString() }; results.failed.push({ card: card.name || it.cardId, error }); results.items.push({ feedId: feed.id, cardId: it.cardId, ok: false, error }); changed = true; };
       if (!tok) { fail("no Instagram token for @" + feed.account); continue; }
@@ -146,7 +184,7 @@ async function publishDueItems(only) {
       const isOnly = only && only.boardKey === bKey && only.cardId === card.id;
       if (only && !isOnly) continue;
       const p = card.pub || (isOnly ? { at: new Date().toISOString(), auto: false, status: "scheduled", account: only.account } : null);
-      if (!p || p.status !== "scheduled") continue;
+      if (!p || (p.status !== "scheduled" && p.status !== "processing")) continue;
       if (isOnly && only.account) p.account = only.account;
       const ledgerKey = "card:" + bKey + ":" + card.id;
       if (ledger[ledgerKey]) {
@@ -155,11 +193,34 @@ async function publishDueItems(only) {
         changed = true;
         continue;
       }
-      if (!only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
+      if (p.status === "scheduled" && !only && (!p.auto || !p.at || new Date(p.at).getTime() > now)) { results.skipped++; continue; }
       const fail = (error) => { card.pub = { ...p, status: "failed", error, failedAt: new Date().toISOString() }; results.failed.push({ card: card.name || card.id, error }); results.items.push({ boardKey: bKey, cardId: card.id, ok: false, error }); changed = true; };
       const tok = tokens.find((t) => (t.username || "").toLowerCase() === (p.account || "").toLowerCase());
       if (!tok) { fail("no Instagram token for @" + (p.account || "?")); continue; }
-      if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
+      // Reel/video → the async Reel flow (create container → wait for IG to
+      // process the video → publish). The video is the card's linked .mov,
+      // streamed publicly by drive_video. May span sweeps via p.containerId.
+      if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) {
+        const reelId = ((card.assetUrl || "").match(/\/d\/([-\w]{20,})/) || [])[1];
+        if (!reelId) { fail("no Reel video file is linked — the card points at a folder, not a .mov; link the file first"); continue; }
+        const videoUrl = "https://lavalle-haus-os.vercel.app/api/data?op=drive_video&id=" + reelId;
+        const rcap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId);
+        if (rr.ok) {
+          const publishedAt = new Date().toISOString();
+          ledger[ledgerKey] = { mediaId: rr.mediaId, at: publishedAt };
+          await kvSet("lavalle_published", ledger);
+          card.pub = { ...p, status: "published", mediaId: rr.mediaId, publishedAt, containerId: undefined };
+          card.done = true;
+          results.published++;
+          results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: rr.mediaId, publishedAt });
+        } else if (rr.pending) {
+          card.pub = { ...p, status: "processing", containerId: rr.containerId };
+          results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true });
+        } else fail(rr.error);
+        changed = true;
+        continue;
+      }
       let imageUrl = null;
       if (typeof card.cover === "string") {
         if (card.cover.startsWith("data:")) imageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
@@ -549,6 +610,31 @@ export default async function handler(req, res) {
       res.setHeader("Content-Type", ir.headers.get("content-type") || "image/jpeg");
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.send(Buffer.from(await ir.arrayBuffer()));
+    } catch (e) { res.status(500).send("err"); }
+    return;
+  }
+
+  // Stream a Drive video by id — the public video_url Instagram fetches when it
+  // ingests a Reel. Streamed (not buffered) with Range passthrough so large
+  // files don't blow the function's response limit. Uses the app's Google token
+  // internally, so the file never has to be shared publicly on Drive.
+  if (req.method === "GET" && op === "drive_video") {
+    const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!id) { res.status(400).send("no id"); return; }
+    try {
+      const token = await googleToken();
+      if (!token) { res.status(400).send("google_not_connected"); return; }
+      const hdrs = { Authorization: "Bearer " + token };
+      if (req.headers.range) hdrs.Range = req.headers.range;
+      const ir = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, { headers: hdrs });
+      if (!ir.ok && ir.status !== 206) { res.status(ir.status).send("drive_fail"); return; }
+      res.status(ir.status);
+      res.setHeader("Content-Type", ir.headers.get("content-type") || "video/mp4");
+      res.setHeader("Accept-Ranges", "bytes");
+      const cl = ir.headers.get("content-length"); if (cl) res.setHeader("Content-Length", cl);
+      const cr = ir.headers.get("content-range"); if (cr) res.setHeader("Content-Range", cr);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      if (ir.body) { Readable.fromWeb(ir.body).pipe(res); } else { res.end(); }
     } catch (e) { res.status(500).send("err"); }
     return;
   }
