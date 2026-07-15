@@ -121,7 +121,15 @@ function fileToCover(file, cb, maxW = 700, q = 0.82) {
   fr.readAsDataURL(file);
 }
 
-export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true } }) {
+// Small avatar circle — member photo when uploaded, initials otherwise.
+function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
+  const s = { width: size, height: size, borderRadius: "50%", border: `2px solid ${ring}`, flexShrink: 0, boxSizing: "border-box" };
+  return member && member.avatar
+    ? <img src={member.avatar} alt={member.name || ""} title={member.name || ""} style={{ ...s, objectFit: "cover", display: "block" }} />
+    : <span title={(member && member.name) || ""} style={{ ...s, background: "#CDBBA7", color: "#FFFFFF", fontFamily: sans, fontSize: size * 0.34, letterSpacing: 0.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(member && member.name)}</span>;
+}
+
+export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam }) {
   const [boards, setBoards] = useState(data || null);
   const [loading, setLoading] = useState(!data);
   const [past, setPast] = useState([]);
@@ -135,6 +143,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [bgMenu, setBgMenu] = useState(false);
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
+  const [membersMenu, setMembersMenu] = useState(false); // open-board header member panel
+  const [listMenu, setListMenu] = useState(null); // list id whose ⋯ menu is open
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 700);
+  useEffect(() => {
+    const onR = () => setNarrow(window.innerWidth < 700);
+    window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, []);
+  const teamByName = useMemo(() => { const m = {}; team.forEach((t) => { m[t.name] = t; }); return m; }, [team]);
+  const setAvatar = (memberName, dataUrl) => {
+    if (!onSaveTeam) return;
+    onSaveTeam(team.map((t) => (t.name === memberName ? { ...t, avatar: dataUrl } : t)));
+  };
 
   // Board access — board.access = null/[] means everyone with the Content tab;
   // otherwise only the listed roster members (and the owner) see the board.
@@ -449,6 +470,53 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{board.cards.length} cards</div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", position: "relative" }}>
+              {(() => {
+                const members = board.access && board.access.length ? team.filter((t) => board.access.includes(t.name)) : team;
+                const shown = members.slice(0, 5);
+                return (
+                  <button onClick={() => setMembersMenu(!membersMenu)} title="Who can open this board"
+                    style={{ display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 4 }}>
+                    {shown.map((t, i) => <span key={t.id || t.name} style={{ marginLeft: i ? -8 : 0, display: "inline-flex" }}><Avatar member={t} /></span>)}
+                    {members.length > shown.length && <span style={{ marginLeft: -8, width: 26, height: 26, borderRadius: "50%", border: "2px solid #FFFFFF", background: c.card, color: c.sub, fontFamily: sans, fontSize: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>+{members.length - shown.length}</span>}
+                    {!members.length && <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, border: `1px solid ${c.line}`, borderRadius: 6, padding: "4px 9px" }}>👥 Members</span>}
+                  </button>
+                );
+              })()}
+              {membersMenu && (
+                <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 14, width: 270 }}>
+                  <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Board members</div>
+                  {viewer.owner && (
+                    <button onClick={() => patchBoard(open, { access: null })}
+                      style={{ display: "block", width: "100%", textAlign: "left", background: !board.access || !board.access.length ? c.card : "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "6px 9px", fontFamily: sans, fontSize: 11.5, color: c.ink, cursor: "pointer", marginBottom: 8 }}>
+                      {!board.access || !board.access.length ? "✓ " : ""}Everyone with the Content tab
+                    </button>
+                  )}
+                  {team.map((t) => {
+                    const inBoard = !board.access || !board.access.length || board.access.includes(t.name);
+                    const canEditPhoto = viewer.owner || t.name === viewer.name;
+                    return (
+                      <div key={t.id || t.name} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0", opacity: inBoard ? 1 : 0.45 }}>
+                        <Avatar member={t} size={30} ring={c.line} />
+                        <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                        {canEditPhoto && (
+                          <label title="Upload their profile photo" style={{ border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+                            {t.avatar ? "Photo ✓" : "+ Photo"}
+                            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, (u) => setAvatar(t.name, u), 200, 0.8); }} />
+                          </label>
+                        )}
+                        {viewer.owner && <input type="checkbox" title="Can open this board" checked={inBoard}
+                          onChange={() => {
+                            const startFrom = board.access && board.access.length ? board.access : team.map((x) => x.name);
+                            const next = inBoard ? startFrom.filter((n) => n !== t.name) : [...startFrom, t.name];
+                            patchBoard(open, { access: next.length >= team.length ? null : next });
+                          }} />}
+                      </div>
+                    );
+                  })}
+                  {!team.length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add people on the Team roster first.</div>}
+                  {viewer.owner && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 8 }}>Untick someone and the board disappears for them. Photos show wherever members appear.</div>}
+                </div>
+              )}
               <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "⛓ Link assets"}</button>
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
@@ -477,13 +545,18 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             {board.lists.map((l) => {
               const cards = board.cards.filter((x) => x.listId === l.id);
               return (
-                <div key={l.id} style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: board.bg ? "rgba(244,244,243,0.93)" : c.card, backdropFilter: board.bg ? "blur(3px)" : "none", WebkitBackdropFilter: board.bg ? "blur(3px)" : "none", border: `1px solid ${c.line}`, borderRadius: 10, padding: "12px 10px 10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px" }}>
-                    <div style={{ flex: 1, fontFamily: sans, fontSize: 10, letterSpacing: 1.8, textTransform: "uppercase", color: c.ink }}>
-                      {l.name} <span style={{ color: c.sub }}>· {cards.length}</span>
+                <div key={l.id} style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(29,32,34,0.90)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 12, padding: "12px 10px 10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative" }}>
+                    <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: "#E8E6E1" }}>
+                      {l.name} <span style={{ color: "#9A968F", fontSize: 11 }}>{cards.length}</span>
                     </div>
-                    <button onClick={() => renameList(l)} title="Rename list" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 11, padding: 2 }}>✎</button>
-                    <button onClick={() => deleteList(l)} title="Delete list" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 12, padding: 2 }}>×</button>
+                    <button onClick={() => setListMenu(listMenu === l.id ? null : l.id)} title="List actions" style={{ background: "none", border: "none", cursor: "pointer", color: "#9A968F", fontSize: 14, padding: "0 4px", lineHeight: 1 }}>⋯</button>
+                    {listMenu === l.id && (
+                      <div style={{ position: "absolute", top: "calc(100% + 2px)", right: 0, zIndex: 60, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.18)", padding: 6, width: 150 }}>
+                        <button onClick={() => { setListMenu(null); renameList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, cursor: "pointer" }}>Rename list</button>
+                        <button onClick={() => { setListMenu(null); deleteList(l); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 6, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.red, cursor: "pointer" }}>Delete list</button>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 330px)", overflowY: "auto" }}>
                     {cards.map((card) => (
@@ -505,7 +578,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               {(card.labels || []).slice(0, 4).map((lb, i) => { const L = normLabel(lb); return (
                                 <span key={i} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: labelText(L.c), background: L.c, borderRadius: 1, padding: "2px 7px" }}>{L.n}</span>
                               ); })}
-                              {card.due && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: new Date(card.due) < new Date() && !card.done ? c.red : c.sub }}>{new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                              {card.due && (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: new Date(card.due) < new Date() && !card.done ? "#F3E3E0" : "#EEECE6", color: new Date(card.due) < new Date() && !card.done ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
+                                  🕐 {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                </span>
+                              )}
+                              {(card.hook || card.desc) && <span title="Has hook/caption" style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>≡</span>}
                               {(card.exampleUrl || firstVideoUrl(card.desc)) && (
                                 <a href={card.exampleUrl || firstVideoUrl(card.desc)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Example video"
                                   style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", textDecoration: "none", background: c.bg }}>▷ Example</a>
@@ -531,7 +609,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
-                                <span key={"m" + i} title={m} style={{ fontFamily: sans, fontSize: 8, letterSpacing: 0.5, width: 18, height: 18, borderRadius: "50%", border: `1px solid ${c.taupe}`, color: c.taupe, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(m)}</span>
+                                <span key={"m" + i} style={{ display: "inline-flex" }}><Avatar member={teamByName[m] || { name: m }} size={20} ring="#FFFFFF" /></span>
                               ))}
                             </div>
                           )}
@@ -540,11 +618,20 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     ))}
                   </div>
                   <button onClick={() => setEditCard({ boardKey: open, listId: l.id, isNew: true })}
-                    style={{ width: "100%", marginTop: 8, background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, color: c.sub, fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", padding: "8px 0", cursor: "pointer" }}>+ Card</button>
+                    style={{ width: "100%", marginTop: 6, textAlign: "left", background: "transparent", border: "none", borderRadius: 8, color: "#B9B6AF", fontFamily: sans, fontSize: 12.5, padding: "7px 8px", cursor: "pointer" }}>+ Add a card</button>
                 </div>
               );
             })}
           </div>
+          {narrow && (
+            <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", gap: 8, alignItems: "center", background: "rgba(29,32,34,0.95)", borderRadius: 24, padding: "8px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+              <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", color: "#E8E6E1", fontFamily: sans, fontSize: 12, cursor: "pointer", padding: 0 }}>☰ Boards</button>
+              <select value={open} onChange={(e) => setOpen(e.target.value)} title="Switch boards"
+                style={{ background: "transparent", color: "#E8E6E1", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 14, fontFamily: sans, fontSize: 12, padding: "3px 8px", maxWidth: 160 }}>
+                {Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].lists && canSee(boards[k])).map((k) => <option key={k} value={k} style={{ color: "#1A1A1A" }}>{boards[k].name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
