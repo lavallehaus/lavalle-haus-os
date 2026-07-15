@@ -525,7 +525,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
         </div>
       ) : (
         <div style={{ borderRadius: 8, padding: 12, margin: "0 -8px", ...boardBgStyle(board.bg) }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: board.bg ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: board.bg ? "blur(6px)" : "none", WebkitBackdropFilter: board.bg ? "blur(6px)" : "none", borderRadius: 8, padding: board.bg ? "8px 12px" : "0 0 2px" }}>
+          <div style={{ position: "relative", zIndex: 30, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: board.bg ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: board.bg ? "blur(6px)" : "none", WebkitBackdropFilter: board.bg ? "blur(6px)" : "none", borderRadius: 8, padding: board.bg ? "8px 12px" : "0 0 2px" }}>
             <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0 }}>← {workspace.label}</button>
             <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{board.cards.length} cards</div>
@@ -555,9 +555,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     const inBoard = !board.access || !board.access.length || board.access.includes(t.name);
                     const canEditPhoto = viewer.owner || t.name === viewer.name;
                     return (
-                      <div key={t.id || t.name} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0", opacity: inBoard ? 1 : 0.45 }}>
-                        <Avatar member={t} size={30} ring={c.line} />
-                        <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                      <div key={t.id || t.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", opacity: inBoard ? 1 : 0.45 }}>
+                        <Avatar member={t} size={40} ring={c.line} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontFamily: sans, fontSize: 13, fontWeight: 500, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                          <span style={{ display: "block", fontFamily: sans, fontSize: 10.5, color: c.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.email || (t.role || "team member")}</span>
+                        </span>
                         {canEditPhoto && (
                           <label title="Upload their profile photo" style={{ border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
                             {t.avatar ? "Photo ✓" : "+ Photo"}
