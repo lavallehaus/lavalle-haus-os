@@ -882,6 +882,59 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Drive write ops (owner-only) — build the numbered cover folders without
+  // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
+  // owns the copies + the new folder, so files.copy / files.create both work.
+  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const gstate = (await kvGet("google_oauth")) || {};
+    if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
+    try {
+      const tr = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || "", client_secret: process.env.GOOGLE_CLIENT_SECRET || "", refresh_token: gstate.refresh_token, grant_type: "refresh_token" }),
+      });
+      const td = await tr.json();
+      if (!td.access_token) { res.status(400).json({ error: "google_token_failed" }); return; }
+      const AUTH = { Authorization: "Bearer " + td.access_token };
+      const b = req.body || {};
+      if (op === "drive_meta") {
+        const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,parents,mimeType&supportsAllDrives=true`, { headers: AUTH });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error" }); return; }
+        res.json(d); return;
+      }
+      if (op === "drive_mkdir") {
+        const name = String(b.name || "").slice(0, 120);
+        const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const r = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,parents", {
+          method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
+          body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: parent ? [parent] : undefined }),
+        });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
+        res.json(d); return;
+      }
+      if (op === "drive_copy") {
+        const src = (b.sourceId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const name = String(b.name || "").slice(0, 120);
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${src}/copy?supportsAllDrives=true&fields=id,name,parents`, {
+          method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
+          body: JSON.stringify({ name, parents: parent ? [parent] : undefined }),
+        });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
+        res.json(d); return;
+      }
+    } catch (e) {
+      res.status(500).json({ error: String(e).slice(0, 200) });
+    }
+    return;
+  }
+
   // ── Plaid ops (bank balances → cash runway) — owner-only financials ─────────
   if (PLAID_OPS.includes(op)) {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Bank data is only available to the owner." }); return; }
