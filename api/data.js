@@ -124,6 +124,42 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer, coverUrl
   return { ok: true, mediaId: pd.id };
 }
 
+// Publish a Carousel: one child container per slide image, then a parent CAROUSEL
+// container, then publish. Instagram uses the first slide as the grid cover.
+// Images are small so this completes in one pass (no async sweeps needed).
+async function igPublishCarousel(tok, imageUrls, caption) {
+  const base = "https://graph.instagram.com/v23.0";
+  const children = [];
+  for (const url of imageUrls) {
+    const cr = await fetch(`${base}/${tok.user_id}/media`, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ image_url: url, is_carousel_item: "true", access_token: tok.access_token }),
+    });
+    const cd = await cr.json();
+    if (!cd.id) return { ok: false, error: "carousel slide: " + JSON.stringify(cd.error || cd).slice(0, 180) };
+    children.push(cd.id);
+  }
+  const pr = await fetch(`${base}/${tok.user_id}/media`, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ media_type: "CAROUSEL", children: children.join(","), caption: caption || "", access_token: tok.access_token }),
+  });
+  const pd = await pr.json();
+  if (!pd.id) return { ok: false, error: "carousel container: " + JSON.stringify(pd.error || pd).slice(0, 180) };
+  for (let i = 0; i < 12; i++) {
+    const s = await (await fetch(`${base}/${pd.id}?fields=status_code&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+    if (s.status_code === "FINISHED") break;
+    if (s.status_code === "ERROR") return { ok: false, error: "carousel processing ERROR" };
+    await new Promise((z) => setTimeout(z, 2000));
+  }
+  const pub = await fetch(`${base}/${tok.user_id}/media_publish`, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ creation_id: pd.id, access_token: tok.access_token }),
+  });
+  const pubd = await pub.json();
+  if (!pubd.id) return { ok: false, error: "carousel publish: " + JSON.stringify(pubd.error || pubd).slice(0, 180) };
+  return { ok: true, mediaId: pubd.id };
+}
+
 // Transcode a video to H.264 MP4 via Cloudinary so Instagram's Reel API accepts
 // it (phone .mov files are usually HEVC, which IG rejects). First call uploads
 // the source (from drive_video) and kicks off the transform; later calls poll
@@ -272,6 +308,32 @@ async function publishDueItems(only) {
       const fail = (error) => { card.pub = { ...p, status: "failed", error, failedAt: new Date().toISOString() }; results.failed.push({ card: card.name || card.id, error }); results.items.push({ boardKey: bKey, cardId: card.id, ok: false, error }); changed = true; };
       const tok = tokens.find((t) => (t.username || "").toLowerCase() === (p.account || "").toLowerCase());
       if (!tok) { fail("no Instagram token for @" + (p.account || "?")); continue; }
+      // Carousel → post the slides from the linked folder in order (IG uses slide
+      // 1 as the grid cover). "IG static / TT carousel" cards stay single-image.
+      const fmt = (card.name || "").match(/\[(.+?)\]/)?.[1] || "";
+      if (/carousel/i.test(fmt) && !/static/i.test(fmt) && !/reel/i.test(fmt)) {
+        const folderId = ((card.assetUrl || "").match(/folders\/([-\w]{20,})/) || [])[1];
+        if (!folderId) { fail("no carousel folder linked — link the folder of slides to the card"); continue; }
+        const token = await googleToken();
+        if (!token) { fail("google_not_connected"); continue; }
+        const slides = (await driveListFolder(folderId, token)).filter((f) => !f.folder)
+          .sort((a, b) => ((parseInt(a.name) || 999) - (parseInt(b.name) || 999)) || a.name.localeCompare(b.name)).slice(0, 10);
+        if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
+        const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id);
+        const ccap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        const cr = await igPublishCarousel(tok, imageUrls, ccap);
+        if (cr.ok) {
+          const publishedAt = new Date().toISOString();
+          ledger[ledgerKey] = { mediaId: cr.mediaId, at: publishedAt };
+          await kvSet("lavalle_published", ledger);
+          card.pub = { ...p, status: "published", mediaId: cr.mediaId, publishedAt };
+          card.done = true;
+          results.published++;
+          results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: cr.mediaId, publishedAt });
+        } else fail(cr.error);
+        changed = true;
+        continue;
+      }
       // Reel/video → the async Reel flow (create container → wait for IG to
       // process the video → publish). The video is the card's linked .mov,
       // streamed publicly by drive_video. May span sweeps via p.containerId.
