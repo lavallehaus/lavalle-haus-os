@@ -184,6 +184,20 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
   const withCards = items.map((it) => ({ it, card: cardById[it.cardId] || {} }));
   const byDay = {};
   withCards.forEach(({ it, card }) => { const k = dueKey(card); if (k) (byDay[k] = byDay[k] || []).push({ it, card }); });
+  // Posts armed straight from the Boards tab (they may not live in any grid
+  // feed) show on this calendar too — days can hold several posts.
+  const feedCardIds = new Set(feeds.flatMap((f) => (f.items || []).map((x) => x.cardId)));
+  const boardPubsByDay = {};
+  Object.entries(boards || {}).forEach(([bk, b]) => {
+    if (bk.startsWith("_") || !b || !b.cards) return;
+    b.cards.forEach((cd) => {
+      if (!cd.pub || !cd.pub.at || feedCardIds.has(cd.id)) return;
+      if (!(cd.pub.status === "published" || (cd.pub.status === "scheduled" && cd.pub.auto))) return;
+      const k = keyOf(new Date(cd.pub.at));
+      (boardPubsByDay[k] = boardPubsByDay[k] || []).push({ card: cd, board: b.name });
+    });
+  });
+  const pubTitle = (cd) => cd.name + " → @" + (cd.pub.account || "?") + " · " + new Date(cd.pub.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) + (cd.pub.status === "published" ? " · posted ✓" : "");
   const upNext = withCards
     .filter(({ card }) => dueKey(card) && !card.done)
     .sort((a, b) => (dueKey(a.card) < dueKey(b.card) ? -1 : 1));
@@ -339,6 +353,12 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                       <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
                         style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}` }} />
                     ))}
+                    {(boardPubsByDay[k] || []).map(({ card: cd }, bi) => cd.cover ? (
+                      <img key={"bp" + bi} src={cd.cover} alt="" title={pubTitle(cd)}
+                        style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, border: `1.5px solid ${cd.pub.status === "published" ? c.green : c.taupe}` }} />
+                    ) : (
+                      <span key={"bp" + bi} title={pubTitle(cd)} style={{ fontFamily: sans, fontSize: 8, letterSpacing: 0.5, background: cd.pub.status === "published" ? c.green : c.taupe, color: "#FFF", borderRadius: 2, padding: "2px 4px", maxWidth: 44, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{cd.pub.account}</span>
+                    ))}
                   </div>
                 </div>
               ); })}
@@ -374,7 +394,13 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
                             <img key={it.cardId} src={imgOf(it, 200)} alt="" title={card.name} onClick={() => setOpenItem(it.cardId)}
                               style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, cursor: "pointer", opacity: card.done ? 0.5 : 1 }} />
                           ))}
-                          {posts.length > 2 && <span style={{ fontFamily: sans, fontSize: 8.5, color: c.sub, alignSelf: "center" }}>+{posts.length - 2}</span>}
+                          {(boardPubsByDay[k] || []).slice(0, 2).map(({ card: cd }, bi) => cd.cover ? (
+                            <img key={"bp" + bi} src={cd.cover} alt="" title={pubTitle(cd)}
+                              style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 1, border: `1.5px solid ${cd.pub.status === "published" ? c.green : c.taupe}` }} />
+                          ) : (
+                            <span key={"bp" + bi} title={pubTitle(cd)} style={{ width: 8, height: 8, borderRadius: "50%", background: cd.pub.status === "published" ? c.green : c.taupe, alignSelf: "center" }} />
+                          ))}
+                          {(posts.length > 2 || (boardPubsByDay[k] || []).length > 2) && <span style={{ fontFamily: sans, fontSize: 8.5, color: c.sub, alignSelf: "center" }}>+{Math.max(0, posts.length - 2) + Math.max(0, (boardPubsByDay[k] || []).length - 2)}</span>}
                         </div>
                       </div>
                     );

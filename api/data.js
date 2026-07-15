@@ -440,7 +440,7 @@ export default async function handler(req, res) {
       client_id: process.env.IG_APP_ID,
       redirect_uri: "https://lavalle-haus-os.vercel.app/api/instagram-callback",
       response_type: "code",
-      scope: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_messages",
+      scope: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_messages,instagram_business_manage_insights",
       state: csrf,
       force_reauth: "true", // each brand account picks itself at login
     });
@@ -555,6 +555,45 @@ export default async function handler(req, res) {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can view Instagram connection status." }); return; }
     const accounts = Object.values(igAccounts(await kvGet("instagram_oauth"))).map((t) => ({ user_id: t.user_id, username: t.username || null, savedAt: t.savedAt }));
     res.json({ connected: accounts.length > 0, accounts });
+    return;
+  }
+  if (op === "ig_insights" && req.method === "GET") {
+    // Live channel analytics for the Content → Analytics tab (owner-only).
+    // saved/reach/retention need the insights scope — accounts connected before
+    // that scope was added return likes/comments/followers only.
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Analytics are only available to the owner." }); return; }
+    const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const base = "https://graph.instagram.com/v23.0";
+    const out = [];
+    for (const t of accts) {
+      try {
+        const prof = await (await fetch(`${base}/me?fields=username,followers_count,media_count&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=15&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        const items = [];
+        for (const m of (media.data || []).slice(0, 12)) {
+          let ins = null;
+          try {
+            const metrics = (m.media_type === "VIDEO" ? ["saved", "reach", "ig_reels_avg_watch_time"] : ["saved", "reach"]).join(",");
+            const d = await (await fetch(`${base}/${m.id}/insights?metric=${metrics}&access_token=${encodeURIComponent(t.access_token)}`)).json();
+            if (d.data) { ins = {}; d.data.forEach((x) => { ins[x.name] = x.values && x.values[0] ? x.values[0].value : null; }); }
+          } catch {}
+          items.push({
+            id: m.id, caption: (m.caption || "").slice(0, 90), type: m.media_product_type || m.media_type,
+            likes: m.like_count ?? null, comments: m.comments_count ?? null, at: m.timestamp, permalink: m.permalink || null,
+            saved: ins ? (ins.saved ?? null) : null, reach: ins ? (ins.reach ?? null) : null,
+            avgWatchSec: ins && ins.ig_reels_avg_watch_time != null ? Math.round(ins.ig_reels_avg_watch_time / 1000) : null,
+          });
+        }
+        out.push({
+          username: prof.username || t.username, followers: prof.followers_count ?? null, mediaCount: prof.media_count ?? null,
+          insightsAvailable: items.some((i) => i.saved != null || i.reach != null),
+          items, error: prof.error ? (prof.error.message || "profile fetch failed").slice(0, 140) : null,
+        });
+      } catch (e) {
+        out.push({ username: t.username, error: String(e).slice(0, 140), items: [] });
+      }
+    }
+    res.json({ accounts: out, tiktok: "pending_review" });
     return;
   }
   if (op === "publish_item" && req.method === "POST") {

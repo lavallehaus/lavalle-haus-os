@@ -23,6 +23,7 @@ import { buildMarginsModel } from "./marginsCore.js";
 import BusinessBrain from "./BusinessBrain.jsx";
 import CommandView from "./CommandView.jsx";
 import ContentScheduler from "./ContentScheduler.jsx";
+import ContentAnalytics from "./ContentAnalytics.jsx";
 import Boards from "./Boards.jsx";
 import GridPlanner from "./GridPlanner.jsx";
 import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
@@ -1205,9 +1206,9 @@ One platform, industry modules — this app is the internal master; each version
 // schedule" → Content › Grid, "stockists" → Growth › Wholesale › Accounts).
 const SEARCH_SEG_GROUPS = {
   content: { tab: "content", sub: null, segs: [
-    { id: "boards", label: "Boards", kw: "trello cards content planning covers photos posts july august fold refillery" },
-    { id: "grid", label: "Grid", kw: "plann instagram posting schedule calendar posts auto publish auto-publish feed preview connect tiktok post now grid planner" },
-    { id: "scheduler", label: "Publishing", kw: "scheduler cross post threads youtube shorts pinterest facebook publish" },
+    { id: "boards", label: "Boards", kw: "trello cards content planning covers photos posts july august fold refillery account health publish" },
+    { id: "grid", label: "Schedule", kw: "plann instagram posting schedule calendar grid posts auto publish auto-publish feed preview connect tiktok post now planner" },
+    { id: "analytics", label: "Analytics", kw: "insights followers engagement likes saves comments retention reach watch time stats performance" },
   ] },
   wholesale: { tab: "growth", sub: "wholesalehub", segs: [
     { id: "accounts", label: "Accounts", kw: "wholesale accounts stockists stores b2b buyers" },
@@ -2289,7 +2290,9 @@ function RetentionModal({ onClose }) {
 export default function App() {
 // The Business Brain home is ALWAYS the first screen — the saved tab only
 // survives in-session; a fresh open lands home, like a storefront.
-const [tab, setTab] = useState("brain");
+// Refresh keeps you where you were — the tab is validated against the
+// person's visible pages below, so nobody lands on a page they can't see.
+const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
 // Business Brain theme (day/night) + Command View overlay
 const [brainTheme, setBrainTheme] = useState(() => { try { return localStorage.getItem("lh_theme") || "day"; } catch { return "day"; } });
 useEffect(() => { try { localStorage.setItem("lh_theme", brainTheme); } catch {} }, [brainTheme]);
@@ -2755,9 +2758,9 @@ return profitNode;
 }
 if (tab === "content") return (
 <SegTabs id="content" segments={[
-{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
-{ id: "grid", label: "Grid", render: () => <GridPlanner data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
-{ id: "scheduler", label: "Publishing", render: () => <ContentScheduler /> },
+{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} gridPlanner={dbState.gridPlanner || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
+{ id: "grid", label: "Schedule", render: () => <GridPlanner data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
+{ id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
 ]} />
 );
 if (tab === "roadmap") return <RoadmapTab />;
