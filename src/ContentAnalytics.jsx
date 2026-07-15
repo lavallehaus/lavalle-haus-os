@@ -117,7 +117,7 @@ export default function ContentAnalytics() {
             </div>
           )}
 
-          <div style={{ ...label, marginBottom: 6 }}>Last {a.items.length} posts <span style={{ textTransform: "none", letterSpacing: 0, color: c.sub, fontStyle: "italic", fontFamily: serif }}>— tap a row to read & reply to its comments</span></div>
+          <div style={{ ...label, marginBottom: 6 }}>Last {a.items.length} posts <span style={{ textTransform: "none", letterSpacing: 0, color: c.sub, fontStyle: "italic", fontFamily: serif }}>— tap the date to open the post · tap a comment count to read & reply</span></div>
           <div style={{ overflowX: "auto", border: `1px solid ${c.line}` }}>
             <table style={{ width: "100%", borderCollapse: "collapse", background: c.bg, minWidth: 860 }}>
               <thead>
@@ -130,13 +130,17 @@ export default function ContentAnalytics() {
                   const cs = comments[m.id];
                   return (
                     <Fragment key={m.id}>
-                      <tr onClick={() => toggleComments(m)} style={{ cursor: "pointer", background: openId === m.id ? c.card : "transparent" }}>
-                        <td style={{ ...td, whiteSpace: "nowrap" }}>{m.permalink ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: c.ink }}>{new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ↗</a> : new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
+                      <tr style={{ background: openId === m.id ? c.card : "transparent" }}>
+                        <td style={{ ...td, whiteSpace: "nowrap" }}>
+                          {m.permalink
+                            ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" title="Open this post on Instagram" style={{ color: c.taupe, textDecoration: "underline", textUnderlineOffset: 2, fontWeight: 500 }}>{new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ↗</a>
+                            : new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </td>
                         <td style={{ ...td, color: c.taupe }}>{m.kind}</td>
                         <td style={td}>{fmt(m.views)}</td>
                         <td style={td} title="Unique accounts that saw this post">{fmt(m.reach)}</td>
                         <td style={td}>{fmt(m.likes)}</td>
-                        <td style={{ ...td, color: m.comments ? c.ink : c.sub }}>{fmt(m.comments)}{m.comments ? " ▾" : ""}</td>
+                        <td onClick={() => toggleComments(m)} title={m.comments ? "Read & reply to comments" : "No comments"} style={{ ...td, color: m.comments ? c.ink : c.sub, cursor: m.comments ? "pointer" : "default", textDecoration: m.comments ? "underline" : "none", textUnderlineOffset: 2 }}>{fmt(m.comments)}{m.comments ? (openId === m.id ? " ▴" : " ▾") : ""}</td>
                         <td style={td}>{fmt(m.saved)}</td>
                         <td style={td}>{m.avgWatchSec != null ? m.avgWatchSec + "s" : "—"}</td>
                         <td style={{ ...td, color: c.sub }}>{m.hashtagCount || 0}</td>
@@ -157,25 +161,25 @@ export default function ContentAnalytics() {
                             {!cs || cs.loading ? <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Loading comments…</div>
                               : cs.error ? <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.red }}>{cs.error}</div>
                               : !cs.list.length ? <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>No comments yet.</div>
-                              : cs.list.map((cc) => (
+                              : cs.list.map((cc) => { const who = cc.username || "Instagram user"; return (
                                 <div key={cc.id} style={{ borderTop: `1px solid ${c.line}`, padding: "8px 0" }}>
-                                  <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink }}><b>@{cc.username}</b> <span style={{ color: c.sub, fontSize: 10 }}>{cc.at ? new Date(cc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}{cc.likes ? " · " + cc.likes + " likes" : ""}</span></div>
+                                  <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink }}><b>{cc.username ? "@" + cc.username : who}</b> <span style={{ color: c.sub, fontSize: 10 }}>{cc.at ? new Date(cc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}{cc.likes ? " · " + cc.likes + " likes" : ""}</span></div>
                                   <div style={{ fontFamily: sans, fontSize: 12.5, color: c.ink, margin: "2px 0 4px" }}>{cc.text}</div>
                                   {(cc.replies || []).map((r) => (
                                     <div key={r.id} style={{ marginLeft: 16, paddingLeft: 10, borderLeft: `2px solid ${c.line}`, marginTop: 4 }}>
-                                      <div style={{ fontFamily: sans, fontSize: 11.5, color: c.sub }}><b>@{r.username}</b> · {r.text}</div>
+                                      <div style={{ fontFamily: sans, fontSize: 11.5, color: c.sub }}><b>{r.username ? "@" + r.username : "Reply"}</b> · {r.text}</div>
                                     </div>
                                   ))}
                                   <div style={{ display: "flex", gap: 6, marginTop: 6, marginLeft: 16 }}>
                                     <input value={reply[cc.id] || ""} onChange={(e) => setReply((s) => ({ ...s, [cc.id]: e.target.value }))}
                                       onKeyDown={(e) => { if (e.key === "Enter") sendReply(cc.id, m.id); }}
-                                      placeholder={"Reply to @" + cc.username + " — posts to Instagram"}
+                                      placeholder={"Reply" + (cc.username ? " to @" + cc.username : "") + " — posts to Instagram"}
                                       style={{ flex: 1, maxWidth: 460, boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 11px", fontFamily: sans, fontSize: 12, color: c.ink, outline: "none" }} />
                                     <button disabled={replyBusy === cc.id || !(reply[cc.id] || "").trim()} onClick={() => sendReply(cc.id, m.id)}
                                       style={{ border: `1px solid ${c.ink}`, background: c.ink, color: "#FFFFFF", borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: replyBusy === cc.id || !(reply[cc.id] || "").trim() ? 0.5 : 1 }}>{replyBusy === cc.id ? "Sending…" : "Reply"}</button>
                                   </div>
                                 </div>
-                              ))}
+                              ); })}
                           </td>
                         </tr>
                       )}
