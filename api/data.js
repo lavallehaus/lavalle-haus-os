@@ -982,7 +982,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash") {
+  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -1009,6 +1009,24 @@ export default async function handler(req, res) {
         const r = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,parents", {
           method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
           body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: parent ? [parent] : undefined }),
+        });
+        const d = await r.json();
+        if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
+        res.json(d); return;
+      }
+      if (op === "drive_rename") {
+        // Rename and/or move a file. Move (addParents/removeParents) lets us pull
+        // the numbered grid images into a clean folder as 1-9 without colliding
+        // with the source archive's own 1-N.
+        const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const qs = [];
+        if (b.parentAdd) qs.push("addParents=" + (b.parentAdd || "").replace(/[^a-zA-Z0-9_-]/g, ""));
+        if (b.parentRemove) qs.push("removeParents=" + (b.parentRemove || "").replace(/[^a-zA-Z0-9_-]/g, ""));
+        qs.push("supportsAllDrives=true", "fields=id,name,parents");
+        const body = {};
+        if (b.name != null) body.name = String(b.name).slice(0, 120);
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?${qs.join("&")}`, {
+          method: "PATCH", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
