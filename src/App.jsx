@@ -24,6 +24,7 @@ import BusinessBrain from "./BusinessBrain.jsx";
 import CommandView from "./CommandView.jsx";
 import ContentScheduler from "./ContentScheduler.jsx";
 import ContentAnalytics from "./ContentAnalytics.jsx";
+import OSBoards from "./OSBoards.jsx";
 import Boards from "./Boards.jsx";
 import GridPlanner from "./GridPlanner.jsx";
 import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
@@ -2298,6 +2299,14 @@ export default function App() {
 // Refresh keeps you where you were — the tab is validated against the
 // person's visible pages below, so nobody lands on a page they can't see.
 const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
+// Recently-viewed sections, per person — feeds the OS boards strip on home.
+useEffect(() => {
+  if (tab === "brain") return;
+  try {
+    const cur = JSON.parse(localStorage.getItem("lh_recent_tabs") || "[]");
+    localStorage.setItem("lh_recent_tabs", JSON.stringify([tab, ...cur.filter((x) => x !== tab)].slice(0, 6)));
+  } catch {}
+}, [tab]);
 // Business Brain theme (day/night) + Command View overlay
 const [brainTheme, setBrainTheme] = useState(() => { try { return localStorage.getItem("lh_theme") || "day"; } catch { return "day"; } });
 useEffect(() => { try { localStorage.setItem("lh_theme", brainTheme); } catch {} }, [brainTheme]);
@@ -2716,6 +2725,16 @@ const lensStrip = iAmOwner ? (
     navTabs={NAV}
   />
 ) : null;
+const osBoards = (
+  <OSBoards
+    nav={visibleNav}
+    tiles={dbState.tabTiles || {}}
+    onSaveTile={(id, bg) => setDbState((prev) => { const next = { ...prev, tabTiles: { ...(prev.tabTiles || {}), [id]: { bg } } }; dbSave(next); return next; })}
+    iAmOwner={iAmOwner}
+    roleTabs={ROLE_TABS}
+    goTo={goTo}
+  />
+);
 if (typeof window !== "undefined" && window.innerWidth < 760) {
 return (
 <div>
@@ -2728,6 +2747,7 @@ onNavigate={goTo}
 onOpenCommand={() => setCommandView(true)}
 onAsk={askChief}
 />
+{osBoards}
 </div>
 );
 }
@@ -2743,6 +2763,7 @@ onExit={() => {}}
 onNavigate={goTo}
 onAsk={askChief}
 />
+{osBoards}
 </div>
 );
 }
