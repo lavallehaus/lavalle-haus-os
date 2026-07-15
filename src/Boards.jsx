@@ -1239,7 +1239,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           <>
             <div style={label}>Publish to Instagram</div>
             {pub && pub.status === "published" ? (
-              <div style={{ fontFamily: sans, fontSize: 12, color: c.green }}>✓ Posted to @{pub.account} · {new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+              <div>
+                <div style={{ fontFamily: sans, fontSize: 12, color: c.green, marginBottom: 7 }}>✓ Posted to @{pub.account}{pub.publishedAt ? " · " + new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</div>
+                <button disabled={postingNow}
+                  onClick={async () => {
+                    if (!window.confirm('Re-post "' + name + '" to @' + pub.account + "?\n\nOnly do this AFTER deleting the old post on Instagram — otherwise you'll have two.")) return;
+                    setPostingNow(true);
+                    try { await fetch("/api/data?op=repost", { method: "POST", headers: { "Content-Type": "application/json", "x-app-token": localStorage.getItem("lh_token") || "" }, body: JSON.stringify({ boardKey, cardId: card.id }) }); } catch {}
+                    setPub({ ...(pub || {}), status: "scheduled", mediaId: undefined, publishedAt: undefined }); setDone(false);
+                    setPostingNow(false);
+                    runPost(false);
+                  }}
+                  style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
+                  {postingNow ? "Re-posting…" : "↻ Re-post"}</button>
+              </div>
             ) : pub && (pub.status === "converting" || pub.status === "processing") ? (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>

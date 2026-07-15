@@ -962,6 +962,25 @@ export default async function handler(req, res) {
     catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
     return;
   }
+  // Re-post: clear the dedupe ledger entry + re-arm a board card so it can post
+  // again (e.g. after deleting the old post on Instagram). Owner only.
+  if (op === "repost" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const b = req.body || {};
+    if (!b.boardKey || !b.cardId) { res.status(400).json({ error: "boardKey + cardId required." }); return; }
+    const data = await kvGet("lavalle_data");
+    const blob = Array.isArray(data) ? data[0] : data;
+    const card = blob && blob.boards && blob.boards[b.boardKey] && (blob.boards[b.boardKey].cards || []).find((x) => x.id === b.cardId);
+    if (!card) { res.status(404).json({ error: "card not found" }); return; }
+    const ledger = (await kvGet("lavalle_published")) || {};
+    delete ledger[`card:${b.boardKey}:${b.cardId}`];
+    await kvSet("lavalle_published", ledger);
+    card.pub = { ...(card.pub || {}), status: "scheduled", error: null, mediaId: undefined, publishedAt: undefined, containerId: undefined, convId: undefined, mp4Url: undefined };
+    card.done = false;
+    await kvSet("lavalle_data", Array.isArray(data) ? [blob] : blob);
+    res.json({ ok: true });
+    return;
+  }
   if (op === "tiktok_revoke" && req.method === "POST") {
     // Disconnect: revoke the grant with TikTok and clear the stored token.
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can disconnect TikTok." }); return; }
