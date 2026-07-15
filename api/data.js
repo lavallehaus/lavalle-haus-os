@@ -138,7 +138,7 @@ async function muxConvert(sourceUrl, jobId) {
   if (!jobId) {
     const r = await fetch("https://api.mux.com/video/v1/assets", {
       method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ input: sourceUrl, playback_policy: ["public"], mp4_support: "standard" }),
+      body: JSON.stringify({ input: sourceUrl, playback_policy: ["public"], mp4_support: "capped-1080p" }),
     });
     const d = await r.json();
     if (!d.data || !d.data.id) return { error: "mux create: " + JSON.stringify(d.error || d).slice(0, 200) };
@@ -152,7 +152,7 @@ async function muxConvert(sourceUrl, jobId) {
   if (a.status !== "ready") return { converting: true, jobId };
   const pb = (a.playback_ids || []).find((x) => x.policy === "public") || (a.playback_ids || [])[0];
   if (!pb) return { converting: true, jobId };
-  const mp4Url = "https://stream.mux.com/" + pb.id + "/high.mp4"; // static rendition; 404s until ready
+  const mp4Url = "https://stream.mux.com/" + pb.id + "/capped-1080p.mp4"; // static rendition; 404s until ready
   const h = await fetch(mp4Url, { headers: { Range: "bytes=0-1" } });
   if (h.ok || h.status === 206) return { mp4Url, jobId };
   return { converting: true, jobId };
