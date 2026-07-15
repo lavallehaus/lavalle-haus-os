@@ -120,6 +120,18 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
       refreshAccess();
     } catch (e) { setInviteState((s) => ({ ...s, [t.id]: "err:Could not reach the server" })); }
   };
+  const resetPassword = async (t) => {
+    const u = accessFor(t);
+    if (!u) return;
+    if (!confirm(`Email ${t.name} a password-reset link? Their current password keeps working until they set a new one.`)) return;
+    setInviteState((s) => ({ ...s, [t.id]: "sending" }));
+    try {
+      const r = await fetch("/api/data?op=reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id }) });
+      const d = await r.json();
+      if (!r.ok) { setInviteState((s) => ({ ...s, [t.id]: "err:" + (d.error || r.status) })); return; }
+      setInviteState((s) => ({ ...s, [t.id]: d.sent ? "reset-sent" : { link: d.link, sendError: d.sendError } }));
+    } catch (e) { setInviteState((s) => ({ ...s, [t.id]: "err:Could not reach the server" })); }
+  };
   const revokeAccess = async (t) => {
     const u = accessFor(t);
     if (!u) return;
@@ -351,8 +363,9 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
             <span style={{ fontFamily: sans, fontSize: 11, color: t.email ? c.sub : c.red, flex: 1, minWidth: 140 }}>{t.email || "no email — can't notify or invite"}</span>
             {canInvite && t.email && access && (() => { const a = accessLabel(t); const u = accessFor(t); const st = inviteState[t.id]; return (
               <>
-                <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: a.color }}>{st === "sent" ? "invite emailed ✓" : a.text}</span>
+                <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: st === "reset-sent" ? c.green : a.color }}>{st === "sent" ? "invite emailed ✓" : st === "reset-sent" ? "reset link emailed ✓" : a.text}</span>
                 {(!u || u.revoked || !u.acceptedAt) && <button onClick={() => sendInvite(t)} disabled={st === "sending"} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>{st === "sending" ? "Inviting…" : (u && !u.revoked && u.invitedAt) ? "Re-invite" : "Invite"}</button>}
+                {u && !u.revoked && u.acceptedAt && <button onClick={() => resetPassword(t)} disabled={st === "sending"} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }} title="Email them a fresh set-password link">{st === "sending" ? "Sending…" : "Reset password"}</button>}
                 {!/^owner/i.test((u && !u.revoked && u.role) || t.role || "") && (() => { const pl = (u && !u.revoked) ? u.pages : t.pages; return (
                   <button onClick={() => setPagesOpen(pagesOpen === t.id ? null : t.id)} style={{ ...btnGhost, color: pagesOpen === t.id ? c.ink : c.sub, borderColor: (pl && pl.length) ? c.clay : c.line }} title="Choose exactly which pages this person sees">Pages{(pl && pl.length) ? " · " + pl.length : ""}</button>
                 ); })()}

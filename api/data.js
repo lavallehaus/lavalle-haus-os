@@ -671,7 +671,7 @@ export default async function handler(req, res) {
   }
 
   // ── Team access (owner-only ops) ─────────────────────────────────────────────
-  if (op === "invite" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role") {
+  if (op === "invite" || op === "reset" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can manage team access." }); return; }
     const users = (await kvGet("lavalle_users")) || [];
 
@@ -715,6 +715,39 @@ export default async function handler(req, res) {
         catch (e) { sendError = String(e).slice(0, 200); }
       } else { sendError = "RESEND_API_KEY not set"; }
       res.json({ ok: true, sent, sendError, link, user: { id: u.id, name, email, role } });
+      return;
+    }
+
+    // Password reset for an already-active member — re-issues a fresh
+    // set-password link (their old password keeps working until they pick a
+    // new one). No new account is created; acceptedAt stays.
+    if (req.method === "POST" && op === "reset") {
+      const u = users.find((x) => x.id === (req.body || {}).id);
+      if (!u) { res.status(404).json({ error: "No such member." }); return; }
+      if (u.revoked) { res.status(400).json({ error: "That member's access is revoked — re-invite them instead." }); return; }
+      u.inviteToken = randomBytes(24).toString("hex");
+      u.inviteExp = Date.now() + 14 * 86400000;
+      await kvSet("lavalle_users", users);
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "";
+      const link = "https://" + host + "/?invite=" + u.inviteToken;
+      let sent = false, sendError = null;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (apiKey && u.email) {
+        const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+        const html =
+          '<div style="font-family:Georgia,serif;color:#1a1714;max-width:560px">' +
+            '<p style="font-size:11px;letter-spacing:2px;color:#a07848;text-transform:uppercase">Lavalle Haus OS</p>' +
+            '<h2 style="font-weight:400;margin:6px 0">Reset your password, ' + (u.name || "").replace(/[&<>"]/g, "") + '.</h2>' +
+            '<p style="line-height:1.6">Use the private link below to choose a new password for your Lavalle Haus OS login. It&rsquo;s yours alone and expires in 14 days. Your current password keeps working until you set a new one.</p>' +
+            '<p style="margin:22px 0"><a href="' + link + '" style="background:#1a1714;color:#ffffff;text-decoration:none;padding:12px 26px;font-size:12px;letter-spacing:2px;text-transform:uppercase">Set a new password</a></p>' +
+            '<p style="font-size:12px;color:#8c7d6b;line-height:1.5">If the button doesn&rsquo;t work, copy this link:<br/>' + link + '</p>' +
+            '<hr style="border:none;border-top:1px solid #c8c2b8;margin:14px 0"/>' +
+            '<p style="font-size:12px;color:#8c7d6b">If you didn&rsquo;t ask for this, you can ignore it &mdash; nothing changes until the link is used.</p>' +
+          '</div>';
+        try { await sendResendEmail({ apiKey, from, to: u.email, subject: "Reset your Lavalle Haus OS password", html }); sent = true; }
+        catch (e) { sendError = String(e).slice(0, 200); }
+      } else { sendError = u.email ? "RESEND_API_KEY not set" : "This member has no email on the roster."; }
+      res.json({ ok: true, sent, sendError, link });
       return;
     }
 
