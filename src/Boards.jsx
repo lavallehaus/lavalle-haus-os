@@ -145,6 +145,23 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
   const [membersMenu, setMembersMenu] = useState(false); // open-board header member panel
   const [listMenu, setListMenu] = useState(null); // list id whose ⋯ menu is open
+  const [dragCard, setDragCard] = useState(null); // card id being dragged (Trello drag & drop)
+  const [dropHint, setDropHint] = useState(null); // card id we'd drop before, or "list:<id>" for end-of-list
+
+  // Trello-style drag & drop: drop on a card inserts before it, drop on the
+  // list body appends. Order lives in the board's cards array.
+  const moveCard = (cardId, toListId, beforeCardId) => {
+    const b = boards[open];
+    const moving = b.cards.find((x) => x.id === cardId);
+    if (!moving || (moving.listId === toListId && beforeCardId === cardId)) return;
+    let rest = b.cards.filter((x) => x.id !== cardId);
+    const moved = { ...moving, listId: toListId };
+    if (beforeCardId) {
+      const i = rest.findIndex((x) => x.id === beforeCardId);
+      rest = i === -1 ? [...rest, moved] : [...rest.slice(0, i), moved, ...rest.slice(i)];
+    } else rest = [...rest, moved];
+    patchBoard(open, { cards: rest });
+  };
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 700);
   useEffect(() => {
     const onR = () => setNarrow(window.innerWidth < 700);
@@ -545,7 +562,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             {board.lists.map((l) => {
               const cards = board.cards.filter((x) => x.listId === l.id);
               return (
-                <div key={l.id} style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(29,32,34,0.90)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 12, padding: "12px 10px 10px" }}>
+                <div key={l.id}
+                  onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } }}
+                  onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } setDragCard(null); setDropHint(null); }}
+                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(29,32,34,0.90)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 12, padding: "12px 10px 10px", outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative" }}>
                     <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: "#E8E6E1" }}>
                       {l.name} <span style={{ color: "#9A968F", fontSize: 11 }}>{cards.length}</span>
@@ -561,9 +581,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 330px)", overflowY: "auto" }}>
                     {cards.map((card) => (
                       <div key={card.id} onClick={() => setEditCard({ boardKey: open, cardId: card.id })}
-                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)" }}>
+                        draggable
+                        onDragStart={(e) => { setDragCard(card.id); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { setDragCard(null); setDropHint(null); }}
+                        onDragOver={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); setDropHint(card.id); } }}
+                        onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); moveCard(dragCard, l.id, card.id); } setDragCard(null); setDropHint(null); }}
+                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: dragCard === card.id ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2 }}>
                         {card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />}
                         <div style={{ padding: "9px 11px" }}>
+                          {(card.labels || []).length > 0 && (
+                            <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                              {(card.labels || []).slice(0, 6).map((lb, i) => { const L = normLabel(lb); return <span key={i} title={L.n} style={{ width: 34, height: 7, borderRadius: 4, background: L.c, display: "inline-block" }} />; })}
+                            </div>
+                          )}
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleDone(open, card.id); }}
@@ -575,12 +605,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           </div>
                           {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
-                              {(card.labels || []).slice(0, 4).map((lb, i) => { const L = normLabel(lb); return (
-                                <span key={i} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: labelText(L.c), background: L.c, borderRadius: 1, padding: "2px 7px" }}>{L.n}</span>
-                              ); })}
                               {card.due && (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: new Date(card.due) < new Date() && !card.done ? "#F3E3E0" : "#EEECE6", color: new Date(card.due) < new Date() && !card.done ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
-                                  🕐 {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: card.done ? "#DFE8DF" : new Date(card.due) < new Date() ? "#F3E3E0" : "#EEECE6", color: card.done ? c.green : new Date(card.due) < new Date() ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
+                                  {card.done ? "✓" : "🕐"} {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                 </span>
                               )}
                               {(card.hook || card.desc) && <span title="Has hook/caption" style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>≡</span>}
@@ -607,7 +634,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
                               {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
-                              {(card.attachments || []).length > 1 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🖼 {(card.attachments || []).length}</span>}
+                              {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>📎 {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
                                 <span key={"m" + i} style={{ display: "inline-flex" }}><Avatar member={teamByName[m] || { name: m }} size={20} ring="#FFFFFF" /></span>
                               ))}
