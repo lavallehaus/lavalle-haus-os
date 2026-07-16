@@ -32,9 +32,8 @@ const boardBrand = (boardKey, boards) => {
 // content/sister boards (reels, posts, strategy) don't flood the tray. The Fold
 // R&D + The Fold ops outfits are all looks; LH Ops only via its Launch Timeline.
 const launchAllowed = (boardKey, listName) => {
-  if (boardKey === "the-fold-rd") return true;
-  if (boardKey === "the-fold-operations") return true;
-  if (boardKey === "rh-operations") return /launch timeline|to be filmed/i.test(listName || "");
+  if (boardKey === "the-fold-rd") return true; // August Collection looks
+  if (boardKey === "rh-operations") return /launch timeline/i.test(listName || ""); // LH launch products
   return false;
 };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
