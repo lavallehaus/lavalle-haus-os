@@ -1018,6 +1018,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           isNew={!!editCard.isNew}
           memberPool={memberPool}
           me={me}
+          autoTag={(() => {
+            const bd = boards[editCard.boardKey];
+            const active = !!(bd && bd.ws === "pr-ugc");
+            const list = ((bd && bd.lists) || []).find((l) => l.id === (editing.listId || editCard.listId));
+            const label = list && /ugc/i.test(list.name) ? "UGC" : "PR";
+            const nums = ((bd && bd.cards) || []).map((cd) => { const m = (cd.name || "").match(new RegExp("^" + label + "\\s+(\\d+)")); return m ? parseInt(m[1]) : 0; });
+            return { active, label, nextNum: (nums.length ? Math.max(0, ...nums) : 0) + 1 };
+          })()}
           onClose={() => setEditCard(null)}
           onSave={saveCard}
           onPatch={patchCard}
@@ -1030,11 +1038,33 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   );
 }
 
-function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
+function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
+  // PR/UGC auto-title: on a PR + UGC board, resolve the creator @handle from the
+  // linked TikTok/IG video and title the card "PR N [@handle]" (or "UGC N […]").
+  // Only fills blank or already-auto titles, so a custom name is never clobbered.
+  useEffect(() => {
+    if (!autoTag || !autoTag.active) return;
+    const url = (exampleUrl || "").trim();
+    if (!/tiktok\.com|instagram\.com/i.test(url)) return;
+    const cur = (name || "").trim();
+    const isAuto = !cur || /^new card$/i.test(cur) || /^(PR|UGC)\s+\d+/i.test(cur) || /^(PR|UGC) example/i.test(cur);
+    if (!isAuto) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/data?op=resolve_handle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        const d = await r.json();
+        if (cancelled || !d.handle) return;
+        const existing = (cur.match(/^(?:PR|UGC)\s+(\d+)/i) || [])[1];
+        setName(`${autoTag.label} ${existing || autoTag.nextNum} [${d.handle}]`);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [exampleUrl, autoTag && autoTag.active]); // eslint-disable-line
   const [checklist, setChecklist] = useState(card.checklist || []);
   const [checkInput, setCheckInput] = useState("");
   const [pub, setPub] = useState(card.pub || null);

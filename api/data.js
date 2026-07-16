@@ -996,6 +996,28 @@ export default async function handler(req, res) {
     res.json({ ok: true });
     return;
   }
+
+  // Resolve the creator @handle behind a TikTok/IG link. Full URLs already
+  // carry the handle; short links (tiktok.com/t/…, vm.tiktok.com) get followed
+  // server-side to their canonical @handle URL. Best-effort — returns
+  // { handle: null } if the platform blocks the fetch. Powers PR/UGC auto-titles.
+  if (op === "resolve_handle" && req.method === "POST") {
+    const url = String((req.body || {}).url || "").trim();
+    const grab = (u) => {
+      const m = u.match(/tiktok\.com\/@([A-Za-z0-9._]+)/i) || u.match(/instagram\.com\/(?:reel\/|p\/)?@?([A-Za-z0-9._]+)/i);
+      return m ? "@" + m[1] : null;
+    };
+    if (!/^https?:\/\//i.test(url)) { res.status(400).json({ error: "bad url" }); return; }
+    let handle = grab(url);
+    if (!handle) {
+      try {
+        const r = await fetch(url, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" } });
+        handle = grab(r.url || "");
+      } catch (e) { /* platform blocked the fetch — leave handle null */ }
+    }
+    res.json({ handle: handle || null });
+    return;
+  }
   if (op === "tiktok_revoke" && req.method === "POST") {
     // Disconnect: revoke the grant with TikTok and clear the stored token.
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can disconnect TikTok." }); return; }
