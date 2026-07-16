@@ -14,7 +14,7 @@ const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
 
 export const WORKSPACES = [
   { id: "lavalle-sisters", label: "Lavalle Sisters", tagline: "Sister founder business", boards: ["lavalle-sisters", "archives-lavalle-sisters", "master-projects"] },
-  { id: "lavalle-haus", label: "Lavalle Haus", tagline: "Refillery Haus · operations · R&D", boards: ["refillery-haus", "rh-operations", "rd"] },
+  { id: "lavalle-haus", label: "Lavalle Haus", tagline: "Body & home · operations · R&D", boards: ["refillery-haus", "rh-operations", "rd"] },
   { id: "the-fold", label: "The Fold", tagline: "The label", boards: ["the-fold", "the-fold-operations"] },
   { id: "pr-ugc", label: "PR + UGC", tagline: "Creator seeding · press · UGC reference edits", boards: ["pr-refillery-haus", "pr-the-fold"] },
 ];

@@ -2243,7 +2243,7 @@ function PrivacyModal({ onClose }) {
         </div>
         <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus OS · Effective June 2026 · Last reviewed June 2026</div>
         <div style={hd}>Who we are</div>
-        <p style={p}>Lavalle Haus OS is an internal business application operated by Refillery Haus (“we,” “us”). It is used by the business's owners to manage the company's own operations, inventory, advertising, and finances. It is not a product offered to outside consumers, and it does not create accounts for third-party end users.</p>
+        <p style={p}>Lavalle Haus OS is an internal business application operated by Lavalle Haus (“we,” “us”). It is used by the business's owners to manage the company's own operations, inventory, advertising, and finances. It is not a product offered to outside consumers, and it does not create accounts for third-party end users.</p>
         <div style={hd}>What information the application accesses</div>
         <p style={p}>To operate, the application connects to services the business already uses and accesses the business's own data, including: bank account information via Plaid — account names and balances, and transaction history — used to track the company's cash position and runway; and commerce and advertising data via the Amazon, Shopify, and Google APIs — orders, inventory, listings, and ad performance for the business's own accounts. All of this data belongs to the business itself. The application does not collect personal information from outside consumers.</p>
         <div style={hd}>How we use it</div>
@@ -2257,7 +2257,7 @@ function PrivacyModal({ onClose }) {
         <div style={hd}>Data retention & deletion</div>
         <p style={p}>We retain data only as long as needed to operate the business. A connected bank can be disconnected at any time within the application, which deletes the stored access token. To request deletion of other stored data, contact us.</p>
         <div style={hd}>Contact</div>
-        <p style={p}>For any privacy question or request, contact the business owner at the email associated with the Lavalle Haus / Refillery Haus account.</p>
+        <p style={p}>For any privacy question or request, contact the business owner at the email associated with the Lavalle Haus account.</p>
       </div>
     </div>
   );
@@ -2276,7 +2276,7 @@ function RetentionModal({ onClose }) {
           <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Data Retention & Deletion Policy</h1>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#71716C", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Owner: Refillery Haus · Applies to Lavalle Haus OS · Last reviewed June 2026 · Reviewed at least annually</div>
+        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Owner: Lavalle Haus · Applies to Lavalle Haus OS · Last reviewed June 2026 · Reviewed at least annually</div>
         <div style={hd}>1. Principle</div>
         <p style={p}>We retain only the data needed to operate the business, for only as long as it is useful for that purpose, and we provide clear ways to delete it.</p>
         <div style={hd}>2. What we store and for how long</div>

@@ -20,7 +20,7 @@ const btnDark = { padding: "8px 18px", fontSize: 10, fontFamily: sans, letterSpa
 const btnGhost = { padding: "6px 14px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
 
 const MP = "ATVPDKIKX0DER";
-const BRAND_DEFAULT = "Refillery Haus";
+const BRAND_DEFAULT = "Lavalle Haus";
 const SPECIAL = ["bullet_point", "main_product_image_locator", "other_product_image_locator", "purchasable_offer", "list_price", "fulfillment_availability", "variation_theme"];
 
 const FAMILIES = [
