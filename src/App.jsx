@@ -22,6 +22,7 @@ import ReorderList from "./ReorderList.jsx";
 import { buildMarginsModel } from "./marginsCore.js";
 import BusinessBrain from "./BusinessBrain.jsx";
 import CommandView from "./CommandView.jsx";
+import CommandDashboard from "./CommandDashboard.jsx";
 import ContentScheduler from "./ContentScheduler.jsx";
 import ContentAnalytics from "./ContentAnalytics.jsx";
 import OSBoards from "./OSBoards.jsx";
@@ -2756,15 +2757,7 @@ onAsk={askChief}
 return (
 <div>
 {lensStrip}
-<CommandView
-embedded
-model={brainModel}
-themeId={brainTheme}
-onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
-onExit={() => {}}
-onNavigate={goTo}
-onAsk={askChief}
-/>
+<CommandDashboard model={brainModel} onNavigate={goTo} />
 {osBoards}
 </div>
 );
