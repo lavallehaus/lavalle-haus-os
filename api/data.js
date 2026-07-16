@@ -1038,12 +1038,12 @@ export default async function handler(req, res) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { res.status(400).json({ error: "A valid creator email is required." }); return; }
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) { res.status(400).json({ error: "RESEND_API_KEY is not set in Vercel." }); return; }
-    const from = process.env.OUTREACH_FROM || "Refillery Haus <info@lavallehaus.com>";
-    const subject = String(b.subject || "Refillery Haus — Collaboration Details").slice(0, 200);
+    const from = process.env.OUTREACH_FROM || "Lavalle Haus <info@lavallehaus.com>";
+    const subject = String(b.subject || "Lavalle Haus — Collaboration Details").slice(0, 200);
     const bodyText = String(b.body || "");
     const html = "<div style=\"font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#2b2a28;white-space:pre-wrap\">" +
       bodyText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</div>";
-    const attachments = [{ filename: "Refillery Haus — Creator Brief.pdf", path: "https://lavalle-haus-os.vercel.app/refillery-haus-ugc-brief.pdf" }];
+    const attachments = [{ filename: "Lavalle Haus — Creator Brief.pdf", path: "https://lavalle-haus-os.vercel.app/lavalle-haus-ugc-brief.pdf" }];
     try {
       const id = await sendResendEmail({ apiKey, from, to, subject, html, attachments });
       res.json({ ok: true, id });
