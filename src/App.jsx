@@ -26,6 +26,7 @@ import ContentScheduler from "./ContentScheduler.jsx";
 import ContentAnalytics from "./ContentAnalytics.jsx";
 import OSBoards from "./OSBoards.jsx";
 import Boards from "./Boards.jsx";
+import OpsCalendar from "./OpsCalendar.jsx";
 import GridPlanner from "./GridPlanner.jsx";
 import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
 
@@ -2580,9 +2581,9 @@ const me = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "
 const myRole = (me && me.role) || "Owner / Admin";
 const iAmOwner = /^owner/i.test(myRole);
 const ROLE_TABS = {
-  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "roadmap", "materials", "ai"],
-  "Team Member": ["inventory", "growth", "content", "roadmap", "materials"],
-  "Viewer": ["content", "roadmap"],
+  "Manager": ["brain", "profit", "ads", "inventory", "growth", "content", "calendar", "roadmap", "materials", "ai"],
+  "Team Member": ["inventory", "growth", "content", "calendar", "roadmap", "materials"],
+  "Viewer": ["content", "calendar", "roadmap"],
 };
 const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
 // A per-person pages list (set on the Team roster) replaces the role default.
@@ -2665,6 +2666,7 @@ const NAV = [
 { id: "checklist", label: "Action Items" },
 ] },
 { id: "content", label: "Content", labelEs: "Contenido" },
+{ id: "calendar", label: "Calendar", labelEs: "Calendario" },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
 { id: "materials", label: "Materials", labelEs: "Materiales", subs: [
 { id: "suppliers", label: "Supplier Database" },
@@ -2789,6 +2791,7 @@ if (tab === "content") return (
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
 ]} />
 );
+if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} />;
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
 if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} initialQuestion={askSeed} onSeedConsumed={() => setAskSeed(null)} />;
