@@ -28,8 +28,15 @@ const boardBrand = (boardKey, boards) => {
   if (k.includes("refillery") || k.startsWith("rh-") || k.includes("lavalle-haus")) return "lavalle-haus";
   return null;
 };
-// Launch-context lists only — keeps blog/newsletter/inventory/etc. out of the tray.
-const isLaunchList = (name) => !/blog|newsletter|promotion|web ?dev|inventory|amazon|^live$|notes|newsletter/i.test(name || "");
+// Which board+list actually feed the calendar's launches. Scoped tight so the
+// content/sister boards (reels, posts, strategy) don't flood the tray. The Fold
+// R&D + The Fold ops outfits are all looks; LH Ops only via its Launch Timeline.
+const launchAllowed = (boardKey, listName) => {
+  if (boardKey === "the-fold-rd") return true;
+  if (boardKey === "the-fold-operations") return true;
+  if (boardKey === "rh-operations") return /launch timeline|to be filmed/i.test(listName || "");
+  return false;
+};
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const uid = () => "s" + Math.random().toString(36).slice(2, 9);
@@ -53,7 +60,8 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       if (!b || !b.cards || bk.startsWith("_")) return;
       const br = boardBrand(bk, boards);
       if (!br || (brand !== "all" && br !== brand)) return;
-      b.cards.forEach((cd) => { if (cd.launchMonth === ym && cd.cover) out.push({ name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
+      const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
+      b.cards.forEach((cd) => { if (cd.launchMonth === ym && cd.cover && launchAllowed(bk, listName[cd.listId])) out.push({ name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
     });
     return out;
   }, [boards, ym, brand]);
@@ -67,7 +75,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       const br = boardBrand(bk, boards);
       if (!br || (brand !== "all" && br !== brand)) return;
       const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
-      b.cards.forEach((cd) => { if (cd.cover && !cd.launchMonth && isLaunchList(listName[cd.listId])) out.push({ boardKey: bk, cardId: cd.id, name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
+      b.cards.forEach((cd) => { if (cd.cover && !cd.launchMonth && launchAllowed(bk, listName[cd.listId])) out.push({ boardKey: bk, cardId: cd.id, name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
     });
     return out;
   }, [boards, brand]);
