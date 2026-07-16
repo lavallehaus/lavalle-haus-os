@@ -20,6 +20,11 @@ export const WORKSPACES = [
 ];
 
 const uid = () => "bc" + Math.random().toString(36).slice(2, 9);
+// Each board's brand → its locked Instagram handle (Sisters → @lavallesisters,
+// The Fold → @thefoldlabel, Lavalle Haus → @refilleryhaus). Mirrors api/data.js.
+const igForBoardName = (name) => /lavalle\s*sisters/i.test(name || "") ? "lavallesisters"
+  : /the\s*fold|^tf\b/i.test(name || "") ? "thefoldlabel"
+  : /lavalle\s*haus|refillery|^lh\b/i.test(name || "") ? "refilleryhaus" : null;
 const initials = (name) => (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
 // URLs pasted into Notes become tappable chips. Real <a> tags matter here:
@@ -1159,6 +1164,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [emailState, setEmailState] = useState("");
   const isOutreach = !!(autoTag && autoTag.active && autoTag.label === "UGC"); // UGC → full DM/email/PDF automation
   const isPrUgc = !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
+  const brandAcct = igForBoardName((boardsIndex[boardKey] || {}).name); // locked IG handle for this board's brand
   const [postingNow, setPostingNow] = useState(false);
   useEffect(() => { fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setPubAccounts(d.accounts || [])).catch(() => {}); }, []);
   const dtLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
@@ -1226,7 +1232,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // Publish now (or resume a Reel that's still processing) — keeps the IG
   // container id so a slow video finishes on the next tap without re-uploading.
   const runPost = async (confirm) => {
-    const account = (pub && pub.account) || (pubAccounts && pubAccounts[0] && pubAccounts[0].username);
+    const account = brandAcct || (pub && pub.account) || (pubAccounts && pubAccounts[0] && pubAccounts[0].username);
     if (!account) return;
     if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video (auto-converts to H.264 first) + caption — a large video can take a minute or two." : "Posts the last saved cover + hook + caption."))) return;
     setPostingNow(true);
@@ -1474,17 +1480,24 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <select style={{ ...input, width: "auto", flex: "0 0 auto" }} value={(pub && pub.account) || pubAccounts[0].username}
-                    onChange={(e) => setPub({ ...(pub || { status: "scheduled", auto: false }), account: e.target.value })}>
-                    {pubAccounts.map((a) => <option key={a.user_id} value={a.username}>@{a.username}</option>)}
-                    <option value="" disabled>TikTok — pending approval</option>
-                  </select>
+                  {brandAcct ? (
+                    <div style={{ ...input, width: "auto", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 6 }} title="Locked to this board's brand account">
+                      <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>@{brandAcct}</span>
+                      <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>🔒 locked</span>
+                    </div>
+                  ) : (
+                    <select style={{ ...input, width: "auto", flex: "0 0 auto" }} value={(pub && pub.account) || pubAccounts[0].username}
+                      onChange={(e) => setPub({ ...(pub || { status: "scheduled", auto: false }), account: e.target.value })}>
+                      {pubAccounts.map((a) => <option key={a.user_id} value={a.username}>@{a.username}</option>)}
+                      <option value="" disabled>TikTok — pending approval</option>
+                    </select>
+                  )}
                   <input type="datetime-local" style={{ ...input, width: "auto", flex: 1, minWidth: 170 }} value={dtLocal(pub && pub.at)}
-                    onChange={(e) => setPub({ ...(pub || { auto: false }), status: "scheduled", account: (pub && pub.account) || pubAccounts[0].username, at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+                    onChange={(e) => setPub({ ...(pub || { auto: false }), status: "scheduled", account: brandAcct || (pub && pub.account) || pubAccounts[0].username, at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: pub && pub.at ? "pointer" : "default", opacity: pub && pub.at ? 1 : 0.45 }}>
                   <input type="checkbox" checked={!!(pub && pub.auto)} disabled={!(pub && pub.at)}
-                    onChange={(e) => setPub({ ...pub, auto: e.target.checked, status: "scheduled", account: pub.account || pubAccounts[0].username })} />
+                    onChange={(e) => setPub({ ...pub, auto: e.target.checked, status: "scheduled", account: brandAcct || pub.account || pubAccounts[0].username })} />
                   <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>
                     Auto-publish{pub && pub.auto && pub.at ? " — " + new Date(pub.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : " at the scheduled time"}
                   </span>

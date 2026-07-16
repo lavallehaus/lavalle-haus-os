@@ -297,6 +297,16 @@ async function publishDueItems(only) {
       if (isOnly && p && p.status !== "processing" && p.status !== "converting") p = { ...p, status: "scheduled", error: null };
       if (!p || (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting")) continue;
       if (isOnly && only.account) p.account = only.account;
+      // Lock the posting account to the board's brand, so a Lavalle Sisters board
+      // always posts to @lavallesisters, a The Fold board to @thefoldlabel, and a
+      // Lavalle Haus board to @refilleryhaus — regardless of what was stored.
+      {
+        const bn = board.name || "";
+        const brandAcct = /lavalle\s*sisters/i.test(bn) ? "lavallesisters"
+          : /the\s*fold|^tf\b/i.test(bn) ? "thefoldlabel"
+          : /lavalle\s*haus|refillery|^lh\b/i.test(bn) ? "refilleryhaus" : null;
+        if (brandAcct) p = { ...p, account: brandAcct };
+      }
       const ledgerKey = "card:" + bKey + ":" + card.id;
       if (ledger[ledgerKey]) {
         card.pub = { ...p, status: "published", mediaId: ledger[ledgerKey].mediaId, publishedAt: ledger[ledgerKey].at };
