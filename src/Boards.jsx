@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ContentBrain from "./ContentBrain.jsx";
-import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM } from "./ugcOutreach.js";
+import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM, composeOutreachEmail } from "./ugcOutreach.js";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
 // The Trello workspaces, brought home. Three businesses, each with its boards;
@@ -1073,6 +1073,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // UGC outreach card state
   const [outreachEmail, setOutreachEmail] = useState(card.outreachEmail || "");
   const [emailBody, setEmailBody] = useState(card.emailBody || UGC_EMAIL_BODY);
+  const [refExamples, setRefExamples] = useState(() => { const r = card.refExamples || []; return [r[0] || "", r[1] || "", r[2] || ""]; });
   const [dmCopied, setDmCopied] = useState(false);
   const [emailState, setEmailState] = useState("");
   const isOutreach = !!(autoTag && autoTag.active && autoTag.label === "UGC");
@@ -1117,7 +1118,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody };
+      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null };
       // While a post is mid-flight the server owns pub/done — don't let auto-save
       // overwrite "converting/processing/published" with a stale local copy.
       const serverOwned = pub && (pub.status === "converting" || pub.status === "processing" || pub.status === "published");
@@ -1125,7 +1126,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody]);
+  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1211,11 +1212,16 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             <input value={outreachEmail} onChange={(e) => setOutreachEmail(e.target.value)} placeholder="creator's email (once they reply)" style={{ ...input, marginBottom: 6 }} />
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginBottom: 4 }}>Subject: {UGC_EMAIL_SUBJECT}</div>
             <textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={7} style={{ ...input, fontFamily: sans, fontSize: 11, lineHeight: 1.5, resize: "vertical" }} />
-            <a href={UGC_BRIEF_PDF} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", margin: "6px 0", fontFamily: sans, fontSize: 10, color: c.taupe, textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 4, padding: "4px 9px" }}>📎 Refillery Haus — Creator Brief.pdf</a>
+            <a href={UGC_BRIEF_PDF} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", margin: "6px 0", fontFamily: sans, fontSize: 10, color: c.taupe, textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 4, padding: "4px 9px" }}>📎 Lavalle Haus — Creator Brief.pdf</a>
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "10px 0 4px" }}>3 of their videos we loved (added to the email as inspiration)</div>
+            {[0, 1, 2].map((i) => (
+              <input key={i} value={refExamples[i]} onChange={(e) => setRefExamples(refExamples.map((v, j) => (j === i ? e.target.value : v)))} placeholder={"Example video " + (i + 1) + " — link from their account"} style={{ ...input, marginBottom: 5, fontSize: 11 }} />
+            ))}
+            {refExamples.some((s) => s.trim()) && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, margin: "2px 0 8px" }}>These get appended to the email with a note that they're inspiration only — encourage their natural style.</div>}
             <button disabled={!outreachEmail.trim() || emailState === "sending"} onClick={async () => {
               setEmailState("sending");
               try {
-                const r = await fetch("/api/data?op=send_outreach_email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: outreachEmail.trim(), subject: UGC_EMAIL_SUBJECT, body: emailBody, cardId: card.id }) });
+                const r = await fetch("/api/data?op=send_outreach_email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: outreachEmail.trim(), subject: UGC_EMAIL_SUBJECT, body: composeOutreachEmail(emailBody, refExamples), cardId: card.id }) });
                 const d = await r.json();
                 setEmailState(d.ok ? "sent" : ("err:" + (d.error || "failed")));
               } catch (e) { setEmailState("err:" + String(e).slice(0, 80)); }
@@ -1468,7 +1474,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
