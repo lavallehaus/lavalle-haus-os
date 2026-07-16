@@ -105,7 +105,26 @@ function pickVoice(lang) {
 }
 
 const _chosenVoice = {}; // lang -> voice NAME that worked; re-resolved fresh each utterance
-function speak(text, enabled, lang = "en") {
+let _ttsAudio = null;
+function stopSpeaking() { try { if (_ttsAudio) { _ttsAudio.pause(); _ttsAudio = null; } } catch (e) {} try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {} }
+// Speak through the server neural "Chief" voice; fall back to the browser (Mac)
+// voice if the service can't be reached.
+async function speak(text, enabled, lang = "en") {
+  if (!enabled || !text) return;
+  stopSpeaking();
+  try {
+    const r = await fetch("/api/data?op=tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, lang }) });
+    if (r.ok) {
+      const url = URL.createObjectURL(await r.blob());
+      const a = new Audio(url); _ttsAudio = a;
+      a.onended = () => { try { URL.revokeObjectURL(url); } catch (e) {} if (_ttsAudio === a) _ttsAudio = null; };
+      await a.play();
+      return;
+    }
+  } catch (e) {}
+  speakBrowser(text, enabled, lang);
+}
+function speakBrowser(text, enabled, lang = "en") {
   try {
     if (!enabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -179,10 +198,10 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
     return () => { dead = true; };
   }, [briefing, selected, lang]);
   // leaving the room silences the Steward
-  useEffect(() => () => { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }, []);
-  useEffect(() => { if (!selected || !briefing) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [selected, briefing]);
+  useEffect(() => () => { try { stopSpeaking(); } catch (e) {} }, []);
+  useEffect(() => { if (!selected || !briefing) { try { stopSpeaking(); } catch (e) {} } }, [selected, briefing]);
   // muting cuts speech mid-sentence
-  useEffect(() => { if (!voiceOn) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} } }, [voiceOn]);
+  useEffect(() => { if (!voiceOn) { try { stopSpeaking(); } catch (e) {} } }, [voiceOn]);
   // The Steward stays silent until a bubble is selected — no welcome line.
 
   // ── per-bubble conversation with the Steward ──
@@ -215,6 +234,30 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
   const [bg, setBg] = useState(() => { try { return localStorage.getItem("lh_cv_bg") || "gallery"; } catch { return "gallery"; } });
   useEffect(() => { try { localStorage.setItem("lh_cv_bg", bg); } catch {} }, [bg]);
   const [q, setQ] = useState("");
+  // "Hi Chief" voice command — listen (browser STT), strip the wake phrase, ask
+  // the Steward about the whole business, and it speaks the answer back.
+  const [listening, setListening] = useState(false);
+  const recogRef = useRef(null);
+  const askChiefVoice = (raw) => {
+    const cmd = (raw || "").replace(/^\s*(hi|hey|hello|ok|okay)\s+chief[\s,.:!-]*/i, "").trim() || (raw || "").trim();
+    if (!cmd) return;
+    if (!briefing) setBriefing(true);
+    setSelected("health");
+    askSteward("health", cmd);
+  };
+  const startListen = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Voice input needs Chrome or Safari."); return; }
+    try { if (recogRef.current) recogRef.current.abort(); } catch (e) {}
+    const r = new SR();
+    r.lang = lang === "es" ? "es-MX" : "en-US";
+    r.interimResults = false; r.maxAlternatives = 1;
+    r.onresult = (e) => { const txt = (e.results[0] && e.results[0][0] && e.results[0][0].transcript) || ""; setListening(false); askChiefVoice(txt); };
+    r.onerror = () => setListening(false);
+    r.onend = () => setListening(false);
+    recogRef.current = r; setListening(true);
+    try { r.start(); } catch (e) { setListening(false); }
+  };
   const [ambient, setAmbient] = useState(false);
   const idleRef = useRef(null);
   const ambientRef = useRef(null);
@@ -293,6 +336,10 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
           <div style={{ fontFamily: serif, fontSize: "clamp(18px, 2.2vw, 26px)", fontWeight: 300 }}>{timeGreeting(model.businessName)}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => (listening ? (recogRef.current && recogRef.current.stop()) : startListen())} title="Ask the Chief out loud — e.g. “Hi Chief, what are today's stats?”"
+            style={{ ...tbBtn(t), border: `1px solid ${listening ? t.red : t.brass}`, color: listening ? t.red : t.accent, background: listening ? "rgba(155,94,94,0.08)" : "transparent" }}>
+            {listening ? "● Listening…" : "🎙 Hi Chief"}
+          </button>
           <button onClick={() => setBriefing((b) => !b)} title={AGENT_NAME + " briefs each area as you open it"}
             style={{ ...tbBtn(t), border: `1px solid ${briefing ? t.brass : t.line}`, color: briefing ? t.accent : t.sub }}>
             ◉ {AGENT_NAME}: {briefing ? "Present" : "Off"}

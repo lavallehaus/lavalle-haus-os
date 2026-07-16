@@ -1028,6 +1028,33 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Text-to-speech for the dashboard "Chief" voice. Returns MP3 from a free
+  // neural voice (Amazon Polly via StreamElements) — far better than the Mac
+  // voice. Chunks long text at sentence boundaries (the endpoint caps length).
+  if (op === "tts" && req.method === "POST") {
+    const raw = String((req.body || {}).text || "").replace(/\s+/g, " ").trim();
+    if (!raw) { res.status(400).send("no text"); return; }
+    const voice = (req.body || {}).lang === "es" ? "Miguel" : "Matthew";
+    const chunks = []; let cur = "";
+    raw.split(/(?<=[.!?])\s+/).forEach((s) => {
+      if ((cur + " " + s).length > 480) { if (cur) chunks.push(cur); cur = s.slice(0, 480); }
+      else cur = cur ? cur + " " + s : s;
+    });
+    if (cur) chunks.push(cur);
+    try {
+      const bufs = [];
+      for (const ch of chunks.slice(0, 10)) {
+        const r = await fetch("https://api.streamelements.com/kappa/v2/speech?voice=" + voice + "&text=" + encodeURIComponent(ch));
+        if (!r.ok) throw new Error("tts upstream " + r.status);
+        bufs.push(Buffer.from(await r.arrayBuffer()));
+      }
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(Buffer.concat(bufs));
+    } catch (e) { res.status(502).send("tts_failed"); }
+    return;
+  }
+
   // Send a UGC outreach email from info@lavallehaus.com with the brand-brief PDF
   // attached. Owner-only. Requires RESEND_API_KEY and a verified sender/domain —
   // until info@lavallehaus.com is verified in Resend this returns a clear error.
