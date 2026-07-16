@@ -36,6 +36,20 @@ const launchAllowed = (boardKey, listName) => {
   if (boardKey === "rh-operations") return /launch timeline/i.test(listName || ""); // LH launch products
   return false;
 };
+// Not just photoshoots — any dated thing on the ops calendar.
+const EVENT_TYPES = [
+  { key: "shoot", label: "Photoshoot", icon: "📸" },
+  { key: "tradeshow", label: "Trade show", icon: "👗" },
+  { key: "event", label: "Event", icon: "★" },
+  { key: "meeting", label: "Meeting", icon: "🤝" },
+  { key: "launch", label: "Launch", icon: "🚀" },
+  { key: "travel", label: "Travel", icon: "✈️" },
+  { key: "deadline", label: "Deadline", icon: "⏳" },
+];
+const typeMeta = (t) => EVENT_TYPES.find((x) => x.key === t) || EVENT_TYPES[0];
+const to12h = (hhmm) => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ""); if (!m) return hhmm || ""; let h = +m[1]; const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return h + ":" + m[2] + " " + ap; };
+// Downscale an image file to a compact JPEG data URL for an event cover.
+const fileToCover = (file, cb) => { const r = new FileReader(); r.onload = () => { const img = new Image(); img.onload = () => { const max = 900; let w = img.width, h = img.height; if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); } const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").drawImage(img, 0, 0, w, h); cb(cv.toDataURL("image/jpeg", 0.82)); }; img.src = r.result; }; r.readAsDataURL(file); };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const uid = () => "s" + Math.random().toString(36).slice(2, 9);
@@ -102,7 +116,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div style={{ fontFamily: sans, fontSize: 22, fontWeight: 300, letterSpacing: 1, color: c.ink }}>Operations Calendar</div>
         <div style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>Launches & shoots across every brand</div>
-        <button onClick={() => setEditing({ brands: brand === "all" ? [] : [brand], date: ym + "-15" })} style={{ marginLeft: "auto", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>+ Add shoot</button>
+        <button onClick={() => setEditing({ brands: brand === "all" ? [] : [brand], date: ym + "-15", type: "event" })} style={{ marginLeft: "auto", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>+ Add event</button>
       </div>
 
       {/* brand toggle */}
@@ -156,9 +170,10 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
                     {list.map((s) => (
                       <button key={s.id} onClick={(e) => { e.stopPropagation(); setEditing(s); }} title={s.title}
-                        style={{ textAlign: "left", border: "none", borderRadius: 3, padding: "3px 5px", cursor: "pointer", background: (brandOf((s.brands || [])[0]) || {}).color || c.taupe, color: "#FFFFFF", fontFamily: sans, fontSize: 9, lineHeight: 1.25, overflow: "hidden" }}>
-                        📸 {s.title || "Shoot"}{s.start ? " · " + s.start : ""}{s.tbd ? " · TBD" : s.tentative ? " ~" : ""}
-                        {(s.brands || []).length > 1 && <div style={{ fontSize: 8, opacity: 0.85 }}>{(s.brands || []).map((b) => (brandOf(b) || {}).label).join(" + ")}</div>}
+                        style={{ display: "flex", alignItems: "center", gap: 4, textAlign: "left", border: "none", borderRadius: 3, padding: "3px 5px", cursor: "pointer", background: (brandOf((s.brands || [])[0]) || {}).color || c.taupe, color: "#FFFFFF", fontFamily: sans, fontSize: 9, lineHeight: 1.25, overflow: "hidden" }}>
+                        {s.cover && <img src={s.cover} alt="" style={{ width: 16, height: 16, borderRadius: 2, objectFit: "cover", flexShrink: 0 }} />}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{typeMeta(s.type).icon} {s.title || typeMeta(s.type).label}{s.start ? " · " + to12h(s.start) : ""}{s.tbd ? " · TBD" : s.tentative ? " ~" : ""}
+                          {(s.brands || []).length > 1 && <span style={{ fontSize: 8, opacity: 0.85 }}> · {(s.brands || []).map((b) => (brandOf(b) || {}).label).join(" + ")}</span>}</span>
                       </button>
                     ))}
                   </div>
@@ -206,6 +221,8 @@ const miniBtn = { background: c.bg, border: `1px solid ${c.line}`, borderRadius:
 
 function ShootEditor({ shoot, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState(shoot.title || "");
+  const [type, setType] = useState(shoot.type || "shoot");
+  const [cover, setCover] = useState(shoot.cover || null);
   const [brands, setBrands] = useState(shoot.brands || []);
   const [date, setDate] = useState(shoot.date || "");
   const [start, setStart] = useState(shoot.start || "");
@@ -220,14 +237,31 @@ function ShootEditor({ shoot, onSave, onDelete, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 400, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 94vw)", height: "100%", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px", overflowY: "auto", boxSizing: "border-box" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <div style={{ fontFamily: sans, fontSize: 18, fontWeight: 300, color: c.ink }}>{shoot.id ? "Edit shoot" : "New shoot"}</div>
+          <div style={{ fontFamily: sans, fontSize: 18, fontWeight: 300, color: c.ink }}>{shoot.id ? "Edit event" : "New event"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
         </div>
 
-        <div style={label}>Title</div>
-        <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. The Fold — Sacia shoot" />
+        <div style={label}>Type</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {EVENT_TYPES.map((t) => (
+            <button key={t.key} onClick={() => setType(t.key)} style={{ background: type === t.key ? c.ink : "transparent", color: type === t.key ? "#FFFFFF" : c.sub, border: `1px solid ${type === t.key ? c.ink : c.line}`, borderRadius: 20, padding: "6px 12px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, cursor: "pointer" }}>{t.icon} {t.label}</button>
+          ))}
+        </div>
 
-        <div style={label}>Brands (a founder shoot can be more than one)</div>
+        <div style={label}>Title</div>
+        <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Fashion trade show · The Fold — Sacia shoot" />
+
+        <div style={label}>Cover photo (optional)</div>
+        {cover && <img src={cover} alt="" style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 2, border: `1px solid ${c.line}`, marginBottom: 6 }} />}
+        <div style={{ display: "flex", gap: 6 }}>
+          <label style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+            {cover ? "Replace" : "Upload"}
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, setCover); }} />
+          </label>
+          {cover && <button onClick={() => setCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
+        </div>
+
+        <div style={label}>Brands (optional — tag one or more; a founder shoot can be all)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {BRANDS.map((b) => (
             <button key={b.key} onClick={() => toggle(b.key)} style={{ background: brands.includes(b.key) ? b.color : "transparent", color: brands.includes(b.key) ? "#FFFFFF" : c.sub, border: `1px solid ${brands.includes(b.key) ? b.color : c.line}`, borderRadius: 20, padding: "6px 13px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
@@ -240,8 +274,8 @@ function ShootEditor({ shoot, onSave, onDelete, onClose }) {
         <input style={input} value={dateLabel} onChange={(e) => setDateLabel(e.target.value)} placeholder="e.g. Week of Jul 27 · 4th week of Nov" />
 
         <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 1 }}><div style={label}>Start</div><input style={input} type="time" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-          <div style={{ flex: 1 }}><div style={label}>End</div><input style={input} type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
+          <div style={{ flex: 1 }}><div style={label}>Start</div><input style={input} type="time" value={start} onChange={(e) => setStart(e.target.value)} />{start && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 2 }}>{to12h(start)}</div>}</div>
+          <div style={{ flex: 1 }}><div style={label}>End</div><input style={input} type="time" value={end} onChange={(e) => setEnd(e.target.value)} />{end && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 2 }}>{to12h(end)}</div>}</div>
         </div>
 
         <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
@@ -253,8 +287,8 @@ function ShootEditor({ shoot, onSave, onDelete, onClose }) {
         <textarea style={{ ...input, resize: "vertical" }} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Location, looks to shoot, who's needed…" />
 
         <div style={{ display: "flex", gap: 8, marginTop: 22 }}>
-          <button onClick={() => onSave({ ...shoot, title: title.trim(), brands, date, start, end, dateLabel: dateLabel.trim(), tbd, tentative, note: note.trim() })}
-            style={{ flex: 1, background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "11px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Save shoot</button>
+          <button onClick={() => onSave({ ...shoot, type, cover, title: title.trim(), brands, date, start, end, dateLabel: dateLabel.trim(), tbd, tentative, note: note.trim() })}
+            style={{ flex: 1, background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "11px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Save event</button>
           {onDelete && <button onClick={onDelete} style={{ background: "transparent", color: c.red, border: `1px solid ${c.line}`, borderRadius: 1, padding: "11px 16px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Delete</button>}
         </div>
       </div>
