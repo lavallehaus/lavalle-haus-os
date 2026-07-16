@@ -20,18 +20,27 @@ const boardBrand = (boardKey, boards) => {
   const ws = (boards && boards[boardKey] && boards[boardKey].ws) || null;
   if (ws && BRANDS.some((b) => b.key === ws)) return ws;
   const w = WORKSPACES.find((w) => (w.boards || []).includes(boardKey) && BRANDS.some((b) => b.key === w.id));
-  return w ? w.id : null;
+  if (w) return w.id;
+  // Fallback by board-key shape (covers R&D boards not listed in a workspace).
+  const k = boardKey || "";
+  if (k.includes("the-fold")) return "the-fold";
+  if (k.includes("lavalle-sisters")) return "lavalle-sisters";
+  if (k.includes("refillery") || k.startsWith("rh-") || k.includes("lavalle-haus")) return "lavalle-haus";
+  return null;
 };
+// Launch-context lists only — keeps blog/newsletter/inventory/etc. out of the tray.
+const isLaunchList = (name) => !/blog|newsletter|promotion|web ?dev|inventory|amazon|^live$|notes|newsletter/i.test(name || "");
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const uid = () => "s" + Math.random().toString(36).slice(2, 9);
 const input = { width: "100%", padding: "9px 10px", border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 13, color: c.ink, boxSizing: "border-box", background: c.bg };
 
-export default function OpsCalendar({ boards, shoots, onSaveShoots }) {
+export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchMonth }) {
   const [brand, setBrand] = useState("all");
   const [editing, setEditing] = useState(null);
   const [ym, setYm] = useState(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); });
   const [ci, setCi] = useState(0);
+  const [assign, setAssign] = useState(null); // an unscheduled look being given a month
   const [y, m] = ym.split("-").map(Number); // m = 1..12
 
   const shiftMonth = (delta) => { let mm = m - 1 + delta, yy = y; while (mm < 0) { mm += 12; yy--; } while (mm > 11) { mm -= 12; yy++; } setYm(yy + "-" + String(mm + 1).padStart(2, "0")); setCi(0); };
@@ -49,6 +58,19 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots }) {
     return out;
   }, [boards, ym, brand]);
   useEffect(() => { if (ci >= launchItems.length) setCi(0); }, [launchItems.length]); // eslint-disable-line
+
+  // Unscheduled looks — items on the boards with a cover but no launch month yet.
+  const unscheduled = useMemo(() => {
+    const out = [];
+    Object.entries(boards || {}).forEach(([bk, b]) => {
+      if (!b || !b.cards || bk.startsWith("_")) return;
+      const br = boardBrand(bk, boards);
+      if (!br || (brand !== "all" && br !== brand)) return;
+      const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
+      b.cards.forEach((cd) => { if (cd.cover && !cd.launchMonth && isLaunchList(listName[cd.listId])) out.push({ boardKey: bk, cardId: cd.id, name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
+    });
+    return out;
+  }, [boards, brand]);
 
   const monthShoots = (shoots || []).filter((s) => (s.date || "").startsWith(ym) && (brand === "all" || (s.brands || []).includes(brand)));
   const shootsByDay = {};
@@ -140,6 +162,33 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots }) {
         </div>
       </div>
       <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 8 }}>Tap a day to add a shoot · tap a shoot to edit. Products with a launch month + cover on any board show in the carousel above.</div>
+
+      {/* Unscheduled looks tray — items connected from the boards, awaiting a month */}
+      {unscheduled.length > 0 && (
+        <div style={{ marginTop: 24, borderTop: `1px solid ${c.line}`, paddingTop: 16 }}>
+          <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 3 }}>Unscheduled looks · {unscheduled.length}</div>
+          <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginBottom: 10 }}>These are pulled from your boards — tap one to give it a launch month and it jumps onto the calendar.</div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+            {unscheduled.map((it) => (
+              <div key={it.boardKey + it.cardId} onClick={() => setAssign(it)} style={{ flex: "0 0 auto", width: 92, cursor: "pointer", opacity: assign && assign.cardId === it.cardId ? 1 : 0.96 }}>
+                <div style={{ position: "relative" }}>
+                  <img src={it.cover} alt={it.name} style={{ width: 92, height: 118, objectFit: "cover", borderRadius: 2, border: `2px solid ${assign && assign.cardId === it.cardId ? c.ink : c.line}`, display: "block" }} />
+                  <span style={{ position: "absolute", top: 4, left: 4, fontFamily: sans, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: "#FFFFFF", background: (brandOf(it.brand) || {}).color, borderRadius: 2, padding: "1px 5px" }}>{(brandOf(it.brand) || {}).label.split(" ").pop()}</span>
+                </div>
+                <div style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</div>
+              </div>
+            ))}
+          </div>
+          {assign && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, background: c.card, border: `1px solid ${c.line}`, borderRadius: 2, padding: "10px 12px", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>Launch <strong>{assign.name}</strong> in:</span>
+              <input type="month" autoFocus onChange={(e) => { const m = e.target.value; if (m && onSetLaunchMonth) { onSetLaunchMonth(assign.boardKey, assign.cardId, m); setYm(m); setAssign(null); } }}
+                style={{ ...input, width: "auto", flex: "0 0 auto" }} />
+              <button onClick={() => setAssign(null)} style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {editing && <ShootEditor shoot={editing} onSave={(s) => { const list = shoots || []; onSaveShoots(s.id && list.some((x) => x.id === s.id) ? list.map((x) => (x.id === s.id ? s : x)) : [...list, { ...s, id: s.id || uid() }]); setEditing(null); }} onDelete={editing.id ? () => { onSaveShoots((shoots || []).filter((x) => x.id !== editing.id)); setEditing(null); } : null} onClose={() => setEditing(null)} />}
     </div>

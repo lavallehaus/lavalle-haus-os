@@ -2791,7 +2791,7 @@ if (tab === "content") return (
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
 ]} />
 );
-if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} />;
+if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} onSetLaunchMonth={(bk, cardId, month) => setDbState((prev) => { const boards = { ...(prev.boards || {}) }; const b = boards[bk]; if (b) boards[bk] = { ...b, cards: (b.cards || []).map((cd) => (cd.id === cardId ? { ...cd, launchMonth: month || null } : cd)) }; const next = { ...prev, boards }; dbSave(next); return next; })} />;
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
 if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} initialQuestion={askSeed} onSeedConsumed={() => setAskSeed(null)} />;
