@@ -587,6 +587,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
 
   return (
     <div>
+      {/* Click-anywhere backdrop: closes any open header/tile popup. Sits below
+          the popups (z 60–90) and above the page, so a click off the popup shuts it. */}
+      {(accessMenu || membersMenu || bgMenu || profileMember) && (
+        <div onClick={() => { setAccessMenu(null); setMembersMenu(false); setBgMenu(false); setProfileMember(null); setProfileActivity(false); }}
+          style={{ position: "fixed", inset: 0, zIndex: 55 }} />
+      )}
       {/* undo / redo — identity comes from the login now, no picker needed */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <button onClick={undo} disabled={!past.length} style={{ ...ghost, color: past.length ? c.sub : c.line, cursor: past.length ? "pointer" : "default" }}>Undo</button>
@@ -628,7 +634,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             return (
               <div key={key} onClick={() => openBoard(key)}
                 style={{ position: "relative", textAlign: "left", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.05)", zIndex: accessMenu === key ? 90 : "auto" }}>
-                <div style={{ height: 88, position: "relative", borderRadius: "7px 7px 0 0", overflow: "hidden", ...tileBg(b) }}>
+                <div style={{ height: 190, position: "relative", borderRadius: "7px 7px 0 0", overflow: "hidden", ...tileBg(b) }}>
                   <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4 }}>
                     <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
                       style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 11, padding: "3px 7px" }}>✎</button>
@@ -1133,6 +1139,30 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
           <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: done ? c.green : c.sub }}>{done ? "Done — posted" : "Mark as done"}</span>
         </button>
 
+        {/* members — surfaced up top so tagging someone is the first thing you see */}
+        <div style={label}>Tag a team member</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+          {members.map((m) => (
+            <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${c.line}`, borderRadius: 1, background: c.bg, padding: "4px 8px", fontFamily: sans, fontSize: 11, color: c.ink }}>
+              <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1px solid ${c.taupe}`, color: c.taupe, fontSize: 7.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(m)}</span>
+              {m}
+              <button onClick={() => setMembers(members.filter((x) => x !== m))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
+            </span>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select style={{ ...input, color: c.sub, flex: 1 }} value=""
+            onChange={(e) => { if (e.target.value === "__custom") { const v = prompt("Name to tag"); if (v && v.trim()) addMember(v); } else if (e.target.value) addMember(e.target.value); }}>
+            <option value="">+ Assign a team member…</option>
+            {memberPool.filter((m) => !members.includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="__custom">Someone not on the roster…</option>
+          </select>
+          {me && !members.includes(me) && (
+            <button onClick={() => addMember(me)} title="Add yourself to this card"
+              style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>⊕ Join</button>
+          )}
+        </div>
+
         <div style={label}>Cover photo</div>
         {cover && <img src={cover} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain", background: c.bg, borderRadius: 1, border: `1px solid ${c.line}`, marginBottom: 6 }} />}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1355,30 +1385,6 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
             onChange={(e) => setLabelName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addLabel(); }} />
           <button onClick={addLabel} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
-        </div>
-
-        {/* members */}
-        <div style={label}>Team members</div>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
-          {members.map((m) => (
-            <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${c.line}`, borderRadius: 1, background: c.bg, padding: "4px 8px", fontFamily: sans, fontSize: 11, color: c.ink }}>
-              <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1px solid ${c.taupe}`, color: c.taupe, fontSize: 7.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(m)}</span>
-              {m}
-              <button onClick={() => setMembers(members.filter((x) => x !== m))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
-            </span>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <select style={{ ...input, color: c.sub, flex: 1 }} value=""
-            onChange={(e) => { if (e.target.value === "__custom") { const v = prompt("Name to tag"); if (v && v.trim()) addMember(v); } else if (e.target.value) addMember(e.target.value); }}>
-            <option value="">+ Assign a team member…</option>
-            {memberPool.filter((m) => !members.includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}
-            <option value="__custom">Someone not on the roster…</option>
-          </select>
-          {me && !members.includes(me) && (
-            <button onClick={() => addMember(me)} title="Add yourself to this card"
-              style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>⊕ Join</button>
-          )}
         </div>
 
         {/* board + list (move across boards) */}
