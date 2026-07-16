@@ -2301,6 +2301,22 @@ export default function App() {
 // Refresh keeps you where you were — the tab is validated against the
 // person's visible pages below, so nobody lands on a page they can't see.
 const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
+// App-level reel finisher: on ANY screen, every ~12s, nudge any post still
+// converting/processing so reels finish without babysitting the board. Reads
+// server truth (not local state), so it never clobbers the live status.
+useEffect(() => {
+  const tick = async () => {
+    try {
+      if (!localStorage.getItem("lh_token")) return;
+      const rec = await (await fetch("/api/data", { cache: "no-store" })).json();
+      const jobs = [];
+      for (const bk in (rec.boards || {})) for (const cd of ((rec.boards[bk] && rec.boards[bk].cards) || [])) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) jobs.push({ bk, id: cd.id, account: cd.pub.account });
+      for (const j of jobs) { try { await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey: j.bk, cardId: j.id, account: j.account }) }); } catch {} }
+    } catch {}
+  };
+  const t = setInterval(tick, 12000);
+  return () => clearInterval(t);
+}, []);
 // Recently-viewed sections, per person — feeds the OS boards strip on home.
 useEffect(() => {
   if (tab === "brain") return;

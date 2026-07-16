@@ -151,20 +151,21 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [me, setMe] = useState(() => { try { return localStorage.getItem("lh_me") || ""; } catch { return ""; } });
   useEffect(() => { if (viewer.name && viewer.name !== me) setMe(viewer.name); }, [viewer.name]); // eslint-disable-line
   useEffect(() => { try { if (me) localStorage.setItem("lh_me", me); } catch {} }, [me]);
-  // Auto-advance in-flight posts (converting → uploading → posted) so reels finish
-  // on their own — no manual tap. Owner only; runs every ~22s while the app is open.
+  // Display-only refresh: while a reel is in flight, pull the latest board state
+  // every ~10s so the card's progress bar reflects reality. The actual advancing
+  // (publish_item) is done by a single app-level poller (App.jsx) that runs on any
+  // screen — keeping it there avoids two pollers double-firing on the same card.
   const boardsRef = useRef(boards); boardsRef.current = boards;
   useEffect(() => {
     if (!viewer.owner) return;
     const tick = async () => {
       const b = boardsRef.current || {};
-      const inflight = [];
-      for (const bk in b) for (const cd of ((b[bk] && b[bk].cards) || [])) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) inflight.push({ bk, id: cd.id, account: cd.pub.account });
-      if (!inflight.length) return;
-      for (const x of inflight) { try { await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json", "x-app-token": localStorage.getItem("lh_token") || "" }, body: JSON.stringify({ boardKey: x.bk, cardId: x.id, account: x.account }) }); } catch {} }
+      let inflight = false;
+      for (const bk in b) for (const cd of ((b[bk] && b[bk].cards) || [])) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) inflight = true;
+      if (!inflight) return;
       try { const fresh = await (await fetch("/api/data", { cache: "no-store" })).json(); if (fresh && fresh.boards) setBoards(fresh.boards); } catch {}
     };
-    const t = setInterval(tick, 22000);
+    const t = setInterval(tick, 10000);
     return () => clearInterval(t);
   }, [viewer.owner]);
   // Tapping the Boards sub-tab always lands on this home (Content Brain view),
@@ -595,6 +596,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
 
   return (
     <div>
+      <style>{"@keyframes lhpulse{0%,100%{opacity:.35}50%{opacity:1}}@keyframes lhslide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}"}</style>
       {/* Click-anywhere backdrop: closes any open header/tile popup. z-index must
           stay BELOW the board header's own stacking context (position:relative;
           zIndex:30 on line ~690) — otherwise it paints over the popups trapped
@@ -967,11 +969,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           {card.pub && (card.pub.status === "converting" || card.pub.status === "processing") && (
                             <div style={{ marginTop: 8, paddingLeft: 24 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 8.5, letterSpacing: 0.8, textTransform: "uppercase", color: c.taupe, marginBottom: 3 }}>
-                                <span>◔ {card.pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"}</span>
+                                <span><span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: c.taupe, marginRight: 5, animation: "lhpulse 1.1s ease-in-out infinite" }} />{card.pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"}</span>
                                 <span>{card.pub.status === "converting" ? "Step 1 of 2" : "Step 2 of 2"}</span>
                               </div>
-                              <div style={{ height: 4, background: "#EEECE6", borderRadius: 3, overflow: "hidden" }}>
+                              <div style={{ height: 4, background: "#EEECE6", borderRadius: 3, overflow: "hidden", position: "relative" }}>
                                 <div style={{ height: "100%", width: card.pub.status === "converting" ? "45%" : "85%", background: c.taupe, borderRadius: 3, transition: "width .5s ease" }} />
+                                <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "30%", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)", animation: "lhslide 1.4s linear infinite" }} />
                               </div>
                             </div>
                           )}
@@ -1166,6 +1169,19 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const isPrUgc = !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
   const brandAcct = igForBoardName((boardsIndex[boardKey] || {}).name); // locked IG handle for this board's brand
   const [postingNow, setPostingNow] = useState(false);
+  // Live elapsed timer while a reel is converting/processing, so it's obvious the
+  // post is still working (not frozen) even for a 2-minute video.
+  const [elapsed, setElapsed] = useState(0);
+  const postStartRef = useRef(null);
+  useEffect(() => {
+    const inflight = pub && (pub.status === "converting" || pub.status === "processing");
+    if (!inflight) { postStartRef.current = null; setElapsed(0); return; }
+    if (!postStartRef.current) postStartRef.current = Date.now();
+    setElapsed(Math.floor((Date.now() - postStartRef.current) / 1000));
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - postStartRef.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [pub && pub.status]); // eslint-disable-line
+  const mmss = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   useEffect(() => { fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setPubAccounts(d.accounts || [])).catch(() => {}); }, []);
   const dtLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const [due, setDue] = useState(card.due ? card.due.slice(0, 10) : "");
@@ -1208,9 +1224,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     const t = setTimeout(() => {
       if (!name.trim()) return;
       const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null };
-      // While a post is mid-flight the server owns pub/done — don't let auto-save
-      // overwrite "converting/processing/published" with a stale local copy.
-      const serverOwned = pub && (pub.status === "converting" || pub.status === "processing" || pub.status === "published");
+      // A reel mid-flight (converting/processing) is owned by the server — its pub
+      // advances faster than the board's local copy, so saving the whole board here
+      // would clobber it back to "scheduled," kill the progress bar, and stall the
+      // post. Skip auto-save entirely while in-flight.
+      if (pub && (pub.status === "converting" || pub.status === "processing")) return;
+      const serverOwned = pub && pub.status === "published";
       if (!serverOwned) { patch.pub = pub || null; patch.done = done; }
       onPatch(patch);
     }, 600);
@@ -1456,13 +1475,15 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             ) : pub && (pub.status === "converting" || pub.status === "processing") ? (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>
-                  <span>◔ {pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"}</span>
+                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: c.taupe, marginRight: 6, animation: "lhpulse 1.1s ease-in-out infinite" }} />{pub.status === "converting" ? "Converting video…" : "Posting to Instagram…"} · {mmss(elapsed)}</span>
                   <span>{pub.status === "converting" ? "Step 1 of 2" : "Step 2 of 2"}</span>
                 </div>
-                <div style={{ height: 6, background: "#EEECE6", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                <style>{"@keyframes lhpulse{0%,100%{opacity:.35}50%{opacity:1}}@keyframes lhslide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}"}</style>
+                <div style={{ height: 6, background: "#EEECE6", borderRadius: 4, overflow: "hidden", marginBottom: 8, position: "relative" }}>
                   <div style={{ height: "100%", width: pub.status === "converting" ? "45%" : "85%", background: c.taupe, borderRadius: 4, transition: "width .5s ease" }} />
+                  <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "30%", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)", animation: "lhslide 1.4s linear infinite" }} />
                 </div>
-                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub, marginBottom: 8 }}>Finishing automatically — you can close this; it'll post to @{pub.account} on its own and the card's green check ticks when it's live. (A large video can take a couple of minutes.)</div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub, marginBottom: 8 }}>Still working — a reel can take 1–2 minutes (longer for a big video). It keeps going even if you switch screens; keep the app open and the card's green check ticks the moment it's live on @{pub.account}.</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button disabled={postingNow} onClick={() => runPost(false)}
                     style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer", opacity: postingNow ? 0.5 : 1 }}>
