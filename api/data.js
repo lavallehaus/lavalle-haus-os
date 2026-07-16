@@ -296,6 +296,9 @@ async function publishDueItems(only) {
       // safe via the ledger check below (no double post).
       if (isOnly && p && p.status !== "processing" && p.status !== "converting") p = { ...p, status: "scheduled", error: null };
       if (!p || (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting")) continue;
+      // Instagram is opt-in per card. A TikTok-only post (dest.ig === false) is
+      // handed to Plann for TikTok and must never auto-post to Instagram.
+      if (card.dest && card.dest.ig === false) { results.skipped++; continue; }
       if (isOnly && only.account) p.account = only.account;
       // Lock the posting account to the board's brand, so a Lavalle Sisters board
       // always posts to @lavallesisters, a The Fold board to @thefoldlabel, and a

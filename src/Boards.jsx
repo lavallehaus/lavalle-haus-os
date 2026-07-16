@@ -1169,6 +1169,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const isPrUgc = !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
   const brandAcct = igForBoardName((boardsIndex[boardKey] || {}).name); // locked IG handle for this board's brand
   const [postingNow, setPostingNow] = useState(false);
+  const [plannCopied, setPlannCopied] = useState(false);
+  // Where this post goes — Instagram (our auto-poster) and/or TikTok (handed to
+  // Plann). Independent, so a post can be IG-only, TikTok-only, or both.
+  const [dest, setDest] = useState(card.dest || { ig: true, tiktok: false });
   // Live elapsed timer while a reel is converting/processing, so it's obvious the
   // post is still working (not frozen) even for a 2-minute video.
   const [elapsed, setElapsed] = useState(0);
@@ -1223,7 +1227,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null };
+      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -1234,7 +1238,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples]);
+  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1456,8 +1460,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {/* publish straight from the card — same engine as the Grid */}
         {pubAccounts && pubAccounts.length > 0 && !isNew && (
           <>
-            <div style={label}>Publish to Instagram</div>
-            {pub && pub.status === "published" ? (
+            <div style={label}>Where does this post go?</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {[["ig", "Instagram", brandAcct ? "@" + brandAcct + " · auto-posts" : "auto-posts"], ["tiktok", "TikTok", "hand off to Plann"]].map(([k, lab, sub]) => (
+                <button key={k} onClick={() => setDest({ ...dest, [k]: !dest[k] })}
+                  style={{ flex: 1, textAlign: "left", background: dest[k] ? c.card : "transparent", border: `1px solid ${dest[k] ? c.ink : c.line}`, borderRadius: 2, padding: "8px 10px", cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${dest[k] ? c.ink : c.line}`, background: dest[k] ? c.ink : "transparent", color: c.bg, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{dest[k] ? "✓" : ""}</span>
+                    <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>{lab}</span>
+                  </div>
+                  <div style={{ fontFamily: sans, fontSize: 9, color: c.sub, marginTop: 2, marginLeft: 20 }}>{sub}</div>
+                </button>
+              ))}
+            </div>
+            {dest.ig && (pub && pub.status === "published" ? (
               <div>
                 <div style={{ fontFamily: sans, fontSize: 12, color: c.green, marginBottom: 7 }}>✓ Posted to @{pub.account}{pub.publishedAt ? " · " + new Date(pub.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</div>
                 <button disabled={postingNow}
@@ -1531,9 +1547,22 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   {!cover && <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add a cover photo to post.</span>}
                 </div>
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6 }}>
-                  Schedules save with the card. Photos post instantly; Reels upload the linked .mov and post once Instagram finishes processing the video (can take a minute). TikTok still pending approval.
+                  Schedules save with the card. Photos post instantly; Reels upload the linked .mov and post once Instagram finishes processing the video (can take a minute). For TikTok, use the Plann hand-off below.
                 </div>
               </>
+            ))}
+            {dest.tiktok && (
+              <div style={{ marginTop: 14, border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg, padding: "12px 14px" }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>TikTok · via Plann</div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 8 }}>TikTok can't post from here (their API declined internal tools), so it's scheduled in Plann. This copies your caption and opens Plann — paste it, add the video/cover below, then pick the TikTok account + time.</div>
+                <button onClick={async () => { const cap = (hook ? hook + "\n\n" : "") + (desc || ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://app.plannthat.com", "_blank", "noopener"); }}
+                  style={{ width: "100%", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
+                  {plannCopied ? "✓ Caption copied — opening Plann…" : "📋 Copy caption & open Plann"}</button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {assetUrlState && <a href={assetUrlState} target="_blank" rel="noopener noreferrer" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>▶ Video in Drive</a>}
+                  {cover && <a href={cover} download={(name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>⤓ Cover</a>}
+                </div>
+              </div>
             )}
           </>
         )}
@@ -1605,7 +1634,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
