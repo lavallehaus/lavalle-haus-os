@@ -478,8 +478,12 @@ async function plaid(path, body) {
 }
 
 // ── Email reminders (cron) ───────────────────────────────────────────────────
-async function sendResendEmail({ apiKey, from, to, subject, html }) {
-  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ from, to: [to], subject, html }) });
+async function sendResendEmail({ apiKey, from, to, subject, html, text: bodyText, attachments }) {
+  const payload = { from, to: [to], subject };
+  if (html) payload.html = html;
+  if (bodyText) payload.text = bodyText;
+  if (attachments && attachments.length) payload.attachments = attachments; // [{ filename, path }]
+  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const text = await r.text();
   if (!r.ok) throw new Error("Resend " + r.status + ": " + text.slice(0, 200));
   try { return JSON.parse(text).id; } catch (e) { return null; }
@@ -1004,8 +1008,13 @@ export default async function handler(req, res) {
   if (op === "resolve_handle" && req.method === "POST") {
     const url = String((req.body || {}).url || "").trim();
     const grab = (u) => {
-      const m = u.match(/tiktok\.com\/@([A-Za-z0-9._]+)/i) || u.match(/instagram\.com\/(?:reel\/|p\/)?@?([A-Za-z0-9._]+)/i);
-      return m ? "@" + m[1] : null;
+      let m = u.match(/tiktok\.com\/@([A-Za-z0-9._]+)/i);
+      if (m) return "@" + m[1];
+      // Instagram: only a /@handle or /handle profile path carries a handle.
+      // /p/ and /reel/ links are post shortcodes — no handle available.
+      m = u.match(/instagram\.com\/@?([A-Za-z0-9._]+)/i);
+      if (m && !/^(p|reel|reels|tv|stories|explore|s)$/i.test(m[1])) return "@" + m[1];
+      return null;
     };
     if (!/^https?:\/\//i.test(url)) { res.status(400).json({ error: "bad url" }); return; }
     let handle = grab(url);
@@ -1016,6 +1025,31 @@ export default async function handler(req, res) {
       } catch (e) { /* platform blocked the fetch — leave handle null */ }
     }
     res.json({ handle: handle || null });
+    return;
+  }
+
+  // Send a UGC outreach email from info@lavallehaus.com with the brand-brief PDF
+  // attached. Owner-only. Requires RESEND_API_KEY and a verified sender/domain —
+  // until info@lavallehaus.com is verified in Resend this returns a clear error.
+  if (op === "send_outreach_email" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const b = req.body || {};
+    const to = String(b.to || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { res.status(400).json({ error: "A valid creator email is required." }); return; }
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) { res.status(400).json({ error: "RESEND_API_KEY is not set in Vercel." }); return; }
+    const from = process.env.OUTREACH_FROM || "Refillery Haus <info@lavallehaus.com>";
+    const subject = String(b.subject || "Refillery Haus — Collaboration Details").slice(0, 200);
+    const bodyText = String(b.body || "");
+    const html = "<div style=\"font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#2b2a28;white-space:pre-wrap\">" +
+      bodyText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</div>";
+    const attachments = [{ filename: "Refillery Haus — Creator Brief.pdf", path: "https://lavalle-haus-os.vercel.app/refillery-haus-ugc-brief.pdf" }];
+    try {
+      const id = await sendResendEmail({ apiKey, from, to, subject, html, attachments });
+      res.json({ ok: true, id });
+    } catch (e) {
+      res.status(400).json({ error: String(e.message || e).slice(0, 240) });
+    }
     return;
   }
   if (op === "tiktok_revoke" && req.method === "POST") {
