@@ -178,6 +178,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   };
   const tileBg = (b) => (b && b.bg ? boardBgStyle(b.bg) : { background: "linear-gradient(150deg,#EDE9E2,#DDD5C8)" });
   const [bgMenu, setBgMenu] = useState(false);
+  const [lookbook, setLookbook] = useState(false); // full-screen swipeable month view of a board's looks
+  const [shoots, setShoots] = useState(null); // photoshoot dates from the connected calendar ([{month:"YYYY-MM", label, date}])
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
   const [membersMenu, setMembersMenu] = useState(false); // open-board header member panel
@@ -801,6 +803,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               )}
               <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "⛓ Link assets"}</button>
               {viewer.owner && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
+              <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
                 style={ghost}>+ List</button>
@@ -1039,9 +1042,83 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           onComment={(text) => addComment(editCard.boardKey, editCard.cardId, text)}
         />
       )}
+      {lookbook && board && <LookbookView board={board} shoots={shoots} onClose={() => setLookbook(false)} />}
     </div>
   );
 }
+
+// Monthly lookbook — a full-screen, swipeable gallery of a board's looks grouped
+// by each card's launch month (falls back to grouping by list if none are set).
+// Shows the shoot date for the month when a matching calendar event exists.
+function LookbookView({ board, shoots, onClose }) {
+  const monthKey = (c) => c.launchMonth || null;
+  const cards = (board.cards || []).filter((c) => c.cover);
+  const byMonth = {};
+  cards.forEach((c) => { const k = monthKey(c); if (k) (byMonth[k] = byMonth[k] || []).push(c); });
+  let groups;
+  if (Object.keys(byMonth).length) {
+    groups = Object.keys(byMonth).sort().map((k) => ({ key: k, label: monthLabel(k), cards: byMonth[k] }));
+  } else {
+    // No launch months set yet — group by list so the view is useful immediately.
+    groups = (board.lists || []).map((l) => ({ key: l.id, label: l.name, cards: cards.filter((c) => c.listId === l.id) })).filter((g) => g.cards.length);
+  }
+  const [gi, setGi] = useState(0);
+  const [si, setSi] = useState(0);
+  const g = groups[gi] || { label: "—", cards: [] };
+  const shot = (shoots || []).find((s) => s.month === g.key);
+  const touchX = useRef(null);
+  const go = (d) => { const n = g.cards.length; if (!n) return; setSi((p) => (p + d + n) % n); };
+  useEffect(() => { setSi(0); }, [gi]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "ArrowRight") go(1); else if (e.key === "ArrowLeft") go(-1); else if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line
+  const card = g.cards[si];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#141310", display: "flex", flexDirection: "column" }}>
+      {/* top bar: month tabs + close */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+        <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: "#EDE9E2" }}>{board.name} · Lookbook</div>
+        <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", justifyContent: "center", WebkitOverflowScrolling: "touch" }}>
+          {groups.map((gg, i) => (
+            <button key={gg.key} onClick={() => setGi(i)} style={{ flexShrink: 0, background: i === gi ? "#EDE9E2" : "transparent", color: i === gi ? "#1a1a1a" : "rgba(237,233,226,0.6)", border: `1px solid ${i === gi ? "#EDE9E2" : "rgba(237,233,226,0.25)"}`, borderRadius: 20, padding: "5px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap" }}>{gg.label}</button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(237,233,226,0.4)", borderRadius: 6, color: "#EDE9E2", width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>×</button>
+      </div>
+      {/* shoot-date banner */}
+      <div style={{ textAlign: "center", padding: "8px 16px", fontFamily: sans, fontSize: 11, letterSpacing: 1, color: shot ? "#CDBBA7" : "rgba(237,233,226,0.4)" }}>
+        {shot ? "📸 Shoot with Sacia · " + shot.label : "📸 Shoot date — connect your calendar to show it here"}
+      </div>
+      {/* swipeable stage */}
+      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
+        onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
+        onTouchEnd={(e) => { if (touchX.current == null) return; const dx = e.changedTouches[0].clientX - touchX.current; if (Math.abs(dx) > 45) go(dx < 0 ? 1 : -1); touchX.current = null; }}>
+        {card ? (
+          <>
+            {g.cards.length > 1 && <button onClick={() => go(-1)} style={arrowBtn("left")}>‹</button>}
+            <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px 16px 16px" }}>
+              <img src={card.cover} alt={card.name} style={{ maxHeight: "calc(100vh - 210px)", maxWidth: "min(560px, 92vw)", objectFit: "contain", borderRadius: 3, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} />
+              <div style={{ marginTop: 12, fontFamily: sans, fontSize: 13, letterSpacing: 1, color: "#EDE9E2" }}>{card.name}</div>
+            </div>
+            {g.cards.length > 1 && <button onClick={() => go(1)} style={arrowBtn("right")}>›</button>}
+          </>
+        ) : (
+          <div style={{ fontFamily: sans, fontSize: 12, color: "rgba(237,233,226,0.5)", textAlign: "center", padding: 30 }}>No looks with a cover image in this {Object.keys(byMonth).length ? "month" : "list"} yet.</div>
+        )}
+      </div>
+      {/* dots */}
+      {g.cards.length > 1 && (
+        <div style={{ display: "flex", gap: 6, justifyContent: "center", padding: "10px 0 18px" }}>
+          {g.cards.map((_, i) => <div key={i} onClick={() => setSi(i)} style={{ width: i === si ? 20 : 7, height: 7, borderRadius: 4, background: i === si ? "#CDBBA7" : "rgba(237,233,226,0.3)", cursor: "pointer", transition: "width .2s" }} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+const arrowBtn = (side) => ({ position: "absolute", [side]: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(237,233,226,0.3)", color: "#EDE9E2", width: 44, height: 44, borderRadius: "50%", fontSize: 22, cursor: "pointer", lineHeight: 1 });
+const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) return k; return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }); };
 
 function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   const [name, setName] = useState(card.name);
@@ -1086,6 +1163,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   useEffect(() => { fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setPubAccounts(d.accounts || [])).catch(() => {}); }, []);
   const dtLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const [due, setDue] = useState(card.due ? card.due.slice(0, 10) : "");
+  const [launchMonth, setLaunchMonth] = useState(card.launchMonth || ""); // "YYYY-MM" — groups looks in the Lookbook view
   const [labels, setLabels] = useState((card.labels || []).map(normLabel));
   const [labelName, setLabelName] = useState("");
   const [labelColor, setLabelColor] = useState(LABEL_PALETTE[2].c);
@@ -1123,7 +1201,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null };
+      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null };
       // While a post is mid-flight the server owns pub/done — don't let auto-save
       // overwrite "converting/processing/published" with a stale local copy.
       const serverOwned = pub && (pub.status === "converting" || pub.status === "processing" || pub.status === "published");
@@ -1131,7 +1209,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples]);
+  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1481,6 +1559,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <select style={input} value={listId || ""} onChange={(e) => setListId(e.target.value)}>
           {destLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        <div style={label}>Launch month <span style={{ textTransform: "none", letterSpacing: 0, color: c.sub }}>· groups this look in the Lookbook</span></div>
+        <input style={input} type="month" value={launchMonth} onChange={(e) => setLaunchMonth(e.target.value)} />
+
         <div style={label}>Due date</div>
         <input style={input} type="date" value={due} onChange={(e) => setDue(e.target.value)} />
 
@@ -1490,7 +1571,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
