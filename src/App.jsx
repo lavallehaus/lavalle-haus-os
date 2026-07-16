@@ -2742,14 +2742,7 @@ if (typeof window !== "undefined" && window.innerWidth < 760) {
 return (
 <div>
 {lensStrip}
-<BusinessBrain
-model={brainModel}
-themeId={brainTheme}
-onToggleTheme={() => setBrainTheme(th => th === "day" ? "night" : "day")}
-onNavigate={goTo}
-onOpenCommand={() => setCommandView(true)}
-onAsk={askChief}
-/>
+<CommandDashboard model={brainModel} onNavigate={goTo} />
 {osBoards}
 </div>
 );

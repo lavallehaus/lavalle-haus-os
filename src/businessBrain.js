@@ -365,6 +365,12 @@ export function buildBrainModel(ctx) {
     priorities: lensPriorities,
     nodes: lensNodes,
     lensed: !!lensTabs,
+    // Projected-quarter ledger from the trailing-28-day gross/net (×3.25 ≈ 13 wk).
+    ledger: {
+      quarterNet: net28 != null ? Math.round(net28 * 3.25) : null,
+      quarterGross: gross28 != null ? Math.round(gross28 * 3.25) : null,
+      quarterCosts: (gross28 != null && net28 != null) ? Math.round((gross28 - net28) * 3.25) : null,
+    },
   };
 }
 

@@ -59,7 +59,7 @@ export default function CommandDashboard({ model, onNavigate }) {
   const [q, setQ] = useState("");
   const [listening, setListening] = useState(false);
   const [clock, setClock] = useState(() => new Date());
-  const [meters, setMeters] = useState(TELEMETRY.map((m) => m[1]));
+  const [jit, setJit] = useState([0, 0, 0, 0, 0, 0]);
   const [logIdx, setLogIdx] = useState(0);
 
   const canvasRef = useRef(null);
@@ -80,8 +80,17 @@ export default function CommandDashboard({ model, onNavigate }) {
   });
   const coreScore = (model && model.healthScore != null) ? model.healthScore : 64;
   const coreStatus = (model && model.status) || "Needs attention";
-  const riskCount = (model && model.healthNotes && model.healthNotes.length) || 4;
-  const oppCount = (model && model.insights && model.insights.filter((i) => /opportunit|win|lever|up/i.test(i.title + " " + i.body)).length) || 1;
+  const riskCount = (model && model.risks != null) ? model.risks : ((model && model.healthNotes && model.healthNotes.length) || 4);
+  const oppCount = (model && model.opportunities != null) ? model.opportunities : 1;
+
+  // Telemetry meters derived from each sector's live status.
+  const statusPct = (s) => s === "good" ? 74 : s === "warn" ? 40 : s === "risk" ? 28 : s === "neutral" ? 55 : 62;
+  const meterDefs = [["REVENUE PACE", "revenue"], ["AD EFFICIENCY", "ads"], ["CONTENT REACH", "content"], ["INVENTORY COVER", "inventory"], ["TASKS ON TRACK", "operations"], ["LAUNCH READINESS", "launches"]].map(([label, key]) => { const s = sectors.find((x) => x.key === key); return { label, base: statusPct(s ? s.status : "neutral"), tone: s ? s.status : "accent" }; });
+  // Live feed from real insights (fallback to the design samples).
+  const feedItems = (model && model.insights && model.insights.length) ? model.insights.map((i) => i.title) : FEED;
+  // Ledger from the model's projected-quarter figures.
+  const L = (model && model.ledger) || {};
+  const fmt$ = (n) => n == null ? "—" : "$" + Number(n).toLocaleString("en-US");
 
   // ── init physics + rAF field ──
   useEffect(() => {
@@ -160,8 +169,8 @@ export default function CommandDashboard({ model, onNavigate }) {
   // clock + telemetry jitter + log rotation + idle brief rotation
   useEffect(() => {
     const a = setInterval(() => setClock(new Date()), 1000);
-    const b = setInterval(() => setMeters((m) => m.map((v) => Math.max(8, Math.min(96, v + (Math.random() - 0.5) * 3)))), 2600);
-    const c = setInterval(() => setLogIdx((i) => (i + 1) % FEED.length), 3200);
+    const b = setInterval(() => setJit((j) => j.map(() => (Math.random() - 0.5) * 4)), 2600);
+    const c = setInterval(() => setLogIdx((i) => i + 1), 3200);
     const d = setInterval(() => { if (!thinkRef.current) setBrief(BRIEFINGS[Math.floor(Math.random() * BRIEFINGS.length)]); }, 6500);
     setBrief(BRIEFINGS[0]);
     return () => { clearInterval(a); clearInterval(b); clearInterval(c); clearInterval(d); };
@@ -191,10 +200,11 @@ export default function CommandDashboard({ model, onNavigate }) {
     recogRef.current = r; setListening(true); try { r.start(); } catch (e) { setListening(false); }
   };
 
-  // fit the 1400×900 stage into the viewport
+  // fit the 1400×900 stage into the viewport (desktop); mobile uses a stacked view
   const [scale, setScale] = useState(1);
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 820);
   useEffect(() => {
-    const fit = () => { const w = wrapRef.current; if (!w) return; setScale(Math.min(w.clientWidth / STAGE_W, (w.clientHeight || window.innerHeight - 120) / STAGE_H)); };
+    const fit = () => { setNarrow(window.innerWidth < 820); const w = wrapRef.current; if (!w) return; setScale(Math.min(w.clientWidth / STAGE_W, (w.clientHeight || window.innerHeight - 120) / STAGE_H)); };
     fit(); window.addEventListener("resize", fit); return () => window.removeEventListener("resize", fit);
   }, []);
 
@@ -208,6 +218,59 @@ export default function CommandDashboard({ model, onNavigate }) {
   const hud = { background: pal.hudBg, border: `1px solid ${pal.cardBorder}`, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", position: "absolute", boxSizing: "border-box" };
   const bracket = (pos) => (<span style={{ position: "absolute", width: 11, height: 11, borderColor: pal.accentSoft, ...pos }} />);
   const Brackets = () => (<>{bracket({ top: -1, left: -1, borderTop: "1px solid", borderLeft: "1px solid" })}{bracket({ top: -1, right: -1, borderTop: "1px solid", borderRight: "1px solid" })}{bracket({ bottom: -1, left: -1, borderBottom: "1px solid", borderLeft: "1px solid" })}{bracket({ bottom: -1, right: -1, borderBottom: "1px solid", borderRight: "1px solid" })}</>);
+
+  // ── Mobile: a stacked, readable version of the same dashboard ──
+  if (narrow) {
+    return (
+      <div style={{ background: pal.bg, minHeight: "calc(100vh - 110px)", padding: "16px 14px 96px", position: "relative" }}>
+        <button onClick={() => setTheme((t) => t === "day" ? "night" : "day")} style={{ ...tbtn(pal), position: "absolute", top: 12, right: 12 }}>{theme === "day" ? "DAY" : "NIGHT"}</button>
+        <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
+          <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 3, color: pal.muted }}>BUSINESS HEALTH</div>
+          <div style={{ fontFamily: serifD, fontSize: 92, fontWeight: 300, color: pal.ink, lineHeight: 0.95 }}>{coreScore}</div>
+          <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 3, color: pal.accent, textTransform: "uppercase" }}>{coreStatus}</div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: pal.muted, marginTop: 4 }}>{oppCount} opportunity · {riskCount} risks</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {sectors.map((s) => (
+            <div key={s.key} onClick={() => setSelected(selected === s.key ? null : s.key)} style={{ background: pal.card, border: `1px solid ${selected === s.key ? pal.accent : pal.cardBorder}`, boxShadow: pal.shadow, padding: "12px 14px", cursor: "pointer", gridColumn: selected === s.key ? "1 / -1" : "auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: cor(s.status) }} /><span style={{ fontFamily: serifD, fontSize: 18, color: pal.ink }}>{s.name}</span></div>
+              <div style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1.4, color: pal.muted, margin: "3px 0" }}>{s.mono}</div>
+              <div style={{ fontFamily: serifD, fontSize: 22, color: pal.ink }}>{s.value}<span style={{ fontFamily: mono, fontSize: 10, color: pal.muted }}> {s.unit}</span></div>
+              <div style={{ fontFamily: mono, fontSize: 9, color: cor(s.status), marginTop: 2 }}>{s.delta}</div>
+              {selected === s.key && (
+                <div style={{ marginTop: 10, borderTop: `1px solid ${pal.line}`, paddingTop: 8 }}>
+                  {s.metrics.map((m, j) => (<div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 1, color: pal.muted, textTransform: "uppercase" }}>{m[0]}</span><span style={{ fontFamily: serifD, fontSize: 15, color: pal.ink }}>{m[1]}</span></div>))}
+                  <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, color: pal.accent, margin: "8px 0 4px" }}>CHIEF'S READ</div>
+                  <div style={{ fontFamily: serifD, fontSize: 15, color: pal.ink, lineHeight: 1.45 }}>{s.insight}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted, marginBottom: 10 }}>SECTOR HEALTH · %</div>
+          {meterDefs.map((m, i) => { const v = Math.max(8, Math.min(96, Math.round(m.base + jit[i]))); return (
+            <div key={m.label} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2, color: pal.muted }}>{m.label}</span><span style={{ fontFamily: serifD, fontSize: 15, color: pal.ink }}>{v}</span></div>
+              <div style={{ height: 3, background: pal.line, marginTop: 3 }}><div style={{ height: "100%", width: v + "%", background: cor(m.tone) }} /></div>
+            </div>
+          ); })}
+        </div>
+        <div style={{ marginTop: 18, border: `1px solid ${pal.cardBorder}`, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div><div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2, color: pal.muted }}>PROJ. QUARTER · NET</div><div style={{ fontFamily: serifD, fontSize: 30, color: pal.ink }}>{L.quarterNet != null ? fmt$(L.quarterNet) : "—"}</div></div>
+          <div style={{ textAlign: "right", fontFamily: mono, fontSize: 10 }}><div style={{ color: pal.good }}>GROSS {fmt$(L.quarterGross)}</div><div style={{ color: pal.risk, marginTop: 3 }}>COSTS {fmt$(L.quarterCosts)}</div></div>
+        </div>
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: pal.bg, borderTop: `1px solid ${pal.cardBorder}`, padding: "10px 12px", zIndex: 30 }}>
+          {brief && <div style={{ fontFamily: serifD, fontStyle: "italic", fontSize: 13, color: pal.muted, textAlign: "center", marginBottom: 8 }}>{thinking ? "Chief is thinking…" : "Chief · " + brief}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => (listening ? recogRef.current && recogRef.current.stop() : startListen())} style={{ ...tbtn(pal), border: `1px solid ${listening ? pal.risk : pal.accent}`, color: listening ? pal.risk : pal.accent, fontSize: 14 }}>{listening ? "●" : "🎙"}</button>
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask(q)} placeholder="Ask the Chief…" style={{ flex: 1, background: pal.card, border: `1px solid ${pal.cardBorder}`, color: pal.ink, fontFamily: serifD, fontSize: 16, padding: "10px 14px", outline: "none" }} />
+            <button onClick={() => ask(q)} style={{ border: "none", background: pal.ink, color: pal.bg, fontFamily: mono, fontSize: 11, letterSpacing: 2, padding: "0 16px" }}>ASK</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={wrapRef} style={{ background: pal.bg, transition: "background .5s ease", minHeight: "calc(100vh - 120px)", overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
@@ -230,18 +293,18 @@ export default function CommandDashboard({ model, onNavigate }) {
         <div style={{ ...hud, top: 60, left: 24, width: 236, height: 648, padding: 16 }}>
           <Brackets />
           <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted, marginBottom: 12 }}>SECTOR HEALTH · %</div>
-          {TELEMETRY.map((m, i) => (
-            <div key={m[0]} style={{ marginBottom: 12 }}>
+          {meterDefs.map((m, i) => { const v = Math.max(8, Math.min(96, Math.round(m.base + jit[i]))); return (
+            <div key={m.label} style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted }}>{m[0]}</span>
-                <span style={{ fontFamily: serifD, fontSize: 16, color: pal.ink }}>{Math.round(meters[i])}</span>
+                <span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted }}>{m.label}</span>
+                <span style={{ fontFamily: serifD, fontSize: 16, color: pal.ink }}>{v}</span>
               </div>
-              <div style={{ height: 3, background: pal.line, marginTop: 4 }}><div style={{ height: "100%", width: meters[i] + "%", background: cor(m[2]), transition: "width .8s ease" }} /></div>
+              <div style={{ height: 3, background: pal.line, marginTop: 4 }}><div style={{ height: "100%", width: v + "%", background: cor(m.tone), transition: "width .8s ease" }} /></div>
             </div>
-          ))}
+          ); })}
           <div style={{ height: 1, background: pal.line, margin: "16px 0" }} />
           <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted, marginBottom: 8 }}>ACTIVE SIGNALS</div>
-          {[0, 1, 2, 3].map((k) => { const idx = (logIdx + k) % FEED.length; return <div key={k} style={{ fontFamily: mono, fontSize: 10, color: pal.ink, opacity: 1 - k * 0.22, padding: "3px 0" }}>› {FEED[idx]}</div>; })}
+          {[0, 1, 2, 3].map((k) => { const idx = (logIdx + k) % feedItems.length; return <div key={k} style={{ fontFamily: mono, fontSize: 10, color: pal.ink, opacity: 1 - k * 0.22, padding: "3px 0" }}>› {feedItems[idx]}</div>; })}
         </div>
 
         {/* right radar + sparkline */}
@@ -254,10 +317,10 @@ export default function CommandDashboard({ model, onNavigate }) {
         <div style={{ ...hud, top: 286, right: 24, width: 210, height: 414, padding: 14, overflow: "hidden" }}>
           <Brackets />
           <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted, marginBottom: 8 }}>LIVE FEED</div>
-          {FEED.map((f, i) => (
+          {feedItems.slice(0, 7).map((f, i) => (
             <div key={i} style={{ display: "flex", gap: 8, padding: "8px 0", borderBottom: `1px solid ${pal.line}` }}>
-              <span style={{ fontFamily: mono, fontSize: 9, color: pal.accent }}>{fmtClock(clock, i)}</span>
-              <span style={{ fontFamily: mono, fontSize: 10.5, color: pal.ink }}>{f}</span>
+              <span style={{ fontFamily: mono, fontSize: 9, color: pal.accent, flexShrink: 0 }}>{fmtClock(clock, i)}</span>
+              <span style={{ fontFamily: mono, fontSize: 10.5, color: pal.ink, lineHeight: 1.35 }}>{f}</span>
             </div>
           ))}
         </div>
@@ -298,11 +361,11 @@ export default function CommandDashboard({ model, onNavigate }) {
           <Brackets />
           <div>
             <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 2.2, color: pal.muted }}>PROJECTED QUARTER · NET</div>
-            <div style={{ fontFamily: serifD, fontSize: 38, color: pal.ink }}>$50,000 <span style={{ fontFamily: mono, fontSize: 11, color: pal.muted }}>proj</span></div>
+            <div style={{ fontFamily: serifD, fontSize: 38, color: pal.ink }}>{L.quarterNet != null ? fmt$(L.quarterNet) : "—"} <span style={{ fontFamily: mono, fontSize: 11, color: pal.muted }}>{L.quarterNet != null ? "proj" : "syncing"}</span></div>
           </div>
           <div style={{ textAlign: "right", fontFamily: mono, fontSize: 11 }}>
-            <div style={{ color: pal.good }}>GROSS $83,412</div>
-            <div style={{ color: pal.risk, marginTop: 4 }}>COSTS $33,412</div>
+            <div style={{ color: pal.good }}>GROSS {fmt$(L.quarterGross)}</div>
+            <div style={{ color: pal.risk, marginTop: 4 }}>COSTS {fmt$(L.quarterCosts)}</div>
           </div>
         </div>
 
