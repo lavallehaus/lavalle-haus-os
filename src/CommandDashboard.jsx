@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from "react";
 // design handoff; wired to the live Business Brain model + the TTS voice.
 
 const STAGE_W = 1400, STAGE_H = 900;
+const APP_VER = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "1.0.0"; // real app version, injected at build
+const BUILD_DATE = typeof __BUILD_DATE__ !== "undefined" ? __BUILD_DATE__ : "—"; // real build date, injected at build
 const mono = "'JetBrains Mono', ui-monospace, monospace";
 const serifD = "'Cormorant Garamond', Georgia, serif";
 
@@ -98,7 +100,7 @@ export default function CommandDashboard({ model, onNavigate }) {
     const ctx = canvas.getContext("2d");
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = STAGE_W * dpr; canvas.height = STAGE_H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cx = 700, cy = 356, R = 300, RY = 0.72, n = sectors.length;
+    const cx = 700, cy = 356, R = 336, RY = 0.78, n = sectors.length;
     const jit = (i) => (Math.sin(i * 12.9898) * 43758.5453 % 1) * 6 - 3;
     const nodes = sectors.map((sec, i) => {
       const ang = (-90 + i * (360 / n) + jit(i)) * Math.PI / 180;
@@ -280,9 +282,9 @@ export default function CommandDashboard({ model, onNavigate }) {
         {/* status strip */}
         <div style={{ ...hud, top: 14, left: 24, right: 214, height: 30, display: "flex", alignItems: "center", padding: "0 14px", fontFamily: mono, fontSize: 10, letterSpacing: 1.5, color: pal.muted }}>
           <Brackets />
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: pal.good }} /> CHIEF v2.4.0 · ONLINE</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: model ? pal.good : pal.accent }} /> CHIEF v{APP_VER} · {model ? "ONLINE" : "SYNCING"}</span>
           <span style={{ margin: "0 auto", color: pal.ink }}>{clock.toLocaleTimeString("en-US", { hour12: false })}</span>
-          <span>UPTIME {fmtUptime(Date.now() - uptimeStart.current)}</span>
+          <span>BUILD {BUILD_DATE} · UPTIME {fmtUptime(clock.getTime() - uptimeStart.current)}</span>
         </div>
         {/* top-right toggles */}
         <div style={{ position: "absolute", top: 22, right: 26, display: "flex", gap: 10, fontFamily: mono, fontSize: 10, letterSpacing: 1.5 }}>
