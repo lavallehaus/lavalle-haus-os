@@ -588,11 +588,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
 
   return (
     <div>
-      {/* Click-anywhere backdrop: closes any open header/tile popup. Sits below
-          the popups (z 60–90) and above the page, so a click off the popup shuts it. */}
+      {/* Click-anywhere backdrop: closes any open header/tile popup. z-index must
+          stay BELOW the board header's own stacking context (position:relative;
+          zIndex:30 on line ~690) — otherwise it paints over the popups trapped
+          inside that context and eats their clicks (e.g. the bg "Upload" button).
+          At z:12 it covers the board body (z:0) to catch outside clicks, while the
+          header + its popups (z:30+) stay above it and remain clickable. */}
       {(accessMenu || membersMenu || bgMenu || profileMember) && (
         <div onClick={() => { setAccessMenu(null); setMembersMenu(false); setBgMenu(false); setProfileMember(null); setProfileActivity(false); }}
-          style={{ position: "fixed", inset: 0, zIndex: 55 }} />
+          style={{ position: "fixed", inset: 0, zIndex: 12 }} />
       )}
       {/* undo / redo — identity comes from the login now, no picker needed */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -1076,7 +1080,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [refExamples, setRefExamples] = useState(() => { const r = card.refExamples || []; return [r[0] || "", r[1] || "", r[2] || ""]; });
   const [dmCopied, setDmCopied] = useState(false);
   const [emailState, setEmailState] = useState("");
-  const isOutreach = !!(autoTag && autoTag.active && autoTag.label === "UGC");
+  const isOutreach = !!(autoTag && autoTag.active && autoTag.label === "UGC"); // UGC → full DM/email/PDF automation
+  const isPrUgc = !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
   const [postingNow, setPostingNow] = useState(false);
   useEffect(() => { fetch("/api/data?op=instagram_status").then((r) => (r.ok ? r.json() : null)).then((d) => d && setPubAccounts(d.accounts || [])).catch(() => {}); }, []);
   const dtLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
@@ -1201,6 +1206,21 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           )}
         </div>
 
+        {/* 3 videos we loved — shows on BOTH PR and UGC cards. On UGC they append
+            to the outreach email; on PR they're just reference picks (the PR lead
+            has their own messaging, so no email/DM automation on PR). */}
+        {isPrUgc && (
+          <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg, padding: "12px 14px", marginTop: 14 }}>
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>3 videos we loved</div>
+            {[0, 1, 2].map((i) => (
+              <input key={i} value={refExamples[i]} onChange={(e) => setRefExamples(refExamples.map((v, j) => (j === i ? e.target.value : v)))} placeholder={"Example video " + (i + 1) + " — link from their account"} style={{ ...input, marginBottom: 5, fontSize: 11 }} />
+            ))}
+            <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 2 }}>
+              {isOutreach ? "Appended to the outreach email as inspiration — with a note to keep their natural style." : "Reference picks — examples of the feel we love from their content."}
+            </div>
+          </div>
+        )}
+
         {isOutreach && (
           <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg, padding: "12px 14px", marginTop: 14 }}>
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Creator outreach</div>
@@ -1213,11 +1233,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginBottom: 4 }}>Subject: {UGC_EMAIL_SUBJECT}</div>
             <textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={7} style={{ ...input, fontFamily: sans, fontSize: 11, lineHeight: 1.5, resize: "vertical" }} />
             <a href={UGC_BRIEF_PDF} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", margin: "6px 0", fontFamily: sans, fontSize: 10, color: c.taupe, textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 4, padding: "4px 9px" }}>📎 Lavalle Haus — Creator Brief.pdf</a>
-            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "10px 0 4px" }}>3 of their videos we loved (added to the email as inspiration)</div>
-            {[0, 1, 2].map((i) => (
-              <input key={i} value={refExamples[i]} onChange={(e) => setRefExamples(refExamples.map((v, j) => (j === i ? e.target.value : v)))} placeholder={"Example video " + (i + 1) + " — link from their account"} style={{ ...input, marginBottom: 5, fontSize: 11 }} />
-            ))}
-            {refExamples.some((s) => s.trim()) && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, margin: "2px 0 8px" }}>These get appended to the email with a note that they're inspiration only — encourage their natural style.</div>}
+            <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 4 }}>The 3 videos above are appended automatically.</div>
             <button disabled={!outreachEmail.trim() || emailState === "sending"} onClick={async () => {
               setEmailState("sending");
               try {
@@ -1225,7 +1241,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                 const d = await r.json();
                 setEmailState(d.ok ? "sent" : ("err:" + (d.error || "failed")));
               } catch (e) { setEmailState("err:" + String(e).slice(0, 80)); }
-            }} style={{ display: "block", width: "100%", background: outreachEmail.trim() ? c.green : c.line, color: "#fff", border: "none", borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: outreachEmail.trim() ? "pointer" : "default", marginTop: 4 }}>
+            }} style={{ display: "block", width: "100%", background: outreachEmail.trim() ? c.green : c.line, color: "#fff", border: "none", borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: outreachEmail.trim() ? "pointer" : "default", marginTop: 8 }}>
               {emailState === "sending" ? "Sending…" : emailState === "sent" ? "✓ Sent with brief attached" : "Send from " + UGC_EMAIL_FROM}</button>
             {emailState.startsWith("err:") && <div style={{ fontFamily: sans, fontSize: 10, color: c.red, marginTop: 6 }}>{emailState.slice(4)}</div>}
             <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 6 }}>Sending goes live once {UGC_EMAIL_FROM} is verified in Resend.</div>
