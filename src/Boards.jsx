@@ -897,10 +897,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleDone(open, card.id); }}
                               title={card.done ? "Mark not done" : "Mark done — posted"}
-                              style={{ flexShrink: 0, width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${card.done ? c.green : c.line}`, background: card.done ? c.green : "transparent", color: c.bg, fontSize: 10, lineHeight: 1, cursor: "pointer", padding: 0, marginTop: 1 }}>
-                              {card.done ? "✓" : ""}
+                              style={{ flexShrink: 0, width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${(card.done || (card.pub && card.pub.status === "published")) ? c.green : c.line}`, background: (card.done || (card.pub && card.pub.status === "published")) ? c.green : "transparent", color: c.bg, fontSize: 10, lineHeight: 1, cursor: "pointer", padding: 0, marginTop: 1 }}>
+                              {(card.done || (card.pub && card.pub.status === "published")) ? "✓" : ""}
                             </button>
-                            <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: card.done ? "line-through" : "none" }}>{card.name}</div>
+                            <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}</div>
                           </div>
                           {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
@@ -1090,7 +1090,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
       try {
         const fresh = await (await fetch("/api/data", { cache: "no-store" })).json();
         const cc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id);
-        if (cc && cc.pub) { setPub(cc.pub); if (cc.pub.status === "published") setDone(true); }
+        if (cc && cc.pub) { setPub(cc.pub); if (cc.pub.status === "published") { setDone(true); onPatch && onPatch({ done: true, pub: cc.pub }); } }
       } catch {}
     }, 12000);
     return () => clearInterval(t);
@@ -1110,8 +1110,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, onClose
       // that a partial local update would otherwise wipe via auto-save.
       let sp = null;
       try { const fresh = await (await fetch("/api/data", { cache: "no-store" })).json(); const cc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id); sp = cc && cc.pub; } catch {}
-      if (sp) { setPub(sp); if (sp.status === "published") setDone(true); }
-      else if (item && item.ok) { setPub({ ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }); setDone(true); }
+      if (sp) { setPub(sp); if (sp.status === "published") { setDone(true); onPatch && onPatch({ done: true, pub: sp }); } }
+      else if (item && item.ok) { const np = { ...(pub || {}), account, status: "published", mediaId: item.mediaId, publishedAt: item.publishedAt }; setPub(np); setDone(true); onPatch && onPatch({ done: true, pub: np }); }
       else if (item && item.converting) { setPub({ ...(pub || {}), account, status: "converting" }); }
       else if (item && item.processing) { setPub({ ...(pub || {}), account, status: "processing" }); }
       else setPub({ ...(pub || {}), account, status: "failed", error: (item && item.error) || d.error || "no response for this card" });
