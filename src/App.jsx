@@ -2898,7 +2898,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 </div>
 
 {/* TOP NAV — 7 permanent homes */}
-<div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", alignItems: "center" }}>
+<div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", alignItems: "center", position: "sticky", top: 0, zIndex: 40, maxWidth: "100vw" }}>
 {visibleNav.map(n => (
 <button key={n.id} onClick={() => { setTab(n.id); if (n.id === "content") window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id: "content", seg: "boards" } })); }} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
 {n.label}

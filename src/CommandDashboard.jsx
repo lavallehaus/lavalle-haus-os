@@ -204,9 +204,9 @@ export default function CommandDashboard({ model, onNavigate }) {
 
   // fit the 1400×900 stage into the viewport (desktop); mobile uses a stacked view
   const [scale, setScale] = useState(1);
-  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 820);
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 1000);
   useEffect(() => {
-    const fit = () => { setNarrow(window.innerWidth < 820); const w = wrapRef.current; if (!w) return; setScale(Math.min(w.clientWidth / STAGE_W, (w.clientHeight || window.innerHeight - 120) / STAGE_H)); };
+    const fit = () => { setNarrow(window.innerWidth < 1000); const w = wrapRef.current; if (!w) return; setScale(Math.min(w.clientWidth / STAGE_W, (w.clientHeight || window.innerHeight - 120) / STAGE_H)); };
     fit(); window.addEventListener("resize", fit); return () => window.removeEventListener("resize", fit);
   }, []);
 
@@ -224,7 +224,7 @@ export default function CommandDashboard({ model, onNavigate }) {
   // ── Mobile: a stacked, readable version of the same dashboard ──
   if (narrow) {
     return (
-      <div style={{ background: pal.bg, minHeight: "calc(100vh - 110px)", padding: "16px 14px 96px", position: "relative" }}>
+      <div style={{ background: pal.bg, minHeight: "calc(100vh - 110px)", padding: "16px 14px 96px", position: "relative", boxSizing: "border-box", maxWidth: "100vw", overflowX: "hidden" }}>
         <button onClick={() => setTheme((t) => t === "day" ? "night" : "day")} style={{ ...tbtn(pal), position: "absolute", top: 12, right: 12 }}>{theme === "day" ? "DAY" : "NIGHT"}</button>
         <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
           <div style={{ fontFamily: mono, fontSize: 9, letterSpacing: 3, color: pal.muted }}>BUSINESS HEALTH</div>
