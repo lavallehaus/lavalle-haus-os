@@ -16,10 +16,10 @@ const BRANDS = [
   { acct: "thefoldlabel", label: "The Fold Label", handle: "@thefoldlabel" },
   { acct: "lavallesisters", label: "Lavalle Sisters", handle: "@lavallesisters" },
 ];
-// Mirrors Boards.jsx / api/data.js — a board's name decides its brand account.
-const igForBoardName = (name) => /lavalle\s*sisters/i.test(name || "") ? "lavallesisters"
-  : /the\s*fold|^tf\b/i.test(name || "") ? "thefoldlabel"
-  : /lavalle\s*haus|refillery|^lh\b/i.test(name || "") ? "refilleryhaus" : null;
+// Only the three MAIN content boards feed the grids — "Lavalle Sisters",
+// "Lavalle Haus", "The Fold" — never ops/R&D/archive/PR boards (a PR board
+// even shares the name "The Fold", so boards are pinned by key).
+const GRID_BOARDS = { "lavalle-sisters": "lavallesisters", "refillery-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
 
 const SLOTS = 21, COLS = 3, ROWS = 7;
 
@@ -36,7 +36,7 @@ export default function BrandGrids({ boards, data, onSave }) {
     const map = {};
     for (const [bk, board] of Object.entries(boards || {})) {
       if (bk.startsWith("_") || !board || !board.cards) continue;
-      if (igForBoardName(board.name) !== acct) continue;
+      if (GRID_BOARDS[bk] !== acct) continue;
       for (const card of board.cards) {
         if (!card.cover) continue;
         map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, name: card.name || "", done: !!card.done, boardName: board.name || "" };
