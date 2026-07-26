@@ -268,6 +268,7 @@ async function publishDueItems(only) {
       if (!tok) { fail("no Instagram token for @" + feed.account); continue; }
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
       const imageUrl = it.src ? "https://lavalle-haus-os.vercel.app" + it.src : "https://drive.google.com/thumbnail?id=" + it.driveId + "&sz=w2000";
+      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; } // another runner owns this post
       const r = await igPublishPhoto(tok, imageUrl, card.desc || "");
       if (r.ok) {
         const publishedAt = new Date().toISOString();
@@ -280,7 +281,7 @@ async function publishDueItems(only) {
         results.published++;
         results.items.push({ feedId: feed.id, cardId: it.cardId, ok: true, mediaId: r.mediaId, publishedAt });
         changed = true;
-      } else fail(r.error);
+      } else { await kvDel("claim:" + ledgerKey); fail(r.error); }
     }
   }
   // Board cards can publish too (card.pub, set from the card sheet) — same
@@ -334,6 +335,7 @@ async function publishDueItems(only) {
         if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
         const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id + "&fit=igfeed");
         const ccap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
         const cr = await igPublishCarousel(tok, imageUrls, ccap);
         if (cr.ok) {
           const publishedAt = new Date().toISOString();
@@ -343,7 +345,7 @@ async function publishDueItems(only) {
           card.done = true;
           results.published++;
           results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: cr.mediaId, publishedAt });
-        } else fail(cr.error);
+        } else { await kvDel("claim:" + ledgerKey); fail(cr.error); }
         changed = true;
         continue;
       }
@@ -373,6 +375,7 @@ async function publishDueItems(only) {
           else if (card.cover.includes("drive.google.com")) { const cid2 = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (cid2) coverImageUrl = "https://drive.google.com/thumbnail?id=" + cid2 + "&sz=w1200"; }
           else if (card.cover.startsWith("http")) coverImageUrl = card.cover;
         }
+        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
           const publishedAt = new Date().toISOString();
@@ -384,9 +387,10 @@ async function publishDueItems(only) {
           results.published++;
           results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: rr.mediaId, publishedAt });
         } else if (rr.pending) {
+          await kvDel("claim:" + ledgerKey); // not posted yet — let the next sweep finish it
           card.pub = { ...p, status: "processing", containerId: rr.containerId };
           results.items.push({ boardKey: bKey, cardId: card.id, ok: false, processing: true, containerId: rr.containerId });
-        } else fail(rr.error);
+        } else { await kvDel("claim:" + ledgerKey); fail(rr.error); }
         changed = true;
         continue;
       }
@@ -399,6 +403,7 @@ async function publishDueItems(only) {
       }
       if (!imageUrl) { fail("card needs a cover photo to post"); continue; }
       const caption = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
       const r = await igPublishPhoto(tok, imageUrl, caption);
       if (r.ok) {
         const publishedAt = new Date().toISOString();
@@ -409,7 +414,7 @@ async function publishDueItems(only) {
         results.published++;
         results.items.push({ boardKey: bKey, cardId: card.id, ok: true, mediaId: r.mediaId, publishedAt });
         changed = true;
-      } else fail(r.error);
+      } else { await kvDel("claim:" + ledgerKey); fail(r.error); }
     }
   }
   if (changed) await kvSet("lavalle_data", Array.isArray(data) ? [blob] : blob);
@@ -449,6 +454,20 @@ async function kvSet(key, value) {
     headers: { Authorization: `Bearer ${KV_TOKEN}` },
     body: JSON.stringify(value),
   });
+}
+// Atomic publish claim (SET NX): only ONE runner in the whole fleet — cron,
+// app-level advancers on any number of open devices, manual "post now" — can
+// win the claim for a card, killing the duplicate-post race for good. TTL
+// covers a crashed run; on a non-publishing outcome the claim is released.
+async function kvClaim(key, ex = 1800) {
+  const r = await fetch(`${KV_URL}/set/${key}?NX=true&EX=${ex}`, {
+    method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` }, body: "1",
+  });
+  const d = await r.json().catch(() => ({}));
+  return d.result === "OK";
+}
+async function kvDel(key) {
+  await fetch(`${KV_URL}/del/${key}`, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` } });
 }
 // Cached Google access token — board covers stream through /api/data?op=drive_img
 // which hits Drive per image, so refreshing the token every call would be brutal.

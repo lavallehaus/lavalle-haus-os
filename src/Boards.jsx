@@ -1462,7 +1462,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <>
             <div style={label}>Where does this post go?</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              {[["ig", "Instagram", brandAcct ? "@" + brandAcct + " · auto-posts" : "auto-posts"], ["tiktok", "TikTok", "hand off to Plann"]].map(([k, lab, sub]) => (
+              {[["ig", "Instagram", brandAcct ? "@" + brandAcct + " · auto-posts" : "auto-posts"], ["tiktok", "TikTok", "schedule in TikTok Studio"]].map(([k, lab, sub]) => (
                 <button key={k} onClick={() => setDest({ ...dest, [k]: !dest[k] })}
                   style={{ flex: 1, textAlign: "left", background: dest[k] ? c.card : "transparent", border: `1px solid ${dest[k] ? c.ink : c.line}`, borderRadius: 2, padding: "8px 10px", cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1547,17 +1547,17 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   {!cover && <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>Add a cover photo to post.</span>}
                 </div>
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6 }}>
-                  Schedules save with the card. Photos post instantly; Reels upload the linked .mov and post once Instagram finishes processing the video (can take a minute). For TikTok, use the Plann hand-off below.
+                  Schedules save with the card. Photos post instantly; Reels upload the linked .mov and post once Instagram finishes processing the video (can take a minute). For TikTok, use the TikTok Studio hand-off below.
                 </div>
               </>
             ))}
             {dest.tiktok && (
               <div style={{ marginTop: 14, border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg, padding: "12px 14px" }}>
-                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>TikTok · via Plann</div>
-                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 8 }}>TikTok can't post from here (their API declined internal tools), so it's scheduled in Plann. This copies your caption and opens Plann — paste it, add the video/cover below, then pick the TikTok account + time.</div>
-                <button onClick={async () => { const cap = (hook ? hook + "\n\n" : "") + (desc || ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://app.plannthat.com", "_blank", "noopener"); }}
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>TikTok · via TikTok Studio</div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 8 }}>TikTok can't post from here (their API declined internal tools), so it's scheduled natively in TikTok Studio — free, up to 10 days ahead. This copies your caption and opens the Studio upload page — switch to the right brand account, add the video, paste the caption, and pick the time.</div>
+                <button onClick={async () => { const cap = (hook ? hook + "\n\n" : "") + (desc || ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://www.tiktok.com/tiktokstudio/upload", "_blank", "noopener"); }}
                   style={{ width: "100%", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
-                  {plannCopied ? "✓ Caption copied — opening Plann…" : "📋 Copy caption & open Plann"}</button>
+                  {plannCopied ? "✓ Caption copied — opening TikTok Studio…" : "📋 Copy caption & open TikTok Studio"}</button>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {assetUrlState && <a href={assetUrlState} target="_blank" rel="noopener noreferrer" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>▶ Video in Drive</a>}
                   {cover && <a href={cover} download={(name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>⤓ Cover</a>}
