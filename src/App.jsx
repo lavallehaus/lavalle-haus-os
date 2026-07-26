@@ -29,6 +29,7 @@ import OSBoards from "./OSBoards.jsx";
 import Boards from "./Boards.jsx";
 import OpsCalendar from "./OpsCalendar.jsx";
 import GridPlanner from "./GridPlanner.jsx";
+import BrandGrids from "./BrandGrids.jsx";
 import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -2789,6 +2790,7 @@ return profitNode;
 if (tab === "content") return (
 <SegTabs id="content" segments={[
 { id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} gridPlanner={dbState.gridPlanner || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
+{ id: "brandgrids", label: "Grids", render: () => <BrandGrids boards={dbState.boards || null} data={dbState.brandGrids || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, brandGrids: gv }; dbSave(next); return next; })} /> },
 { id: "grid", label: "Schedule", render: () => <GridPlanner data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
 ]} />
