@@ -39,6 +39,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [editZoom, setEditZoom] = useState({ s: 1.3, x: 0, y: 0 });
   const [editMsg, setEditMsg] = useState(null);
   const panRef = useRef(null);
+  const pinchRef = useRef(new Map()); // active pointers on the editing tile
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
 
@@ -52,7 +53,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       const schedLists = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
       for (const card of board.cards) {
         if (!card.cover || !schedLists.has(card.listId)) continue;
-        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, name: card.name || "", done: !!card.done, boardName: board.name || "" };
+        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, boardName: board.name || "" };
       }
     }
     return map;
@@ -65,7 +66,19 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     const kept = saved.filter((k) => candidates[k]);
     const known = new Set(kept);
     const fresh = Object.keys(candidates).filter((k) => !known.has(k));
-    return [...kept, ...fresh];
+    const merged = [...kept, ...fresh];
+    // RULE: ✓ posted tiles ALWAYS occupy positions 1, 2, 3… in the order they
+    // actually went live (earliest = position 1) — the app memorizes the real
+    // posted sequence; drags and auto-arrange only touch what's unposted.
+    const posted = merged.filter((k) => candidates[k].done);
+    posted.sort((a, b) => {
+      const pa = candidates[a].postedAt || "", pb = candidates[b].postedAt || "";
+      if (pa && pb) return pa < pb ? -1 : pa > pb ? 1 : 0;
+      if (pa) return -1;
+      if (pb) return 1;
+      return merged.indexOf(a) - merged.indexOf(b);
+    });
+    return [...posted, ...merged.filter((k) => !candidates[k].done)];
   }, [data, acct, candidates]);
 
   // Auto-ingest persists the merged order the moment it differs from what's saved.
@@ -93,6 +106,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const saveOrder = (next) => onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), order: next } });
 
   const moveItem = (fromVis, toVis) => {
+    if (fromVis === toVis) return;
+    if (visible[fromVis] && visible[fromVis].done) return; // posted tiles are pinned
+    const lockedVis = visible.filter((v) => v.done).length; // posted block sits at the front
+    toVis = Math.max(lockedVis, toVis);
     if (fromVis === toVis) return;
     const next = [...order];
     const [x] = next.splice(windowStart + fromVis, 1);
@@ -203,6 +220,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   };
   const onTilePointerDown = (e, slot) => {
     if (e.pointerType !== "touch") return; // mouse keeps native HTML5 drag
+    if (visible[slot] && visible[slot].done) return; // posted tiles are pinned
     if (touchRef.current) endTouchDrag(false); // clear any stale gesture first
     const t = { slot, x: e.clientX, y: e.clientY, active: false, over: null, ghost: null };
     t.timer = setTimeout(() => beginTouchDrag(t), 240);
@@ -240,7 +258,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
 
   const tapCell = (slot, hasItem) => {
     if (Date.now() - suppressClickRef.current < 400) return; // that click was the tail of a drag
-    if (pickIdx == null) { if (hasItem) setPickIdx(slot); return; }
+    if (pickIdx == null) { if (hasItem && !(visible[slot] && visible[slot].done)) setPickIdx(slot); return; }
     if (pickIdx === slot) { setPickIdx(null); return; }
     moveItem(pickIdx, Math.min(visible.length - 1, slot));
     setPickIdx(null);
@@ -280,7 +298,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               if (editKey === item.key) {
                 e.preventDefault(); e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
-                panRef.current = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, zx: editZoom.x, zy: editZoom.y };
+                pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (pinchRef.current.size === 2) {
+                  const [p1, p2] = [...pinchRef.current.values()];
+                  panRef.current = { pinch: true, d0: Math.hypot(p1.x - p2.x, p1.y - p2.y), s0: editZoom.s, w: r.width, h: r.height, zx: editZoom.x, zy: editZoom.y };
+                } else {
+                  panRef.current = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, zx: editZoom.x, zy: editZoom.y };
+                }
                 e.currentTarget.setPointerCapture(e.pointerId);
                 return;
               }
@@ -290,9 +314,18 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               const p = panRef.current;
               if (editKey !== item.key || !p) return;
               e.preventDefault();
-              setEditZoom((cur) => clampZoom({ ...cur, x: p.zx + ((e.clientX - p.x) / p.w) * 100, y: p.zy + ((e.clientY - p.y) / p.h) * 100 }));
+              if (pinchRef.current.has(e.pointerId)) pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+              if (p.pinch) {
+                if (pinchRef.current.size < 2) return;
+                const [p1, p2] = [...pinchRef.current.values()];
+                const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                setEditZoom((cur) => clampZoom({ ...cur, s: Math.max(1, Math.min(3, p.s0 * (d / p.d0))) }));
+              } else {
+                setEditZoom((cur) => clampZoom({ ...cur, x: p.zx + ((e.clientX - p.x) / p.w) * 100, y: p.zy + ((e.clientY - p.y) / p.h) * 100 }));
+              }
             }}
-            onPointerUp={() => { if (editKey === item.key) panRef.current = null; }}
+            onPointerUp={(e) => { if (editKey === item.key) { pinchRef.current.delete(e.pointerId); if (pinchRef.current.size === 0) panRef.current = null; else if (pinchRef.current.size === 1 && panRef.current && panRef.current.pinch) { const [p1] = [...pinchRef.current.values()]; panRef.current = { x: p1.x, y: p1.y, w: panRef.current.w, h: panRef.current.h, zx: editZoom.x, zy: editZoom.y }; } } }}
+            onPointerCancel={(e) => { if (editKey === item.key) { pinchRef.current.delete(e.pointerId); if (pinchRef.current.size === 0) panRef.current = null; } }}
             onDragStart={() => setDragIdx(slot)}
             onDragOver={(e) => { e.preventDefault(); setOverIdx(slot); }}
             onDragLeave={() => setOverIdx((v) => (v === slot ? null : v))}
@@ -316,7 +349,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         ))}
       </div>
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
-        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Tap a photo to move it by tapping its new spot — or to reframe (zoom) it. ✓ means posted.
+        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Tap a photo to move it by tapping its new spot — or to reframe (zoom) it. ✓ posted tiles hold positions 1, 2, 3… in their real posted order and never move.
       </div>
       {editKey && candidates[editKey] && (() => {
         const item = candidates[editKey];
@@ -344,7 +377,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 120, background: "#fff", borderTop: `1px solid ${c.line}`, boxShadow: "0 -8px 30px rgba(0,0,0,0.12)", padding: "10px 14px calc(10px + env(safe-area-inset-bottom))" }}>
             <div style={{ maxWidth: 560, margin: "0 auto" }}>
               <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>
-                Reframing post {(() => { const i = visible.findIndex((v) => v.key === editKey); return i >= 0 ? windowStart + i + 1 : ""; })()} — drag the photo in its tile · slider zooms
+                Reframing post {(() => { const i = visible.findIndex((v) => v.key === editKey); return i >= 0 ? windowStart + i + 1 : ""; })()} — pinch or slide to zoom · drag to position
               </div>
               <input type="range" min={100} max={300} value={Math.round(editZoom.s * 100)}
                 onChange={(e) => setEditZoom((cur) => clampZoom({ ...cur, s: parseInt(e.target.value, 10) / 100 }))}
