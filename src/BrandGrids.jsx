@@ -40,6 +40,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [editMsg, setEditMsg] = useState(null);
   const panRef = useRef(null);
   const pinchRef = useRef(new Map()); // active pointers on the editing tile
+  const gPointersRef = useRef(new Map()); // all grid touches: pointerId → {x,y,key}
+  const gPinchRef = useRef(null); // direct pinch-on-tile gesture {key,d0,s0}
+  const actionsRef = useRef({});
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
 
@@ -168,6 +171,14 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     }
   }
   const brand = BRANDS.find((b) => b.acct === acct);
+  actionsRef.current = {
+    openEditFor(key) {
+      const z = zooms[key] || { s: 1.15, x: 0, y: 0 };
+      setEditKey(key); setEditZoom(z); setEditMsg(null); setPickIdx(null);
+      return z;
+    },
+    zoomScale(s) { setEditZoom((cur) => clampZoom({ ...cur, s: Math.max(1, Math.min(3, s)) })); },
+  };
 
   // ── Touch drag (Plann-style). HTML5 dnd doesn't exist on touch, so: press a
   // tile ~a quarter second without moving → it lifts (vibrates), a ghost
@@ -220,7 +231,19 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   };
   const onTilePointerDown = (e, slot) => {
     if (e.pointerType !== "touch") return; // mouse keeps native HTML5 drag
-    if (visible[slot] && visible[slot].done) return; // posted tiles are pinned
+    const it = visible[slot];
+    gPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY, key: it ? it.key : null });
+    // Second finger on the SAME photo → pinch-to-zoom right here: reframe mode
+    // opens on the spot and the pinch drives the zoom immediately.
+    const same = it ? [...gPointersRef.current.values()].filter((p) => p.key === it.key) : [];
+    if (same.length >= 2) {
+      if (touchRef.current) endTouchDrag(false);
+      const z = actionsRef.current.openEditFor(it.key);
+      gPinchRef.current = { key: it.key, d0: Math.max(20, Math.hypot(same[0].x - same[1].x, same[0].y - same[1].y)), s0: z.s };
+      document.addEventListener("touchmove", preventScroll, { passive: false });
+      return;
+    }
+    if (it && it.done) return; // posted tiles are pinned (but pinch-view above still allowed)
     if (touchRef.current) endTouchDrag(false); // clear any stale gesture first
     const t = { slot, x: e.clientX, y: e.clientY, active: false, over: null, ghost: null };
     t.timer = setTimeout(() => beginTouchDrag(t), 240);
@@ -233,6 +256,19 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   endRef.current = endTouchDrag;
   useEffect(() => {
     const move = (e) => {
+      if (e.pointerType === "touch" && gPointersRef.current.has(e.pointerId)) {
+        const gp = gPointersRef.current.get(e.pointerId);
+        gPointersRef.current.set(e.pointerId, { ...gp, x: e.clientX, y: e.clientY });
+        const pin = gPinchRef.current;
+        if (pin) {
+          const pts = [...gPointersRef.current.values()].filter((p) => p.key === pin.key);
+          if (pts.length >= 2) {
+            const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            actionsRef.current.zoomScale(pin.s0 * (d / pin.d0));
+            return;
+          }
+        }
+      }
       const t = touchRef.current;
       if (!t || e.pointerType !== "touch") return;
       if (!t.active) {
@@ -248,8 +284,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       t.over = cell ? parseInt(cell.getAttribute("data-slot"), 10) : null;
       setOverIdx(t.over);
     };
-    const up = (e) => { if (e.pointerType === "touch" && endRef.current) endRef.current(true); };
-    const cancel = (e) => { if (e.pointerType === "touch" && endRef.current) endRef.current(false); };
+    const releaseG = (e) => {
+      gPointersRef.current.delete(e.pointerId);
+      const pin = gPinchRef.current;
+      if (pin && [...gPointersRef.current.values()].filter((p) => p.key === pin.key).length < 2) {
+        gPinchRef.current = null;
+        document.removeEventListener("touchmove", preventScroll);
+      }
+    };
+    const up = (e) => { if (e.pointerType === "touch") { releaseG(e); if (endRef.current) endRef.current(true); } };
+    const cancel = (e) => { if (e.pointerType === "touch") { releaseG(e); if (endRef.current) endRef.current(false); } };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel);
@@ -349,7 +393,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         ))}
       </div>
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
-        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Tap a photo to move it by tapping its new spot — or to reframe (zoom) it. ✓ posted tiles hold positions 1, 2, 3… in their real posted order and never move.
+        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Pinch a photo with two fingers to zoom it in place. Tap a photo to move it by tapping its new spot. ✓ posted tiles hold positions 1, 2, 3… in their real posted order and never move.
       </div>
       {editKey && candidates[editKey] && (() => {
         const item = candidates[editKey];
