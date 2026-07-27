@@ -35,7 +35,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const touchRef = useRef(null); // real finger-drag: long-press lifts the tile, ghost follows the finger
   const suppressClickRef = useRef(0);
   const [arranging, setArranging] = useState(false);
-  const [editKey, setEditKey] = useState(null); // item key open in the zoom editor
+  const [editKey, setEditKey] = useState(null); // tile in inline reframe mode
+  const [editZoom, setEditZoom] = useState({ s: 1.3, x: 0, y: 0 });
+  const [editMsg, setEditMsg] = useState(null);
+  const panRef = useRef(null);
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
 
@@ -260,19 +263,35 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
-          <div key={item.key} draggable data-slot={slot}
-            onPointerDown={(e) => onTilePointerDown(e, slot)}
+          <div key={item.key} draggable={editKey !== item.key} data-slot={slot}
+            onPointerDown={(e) => {
+              if (editKey === item.key) {
+                e.preventDefault(); e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                panRef.current = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, zx: editZoom.x, zy: editZoom.y };
+                e.currentTarget.setPointerCapture(e.pointerId);
+                return;
+              }
+              onTilePointerDown(e, slot);
+            }}
+            onPointerMove={(e) => {
+              const p = panRef.current;
+              if (editKey !== item.key || !p) return;
+              e.preventDefault();
+              setEditZoom((cur) => clampZoom({ ...cur, x: p.zx + ((e.clientX - p.x) / p.w) * 100, y: p.zy + ((e.clientY - p.y) / p.h) * 100 }));
+            }}
+            onPointerUp={() => { if (editKey === item.key) panRef.current = null; }}
             onDragStart={() => setDragIdx(slot)}
             onDragOver={(e) => { e.preventDefault(); setOverIdx(slot); }}
             onDragLeave={() => setOverIdx((v) => (v === slot ? null : v))}
             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) moveItem(dragIdx, slot); setDragIdx(null); setOverIdx(null); }}
             onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-            onClick={() => tapCell(slot, true)}
+            onClick={() => { if (editKey !== item.key) tapCell(slot, true); }}
             title={item.name + (item.boardName ? " · " + item.boardName : "")}
-            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", touchAction: "pan-y", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
-            <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: zooms[item.key] ? `translate(${zooms[item.key].x}%, ${zooms[item.key].y}%) scale(${zooms[item.key].s})` : "none" }} />
+            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: editKey === item.key ? "move" : "grab", touchAction: editKey === item.key ? "none" : "pan-y", zIndex: editKey === item.key ? 5 : "auto", boxShadow: editKey === item.key ? `0 0 0 3px ${c.ink}` : "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
+            <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none", transform: (editKey === item.key ? `translate(${editZoom.x}%, ${editZoom.y}%) scale(${editZoom.s})` : zooms[item.key] ? `translate(${zooms[item.key].x}%, ${zooms[item.key].y}%) scale(${zooms[item.key].s})` : "none") }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
-            <button onClick={(e) => { e.stopPropagation(); suppressClickRef.current = Date.now(); setEditKey(item.key); }} onPointerDown={(e) => e.stopPropagation()}
+            <button onClick={(e) => { e.stopPropagation(); suppressClickRef.current = Date.now(); setEditKey(item.key); setEditZoom(zooms[item.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); setPickIdx(null); }} onPointerDown={(e) => e.stopPropagation()}
               style={{ position: "absolute", left: 4, top: 4, width: 22, height: 22, borderRadius: 11, border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
               title="Zoom / reframe this cover">🔍</button>
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
@@ -290,49 +309,64 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
         Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo, then drag it where it goes (or tap it, then tap the target spot). 🔍 reframes a cover; ✓ means posted.
       </div>
-      {editKey && candidates[editKey] && (
-        <ZoomEditor item={candidates[editKey]} initial={zooms[editKey] || null}
-          onClose={() => setEditKey(null)}
-          onSaveZoom={(z) => { saveZoom(editKey, z); setEditKey(null); }}
-          onReset={() => { saveZoom(editKey, null); setEditKey(null); }}
-          onSetCover={(dataUrl) => {
-            const [bk, cardId] = [editKey.slice(0, editKey.indexOf(":")), editKey.slice(editKey.indexOf(":") + 1)];
-            if (onSaveBoards && boards && boards[bk]) {
-              const next = { ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, cover: dataUrl } : cd)) } };
-              onSaveBoards(next);
+      {editKey && candidates[editKey] && (() => {
+        const item = candidates[editKey];
+        const barBtn = { border: `1px solid ${c.line}`, background: "#fff", borderRadius: 1, padding: "8px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: c.ink, cursor: "pointer" };
+        const doExport = async (mode) => {
+          setEditMsg("Rendering…");
+          try {
+            const cv = await renderCoverCrop(item.cover, editZoom);
+            if (mode === "download") {
+              const a = document.createElement("a");
+              a.href = cv.toDataURL("image/png");
+              a.download = (item.name || "cover").replace(/[^\w\s-]/g, "").trim().slice(0, 40) + " — zoomed cover.png";
+              a.click();
+              setEditMsg("Downloaded — drop it into Drive wherever it belongs.");
+            } else {
+              const dataUrl = cv.toDataURL("image/jpeg", 0.88);
+              const bk = editKey.slice(0, editKey.indexOf(":")), cardId = editKey.slice(editKey.indexOf(":") + 1);
+              if (onSaveBoards && boards && boards[bk]) onSaveBoards({ ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, cover: dataUrl } : cd)) } });
+              saveZoom(editKey, null); // the crop IS the cover now
+              setEditKey(null);
             }
-            saveZoom(editKey, null); // the crop IS the cover now — no double zoom
-            setEditKey(null);
-          }} />
-      )}
+          } catch { setEditMsg("Couldn't export this image — Save zoom still displays it reframed."); }
+        };
+        return (
+          <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 120, background: "#fff", borderTop: `1px solid ${c.line}`, boxShadow: "0 -8px 30px rgba(0,0,0,0.12)", padding: "10px 14px calc(10px + env(safe-area-inset-bottom))" }}>
+            <div style={{ maxWidth: 560, margin: "0 auto" }}>
+              <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>
+                Reframing post {(() => { const i = visible.findIndex((v) => v.key === editKey); return i >= 0 ? windowStart + i + 1 : ""; })()} — drag the photo in its tile · slider zooms
+              </div>
+              <input type="range" min={100} max={300} value={Math.round(editZoom.s * 100)}
+                onChange={(e) => setEditZoom((cur) => clampZoom({ ...cur, s: parseInt(e.target.value, 10) / 100 }))}
+                style={{ width: "100%", margin: "2px 0 8px" }} />
+              {editMsg && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 6 }}>{editMsg}</div>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button style={{ ...barBtn, background: c.ink, color: "#fff", borderColor: c.ink }} onClick={() => { saveZoom(editKey, clampZoom(editZoom)); setEditKey(null); }}>Save</button>
+                <button style={barBtn} onClick={() => { saveZoom(editKey, null); setEditKey(null); }}>Reset</button>
+                <button style={barBtn} onClick={() => setEditKey(null)}>Cancel</button>
+                <button style={barBtn} onClick={() => doExport("download")}>⬇ Download</button>
+                <button style={barBtn} onClick={() => doExport("cover")}>Set as cover</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
-// Zoom / reframe editor: slider zooms, dragging repositions, all inside the
-// exact 3:4 tile frame. Save keeps the tile displayed that way (visual-only,
-// fully undoable via Reset). Download exports the crop; Set as cover writes
-// the crop back to the board card as its new cover photo.
-function ZoomEditor({ item, initial, onClose, onSaveZoom, onReset, onSetCover }) {
-  const [z, setZ] = useState(initial || { s: 1.4, x: 0, y: 0 });
-  const [busy, setBusy] = useState(null);
-  const panRef = useRef(null);
-  const clamp = (zz) => {
-    const lim = ((zz.s - 1) / 2 / zz.s) * 100 * zz.s; // keep the frame covered
-    return { s: zz.s, x: Math.max(-lim, Math.min(lim, zz.x)), y: Math.max(-lim, Math.min(lim, zz.y)) };
-  };
-  const onPan = (e) => {
-    const p = panRef.current;
-    if (!p) return;
-    e.preventDefault();
-    setZ((cur) => clamp({ ...cur, x: p.zx + ((e.clientX - p.x) / p.w) * 100, y: p.zy + ((e.clientY - p.y) / p.h) * 100 }));
-  };
-  // proxy Drive-hosted covers through our own domain so canvas export stays clean
-  const exportSrc = (cover) => {
-    if (cover.includes("drive.google.com")) { const id = (cover.match(/[-\w]{25,}/) || [])[0]; if (id) return "/api/data?op=drive_img&id=" + id; }
-    return cover;
-  };
-  const renderCrop = () => new Promise((resolve, reject) => {
+// Keep the visible area covering the tile at any zoom.
+function clampZoom(zz) {
+  const lim = ((zz.s - 1) / 2 / zz.s) * 100 * zz.s;
+  return { s: zz.s, x: Math.max(-lim, Math.min(lim, zz.x)), y: Math.max(-lim, Math.min(lim, zz.y)) };
+}
+// Render the currently-framed area to a 1080×1440 canvas. Drive-hosted covers
+// are proxied through our own domain so the canvas stays export-clean.
+function renderCoverCrop(cover, z) {
+  let src = cover;
+  if (cover.includes("drive.google.com")) { const id = (cover.match(/[-\w]{25,}/) || [])[0]; if (id) src = "/api/data?op=drive_img&id=" + id; }
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
@@ -350,58 +384,8 @@ function ZoomEditor({ item, initial, onClose, onSaveZoom, onReset, onSetCover })
       } catch (e) { reject(e); }
     };
     img.onerror = () => reject(new Error("image load failed"));
-    img.src = exportSrc(item.cover);
+    img.src = src;
   });
-  const download = async () => {
-    setBusy("Rendering…");
-    try {
-      const cv = await renderCrop();
-      const a = document.createElement("a");
-      a.href = cv.toDataURL("image/png");
-      a.download = (item.name || "cover").replace(/[^\w\s-]/g, "").trim().slice(0, 40) + " — zoomed cover.png";
-      a.click();
-      setBusy(null);
-    } catch { setBusy("Couldn't export this image — save the zoom instead and it will still display reframed."); }
-  };
-  const setCover = async () => {
-    setBusy("Rendering…");
-    try {
-      const cv = await renderCrop();
-      onSetCover(cv.toDataURL("image/jpeg", 0.88));
-    } catch { setBusy("Couldn't export this image — save the zoom instead and it will still display reframed."); }
-  };
-  const btn = { border: `1px solid ${c.line}`, background: "#fff", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" };
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", padding: 14, maxWidth: 360, width: "100%", borderRadius: 2 }}>
-        <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Reframe cover · drag to position</div>
-        <div style={{ aspectRatio: "3 / 4", overflow: "hidden", position: "relative", touchAction: "none", cursor: "grab", background: c.card }}
-          onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); panRef.current = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, zx: z.x, zy: z.y }; e.currentTarget.setPointerCapture(e.pointerId); }}
-          onPointerMove={(e) => panRef.current && onPan(e)}
-          onPointerUp={() => (panRef.current = null)}
-          onPointerCancel={() => (panRef.current = null)}>
-          <img src={item.cover} alt="" draggable={false}
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: `translate(${z.x}%, ${z.y}%) scale(${z.s})`, pointerEvents: "none" }} />
-        </div>
-        <input type="range" min={100} max={300} value={z.s * 100}
-          onChange={(e) => setZ((cur) => clamp({ ...cur, s: parseInt(e.target.value, 10) / 100 }))}
-          style={{ width: "100%", margin: "12px 0 4px" }} />
-        {busy && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, margin: "4px 0" }}>{busy}</div>}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-          <button style={{ ...btn, background: c.ink, color: "#fff", borderColor: c.ink }} onClick={() => onSaveZoom(clamp(z))}>Save zoom</button>
-          <button style={btn} onClick={onReset}>Reset to original</button>
-          <button style={btn} onClick={onClose}>Cancel</button>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-          <button style={btn} onClick={download}>⬇ Download crop</button>
-          <button style={btn} onClick={setCover}>Set as card cover</button>
-        </div>
-        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 8 }}>
-          Save zoom only changes how the grid displays it — Reset brings the original back anytime. Set as card cover replaces the card's photo with this crop.
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function loadImg(src) {
