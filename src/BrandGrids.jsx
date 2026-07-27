@@ -23,7 +23,11 @@ const GRID_BOARDS = { "lavalle-sisters": "lavallesisters", "refillery-haus": "re
 
 const SLOTS = 21, COLS = 3, ROWS = 7;
 
-export default function BrandGrids({ boards, data, onSave }) {
+// Stable identity matters: this exact function is added on drag start and must
+// be the SAME reference when removed on drop, or scrolling locks up for good.
+const preventScroll = (e) => e.preventDefault();
+
+export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [acct, setAcct] = useState(BRANDS[0].acct);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
@@ -31,6 +35,7 @@ export default function BrandGrids({ boards, data, onSave }) {
   const touchRef = useRef(null); // real finger-drag: long-press lifts the tile, ghost follows the finger
   const suppressClickRef = useRef(0);
   const [arranging, setArranging] = useState(false);
+  const [editKey, setEditKey] = useState(null); // item key open in the zoom editor
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
 
@@ -71,6 +76,13 @@ export default function BrandGrids({ boards, data, onSave }) {
     } else savedRef.current = j;
   }, [order, acct]); // eslint-disable-line
 
+  const zooms = ((data || {})[acct] || {}).zoom || {};
+  const saveZoom = (key, z) => {
+    const cur = (data || {})[acct] || {};
+    const zoom = { ...(cur.zoom || {}) };
+    if (z) zoom[key] = z; else delete zoom[key];
+    onSave({ ...(data || {}), [acct]: { ...cur, zoom } });
+  };
   const items = order.map((k) => candidates[k]).filter(Boolean);
   const windowStart = Math.max(0, items.length - SLOTS);
   const visible = items.slice(windowStart); // newest 21 — older ones have shipped
@@ -96,17 +108,23 @@ export default function BrandGrids({ boards, data, onSave }) {
           return tone(img);
         } catch { return { l: 0.5 + Math.random() * 0.001, h: Math.random() }; }
       }));
-      let idx = visible.map((_, i) => i).sort((a, b) => tones[a].l - tones[b].l);
-      const half = Math.ceil(idx.length / 2);
-      const darks = idx.slice(0, half), lights = idx.slice(half).reverse();
+      // RULE: posted (✓) tiles are locked in place — only unposted ones move.
+      const lockedSlots = new Set(visible.map((it, i) => (it.done ? i : -1)).filter((i) => i >= 0));
+      const freeIdx = visible.map((_, i) => i).filter((i) => !lockedSlots.has(i)).sort((a, b) => tones[a].l - tones[b].l);
+      const half = Math.ceil(freeIdx.length / 2);
+      const darks = freeIdx.slice(0, half), lights = freeIdx.slice(half).reverse();
       const inter = [];
       for (let i = 0; i < half; i++) { if (lights[i] != null) inter.push(lights[i]); if (darks[i] != null) inter.push(darks[i]); }
+      // weave arranged free tiles around the locked ones, slot by slot
+      const pos = new Array(visible.length);
+      let take = 0;
+      for (let s = 0; s < visible.length; s++) pos[s] = lockedSlots.has(s) ? s : inter[take++];
+      const freeSlots = pos.map((_, s) => s).filter((s) => !lockedSlots.has(s));
       // local polish: reduce neighbor similarity (luminance + hue) with swaps
-      const pos = inter.slice();
       const near = (i) => { const out = []; const r = Math.floor(i / COLS), col = i % COLS; if (col > 0) out.push(i - 1); if (col < COLS - 1 && i + 1 < pos.length) out.push(i + 1); if (r > 0) out.push(i - COLS); if (i + COLS < pos.length) out.push(i + COLS); return out; };
       const cost = (i) => near(i).reduce((s, j) => { const a = tones[pos[i]], b = tones[pos[j]]; return s + Math.max(0, 0.35 - Math.abs(a.l - b.l)) + Math.max(0, 0.2 - hueDist(a.h, b.h)); }, 0);
-      for (let pass = 0; pass < 400; pass++) {
-        const i = Math.floor(Math.random() * pos.length), j = Math.floor(Math.random() * pos.length);
+      for (let pass = 0; pass < 400 && freeSlots.length > 1; pass++) {
+        const i = freeSlots[Math.floor(Math.random() * freeSlots.length)], j = freeSlots[Math.floor(Math.random() * freeSlots.length)];
         if (i === j) continue;
         const before = cost(i) + cost(j);
         [pos[i], pos[j]] = [pos[j], pos[i]];
@@ -114,7 +132,7 @@ export default function BrandGrids({ boards, data, onSave }) {
       }
       const head = order.slice(0, windowStart);
       saveOrder([...head, ...pos.map((vi) => order[windowStart + vi])]);
-      setMsg("Arranged for tonal balance — drag anything you'd place differently.");
+      setMsg(lockedSlots.size ? `Arranged for tonal balance — ${lockedSlots.size} posted tile${lockedSlots.size === 1 ? "" : "s"} stayed locked in place.` : "Arranged for tonal balance — drag anything you'd place differently.");
     } catch (e) { setMsg("Couldn't analyze the photos (" + String(e).slice(0, 60) + ")"); }
     setArranging(false);
   };
@@ -135,7 +153,6 @@ export default function BrandGrids({ boards, data, onSave }) {
   // tile ~a quarter second without moving → it lifts (vibrates), a ghost
   // follows the finger, the hovered slot highlights, release drops it there.
   // A quick swipe still scrolls the page; a quick tap still tap-to-moves.
-  const preventScroll = (e) => e.preventDefault();
   const endTouchDrag = (commit, x, y) => {
     const t = touchRef.current;
     if (!t) return;
@@ -253,8 +270,11 @@ export default function BrandGrids({ boards, data, onSave }) {
             onClick={() => tapCell(slot, true)}
             title={item.name + (item.boardName ? " · " + item.boardName : "")}
             style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", touchAction: "pan-y", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
-            <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: zooms[item.key] ? `translate(${zooms[item.key].x}%, ${zooms[item.key].y}%) scale(${zooms[item.key].s})` : "none" }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
+            <button onClick={(e) => { e.stopPropagation(); suppressClickRef.current = Date.now(); setEditKey(item.key); }} onPointerDown={(e) => e.stopPropagation()}
+              style={{ position: "absolute", left: 4, top: 4, width: 22, height: 22, borderRadius: 11, border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+              title="Zoom / reframe this cover">🔍</button>
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
           </div>
         ) : (
@@ -268,7 +288,117 @@ export default function BrandGrids({ boards, data, onSave }) {
         ))}
       </div>
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
-        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo, then drag it where it goes (or tap it, then tap the target spot). ✓ means posted.
+        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo, then drag it where it goes (or tap it, then tap the target spot). 🔍 reframes a cover; ✓ means posted.
+      </div>
+      {editKey && candidates[editKey] && (
+        <ZoomEditor item={candidates[editKey]} initial={zooms[editKey] || null}
+          onClose={() => setEditKey(null)}
+          onSaveZoom={(z) => { saveZoom(editKey, z); setEditKey(null); }}
+          onReset={() => { saveZoom(editKey, null); setEditKey(null); }}
+          onSetCover={(dataUrl) => {
+            const [bk, cardId] = [editKey.slice(0, editKey.indexOf(":")), editKey.slice(editKey.indexOf(":") + 1)];
+            if (onSaveBoards && boards && boards[bk]) {
+              const next = { ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, cover: dataUrl } : cd)) } };
+              onSaveBoards(next);
+            }
+            saveZoom(editKey, null); // the crop IS the cover now — no double zoom
+            setEditKey(null);
+          }} />
+      )}
+    </div>
+  );
+}
+
+// Zoom / reframe editor: slider zooms, dragging repositions, all inside the
+// exact 3:4 tile frame. Save keeps the tile displayed that way (visual-only,
+// fully undoable via Reset). Download exports the crop; Set as cover writes
+// the crop back to the board card as its new cover photo.
+function ZoomEditor({ item, initial, onClose, onSaveZoom, onReset, onSetCover }) {
+  const [z, setZ] = useState(initial || { s: 1.4, x: 0, y: 0 });
+  const [busy, setBusy] = useState(null);
+  const panRef = useRef(null);
+  const clamp = (zz) => {
+    const lim = ((zz.s - 1) / 2 / zz.s) * 100 * zz.s; // keep the frame covered
+    return { s: zz.s, x: Math.max(-lim, Math.min(lim, zz.x)), y: Math.max(-lim, Math.min(lim, zz.y)) };
+  };
+  const onPan = (e) => {
+    const p = panRef.current;
+    if (!p) return;
+    e.preventDefault();
+    setZ((cur) => clamp({ ...cur, x: p.zx + ((e.clientX - p.x) / p.w) * 100, y: p.zy + ((e.clientY - p.y) / p.h) * 100 }));
+  };
+  // proxy Drive-hosted covers through our own domain so canvas export stays clean
+  const exportSrc = (cover) => {
+    if (cover.includes("drive.google.com")) { const id = (cover.match(/[-\w]{25,}/) || [])[0]; if (id) return "/api/data?op=drive_img&id=" + id; }
+    return cover;
+  };
+  const renderCrop = () => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const FW = 1080, FH = 1440;
+        const b = Math.max(FW / img.naturalWidth, FH / img.naturalHeight);
+        const total = b * z.s;
+        const sw = FW / total, sh = FH / total;
+        const sx = img.naturalWidth / 2 - ((z.x / 100) * FW) / total - sw / 2;
+        const sy = img.naturalHeight / 2 - ((z.y / 100) * FH) / total - sh / 2;
+        const cv = document.createElement("canvas");
+        cv.width = FW; cv.height = FH;
+        cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, FW, FH);
+        resolve(cv);
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error("image load failed"));
+    img.src = exportSrc(item.cover);
+  });
+  const download = async () => {
+    setBusy("Rendering…");
+    try {
+      const cv = await renderCrop();
+      const a = document.createElement("a");
+      a.href = cv.toDataURL("image/png");
+      a.download = (item.name || "cover").replace(/[^\w\s-]/g, "").trim().slice(0, 40) + " — zoomed cover.png";
+      a.click();
+      setBusy(null);
+    } catch { setBusy("Couldn't export this image — save the zoom instead and it will still display reframed."); }
+  };
+  const setCover = async () => {
+    setBusy("Rendering…");
+    try {
+      const cv = await renderCrop();
+      onSetCover(cv.toDataURL("image/jpeg", 0.88));
+    } catch { setBusy("Couldn't export this image — save the zoom instead and it will still display reframed."); }
+  };
+  const btn = { border: `1px solid ${c.line}`, background: "#fff", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", padding: 14, maxWidth: 360, width: "100%", borderRadius: 2 }}>
+        <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Reframe cover · drag to position</div>
+        <div style={{ aspectRatio: "3 / 4", overflow: "hidden", position: "relative", touchAction: "none", cursor: "grab", background: c.card }}
+          onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); panRef.current = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, zx: z.x, zy: z.y }; e.currentTarget.setPointerCapture(e.pointerId); }}
+          onPointerMove={(e) => panRef.current && onPan(e)}
+          onPointerUp={() => (panRef.current = null)}
+          onPointerCancel={() => (panRef.current = null)}>
+          <img src={item.cover} alt="" draggable={false}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: `translate(${z.x}%, ${z.y}%) scale(${z.s})`, pointerEvents: "none" }} />
+        </div>
+        <input type="range" min={100} max={300} value={z.s * 100}
+          onChange={(e) => setZ((cur) => clamp({ ...cur, s: parseInt(e.target.value, 10) / 100 }))}
+          style={{ width: "100%", margin: "12px 0 4px" }} />
+        {busy && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, margin: "4px 0" }}>{busy}</div>}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+          <button style={{ ...btn, background: c.ink, color: "#fff", borderColor: c.ink }} onClick={() => onSaveZoom(clamp(z))}>Save zoom</button>
+          <button style={btn} onClick={onReset}>Reset to original</button>
+          <button style={btn} onClick={onClose}>Cancel</button>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          <button style={btn} onClick={download}>⬇ Download crop</button>
+          <button style={btn} onClick={setCover}>Set as card cover</button>
+        </div>
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 8 }}>
+          Save zoom only changes how the grid displays it — Reset brings the original back anytime. Set as card cover replaces the card's photo with this crop.
+        </div>
       </div>
     </div>
   );
