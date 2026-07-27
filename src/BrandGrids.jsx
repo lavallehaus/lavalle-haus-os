@@ -27,7 +27,9 @@ export default function BrandGrids({ boards, data, onSave }) {
   const [acct, setAcct] = useState(BRANDS[0].acct);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
-  const [pickIdx, setPickIdx] = useState(null); // tap-to-move (mobile: HTML5 drag never fires on touch)
+  const [pickIdx, setPickIdx] = useState(null); // tap-to-move still works as a fallback
+  const touchRef = useRef(null); // real finger-drag: long-press lifts the tile, ghost follows the finger
+  const suppressClickRef = useRef(0);
   const [arranging, setArranging] = useState(false);
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
@@ -117,17 +119,101 @@ export default function BrandGrids({ boards, data, onSave }) {
     setArranging(false);
   };
 
-  // Render top row first; position 1 lives bottom-left. Slot s (1-based) sits
-  // at row floor((s-1)/3) from the BOTTOM. Cells above the filled count stay empty.
+  // Render top row first; position 1 lives bottom-RIGHT (like a real IG grid —
+  // the first-posted ends up bottom-right). Slot s sits at row floor(s/3) from
+  // the bottom, filling right-to-left. Cells above the filled count stay empty.
   const cells = [];
   for (let rowFromTop = 0; rowFromTop < ROWS; rowFromTop++) {
     for (let col = 0; col < COLS; col++) {
-      const slot = (ROWS - 1 - rowFromTop) * COLS + col; // 0-based position
+      const slot = (ROWS - 1 - rowFromTop) * COLS + (COLS - 1 - col); // 0-based position
       cells.push({ slot, item: visible[slot] || null });
     }
   }
   const brand = BRANDS.find((b) => b.acct === acct);
+
+  // ── Touch drag (Plann-style). HTML5 dnd doesn't exist on touch, so: press a
+  // tile ~a quarter second without moving → it lifts (vibrates), a ghost
+  // follows the finger, the hovered slot highlights, release drops it there.
+  // A quick swipe still scrolls the page; a quick tap still tap-to-moves.
+  const preventScroll = (e) => e.preventDefault();
+  const endTouchDrag = (commit, x, y) => {
+    const t = touchRef.current;
+    if (!t) return;
+    clearTimeout(t.timer);
+    clearInterval(t.scroller);
+    document.removeEventListener("touchmove", preventScroll);
+    if (t.ghost) t.ghost.remove();
+    if (t.active) {
+      suppressClickRef.current = Date.now();
+      if (commit && t.over != null && t.over !== t.slot) moveItem(t.slot, Math.min(visible.length - 1, t.over));
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+    touchRef.current = null;
+    setDragIdx(null); setOverIdx(null);
+  };
+  const startAutoScroll = (t) => {
+    if (t.scroller) return;
+    t.scroller = setInterval(() => {
+      if (!t.dy) return;
+      window.scrollBy(0, t.dy);
+      if (t.ghost && t.lastXY) { // re-hit-test under the (stationary) finger as content slides
+        const el = document.elementFromPoint(t.lastXY[0], t.lastXY[1]);
+        const cell = el && el.closest && el.closest("[data-slot]");
+        t.over = cell ? parseInt(cell.getAttribute("data-slot"), 10) : t.over;
+        setOverIdx(t.over);
+      }
+    }, 16);
+  };
+  const beginTouchDrag = (t) => {
+    t.active = true;
+    t.dy = 0;
+    startAutoScroll(t);
+    document.addEventListener("touchmove", preventScroll, { passive: false });
+    if (navigator.vibrate) navigator.vibrate(12);
+    const img = document.querySelector(`[data-slot="${t.slot}"] img`);
+    const g = document.createElement("div");
+    g.style.cssText = "position:fixed;z-index:9999;width:84px;aspect-ratio:3/4;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,0.35);transform:translate(-50%,-60%) scale(1.05);border-radius:2px;overflow:hidden;opacity:0.92";
+    if (img) { const gi = img.cloneNode(); gi.style.cssText = "width:100%;height:100%;object-fit:cover"; g.appendChild(gi); }
+    g.style.left = t.x + "px"; g.style.top = t.y + "px";
+    document.body.appendChild(g);
+    t.ghost = g;
+    setDragIdx(t.slot);
+  };
+  const onTilePointerDown = (e, slot) => {
+    if (e.pointerType !== "touch") return; // mouse keeps native HTML5 drag
+    const t = { slot, x: e.clientX, y: e.clientY, active: false, over: null, ghost: null };
+    t.timer = setTimeout(() => beginTouchDrag(t), 240);
+    touchRef.current = t;
+  };
+  useEffect(() => {
+    const move = (e) => {
+      const t = touchRef.current;
+      if (!t || e.pointerType !== "touch") return;
+      if (!t.active) {
+        if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) { clearTimeout(t.timer); touchRef.current = null; } // it's a scroll
+        return;
+      }
+      t.ghost.style.left = e.clientX + "px"; t.ghost.style.top = e.clientY + "px";
+      t.lastXY = [e.clientX, e.clientY];
+      const edge = 96, vh = window.innerHeight;
+      t.dy = e.clientY < edge ? -Math.ceil((edge - e.clientY) / 6) : e.clientY > vh - edge ? Math.ceil((e.clientY - (vh - edge)) / 6) : 0;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cell = el && el.closest && el.closest("[data-slot]");
+      t.over = cell ? parseInt(cell.getAttribute("data-slot"), 10) : null;
+      setOverIdx(t.over);
+    };
+    const up = (e) => { if (e.pointerType === "touch") endTouchDrag(true); };
+    const cancel = (e) => { if (e.pointerType === "touch") endTouchDrag(false); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    // cleanup only unbinds — the drag itself lives in touchRef and must
+    // survive the re-renders that setDragIdx/setOverIdx trigger mid-gesture
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); };
+  }); // re-binds each render so moveItem sees fresh order
+
   const tapCell = (slot, hasItem) => {
+    if (Date.now() - suppressClickRef.current < 400) return; // that click was the tail of a drag
     if (pickIdx == null) { if (hasItem) setPickIdx(slot); return; }
     if (pickIdx === slot) { setPickIdx(null); return; }
     moveItem(pickIdx, Math.min(visible.length - 1, slot));
@@ -146,7 +232,7 @@ export default function BrandGrids({ boards, data, onSave }) {
       </div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
-          {brand.handle} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-left
+          {brand.handle} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
         </div>
         <button onClick={autoArrange} disabled={arranging || visible.length < 4}
           style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, cursor: "pointer", opacity: arranging || visible.length < 4 ? 0.5 : 1 }}>
@@ -157,7 +243,8 @@ export default function BrandGrids({ boards, data, onSave }) {
       {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
-          <div key={item.key} draggable
+          <div key={item.key} draggable data-slot={slot}
+            onPointerDown={(e) => onTilePointerDown(e, slot)}
             onDragStart={() => setDragIdx(slot)}
             onDragOver={(e) => { e.preventDefault(); setOverIdx(slot); }}
             onDragLeave={() => setOverIdx((v) => (v === slot ? null : v))}
@@ -165,13 +252,13 @@ export default function BrandGrids({ boards, data, onSave }) {
             onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
             onClick={() => tapCell(slot, true)}
             title={item.name + (item.boardName ? " · " + item.boardName : "")}
-            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
+            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", touchAction: "pan-y", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
             <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
           </div>
         ) : (
-          <div key={"empty" + slot}
+          <div key={"empty" + slot} data-slot={slot}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) moveItem(dragIdx, Math.min(visible.length - 1, slot)); setDragIdx(null); setOverIdx(null); }}
             onClick={() => tapCell(slot, false)}
@@ -181,7 +268,7 @@ export default function BrandGrids({ boards, data, onSave }) {
         ))}
       </div>
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
-        Covers land here the moment they're added to a card on a {brand.label} board. Drag to rearrange; ✓ means posted.
+        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo, then drag it where it goes (or tap it, then tap the target spot). ✓ means posted.
       </div>
     </div>
   );
