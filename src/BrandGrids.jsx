@@ -162,7 +162,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     clearTimeout(t.timer);
     clearInterval(t.scroller);
     document.removeEventListener("touchmove", preventScroll);
-    if (t.ghost) t.ghost.remove();
+    document.querySelectorAll(".lh-drag-ghost").forEach((g) => g.remove()); // sweep orphans too
     if (t.active) {
       suppressClickRef.current = Date.now();
       if (commit && t.over != null && t.over !== t.slot) moveItem(t.slot, Math.min(visible.length - 1, t.over));
@@ -191,7 +191,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     document.addEventListener("touchmove", preventScroll, { passive: false });
     if (navigator.vibrate) navigator.vibrate(12);
     const img = document.querySelector(`[data-slot="${t.slot}"] img`);
+    document.querySelectorAll(".lh-drag-ghost").forEach((x) => x.remove());
     const g = document.createElement("div");
+    g.className = "lh-drag-ghost";
     g.style.cssText = "position:fixed;z-index:9999;width:84px;aspect-ratio:3/4;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,0.35);transform:translate(-50%,-60%) scale(1.05);border-radius:2px;overflow:hidden;opacity:0.92";
     if (img) { const gi = img.cloneNode(); gi.style.cssText = "width:100%;height:100%;object-fit:cover"; g.appendChild(gi); }
     g.style.left = t.x + "px"; g.style.top = t.y + "px";
@@ -201,10 +203,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   };
   const onTilePointerDown = (e, slot) => {
     if (e.pointerType !== "touch") return; // mouse keeps native HTML5 drag
+    if (touchRef.current) endTouchDrag(false); // clear any stale gesture first
     const t = { slot, x: e.clientX, y: e.clientY, active: false, over: null, ghost: null };
     t.timer = setTimeout(() => beginTouchDrag(t), 240);
     touchRef.current = t;
   };
+  // Listeners bind ONCE; everything mutable flows through refs. (Re-binding
+  // per render left micro-gaps where a drop event could slip through unheard —
+  // orphaned ghosts stacked up on the tile and the scroll lock stuck.)
+  const endRef = useRef(null);
+  endRef.current = endTouchDrag;
   useEffect(() => {
     const move = (e) => {
       const t = touchRef.current;
@@ -213,7 +221,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) { clearTimeout(t.timer); touchRef.current = null; } // it's a scroll
         return;
       }
-      t.ghost.style.left = e.clientX + "px"; t.ghost.style.top = e.clientY + "px";
+      if (t.ghost) { t.ghost.style.left = e.clientX + "px"; t.ghost.style.top = e.clientY + "px"; }
       t.lastXY = [e.clientX, e.clientY];
       const edge = 96, vh = window.innerHeight;
       t.dy = e.clientY < edge ? -Math.ceil((edge - e.clientY) / 6) : e.clientY > vh - edge ? Math.ceil((e.clientY - (vh - edge)) / 6) : 0;
@@ -222,15 +230,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       t.over = cell ? parseInt(cell.getAttribute("data-slot"), 10) : null;
       setOverIdx(t.over);
     };
-    const up = (e) => { if (e.pointerType === "touch") endTouchDrag(true); };
-    const cancel = (e) => { if (e.pointerType === "touch") endTouchDrag(false); };
+    const up = (e) => { if (e.pointerType === "touch" && endRef.current) endRef.current(true); };
+    const cancel = (e) => { if (e.pointerType === "touch" && endRef.current) endRef.current(false); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel);
-    // cleanup only unbinds — the drag itself lives in touchRef and must
-    // survive the re-renders that setDragIdx/setOverIdx trigger mid-gesture
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); };
-  }); // re-binds each render so moveItem sees fresh order
+  }, []);
 
   const tapCell = (slot, hasItem) => {
     if (Date.now() - suppressClickRef.current < 400) return; // that click was the tail of a drag
@@ -259,7 +265,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           {arranging ? "Arranging…" : "✨ Auto-arrange"}
         </button>
       </div>
-      {pickIdx != null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink, marginBottom: 8 }}>Moving post {windowStart + pickIdx + 1} — tap the spot it should take (tap it again to cancel).</div>}
+      {pickIdx != null && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink }}>Post {windowStart + pickIdx + 1} — tap the spot it should take, or:</div>
+          <button onClick={() => { const it = visible[pickIdx]; if (it) { setEditKey(it.key); setEditZoom(zooms[it.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); } setPickIdx(null); }}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>🔍 Reframe</button>
+        </div>
+      )}
       {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
@@ -291,9 +303,6 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: editKey === item.key ? "move" : "grab", touchAction: editKey === item.key ? "none" : "pan-y", zIndex: editKey === item.key ? 5 : "auto", boxShadow: editKey === item.key ? `0 0 0 3px ${c.ink}` : "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
             <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none", transform: (editKey === item.key ? `translate(${editZoom.x}%, ${editZoom.y}%) scale(${editZoom.s})` : zooms[item.key] ? `translate(${zooms[item.key].x}%, ${zooms[item.key].y}%) scale(${zooms[item.key].s})` : "none") }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
-            <button onClick={(e) => { e.stopPropagation(); suppressClickRef.current = Date.now(); setEditKey(item.key); setEditZoom(zooms[item.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); setPickIdx(null); }} onPointerDown={(e) => e.stopPropagation()}
-              style={{ position: "absolute", left: 4, top: 4, width: 22, height: 22, borderRadius: 11, border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
-              title="Zoom / reframe this cover">🔍</button>
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
           </div>
         ) : (
@@ -307,7 +316,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         ))}
       </div>
       <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
-        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo, then drag it where it goes (or tap it, then tap the target spot). 🔍 reframes a cover; ✓ means posted.
+        Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Tap a photo to move it by tapping its new spot — or to reframe (zoom) it. ✓ means posted.
       </div>
       {editKey && candidates[editKey] && (() => {
         const item = candidates[editKey];
