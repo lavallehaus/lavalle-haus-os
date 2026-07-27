@@ -27,18 +27,21 @@ export default function BrandGrids({ boards, data, onSave }) {
   const [acct, setAcct] = useState(BRANDS[0].acct);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
+  const [pickIdx, setPickIdx] = useState(null); // tap-to-move (mobile: HTML5 drag never fires on touch)
   const [arranging, setArranging] = useState(false);
   const [msg, setMsg] = useState(null);
   const savedRef = useRef("");
 
-  // Every carded cover on this brand's boards, keyed boardKey:cardId.
+  // Covers from the brand board's "Schedule 1-21" column ONLY — planning
+  // columns like Stories, Strategy Outline or August Schedule stay out.
   const candidates = useMemo(() => {
     const map = {};
     for (const [bk, board] of Object.entries(boards || {})) {
       if (bk.startsWith("_") || !board || !board.cards) continue;
       if (GRID_BOARDS[bk] !== acct) continue;
+      const schedLists = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
       for (const card of board.cards) {
-        if (!card.cover) continue;
+        if (!card.cover || !schedLists.has(card.listId)) continue;
         map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, name: card.name || "", done: !!card.done, boardName: board.name || "" };
       }
     }
@@ -124,12 +127,18 @@ export default function BrandGrids({ boards, data, onSave }) {
     }
   }
   const brand = BRANDS.find((b) => b.acct === acct);
+  const tapCell = (slot, hasItem) => {
+    if (pickIdx == null) { if (hasItem) setPickIdx(slot); return; }
+    if (pickIdx === slot) { setPickIdx(null); return; }
+    moveItem(pickIdx, Math.min(visible.length - 1, slot));
+    setPickIdx(null);
+  };
 
   return (
     <div style={{ fontFamily: sans, maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
         {BRANDS.map((b) => (
-          <button key={b.acct} onClick={() => { setAcct(b.acct); setMsg(null); }}
+          <button key={b.acct} onClick={() => { setAcct(b.acct); setMsg(null); setPickIdx(null); }}
             style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
             {b.label}
           </button>
@@ -144,7 +153,8 @@ export default function BrandGrids({ boards, data, onSave }) {
           {arranging ? "Arranging…" : "✨ Auto-arrange"}
         </button>
       </div>
-      {msg && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
+      {pickIdx != null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink, marginBottom: 8 }}>Moving post {windowStart + pickIdx + 1} — tap the spot it should take (tap it again to cancel).</div>}
+      {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
           <div key={item.key} draggable
@@ -153,8 +163,9 @@ export default function BrandGrids({ boards, data, onSave }) {
             onDragLeave={() => setOverIdx((v) => (v === slot ? null : v))}
             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) moveItem(dragIdx, slot); setDragIdx(null); setOverIdx(null); }}
             onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+            onClick={() => tapCell(slot, true)}
             title={item.name + (item.boardName ? " · " + item.boardName : "")}
-            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", outline: overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", opacity: dragIdx === slot ? 0.4 : 1 }}>
+            style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: "grab", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
             <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
@@ -163,7 +174,8 @@ export default function BrandGrids({ boards, data, onSave }) {
           <div key={"empty" + slot}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) moveItem(dragIdx, Math.min(visible.length - 1, slot)); setDragIdx(null); setOverIdx(null); }}
-            style={{ aspectRatio: "3 / 4", border: `1px dashed ${c.line}`, display: "flex", alignItems: "center", justifyContent: "center", color: c.line, fontFamily: sans, fontSize: 10 }}>
+            onClick={() => tapCell(slot, false)}
+            style={{ aspectRatio: "3 / 4", border: `1px dashed ${c.line}`, cursor: pickIdx != null ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", color: c.line, fontFamily: sans, fontSize: 10 }}>
             {slot + windowStart + 1 <= items.length + SLOTS ? slot + 1 : ""}
           </div>
         ))}
