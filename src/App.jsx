@@ -2296,6 +2296,43 @@ function RetentionModal({ onClose }) {
   );
 }
 
+// One-time "get it on your phone" banner. Androids/desktops get a real
+// Install button (beforeinstallprompt); iPhones get the two-tap Share →
+// Add to Home Screen guide. Hidden forever once the app runs installed
+// (standalone); dismiss snoozes it for a week.
+function InstallAppNudge() {
+  const [deferred, setDeferred] = useState(null);
+  const [show, setShow] = useState(false);
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  useEffect(() => {
+    if (standalone) return;
+    try { if (Date.now() < parseInt(localStorage.getItem("lh_install_snooze") || "0", 10)) return; } catch {}
+    const onBip = (e) => { e.preventDefault(); setDeferred(e); setShow(true); };
+    window.addEventListener("beforeinstallprompt", onBip);
+    if (isIOS) setShow(true);
+    return () => window.removeEventListener("beforeinstallprompt", onBip);
+  }, []); // eslint-disable-line
+  if (!show || standalone) return null;
+  const snooze = () => { try { localStorage.setItem("lh_install_snooze", String(Date.now() + 7 * 86400000)); } catch {} setShow(false); };
+  return (
+    <div style={{ position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 400, background: "#1A1A1A", color: "#F4F2EC", borderRadius: 4, padding: "14px 16px", boxShadow: "0 12px 40px rgba(0,0,0,0.35)", fontFamily: "'Jost', sans-serif", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <img src="/icons/icon-192.png" alt="" style={{ width: 40, height: 40, borderRadius: 8 }} />
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 3 }}>Put Lavalle Haus on your phone</div>
+        {deferred
+          ? <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, opacity: 0.85 }}>One tap — it installs like a normal app.</div>
+          : isIOS
+            ? <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, opacity: 0.85 }}>Tap Safari's Share button <span style={{ fontStyle: "normal" }}>⎋</span> below, then "Add to Home Screen". Done — it opens like an app from then on.</div>
+            : <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, opacity: 0.85 }}>Open your browser menu and choose "Install app" / "Add to Home Screen".</div>}
+      </div>
+      {deferred && <button onClick={async () => { try { deferred.prompt(); await deferred.userChoice; } catch {} setShow(false); }}
+        style={{ border: "none", background: "#F4F2EC", color: "#1A1A1A", borderRadius: 2, padding: "10px 16px", fontFamily: "'Jost', sans-serif", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Install</button>}
+      <button onClick={snooze} style={{ border: "1px solid rgba(244,242,236,0.4)", background: "transparent", color: "#F4F2EC", borderRadius: 2, padding: "10px 12px", fontFamily: "'Jost', sans-serif", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Later</button>
+    </div>
+  );
+}
+
 export default function App() {
 // The Business Brain home is ALWAYS the first screen — the saved tab only
 // survives in-session; a fresh open lands home, like a storefront.
@@ -2965,6 +3002,7 @@ onNavigate={goTo}
 onAsk={askChief}
 />
 )}
+<InstallAppNudge />
 </div>
 );
 }
