@@ -39,7 +39,10 @@ window.fetch = async (url, opts = {}) => {
     opts = { ...opts, headers: { ...(opts.headers || {}), "x-app-token": localStorage.getItem("lh_token") || "" } };
   }
   const r = await _nativeFetch(url, opts);
-  if (r.status === 401 && typeof url === "string" && url.startsWith("/api/") && !url.includes("op=login")) {
+  // Only /api/data speaks for the session. The Shopify/Amazon sync functions
+  // 401 for valid non-owner sessions — treating those as "logged out" bounced
+  // every team member straight back to the login screen after a good login.
+  if (r.status === 401 && typeof url === "string" && url.startsWith("/api/data") && !url.includes("op=login")) {
     window.dispatchEvent(new Event("lh-locked"));
   }
   return r;
