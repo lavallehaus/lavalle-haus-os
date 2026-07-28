@@ -30,6 +30,7 @@ function verifyUserToken(tok) {
 // Resolve who is calling. House token → owner. User token → must still exist
 // in the user store and not be revoked (so Revoke works instantly, even for
 // tokens already issued). Returns { role, name, email, userId } or null.
+async function getAuthEarly(req) { return getAuth(req); }
 async function getAuth(req) {
   if (!process.env.APP_PASSWORD) return { role: "Owner / Admin", name: "", email: "", userId: null, house: true };
   const tok = req.headers["x-app-token"] || "";
@@ -784,6 +785,22 @@ export default async function handler(req, res) {
     res.setHeader("Content-Type", m[1]);
     res.setHeader("Cache-Control", "public, max-age=300");
     res.send(Buffer.from(m[2], "base64"));
+    return;
+  }
+
+  // Export a Google Sheet as CSV via the app's Google token (owner-only) —
+  // used to migrate spreadsheets (e.g. The Loft's PR ready-to-ship tracker)
+  // into native app data without retyping.
+  if (req.method === "GET" && op === "sheet_csv") {
+    const auth0 = await getAuthEarly(req);
+    if (!ownerRole(auth0)) { res.status(403).json({ error: "Owner only." }); return; }
+    const id = (req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const token = await googleToken();
+    if (!token) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=text%2Fcsv`, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) { res.status(400).json({ error: "export_failed " + r.status }); return; }
+    res.setHeader("Content-Type", "text/csv");
+    res.send(await r.text());
     return;
   }
 
