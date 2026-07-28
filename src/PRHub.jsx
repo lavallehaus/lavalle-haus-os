@@ -19,10 +19,28 @@ const chipColor = (v) => /approve|yes|shipped/i.test(v) ? c.green
   : /additional|contract/i.test(v) ? c.blue
   : /waiting for shipment/i.test(v) ? c.taupe : "#9A9A95";
 
+// Sarah's ask: open a creator's page from the table instead of copying the @
+// into Instagram or TikTok by hand. Handles are stored bare (@name) and usually
+// work on both apps, so each one gets an IG and a TT jump; a pasted full URL
+// wins outright and just opens itself.
+const socialLinks = (raw) => {
+  const v = String(raw || "").replace(/\(.*?\)/g, "").trim();
+  if (!v) return [];
+  if (/^https?:\/\//i.test(v)) return [{ label: "↗", href: v }];
+  const h = v.replace(/^@+/, "").trim();
+  if (!h) return [];
+  if (/tiktok\.com/i.test(v)) return [{ label: "TT", href: "https://" + v.replace(/^\/+/, "") }];
+  if (/instagram\.com/i.test(v)) return [{ label: "IG", href: "https://" + v.replace(/^\/+/, "") }];
+  return [
+    { label: "IG", href: "https://www.instagram.com/" + h + "/" },
+    { label: "TT", href: "https://www.tiktok.com/@" + h },
+  ];
+};
+
 const COLS = [
   { key: "approve", label: "Approve / Decline", type: "select", opts: APPROVE_OPTS, w: 120 },
   { key: "dateAdded", label: "Date added", type: "text", w: 100 },
-  { key: "ig", label: "IG / TikTok", type: "text", w: 130 },
+  { key: "ig", label: "IG / TikTok", type: "social", w: 175 },
   { key: "email", label: "Email", type: "text", w: 190 },
   { key: "name", label: "Name", type: "text", w: 140 },
   { key: "status", label: "Collaboration Status", type: "select", opts: STATUS_OPTS, w: 160 },
@@ -92,7 +110,16 @@ export default function PRHub({ data, onSave }) {
               <tr key={r.id}>
                 {COLS.map((col) => (
                   <td key={col.key} style={{ borderBottom: `1px solid ${c.line}`, borderRight: `1px solid ${c.line}`, padding: 0 }}>
-                    {col.type === "select" ? (
+                    {col.type === "social" ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: 6 }}>
+                        <input value={r[col.key] || ""} onChange={(e) => setCell(r.id, col.key, e.target.value)}
+                          style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: sans, fontSize: 12, color: c.ink, background: "transparent" }} />
+                        {socialLinks(r[col.key]).map((l) => (
+                          <a key={l.label} href={l.href} target="_blank" rel="noreferrer" title={l.href}
+                            style={{ flex: "none", textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 1, padding: "2px 5px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, background: "#fff" }}>{l.label}</a>
+                        ))}
+                      </div>
+                    ) : col.type === "select" ? (
                       <select value={r[col.key] || col.opts[0]} onChange={(e) => setCell(r.id, col.key, e.target.value)}
                         style={{ width: "100%", border: "none", outline: "none", padding: "8px 8px", fontFamily: sans, fontSize: 11, letterSpacing: 0.5, appearance: "none", WebkitAppearance: "none", background: chipColor(r[col.key] || col.opts[0]), color: "#fff", borderRadius: 0, cursor: "pointer", textAlign: "center" }}>
                         {col.opts.map((o) => <option key={o} value={o} style={{ background: "#fff", color: c.ink }}>{o}</option>)}
