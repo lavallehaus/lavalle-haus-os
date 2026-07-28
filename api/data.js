@@ -787,6 +787,23 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Lightweight poll target for the app-level reel finisher: just the list of
+  // in-flight publishes (converting/processing). The finisher used to download
+  // the ENTIRE data blob every 12s from every open device — that alone burned
+  // through Vercel's Hobby origin-transfer allowance and paused the project.
+  if (req.method === "GET" && op === "pub_inflight") {
+    const data = (await kvGet("lavalle_data")) || null;
+    const blob = Array.isArray(data) ? data[0] : data;
+    const jobs = [];
+    for (const [bk, board] of Object.entries((blob && blob.boards) || {})) {
+      if (bk.startsWith("_") || !board || !board.cards) continue;
+      for (const cd of board.cards) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) jobs.push({ bk, id: cd.id, account: cd.pub.account || null });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ jobs });
+    return;
+  }
+
   // Stream a Drive image by file id via the app's Google token — lets a board
   // card cover be a tiny reference (?op=drive_img&id=…) instead of inline base64,
   // and renders for every viewer (server holds the token). Unauthenticated like
@@ -815,7 +832,7 @@ export default async function handler(req, res) {
         } catch (e) { /* fall back to the original image if processing fails */ }
       }
       res.setHeader("Content-Type", ctype);
-      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
       res.send(buf);
     } catch (e) { res.status(500).send("err"); }
     return;
@@ -840,7 +857,7 @@ export default async function handler(req, res) {
       res.setHeader("Accept-Ranges", "bytes");
       const cl = ir.headers.get("content-length"); if (cl) res.setHeader("Content-Length", cl);
       const cr = ir.headers.get("content-range"); if (cr) res.setHeader("Content-Range", cr);
-      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
       if (ir.body) { Readable.fromWeb(ir.body).pipe(res); } else { res.end(); }
     } catch (e) { res.status(500).send("err"); }
     return;

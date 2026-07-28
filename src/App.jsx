@@ -2309,13 +2309,14 @@ useEffect(() => {
   const tick = async () => {
     try {
       if (!localStorage.getItem("lh_token")) return;
-      const rec = await (await fetch("/api/data", { cache: "no-store" })).json();
-      const jobs = [];
-      for (const bk in (rec.boards || {})) for (const cd of ((rec.boards[bk] && rec.boards[bk].cards) || [])) if (cd.pub && (cd.pub.status === "converting" || cd.pub.status === "processing")) jobs.push({ bk, id: cd.id, account: cd.pub.account });
-      for (const j of jobs) { try { await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey: j.bk, cardId: j.id, account: j.account }) }); } catch {} }
+      if (document.hidden) return; // backgrounded tabs don't burn bandwidth
+      // Tiny probe (<1KB) instead of the full data blob — the old 12s full-blob
+      // fetch on every device is what blew Vercel's origin-transfer cap.
+      const rec = await (await fetch("/api/data?op=pub_inflight", { cache: "no-store" })).json();
+      for (const j of rec.jobs || []) { try { await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey: j.bk, cardId: j.id, account: j.account }) }); } catch {} }
     } catch {}
   };
-  const t = setInterval(tick, 12000);
+  const t = setInterval(tick, 20000);
   return () => clearInterval(t);
 }, []);
 // Recently-viewed sections, per person — feeds the OS boards strip on home.
