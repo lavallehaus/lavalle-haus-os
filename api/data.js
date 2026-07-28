@@ -716,6 +716,21 @@ export default async function handler(req, res) {
           await kvSet("slack_feed", feed.slice(0, 200)); // capped
         }
       }
+      // Channels made after install still reach the bell: join them on sight,
+      // otherwise the bot only ever sees what existed on the day it was added.
+      if (ev.type === "channel_created" && ev.channel && ev.channel.id) {
+        const map = (await kvGet("slack_oauth")) || {};
+        const team = map[b.team_id];
+        if (team) {
+          try {
+            await fetch("https://slack.com/api/conversations.join", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + team.token, "Content-Type": "application/json; charset=utf-8" },
+              body: JSON.stringify({ channel: ev.channel.id }),
+            });
+          } catch {}
+        }
+      }
     }
     res.json({ ok: true });
     return;
