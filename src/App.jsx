@@ -30,6 +30,7 @@ import Boards from "./Boards.jsx";
 import OpsCalendar from "./OpsCalendar.jsx";
 import GridPlanner from "./GridPlanner.jsx";
 import BrandGrids from "./BrandGrids.jsx";
+import PRHub from "./PRHub.jsx";
 import { buildBrainModel, BUBBLE_TAB } from "./businessBrain.js";
 
 // ── APP LOCK: every /api call carries the session token; any 401 locks the UI ─
@@ -2856,6 +2857,7 @@ if (tab === "content") return (
 { id: "brandgrids", label: "Grids", render: () => <BrandGrids boards={dbState.boards || null} data={dbState.brandGrids || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, brandGrids: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "grid", label: "Schedule", render: () => <GridPlanner data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
+{ id: "pr", label: "PR", render: () => <PRHub data={dbState.prHub || null} onSave={(pv) => setDbState((prev) => { const next = { ...prev, prHub: pv }; dbSave(next); return next; })} /> },
 ]} />
 );
 if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} onSetLaunchMonth={(bk, cardId, month) => setDbState((prev) => { const boards = { ...(prev.boards || {}) }; const b = boards[bk]; if (b) boards[bk] = { ...b, cards: (b.cards || []).map((cd) => (cd.id === cardId ? { ...cd, launchMonth: month || null } : cd)) }; const next = { ...prev, boards }; dbSave(next); return next; })} />;
