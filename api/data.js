@@ -690,7 +690,10 @@ export default async function handler(req, res) {
     if (b.type === "url_verification") { res.json({ challenge: b.challenge }); return; }
     if (b.type === "event_callback" && b.event) {
       const ev = b.event;
-      if ((ev.type === "message") && !ev.bot_id && ev.subtype !== "message_changed" && ev.text) {
+      // Real conversation only: joins/leaves, topic changes and edits carry a
+      // subtype and would otherwise flood the bell with "has joined" notices.
+      const carried = !ev.subtype || ev.subtype === "file_share" || ev.subtype === "thread_broadcast";
+      if ((ev.type === "message") && !ev.bot_id && carried && ev.text) {
         const map = (await kvGet("slack_oauth")) || {};
         const team = map[b.team_id];
         if (team) {
@@ -702,8 +705,14 @@ export default async function handler(req, res) {
             const cr = await (await fetch("https://slack.com/api/conversations.info?channel=" + ev.channel, { headers: { Authorization: "Bearer " + team.token } })).json();
             if (cr.ok) chName = "#" + cr.channel.name;
           } catch {}
+          // Slack markup → readable: <@U123|kia> and <http://x|label> keep the label.
+          const text = String(ev.text)
+            .replace(/<[@#]([UWC][A-Z0-9]+)\|([^>]+)>/g, "@$2")
+            .replace(/<(https?:[^|>]+)\|([^>]+)>/g, "$2")
+            .replace(/<(https?:[^>]+)>/g, "$1")
+            .slice(0, 400);
           const feed = (await kvGet("slack_feed")) || [];
-          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, user: userName, text: String(ev.text).slice(0, 400), ts: ev.ts, at: new Date().toISOString() });
+          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, user: userName, text, ts: ev.ts, at: new Date().toISOString() });
           await kvSet("slack_feed", feed.slice(0, 200)); // capped
         }
       }
@@ -988,6 +997,12 @@ export default async function handler(req, res) {
   if (req.method === "GET" && op === "slack_status") {
     const map = (await kvGet("slack_oauth")) || {};
     res.json({ teams: Object.values(map).map((t) => ({ team: t.team, installedAt: t.installedAt })) });
+    return;
+  }
+  if (op === "slack_clear") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    await kvSet("slack_feed", []);
+    res.json({ ok: true });
     return;
   }
 
