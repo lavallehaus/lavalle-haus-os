@@ -26,6 +26,18 @@
     {
       "source": "/api/instagram-callback",
       "destination": "/api/data?op=instagram_callback"
+    },
+    {
+      "source": "/api/slack-auth",
+      "destination": "/api/data?op=slack_auth"
+    },
+    {
+      "source": "/api/slack-callback",
+      "destination": "/api/data?op=slack_callback"
+    },
+    {
+      "source": "/api/slack-events",
+      "destination": "/api/data?op=slack_events"
     }
   ]
 }

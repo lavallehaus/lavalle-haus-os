@@ -646,6 +646,72 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Slack integration ────────────────────────────────────────────────────────
+  // One Slack app, installed per workspace (Refillery Haus, Refillery Haus 2,
+  // Assist-Her Agency, later Memmer Media — NEVER TTI Alumni: exclusion is
+  // simply "don't install there"). Bot tokens land in KV slack_oauth keyed by
+  // team id; message events stream into a capped slack_feed for the app bell.
+  if (req.method === "GET" && op === "slack_auth") {
+    const cid = process.env.SLACK_CLIENT_ID;
+    if (!cid) { res.status(500).send("SLACK_CLIENT_ID is not set in Vercel env vars yet."); return; }
+    const scopes = ["channels:read", "channels:join", "channels:history", "groups:read", "groups:history", "team:read", "users:read"].join(",");
+    const params = new URLSearchParams({ client_id: cid, scope: scopes, redirect_uri: "https://lavalle-haus-os.vercel.app/api/slack-callback" });
+    res.writeHead(302, { Location: "https://slack.com/oauth/v2/authorize?" + params.toString() });
+    res.end(); return;
+  }
+  if (req.method === "GET" && op === "slack_callback") {
+    const code = req.query.code;
+    if (!code) { res.status(400).send("Slack didn't send a code — try connecting again."); return; }
+    const r = await fetch("https://slack.com/api/oauth.v2.access", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: process.env.SLACK_CLIENT_ID || "", client_secret: process.env.SLACK_CLIENT_SECRET || "", code, redirect_uri: "https://lavalle-haus-os.vercel.app/api/slack-callback" }),
+    });
+    const d = await r.json();
+    if (!d.ok) { res.status(400).send("Slack token exchange failed: " + (d.error || "unknown")); return; }
+    const map = (await kvGet("slack_oauth")) || {};
+    map[d.team.id] = { team: d.team.name, teamId: d.team.id, token: d.access_token, botUserId: d.bot_user_id, installedAt: new Date().toISOString() };
+    await kvSet("slack_oauth", map);
+    // auto-join every public channel so "any notifications" really means any
+    let joined = 0;
+    try {
+      const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + d.access_token } })).json();
+      for (const ch of lr.channels || []) {
+        if (ch.is_member) continue;
+        const jr = await (await fetch("https://slack.com/api/conversations.join", { method: "POST", headers: { Authorization: "Bearer " + d.access_token, "Content-Type": "application/json" }, body: JSON.stringify({ channel: ch.id }) })).json();
+        if (jr.ok) joined++;
+      }
+    } catch {}
+    res.setHeader("Content-Type", "text/html");
+    res.send('<div style="font-family:Georgia,serif;max-width:480px;margin:80px auto;text-align:center"><h2 style="font-weight:400">Slack connected.</h2><p><b>' + d.team.name + '</b> is now wired to Lavalle Haus OS' + (joined ? " — the bot joined " + joined + " channels" : "") + '. You can close this tab, or connect another workspace from the same link.</p></div>');
+    return;
+  }
+  if (op === "slack_events") {
+    const b = req.body || {};
+    if (b.type === "url_verification") { res.json({ challenge: b.challenge }); return; }
+    if (b.type === "event_callback" && b.event) {
+      const ev = b.event;
+      if ((ev.type === "message") && !ev.bot_id && ev.subtype !== "message_changed" && ev.text) {
+        const map = (await kvGet("slack_oauth")) || {};
+        const team = map[b.team_id];
+        if (team) {
+          let userName = ev.user || "";
+          let chName = ev.channel || "";
+          try {
+            const ur = await (await fetch("https://slack.com/api/users.info?user=" + ev.user, { headers: { Authorization: "Bearer " + team.token } })).json();
+            if (ur.ok) userName = ur.user.profile.display_name || ur.user.real_name || ur.user.name;
+            const cr = await (await fetch("https://slack.com/api/conversations.info?channel=" + ev.channel, { headers: { Authorization: "Bearer " + team.token } })).json();
+            if (cr.ok) chName = "#" + cr.channel.name;
+          } catch {}
+          const feed = (await kvGet("slack_feed")) || [];
+          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, user: userName, text: String(ev.text).slice(0, 400), ts: ev.ts, at: new Date().toISOString() });
+          await kvSet("slack_feed", feed.slice(0, 200)); // capped
+        }
+      }
+    }
+    res.json({ ok: true });
+    return;
+  }
+
   // ── TikTok OAuth (Content Posting API) ───────────────────────────────────────
   // Public endpoints reached via vercel.json rewrites (/api/tiktok-auth and
   // /api/tiktok-callback) — folded in here to stay under the function cap.
@@ -911,6 +977,19 @@ export default async function handler(req, res) {
 
   const auth = await getAuth(req);
   if (!auth) { res.status(401).json({ error: "Locked" }); return; }
+
+  // Slack: recent messages for the header bell + connection status.
+  if (req.method === "GET" && op === "slack_feed") {
+    const feed = (await kvGet("slack_feed")) || [];
+    const since = parseFloat(req.query.since || "0") || 0;
+    res.json({ feed: feed.slice(0, 60), latest: feed.length ? parseFloat(feed[0].ts) : 0, unread: since ? feed.filter((f) => parseFloat(f.ts) > since).length : feed.length });
+    return;
+  }
+  if (req.method === "GET" && op === "slack_status") {
+    const map = (await kvGet("slack_oauth")) || {};
+    res.json({ teams: Object.values(map).map((t) => ({ team: t.team, installedAt: t.installedAt })) });
+    return;
+  }
 
   // Who am I — restores name/role on the client after a reload.
   if (req.method === "GET" && op === "me") {

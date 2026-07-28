@@ -2359,6 +2359,66 @@ function InstallAppNudge() {
   );
 }
 
+// Header bell: recent Slack messages from the connected workspaces
+// (Refillery Haus / Refillery Haus 2 / Assist-Her Agency …). Polls the tiny
+// slack_feed op every 60s; badge counts messages newer than last-seen.
+function SlackBell() {
+  const [open, setOpen] = useState(false);
+  const [feed, setFeed] = useState([]);
+  const [teams, setTeams] = useState(null);
+  const [unread, setUnread] = useState(0);
+  const seen = () => { try { return parseFloat(localStorage.getItem("lh_slack_seen") || "0"); } catch { return 0; } };
+  const load = async () => {
+    try {
+      const d = await (await fetch("/api/data?op=slack_feed&since=" + seen())).json();
+      setFeed(d.feed || []); setUnread(d.unread || 0);
+    } catch {}
+  };
+  useEffect(() => {
+    load();
+    const t = setInterval(() => { if (!document.hidden) load(); }, 60000);
+    return () => clearInterval(t);
+  }, []); // eslint-disable-line
+  const openPanel = async () => {
+    setOpen((o) => !o);
+    if (!open) {
+      if (feed.length) { try { localStorage.setItem("lh_slack_seen", String(parseFloat(feed[0].ts) || Date.now() / 1000)); } catch {} setUnread(0); }
+      if (teams === null) { try { const d = await (await fetch("/api/data?op=slack_status")).json(); setTeams(d.teams || []); } catch { setTeams([]); } }
+    }
+  };
+  const ago = (iso) => { const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.floor(m / 60) + "h" : Math.floor(m / 1440) + "d"; };
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={openPanel} title="Slack — mensajes recientes"
+        style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase", position: "relative" }}>
+        🔔 Slack
+        {unread > 0 && <span style={{ position: "absolute", top: -7, right: -7, background: "#9b5e5e", color: "#fff", borderRadius: 9, minWidth: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", fontFamily: "'Jost', sans-serif" }}>{unread > 99 ? "99+" : unread}</span>}
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
+          <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 95, width: 360, maxWidth: "88vw", maxHeight: 460, overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #E0E0DD", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#71716C" }}>Slack — latest</span>
+              {teams !== null && <a href="/api/slack-auth" target="_blank" rel="noreferrer" style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676" }}>{teams.length ? teams.length + " connected · add another" : "Connect a workspace"}</a>}
+            </div>
+            {feed.length === 0 && <div style={{ padding: 18, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: "#71716C" }}>No messages yet — once a workspace is connected, new Slack messages land here.</div>}
+            {feed.map((m, i) => (
+              <div key={m.ts + i} style={{ padding: "10px 14px", borderBottom: "1px solid #F0F0EE" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676" }}>{m.team} · {m.channel}</span>
+                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, color: "#9A9A95" }}>{ago(m.at)}</span>
+                </div>
+                <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A" }}><b>{m.user}</b>&nbsp; {m.text}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
 // The Business Brain home is ALWAYS the first screen — the saved tab only
 // survives in-session; a fresh open lands home, like a storefront.
@@ -2967,6 +3027,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
+<SlackBell />
 {visibleNav.some(n => n.id === "brain") && <button onClick={() => setCommandView(true)}
   title="Open Command View — vista de comando"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
