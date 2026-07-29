@@ -113,16 +113,32 @@ async function driveLs(folderId) {
   return d.files || [];
 }
 
+// Covers are parked in the media store and the card keeps only a short
+// reference. Inlining the base64 here is what grew the saved blob past
+// Vercel's 4.5MB request limit, at which point every save was refused and a
+// whole session of uploads was lost. If the upload can't be stored we fall back
+// to the inline data URL rather than dropping the photo.
+async function storeImage(dataUrl) {
+  try {
+    const r = await fetch("/api/data?op=media_put", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataUrl }),
+    });
+    const d = await r.json();
+    return r.ok && d.url ? d.url : dataUrl;
+  } catch { return dataUrl; }
+}
+
 function fileToCover(file, cb, maxW = 700, q = 0.82) {
   const fr = new FileReader();
   fr.onload = () => {
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       const s = Math.min(1, maxW / img.width);
       const cv = document.createElement("canvas");
       cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-      cb(cv.toDataURL("image/jpeg", q));
+      cb(await storeImage(cv.toDataURL("image/jpeg", q)));
     };
     img.src = fr.result;
   };

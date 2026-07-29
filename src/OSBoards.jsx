@@ -34,16 +34,29 @@ function fileToBg(file, cb) {
   const fr = new FileReader();
   fr.onload = () => {
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       const s = Math.min(1, 1200 / img.width);
       const cv = document.createElement("canvas");
       cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-      cb(cv.toDataURL("image/jpeg", 0.72));
+      cb(await storeImage(cv.toDataURL("image/jpeg", 0.72)));
     };
     img.src = fr.result;
   };
   fr.readAsDataURL(file);
+}
+
+// Backgrounds go to the media store too — inline base64 tile art was over a
+// third of the saved blob and helped push saves past Vercel's 4.5MB limit.
+async function storeImage(dataUrl) {
+  try {
+    const r = await fetch("/api/data?op=media_put", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataUrl }),
+    });
+    const d = await r.json();
+    return r.ok && d.url ? d.url : dataUrl;
+  } catch { return dataUrl; }
 }
 
 export default function OSBoards({ nav, tiles = {}, onSaveTile, iAmOwner, roleTabs = {}, goTo }) {
