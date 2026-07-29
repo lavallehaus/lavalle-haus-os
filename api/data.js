@@ -937,6 +937,33 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Media store ────────────────────────────────────────────────────────────
+  // Images used to be pasted into the main data blob as base64. That blob is
+  // POSTed whole on every save, and Vercel rejects request bodies over 4.5MB —
+  // so once enough covers were added, saves failed with 413 and an hour of work
+  // vanished silently. Images now live in their own KV entries and the board
+  // only keeps a short reference.
+  if (op === "media_put" && req.method === "POST") {
+    const b = req.body || {};
+    const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(b.dataUrl || ""));
+    if (!m) { res.status(400).json({ error: "Expected an image data URL." }); return; }
+    const id = "m" + randomBytes(10).toString("hex");
+    await kvSet("media_" + id, { type: m[1], b64: m[2], at: new Date().toISOString() });
+    res.json({ ok: true, id, url: "/api/data?op=media&id=" + id });
+    return;
+  }
+  // Public like card_media/drive_img — <img> tags can't send the app token.
+  if (req.method === "GET" && op === "media") {
+    const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const rec = id && (await kvGet("media_" + id));
+    if (!rec || !rec.b64) { res.status(404).send("no media"); return; }
+    const buf = Buffer.from(rec.b64, "base64");
+    res.setHeader("Content-Type", rec.type || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
+    res.send(buf);
+    return;
+  }
+
   // Stream a Drive image by file id via the app's Google token — lets a board
   // card cover be a tiny reference (?op=drive_img&id=…) instead of inline base64,
   // and renders for every viewer (server holds the token). Unauthenticated like

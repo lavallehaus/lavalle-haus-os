@@ -62,17 +62,42 @@ return null;
 }
 }
 
+// A failed save used to log "Saved to DB" and move on: fetch only throws on a
+// network error, so an HTTP 413 (payload over Vercel's 4.5MB limit) looked like
+// success and an hour of cover uploads disappeared on exit. Never again — a
+// rejected save now says so, loudly, while the work is still on screen.
+let lastSaveAlert = 0;
 async function dbSave(record) {
-try {
-await fetch("/api/data", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify(record),
-});
-console.log("Saved to DB");
-} catch(e) {
-console.warn("dbSave failed:", e);
-}
+  const body = JSON.stringify(record);
+  try {
+    const r = await fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    if (!r.ok) {
+      const mb = (body.length / 1048576).toFixed(2);
+      const tooBig = r.status === 413;
+      console.error("dbSave rejected:", r.status, mb + "MB");
+      if (Date.now() - lastSaveAlert > 8000) {
+        lastSaveAlert = Date.now();
+        alert(
+          tooBig
+            ? "NOT SAVED — this board is too large to store (" + mb + "MB).\n\nDon't close the app: your changes are still on screen but the server refused them. Tell Claude the save is failing at " + mb + "MB."
+            : "NOT SAVED — the server refused this change (error " + r.status + ").\n\nDon't close the app; your changes are only on screen."
+        );
+      }
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("dbSave failed:", e);
+    if (Date.now() - lastSaveAlert > 8000) {
+      lastSaveAlert = Date.now();
+      alert("NOT SAVED — couldn't reach the server. Your changes are only on screen; stay on this page and try again.");
+    }
+    return false;
+  }
 }
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap";
