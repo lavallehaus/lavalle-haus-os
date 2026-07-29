@@ -63,6 +63,34 @@ const igAccounts = (v) => (!v ? {} : v.access_token ? { [v.user_id]: v } : v);
 // publish it. Returns {ok, mediaId} or {ok:false, error}.
 const APP_ORIGIN = "https://lavalle-haus-os.vercel.app";
 
+// Each destination wants a different shape, and handing over the wrong one gets
+// the photo letterboxed with black bars:
+//   igfeed   → Instagram feed. 4:5 is the tallest it allows and 1.91:1 the
+//              widest; anything outside gets centre-cropped back into range.
+//   vertical → full-screen 9:16 for a Reel cover or a TikTok post.
+// Anything else passes the original bytes straight through.
+async function fitImage(buf, ctype, mode) {
+  const m = String(mode || "");
+  if (m !== "igfeed" && m !== "vertical") return { buf, ctype };
+  try {
+    const Jimp = (await import("jimp")).default;
+    const img = await Jimp.read(buf);
+    const ar = img.getWidth() / img.getHeight();
+    if (m === "vertical") {
+      img.cover(1080, 1920);
+    } else if (ar < 0.8) {
+      img.cover(1080, 1350);
+    } else if (ar > 1.91) {
+      img.cover(1080, Math.round(1080 / 1.91));
+    } else {
+      return { buf, ctype }; // already inside Instagram's range
+    }
+    return { buf: await img.getBufferAsync(Jimp.MIME_JPEG), ctype: "image/jpeg" };
+  } catch {
+    return { buf, ctype }; // never fail a post over a resize
+  }
+}
+
 // A card's cover can be a Drive reference, a Drive share link, or an inline
 // data: copy saved into the board blob. Those inline copies are downscaled,
 // re-compressed JPEGs — posting them is what made feed photos look soft. So the
@@ -80,14 +108,22 @@ function driveIdFrom(s) {
 // /boards-media/*.jpg are 300px board previews — fine for a card tile, far below
 // Instagram's 1080px. Never let one of these be what actually gets posted.
 const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-media/");
-function cardCoverUrl(card, bKey) {
+// fit: "igfeed" for a feed photo or carousel slide, "vertical" for a Reel cover
+// (9:16). A card can be a carousel on Instagram and a video on TikTok, so the
+// shape is decided by what's being posted, not by the card.
+function cardCoverUrl(card, bKey, fit = "igfeed") {
   // assetUrl is deliberately NOT consulted: on a [reel] card it points at the
   // .mov, and handing Instagram a video as a photo fails the post.
   const id = driveIdFrom(card.cover) || driveIdFrom(card.coverUrl);
-  if (id) return APP_ORIGIN + "/api/data?op=drive_img&id=" + id + "&fit=igfeed";
+  if (id) return APP_ORIGIN + "/api/data?op=drive_img&id=" + id + "&fit=" + fit;
   if (typeof card.cover === "string") {
     if (card.cover.startsWith("data:")) return APP_ORIGIN + "/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
-    if (card.cover.startsWith("/")) return APP_ORIGIN + card.cover + (card.cover.includes("op=drive_img") ? "&fit=igfeed" : "");
+    // Media-store and drive_img refs both understand ?fit=; anything else is
+    // left alone so a plain static file isn't handed a parameter it ignores.
+    if (card.cover.startsWith("/")) {
+      const shapeable = card.cover.includes("op=drive_img") || card.cover.includes("op=media");
+      return APP_ORIGIN + card.cover + (shapeable ? "&fit=" + fit : "");
+    }
     if (card.cover.startsWith("http")) return card.cover;
   }
   return null;
@@ -401,7 +437,9 @@ async function publishDueItems(only) {
           else { videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, convId: conv.jobId }; }
         }
         // The Reel cover = the card's assigned cover photo (else IG picks a video frame).
-        const coverImageUrl = cardCoverUrl(card, bKey);
+        // A Reel plays full-screen, so its cover is 9:16 — cropping it to the
+        // feed's 4:5 left the thumbnail cut off at top and bottom.
+        const coverImageUrl = cardCoverUrl(card, bKey, "vertical");
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
@@ -957,8 +995,10 @@ export default async function handler(req, res) {
     const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
     const rec = id && (await kvGet("media_" + id));
     if (!rec || !rec.b64) { res.status(404).send("no media"); return; }
-    const buf = Buffer.from(rec.b64, "base64");
-    res.setHeader("Content-Type", rec.type || "image/jpeg");
+    // Same ?fit= shaping as Drive images — uploaded covers publish too.
+    const fitted = await fitImage(Buffer.from(rec.b64, "base64"), rec.type || "image/jpeg", req.query.fit);
+    const buf = fitted.buf;
+    res.setHeader("Content-Type", fitted.ctype);
     res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
     res.send(buf);
     return;
@@ -978,19 +1018,8 @@ export default async function handler(req, res) {
       if (!ir.ok) { res.status(ir.status).send("drive_fail"); return; }
       let buf = Buffer.from(await ir.arrayBuffer());
       let ctype = ir.headers.get("content-type") || "image/jpeg";
-      // fit=igfeed → center-crop into Instagram's feed-safe range. Loft slides are
-      // often 2:3 (taller than IG's 4:5 limit); the API won't crop, so IG pads
-      // them with black side-bars. Pre-cropping to 4:5 fills the frame like the
-      // native app does. Also caps too-wide images at 1.91:1.
-      if (String(req.query.fit || "") === "igfeed") {
-        try {
-          const Jimp = (await import("jimp")).default;
-          const img = await Jimp.read(buf);
-          const w = img.getWidth(), h = img.getHeight(), ar = w / h;
-          if (ar < 0.8) { img.cover(1080, 1350); buf = await img.getBufferAsync(Jimp.MIME_JPEG); ctype = "image/jpeg"; }
-          else if (ar > 1.91) { img.cover(1080, Math.round(1080 / 1.91)); buf = await img.getBufferAsync(Jimp.MIME_JPEG); ctype = "image/jpeg"; }
-        } catch (e) { /* fall back to the original image if processing fails */ }
-      }
+      const fitted = await fitImage(buf, ctype, req.query.fit);
+      buf = fitted.buf; ctype = fitted.ctype;
       res.setHeader("Content-Type", ctype);
       res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
       res.send(buf);
