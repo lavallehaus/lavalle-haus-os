@@ -161,39 +161,45 @@ function fileToCover(file, cb, maxW = 1440, q = 0.9) {
 //     → 7 b-roll and 9 face-to-camera, alternating between the two sisters.
 // Everything generated is a starting point: titles and tags are ordinary fields
 // she or the copy editor can rename.
+// A "day" is a pair of posts (2x/day), and she requires a face to camera EVERY
+// day. That's the binding constraint: 21 posts = 10 pairs + 1, so 11 slots must
+// be face to camera, leaving 10 for everything else. Holding her 5 carousels
+// fixed, b-roll lands at 5 — her original 7 b-roll simply can't coexist with a
+// face to camera every single day.
 function buildPlannedCycle(faces = ["Kiabeth", "Kiaredza"]) {
-  const N = 21;
-  const carouselAt = [3, 7, 11, 15, 19];   // evenly spaced through the cycle
-  const igStaticAt = [7, 15];              // 2 of the 5 go out static on IG
-  // Spread the 7 b-roll slots evenly across whatever ISN'T a carousel, rather
-  // than by odd/even — the carousels sit on odd slots, so an odd/even rule
-  // starved b-roll of positions and the mix came out 6/10 instead of 7/9.
-  const openSlots = [];
-  for (let n = 1; n <= N; n++) if (!carouselAt.includes(n)) openSlots.push(n);
-  const brollSlots = new Set(Array.from({ length: 7 }, (_, i) => openSlots[Math.round((i * openSlots.length) / 7)]));
+  const N = 21, DAYS = 10;
+  // Deliberately NOT every-other-day: even days are beauty and odd days are
+  // fashion, so an alternating pattern would have put every carousel on beauty
+  // and every b-roll on fashion. These land 3 carousels on beauty days, 2 on
+  // fashion, and the b-roll days fall the other way.
+  const carouselDays = [0, 3, 4, 7, 8];
+  const igStaticDays = [3, 8];            // one fashion, one beauty
   const cards = [];
   let faceTurn = 0;
-  for (let n = 1; n <= N; n++) {
-    // pairs: posts 1-2 beauty, 3-4 fashion, 5-6 beauty … 21 lands on beauty
-    const niche = Math.floor((n - 1) / 2) % 2 === 0 ? "Beauty" : "Fashion";
-    let tag, title, member = null;
-    if (carouselAt.includes(n)) {
-      const igStatic = igStaticAt.includes(n);
-      tag = igStatic ? "IG static / TikTok carousel" : "carousel";
+  const push = (n, kind, niche) => {
+    let title, member = null, tag;
+    if (kind === "carousel" || kind === "igstatic") {
+      tag = kind === "igstatic" ? "IG static / TikTok carousel" : "carousel";
       title = `Post ${n} [${tag}] · ${niche}`;
+    } else if (kind === "broll") {
+      title = `Post ${n} [reel] B-roll · ${niche}`;
     } else {
-      if (brollSlots.has(n)) {
-        tag = "reel";
-        title = `Post ${n} [reel] B-roll · ${niche}`;
-      } else {
-        member = faces[faceTurn % faces.length];
-        faceTurn++;
-        tag = "reel";
-        title = `Post ${n} [reel] Face to camera — ${member} · ${niche}`;
-      }
+      member = faces[faceTurn % faces.length];
+      faceTurn++;
+      title = `Post ${n} [reel] Face to camera — ${member} · ${niche}`;
     }
     cards.push({ n, title, niche, member });
+  };
+  for (let d = 0; d < DAYS; d++) {
+    const niche = d % 2 === 0 ? "Beauty" : "Fashion"; // whole day on one topic
+    const other = carouselDays.includes(d) ? (igStaticDays.includes(d) ? "igstatic" : "carousel") : "broll";
+    const first = d * 2 + 1;
+    // alternate which half of the day carries the face to camera so it isn't
+    // always the morning post
+    if (d % 2 === 0) { push(first, "face", niche); push(first + 1, other, niche); }
+    else { push(first, other, niche); push(first + 1, "face", niche); }
   }
+  push(N, "face", "Beauty"); // 21st post closes the cycle on beauty
   return cards;
 }
 
@@ -886,13 +892,21 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 if (already && !window.confirm(`"Planned 1-21" already has ${already} card${already === 1 ? "" : "s"}. Add another 21 below them?`)) return;
                 const listId = existing ? existing.id : uid();
                 const lists = existing ? board.lists : [...board.lists, { id: listId, name: "Planned 1-21" }];
-                const plan = buildPlannedCycle();
-                const made = plan.map((p) => ({
-                  id: uid(), listId, name: p.title,
-                  labels: [p.niche],                        // rename or recolour like any label
-                  members: p.member ? [p.member] : [],
-                  desc: "", done: false, comments: [],
-                }));
+                // The beauty/fashion + face-to-camera cadence is the Lavalle
+                // Sisters recipe. Other boards get a plain numbered cycle rather
+                // than inheriting a rhythm that was never meant for them.
+                const sisters = open === "lavalle-sisters";
+                const made = sisters
+                  ? buildPlannedCycle().map((p) => ({
+                      id: uid(), listId, name: p.title,
+                      labels: [p.niche],                    // rename or recolour like any label
+                      members: p.member ? [p.member] : [],
+                      desc: "", done: false, comments: [],
+                    }))
+                  : Array.from({ length: 21 }, (_, i) => ({
+                      id: uid(), listId, name: `Post ${i + 1}`,
+                      labels: [], members: [], desc: "", done: false, comments: [],
+                    }));
                 patchBoard(open, { lists, cards: [...board.cards, ...made] });
               }} style={ghost} title="Create the next 21 planned posts — niche paired by day, formats balanced">✦ Plan next 21</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
