@@ -1059,6 +1059,20 @@ export default async function handler(req, res) {
     res.json({ ok: true });
     return;
   }
+  // Which Shopify permissions the stored token actually carries. Shopify can
+  // complete an OAuth redirect without re-prompting, so "it said connected" is
+  // not proof the new scope was granted — this reads it back. Names only.
+  if (req.method === "GET" && op === "shopify_scopes") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const s = (await kvGet("shopify_oauth")) || {};
+    if (!s.token || !s.shop) { res.json({ connected: false }); return; }
+    try {
+      const r = await (await fetch(`https://${s.shop}/admin/oauth/access_scopes.json`, { headers: { "X-Shopify-Access-Token": s.token } })).json();
+      const scopes = (r.access_scopes || []).map((x) => x.handle).sort();
+      res.json({ connected: true, shop: s.shop, scopes, canDraftOrders: scopes.includes("write_draft_orders") });
+    } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
+    return;
+  }
   // ── Replying on Kiabeth's behalf, with her hand on the trigger ──────────────
   // A draft is only ever QUEUED here; it sits in the bell until she taps Send.
   // Nothing in this file posts to Slack without that explicit approval step.
@@ -1071,6 +1085,11 @@ export default async function handler(req, res) {
   // to. Checked at send, not just on display, because the panel can sit open.
   async function alreadyAnswered(team, d) {
     if (!team || !d || !d.channelId) return null;
+    // No anchor = nothing to measure "since" against. Scanning from the top of
+    // the channel would pair the draft with whatever was said most recently and
+    // present a stranger's message as the answer to it — which is exactly the
+    // false alarm this guard is supposed to prevent. Better to report nothing.
+    if (!d.threadTs && !d.sinceTs) return null;
     try {
       const since = d.threadTs || d.sinceTs;
       const url = d.threadTs
