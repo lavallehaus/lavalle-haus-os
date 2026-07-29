@@ -1065,11 +1065,12 @@ export default async function handler(req, res) {
   if (req.method === "GET" && op === "shopify_scopes") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const s = (await kvGet("shopify_oauth")) || {};
-    if (!s.token || !s.shop) { res.json({ connected: false }); return; }
+    const tok = s.accessToken || s.token; // callback stores it as accessToken
+    if (!tok || !s.shop) { res.json({ connected: false }); return; }
     try {
-      const r = await (await fetch(`https://${s.shop}/admin/oauth/access_scopes.json`, { headers: { "X-Shopify-Access-Token": s.token } })).json();
+      const r = await (await fetch(`https://${s.shop}/admin/oauth/access_scopes.json`, { headers: { "X-Shopify-Access-Token": tok } })).json();
       const scopes = (r.access_scopes || []).map((x) => x.handle).sort();
-      res.json({ connected: true, shop: s.shop, scopes, canDraftOrders: scopes.includes("write_draft_orders") });
+      res.json({ connected: true, shop: s.shop, grantedAt: s.connectedAt, scopes, canDraftOrders: scopes.includes("write_draft_orders") });
     } catch (e) { res.status(500).json({ error: String(e).slice(0, 200) }); }
     return;
   }
