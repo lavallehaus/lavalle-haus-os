@@ -61,6 +61,36 @@ const igAccounts = (v) => (!v ? {} : v.access_token ? { [v.user_id]: v } : v);
 // ── Instagram content publishing ─────────────────────────────────────────────
 // Two-step Graph flow: create a media container, wait for it to process, then
 // publish it. Returns {ok, mediaId} or {ok:false, error}.
+const APP_ORIGIN = "https://lavalle-haus-os.vercel.app";
+
+// A card's cover can be a Drive reference, a Drive share link, or an inline
+// data: copy saved into the board blob. Those inline copies are downscaled,
+// re-compressed JPEGs — posting them is what made feed photos look soft. So the
+// ORIGINAL file in Drive always wins: full-resolution bytes streamed through
+// our own Google token, with igfeed cropping done server-side. card.coverUrl
+// (the "Open cover photo in Drive" target) is a valid source too, which is how
+// a card with a blurry inline cover still posts sharp.
+function driveIdFrom(s) {
+  if (typeof s !== "string" || s.startsWith("data:")) return null;
+  if (s.includes("/folders/")) return null; // a folder of slides is not a photo
+  const m = s.match(/[?&]id=([-\w]{20,})/) || s.match(/\/d\/([-\w]{20,})/)
+    || (s.includes("drive.google.com") ? s.match(/([-\w]{25,})/) : null);
+  return m ? m[1] : null;
+}
+// /boards-media/*.jpg are 300px board previews — fine for a card tile, far below
+// Instagram's 1080px. Never let one of these be what actually gets posted.
+const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-media/");
+function cardCoverUrl(card, bKey) {
+  const id = driveIdFrom(card.cover) || driveIdFrom(card.coverUrl) || driveIdFrom(card.assetUrl);
+  if (id) return APP_ORIGIN + "/api/data?op=drive_img&id=" + id + "&fit=igfeed";
+  if (typeof card.cover === "string") {
+    if (card.cover.startsWith("data:")) return APP_ORIGIN + "/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
+    if (card.cover.startsWith("/")) return APP_ORIGIN + card.cover + (card.cover.includes("op=drive_img") ? "&fit=igfeed" : "");
+    if (card.cover.startsWith("http")) return card.cover;
+  }
+  return null;
+}
+
 async function igPublishPhoto(tok, imageUrl, caption) {
   const base = "https://graph.instagram.com/v23.0";
   const create = await fetch(`${base}/${tok.user_id}/media`, {
@@ -369,13 +399,7 @@ async function publishDueItems(only) {
           else { videoUrl = conv.mp4Url; p = { ...p, mp4Url: conv.mp4Url, convId: conv.jobId }; }
         }
         // The Reel cover = the card's assigned cover photo (else IG picks a video frame).
-        let coverImageUrl = null;
-        if (typeof card.cover === "string") {
-          if (card.cover.startsWith("data:")) coverImageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
-          else if (card.cover.startsWith("/")) coverImageUrl = "https://lavalle-haus-os.vercel.app" + card.cover;
-          else if (card.cover.includes("drive.google.com")) { const cid2 = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (cid2) coverImageUrl = "https://drive.google.com/thumbnail?id=" + cid2 + "&sz=w1200"; }
-          else if (card.cover.startsWith("http")) coverImageUrl = card.cover;
-        }
+        const coverImageUrl = cardCoverUrl(card, bKey);
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
@@ -395,14 +419,11 @@ async function publishDueItems(only) {
         changed = true;
         continue;
       }
-      let imageUrl = null;
-      if (typeof card.cover === "string") {
-        if (card.cover.startsWith("data:")) imageUrl = "https://lavalle-haus-os.vercel.app/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
-        else if (card.cover.startsWith("/")) imageUrl = "https://lavalle-haus-os.vercel.app" + card.cover + (card.cover.includes("op=drive_img") ? "&fit=igfeed" : "");
-        else if (card.cover.includes("drive.google.com")) { const id = (card.cover.match(/[-\w]{25,}/) || [])[0]; if (id) imageUrl = "https://drive.google.com/thumbnail?id=" + id + "&sz=w2000"; }
-        else if (card.cover.startsWith("http")) imageUrl = card.cover;
-      }
+      const imageUrl = cardCoverUrl(card, bKey);
       if (!imageUrl) { fail("card needs a cover photo to post"); continue; }
+      // Better a visible failure she can fix than a soft 300px photo on the
+      // brand's feed, which can only be undone by deleting the post.
+      if (isLowResPreview(imageUrl)) { fail("cover is only a 300px board preview — link the full-size photo from Drive on this card, then re-schedule"); continue; }
       const caption = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
       if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
       const r = await igPublishPhoto(tok, imageUrl, caption);
