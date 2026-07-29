@@ -2424,6 +2424,12 @@ function SlackBell() {
     }
   };
   const ago = (iso) => { const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.floor(m / 60) + "h" : Math.floor(m / 1440) + "d"; };
+  const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 640);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   return (
     <div style={{ position: "relative" }}>
       <button onClick={openPanel} title="Slack — mensajes recientes"
@@ -2434,7 +2440,12 @@ function SlackBell() {
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
-          <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 95, width: 360, maxWidth: "88vw", maxHeight: 460, overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }}>
+          {/* On a phone the header scrolls sideways, and an absolutely-placed
+              panel gets clipped by that overflow — messages came out cropped.
+              Going fixed on narrow screens escapes the clipping ancestor. */}
+          <div style={narrow
+            ? { position: "fixed", left: 8, right: 8, top: 62, zIndex: 95, maxHeight: "72vh", overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }
+            : { position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 95, width: 360, maxWidth: "88vw", maxHeight: 460, overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }}>
             <div style={{ padding: "12px 14px", borderBottom: "1px solid #E0E0DD", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#71716C" }}>Slack — latest</span>
               {teams !== null && <a href="/api/slack-auth" target="_blank" rel="noreferrer" style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676" }}>{teams.length ? teams.length + " connected · add another" : "Connect a workspace"}</a>}
@@ -2466,7 +2477,7 @@ function SlackBell() {
                   <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676" }}>{m.team} · {m.channel}</span>
                   <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, color: "#9A9A95" }}>{ago(m.at)}</span>
                 </div>
-                <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A" }}><b>{m.user}</b>&nbsp; {m.text}</div>
+                <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><b>{m.user}</b>&nbsp; {m.text}</div>
                 {m.channelId && replyTo !== i && (
                   <button onClick={() => { setReplyTo(i); setReplyText(""); }}
                     style={{ marginTop: 5, border: "none", background: "transparent", padding: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676", cursor: "pointer" }}>Reply in thread →</button>
