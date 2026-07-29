@@ -56,7 +56,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       const schedLists = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
       for (const card of board.cards) {
         if (!card.cover || !schedLists.has(card.listId)) continue;
-        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, boardName: board.name || "" };
+        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, coverUrl: card.coverUrl || "", assetUrl: card.assetUrl || "", name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, boardName: board.name || "" };
       }
     }
     return map;
@@ -401,13 +401,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         const doExport = async (mode) => {
           setEditMsg("Rendering…");
           try {
-            const cv = await renderCoverCrop(item.cover, editZoom);
+            const soft = isLowResPreview(hiResSource(item));
+            const cv = await renderCoverCrop(item, editZoom, mode === "download" ? 2160 : 1080);
             if (mode === "download") {
               const a = document.createElement("a");
               a.href = cv.toDataURL("image/png");
               a.download = (item.name || "cover").replace(/[^\w\s-]/g, "").trim().slice(0, 40) + " — zoomed cover.png";
               a.click();
-              setEditMsg("Downloaded — drop it into Drive wherever it belongs.");
+              setEditMsg(soft
+                ? "Downloaded — but this card only has the small board preview, so it's soft. Link the full-size photo from Drive on the card for a sharp file."
+                : "Downloaded at full resolution from Drive — good to repost on TikTok.");
             } else {
               const dataUrl = cv.toDataURL("image/jpeg", 0.88);
               const bk = editKey.slice(0, editKey.indexOf(":")), cardId = editKey.slice(editKey.indexOf(":") + 1);
@@ -449,9 +452,27 @@ function clampZoom(zz) {
 }
 // Render the currently-framed area to a 1080×1440 canvas. Drive-hosted covers
 // are proxied through our own domain so the canvas stays export-clean.
-function renderCoverCrop(cover, z) {
-  let src = cover;
-  if (cover.includes("drive.google.com")) { const id = (cover.match(/[-\w]{25,}/) || [])[0]; if (id) src = "/api/data?op=drive_img&id=" + id; }
+// Grid tiles render the small /boards-media preview on purpose — streaming 21
+// full-size Drive files would eat the bandwidth budget. But a DOWNLOAD (she
+// reposts these by hand on TikTok) and a set-as-cover crop must come from the
+// original file, or she gets a 300px thumbnail blown up to 1080.
+function driveIdFrom(s) {
+  if (typeof s !== "string" || s.startsWith("data:") || s.includes("/folders/")) return null;
+  const m = s.match(/[?&]id=([-\w]{20,})/) || s.match(/\/d\/([-\w]{20,})/)
+    || (s.includes("drive.google.com") ? s.match(/([-\w]{25,})/) : null);
+  return m ? m[1] : null;
+}
+export function hiResSource(item) {
+  const id = driveIdFrom(item.cover) || driveIdFrom(item.coverUrl) || driveIdFrom(item.assetUrl);
+  return id ? "/api/data?op=drive_img&id=" + id : item.cover;
+}
+export const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-media/");
+
+// maxW caps the exported width. Downloads go up to 2160 so a manual TikTok
+// repost keeps the original's detail; set-as-cover stays at 1080 because that
+// JPEG is stored inline in the board blob and bandwidth is metered.
+function renderCoverCrop(item, z, maxW = 1080) {
+  const src = typeof item === "string" ? item : hiResSource(item);
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -463,9 +484,15 @@ function renderCoverCrop(cover, z) {
         const sw = FW / total, sh = FH / total;
         const sx = img.naturalWidth / 2 - ((z.x / 100) * FW) / total - sw / 2;
         const sy = img.naturalHeight / 2 - ((z.y / 100) * FH) / total - sh / 2;
+        // Frame the crop off the 1080×1440 geometry, then export at whatever
+        // the source actually supports — never upscaling past its own pixels.
+        const OW = Math.max(FW, Math.min(maxW, Math.round(sw)));
+        const OH = Math.round((OW * FH) / FW);
         const cv = document.createElement("canvas");
-        cv.width = FW; cv.height = FH;
-        cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, FW, FH);
+        cv.width = OW; cv.height = OH;
+        const ctx = cv.getContext("2d");
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OW, OH);
         resolve(cv);
       } catch (e) { reject(e); }
     };
