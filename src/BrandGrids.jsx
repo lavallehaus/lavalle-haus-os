@@ -54,9 +54,15 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       if (bk.startsWith("_") || !board || !board.cards) continue;
       if (GRID_BOARDS[bk] !== acct) continue;
       const schedLists = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
+      let seq = 0;
       for (const card of board.cards) {
         if (!card.cover || !schedLists.has(card.listId)) continue;
-        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, coverUrl: card.coverUrl || "", assetUrl: card.assetUrl || "", name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, boardName: board.name || "" };
+        // "Post 7 [reel]" → 7. This is the order SHE arranged in Schedule 1-21,
+        // and it's what pins the posted block — most cards are ticked off by
+        // hand and never get a publish timestamp, so time alone can't order them.
+        const n = parseInt(((card.name || "").match(/post\s*(\d+)/i) || [])[1], 10);
+        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, coverUrl: card.coverUrl || "", name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, seq: Number.isFinite(n) ? n : 1000 + seq, boardName: board.name || "" };
+        seq++;
       }
     }
     return map;
@@ -70,15 +76,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     const known = new Set(kept);
     const fresh = Object.keys(candidates).filter((k) => !known.has(k));
     const merged = [...kept, ...fresh];
-    // RULE: ✓ posted tiles ALWAYS occupy positions 1, 2, 3… in the order they
-    // actually went live (earliest = position 1) — the app memorizes the real
-    // posted sequence; drags and auto-arrange only touch what's unposted.
+    // RULE: ✓ posted tiles ALWAYS occupy positions 1, 2, 3… and they sit in the
+    // order SHE set in Schedule 1-21 (Post 1, Post 2, …). Publish timestamps are
+    // only a tiebreak — cards ticked off by hand don't have one at all, and
+    // sorting on the missing value is what scrambled the locked block.
     const posted = merged.filter((k) => candidates[k].done);
     posted.sort((a, b) => {
+      const sa = candidates[a].seq, sb = candidates[b].seq;
+      if (sa !== sb) return sa - sb;
       const pa = candidates[a].postedAt || "", pb = candidates[b].postedAt || "";
       if (pa && pb) return pa < pb ? -1 : pa > pb ? 1 : 0;
-      if (pa) return -1;
-      if (pb) return 1;
       return merged.indexOf(a) - merged.indexOf(b);
     });
     return [...posted, ...merged.filter((k) => !candidates[k].done)];
@@ -107,8 +114,11 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const visible = items.slice(windowStart); // newest 21 — older ones have shipped
 
   const saveOrder = (next) => onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), order: next } });
+  const locked = !!((data || {})[acct] || {}).locked;
+  const setLocked = () => onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), locked: !locked } });
 
   const moveItem = (fromVis, toVis) => {
+    if (locked) return; // finalised grid — nothing moves
     if (fromVis === toVis) return;
     if (visible[fromVis] && visible[fromVis].done) return; // posted tiles are pinned
     const lockedVis = visible.filter((v) => v.done).length; // posted block sits at the front
@@ -123,6 +133,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   // ✨ Auto-arrange: sample each cover's tone (tiny canvas), then interleave
   // light/dark and polish with swap passes so grid neighbors contrast.
   const autoArrange = async () => {
+    if (locked) return;
     setArranging(true); setMsg(null);
     try {
       const tones = await Promise.all(visible.map(async (it) => {
@@ -243,6 +254,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       document.addEventListener("touchmove", preventScroll, { passive: false });
       return;
     }
+    if (locked) return; // finalised grid — no lifting, but pinch-to-reframe above still works
     if (it && it.done) return; // posted tiles are pinned (but pinch-view above still allowed)
     if (touchRef.current) endTouchDrag(false); // clear any stale gesture first
     const t = { slot, x: e.clientX, y: e.clientY, active: false, over: null, ghost: null };
@@ -322,11 +334,26 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
           {brand.handle} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
         </div>
-        <button onClick={autoArrange} disabled={arranging || visible.length < 4}
-          style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, cursor: "pointer", opacity: arranging || visible.length < 4 ? 0.5 : 1 }}>
-          {arranging ? "Arranging…" : "✨ Auto-arrange"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Finalised grids get locked so a second founder can't nudge the
+              layout by accident — auto-arrange and dragging both go dead until
+              someone deliberately unlocks it. */}
+          <button onClick={setLocked}
+            style={{ border: `1px solid ${locked ? c.green : c.line}`, background: locked ? c.green : "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: locked ? "#fff" : c.sub, cursor: "pointer" }}>
+            {locked ? "🔒 Grid locked" : "🔓 Lock grid"}
+          </button>
+          <button onClick={autoArrange} disabled={locked || arranging || visible.length < 4}
+            title={locked ? "Unlock the grid to re-arrange it" : ""}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, cursor: locked ? "not-allowed" : "pointer", opacity: locked || arranging || visible.length < 4 ? 0.4 : 1 }}>
+            {arranging ? "Arranging…" : "✨ Auto-arrange"}
+          </button>
+        </div>
       </div>
+      {locked && (
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11.5, color: c.green, marginBottom: 10 }}>
+          This grid is finalised — tiles can't be dragged or re-arranged. Tap “Grid locked” to open it back up.
+        </div>
+      )}
       {pickIdx != null && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink }}>Post {windowStart + pickIdx + 1} — tap the spot it should take, or:</div>
@@ -337,7 +364,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
-          <div key={item.key} draggable={editKey !== item.key} data-slot={slot}
+          <div key={item.key} draggable={!locked && editKey !== item.key} data-slot={slot}
             onPointerDown={(e) => {
               if (editKey === item.key) {
                 e.preventDefault(); e.stopPropagation();
@@ -462,8 +489,10 @@ function driveIdFrom(s) {
     || (s.includes("drive.google.com") ? s.match(/([-\w]{25,})/) : null);
   return m ? m[1] : null;
 }
+// NOTE: never fall back to assetUrl here — on a [reel] card that's the .mov,
+// and pointing an <img> at a video is what broke cover downloads outright.
 export function hiResSource(item) {
-  const id = driveIdFrom(item.cover) || driveIdFrom(item.coverUrl) || driveIdFrom(item.assetUrl);
+  const id = driveIdFrom(item.cover) || driveIdFrom(item.coverUrl);
   return id ? "/api/data?op=drive_img&id=" + id : item.cover;
 }
 export const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-media/");
@@ -496,7 +525,15 @@ function renderCoverCrop(item, z, maxW = 1080) {
         resolve(cv);
       } catch (e) { reject(e); }
     };
-    img.onerror = () => reject(new Error("image load failed"));
+    // If the Drive original won't load (permissions, or it isn't an image after
+    // all), fall back to the cover the grid is already showing rather than
+    // failing the download outright.
+    let triedFallback = false;
+    img.onerror = () => {
+      const fb = typeof item === "string" ? null : item.cover;
+      if (!triedFallback && fb && fb !== src) { triedFallback = true; img.src = fb; return; }
+      reject(new Error("image load failed"));
+    };
     img.src = src;
   });
 }

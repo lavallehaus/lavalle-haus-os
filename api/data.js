@@ -81,7 +81,9 @@ function driveIdFrom(s) {
 // Instagram's 1080px. Never let one of these be what actually gets posted.
 const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-media/");
 function cardCoverUrl(card, bKey) {
-  const id = driveIdFrom(card.cover) || driveIdFrom(card.coverUrl) || driveIdFrom(card.assetUrl);
+  // assetUrl is deliberately NOT consulted: on a [reel] card it points at the
+  // .mov, and handing Instagram a video as a photo fails the post.
+  const id = driveIdFrom(card.cover) || driveIdFrom(card.coverUrl);
   if (id) return APP_ORIGIN + "/api/data?op=drive_img&id=" + id + "&fit=igfeed";
   if (typeof card.cover === "string") {
     if (card.cover.startsWith("data:")) return APP_ORIGIN + "/api/data?op=card_media&board=" + encodeURIComponent(bKey) + "&card=" + encodeURIComponent(card.id);
