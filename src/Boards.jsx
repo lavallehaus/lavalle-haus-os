@@ -149,6 +149,54 @@ function fileToCover(file, cb, maxW = 1440, q = 0.9) {
   fr.readAsDataURL(file);
 }
 
+// ── Planned cycle generator ──────────────────────────────────────────────────
+// Kiabeth plans in blocks of 21 because it's the grid she can hold in her head,
+// even though the real cadence (2x/day) posts more than that a month.
+// The rules she set:
+//   • niche alternates in PAIRS — a whole day stays on one topic before it
+//     switches — starting on beauty, which lands 11 beauty / 10 fashion over 21.
+//   • 5 carousels, always on TikTok; 2 of those 5 also run as a single static
+//     image on Instagram (her existing "[IG static / TikTok carousel]" tag).
+//   • the other 16 are reels, split b-roll vs face-to-camera on her 15:20 ratio
+//     → 7 b-roll and 9 face-to-camera, alternating between the two sisters.
+// Everything generated is a starting point: titles and tags are ordinary fields
+// she or the copy editor can rename.
+function buildPlannedCycle(faces = ["Kiabeth", "Kiaredza"]) {
+  const N = 21;
+  const carouselAt = [3, 7, 11, 15, 19];   // evenly spaced through the cycle
+  const igStaticAt = [7, 15];              // 2 of the 5 go out static on IG
+  // Spread the 7 b-roll slots evenly across whatever ISN'T a carousel, rather
+  // than by odd/even — the carousels sit on odd slots, so an odd/even rule
+  // starved b-roll of positions and the mix came out 6/10 instead of 7/9.
+  const openSlots = [];
+  for (let n = 1; n <= N; n++) if (!carouselAt.includes(n)) openSlots.push(n);
+  const brollSlots = new Set(Array.from({ length: 7 }, (_, i) => openSlots[Math.round((i * openSlots.length) / 7)]));
+  const cards = [];
+  let faceTurn = 0;
+  for (let n = 1; n <= N; n++) {
+    // pairs: posts 1-2 beauty, 3-4 fashion, 5-6 beauty … 21 lands on beauty
+    const niche = Math.floor((n - 1) / 2) % 2 === 0 ? "Beauty" : "Fashion";
+    let tag, title, member = null;
+    if (carouselAt.includes(n)) {
+      const igStatic = igStaticAt.includes(n);
+      tag = igStatic ? "IG static / TikTok carousel" : "carousel";
+      title = `Post ${n} [${tag}] · ${niche}`;
+    } else {
+      if (brollSlots.has(n)) {
+        tag = "reel";
+        title = `Post ${n} [reel] B-roll · ${niche}`;
+      } else {
+        member = faces[faceTurn % faces.length];
+        faceTurn++;
+        tag = "reel";
+        title = `Post ${n} [reel] Face to camera — ${member} · ${niche}`;
+      }
+    }
+    cards.push({ n, title, niche, member });
+  }
+  return cards;
+}
+
 // Small avatar circle — member photo when uploaded, initials otherwise.
 function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
   const s = { width: size, height: size, borderRadius: "50%", border: `2px solid ${ring}`, flexShrink: 0, boxSizing: "border-box" };
@@ -832,6 +880,21 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               {viewer.owner && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
               <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
+              <button onClick={() => {
+                const existing = board.lists.find((l) => /^planned\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+                const already = existing ? board.cards.filter((cd) => cd.listId === existing.id).length : 0;
+                if (already && !window.confirm(`"Planned 1-21" already has ${already} card${already === 1 ? "" : "s"}. Add another 21 below them?`)) return;
+                const listId = existing ? existing.id : uid();
+                const lists = existing ? board.lists : [...board.lists, { id: listId, name: "Planned 1-21" }];
+                const plan = buildPlannedCycle();
+                const made = plan.map((p) => ({
+                  id: uid(), listId, name: p.title,
+                  labels: [p.niche],                        // rename or recolour like any label
+                  members: p.member ? [p.member] : [],
+                  desc: "", done: false, comments: [],
+                }));
+                patchBoard(open, { lists, cards: [...board.cards, ...made] });
+              }} style={ghost} title="Create the next 21 planned posts — niche paired by day, formats balanced">✦ Plan next 21</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
                 style={ghost}>+ List</button>
               {bgMenu && (
