@@ -129,7 +129,11 @@ async function storeImage(dataUrl) {
   } catch { return dataUrl; }
 }
 
-function fileToCover(file, cb, maxW = 700, q = 0.82) {
+// Card covers default to 1440px @ 0.9 — Instagram wants at least 1080 wide and
+// the old 700px default meant every uploaded cover was upscaled and soft. Now
+// that images live in the media store instead of the saved blob, the extra
+// weight costs nothing at save time.
+function fileToCover(file, cb, maxW = 1440, q = 0.9) {
   const fr = new FileReader();
   fr.onload = () => {
     const img = new Image();
@@ -1148,6 +1152,26 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
+  const [draft, setDraft] = useState(card.draft || {});
+  const [draftNotes, setDraftNotes] = useState(card.draftNotes || {});
+  const [showPoint3, setShowPoint3] = useState(!!(card.draft && card.draft.point3));
+  const [showResolved, setShowResolved] = useState(false);
+  const [noteOn, setNoteOn] = useState(null);
+  const [noteText, setNoteText] = useState("");
+  const draftBeats = [
+    { key: "intro", label: "Intro", hint: "How it opens — the first 2 seconds" },
+    { key: "point1", label: "Main point 1", hint: "" },
+    { key: "point2", label: "Main point 2", hint: "" },
+    ...(showPoint3 || draft.point3 ? [{ key: "point3", label: "Main point 3", hint: "" }] : []),
+    { key: "close", label: "Close", hint: "How it lands — CTA or last line" },
+  ];
+  const addDraftNote = (beatKey) => {
+    const t = noteText.trim();
+    if (!t) return;
+    const n = { id: uid(), text: t, by: (typeof me === "string" && me.trim()) || "Me", at: new Date().toISOString(), resolved: false };
+    setDraftNotes({ ...draftNotes, [beatKey]: [...(draftNotes[beatKey] || []), n] });
+    setNoteText(""); setNoteOn(null);
+  };
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
   // PR/UGC auto-title: on a PR + UGC board, resolve the creator @handle from the
@@ -1244,7 +1268,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -1255,7 +1279,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, tags, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
+  }, [name, hook, tags, draft, draftNotes, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1414,8 +1438,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <div style={label}>Hashtags · TikTok only</div>
         <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
         {tags.trim() && (
-          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: (tags.match(/#/g) || []).length > 2 ? "#9b5e5e" : c.sub, marginTop: -6, marginBottom: 10 }}>
-            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"}{(tags.match(/#/g) || []).length > 2 ? " — you wanted 2" : ""}
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
+            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to TikTok only
           </div>
         )}
 
@@ -1449,6 +1473,69 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>▷ Open</a>
           )}
         </div>
+        {/* Rough draft — the beat sheet Kiabeth writes off the example video so
+            the copy editor can see the intent before writing the real caption.
+            Each beat carries its own comment thread, Google-Docs style. */}
+        <div style={label}>Rough draft</div>
+        <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: 10, marginBottom: 10, background: c.bg }}>
+          {draftBeats.map((beat) => {
+            const notes = (draftNotes[beat.key] || []).filter((n) => showResolved || !n.resolved);
+            const openCount = (draftNotes[beat.key] || []).filter((n) => !n.resolved).length;
+            return (
+              <div key={beat.key} style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>{beat.label}</span>
+                  <button onClick={() => setNoteOn(noteOn === beat.key ? null : beat.key)}
+                    style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", fontFamily: sans, fontSize: 10, color: openCount ? c.taupe : c.line }}
+                    title="Comment on this section">💬{openCount ? " " + openCount : ""}</button>
+                  {beat.key === "point3" && !draft.point3 && (
+                    <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.line }}>optional</span>
+                  )}
+                </div>
+                <textarea rows={beat.key === "intro" || beat.key === "close" ? 2 : 2}
+                  style={{ ...input, resize: "vertical", marginBottom: 4 }}
+                  placeholder={beat.hint}
+                  value={draft[beat.key] || ""}
+                  onChange={(e) => setDraft({ ...draft, [beat.key]: e.target.value })} />
+                {notes.map((n) => (
+                  <div key={n.id} style={{ display: "flex", gap: 6, alignItems: "flex-start", background: n.resolved ? "transparent" : "#FBF7F0", border: `1px solid ${n.resolved ? c.line : "#E8DFD0"}`, borderRadius: 2, padding: "6px 8px", marginBottom: 4, opacity: n.resolved ? 0.55 : 1 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>
+                        {n.by}{n.resolved ? " · resolved" : ""} · {new Date(n.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </div>
+                      <div style={{ fontFamily: sans, fontSize: 12, color: c.ink, whiteSpace: "pre-wrap" }}>{n.text}</div>
+                    </div>
+                    <button onClick={() => setDraftNotes({ ...draftNotes, [beat.key]: (draftNotes[beat.key] || []).map((x) => (x.id === n.id ? { ...x, resolved: !x.resolved } : x)) })}
+                      title={n.resolved ? "Reopen" : "Mark resolved"}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", color: c.sub, fontSize: 12, padding: 0 }}>{n.resolved ? "↺" : "✓"}</button>
+                    <button onClick={() => { if (window.confirm("Delete this comment?")) setDraftNotes({ ...draftNotes, [beat.key]: (draftNotes[beat.key] || []).filter((x) => x.id !== n.id) }); }}
+                      title="Delete" style={{ border: "none", background: "transparent", cursor: "pointer", color: c.line, fontSize: 13, padding: 0 }}>×</button>
+                  </div>
+                ))}
+                {noteOn === beat.key && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                    <input autoFocus style={{ ...input, flex: 1, marginBottom: 0 }} placeholder="Leave a note on this section…"
+                      value={noteText} onChange={(e) => setNoteText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && noteText.trim()) { addDraftNote(beat.key); } }} />
+                    <button onClick={() => addDraftNote(beat.key)} disabled={!noteText.trim()}
+                      style={{ border: `1px solid ${c.ink}`, background: noteText.trim() ? c.ink : c.line, color: "#fff", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Add</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {!draft.point3 && !showPoint3 && (
+              <button onClick={() => setShowPoint3(true)}
+                style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>+ Main point 3</button>
+            )}
+            <button onClick={() => setShowResolved(!showResolved)}
+              style={{ border: "none", background: "transparent", padding: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, cursor: "pointer" }}>
+              {showResolved ? "Hide resolved comments" : "Show resolved comments"}
+            </button>
+          </div>
+        </div>
+
         <div style={label}>Post asset</div>
         {(() => {
           // One editable Drive button. url/setUrl live in state; the pencil (top
@@ -1661,7 +1748,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
