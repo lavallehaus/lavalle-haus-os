@@ -2376,22 +2376,26 @@ function SlackBell() {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const seen = () => { try { return parseFloat(localStorage.getItem("lh_slack_seen") || "0"); } catch { return 0; } };
-  const load = async () => {
+  const load = async (check) => {
     try {
-      const d = await (await fetch("/api/data?op=slack_feed&since=" + seen())).json();
+      const d = await (await fetch("/api/data?op=slack_feed&since=" + seen() + (check ? "&check=1" : ""))).json();
       setFeed(d.feed || []); setUnread(d.unread || 0); setDrafts(d.drafts || []);
     } catch {}
   };
   const post = async (op, body) => {
     const r = await fetch("/api/data?op=" + op, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || "That didn't go through.");
+    if (!r.ok) { const e = new Error(d.error || "That didn't go through."); e.answered = d.answered; throw e; }
     return d;
   };
-  const sendDraft = async (d) => {
+  const sendDraft = async (d, force) => {
     setBusy(d.id); setErr(null);
-    try { await post("slack_send", { id: d.id, text: edit[d.id] != null ? edit[d.id] : d.text }); await load(); }
-    catch (e) { setErr(String(e.message || e)); }
+    try { await post("slack_send", { id: d.id, text: edit[d.id] != null ? edit[d.id] : d.text, force: !!force }); await load(); }
+    catch (e) {
+      // 409 = someone already replied. Never silently send over the top of it.
+      if (e.answered) setDrafts((cur) => cur.map((x) => (x.id === d.id ? { ...x, answered: e.answered } : x)));
+      else setErr(String(e.message || e));
+    }
     setBusy(null);
   };
   const discardDraft = async (d) => {
@@ -2405,7 +2409,7 @@ function SlackBell() {
     if (!text) return;
     setBusy("reply"); setErr(null);
     try {
-      const { draft } = await post("slack_draft", { teamId: m.teamId, team: m.team, channelId: m.channelId, channel: m.channel, threadTs: m.ts, replyTo: m.text, text });
+      const { draft } = await post("slack_draft", { teamId: m.teamId, team: m.team, channelId: m.channelId, channel: m.channel, threadTs: m.ts, sinceTs: m.ts, fromUserId: m.userId || "", replyTo: m.text, text });
       await post("slack_send", { id: draft.id });
       setReplyTo(null); setReplyText(""); await load();
     } catch (e) { setErr(String(e.message || e)); }
@@ -2421,6 +2425,7 @@ function SlackBell() {
     if (!open) {
       if (feed.length) { try { localStorage.setItem("lh_slack_seen", String(parseFloat(feed[0].ts) || Date.now() / 1000)); } catch {} setUnread(0); }
       if (teams === null) { try { const d = await (await fetch("/api/data?op=slack_status")).json(); setTeams(d.teams || []); } catch { setTeams([]); } }
+      load(true); // re-check drafts against Slack: has the thread already been answered?
     }
   };
   const ago = (iso) => { const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? Math.floor(m / 60) + "h" : Math.floor(m / 1440) + "d"; };
@@ -2460,9 +2465,16 @@ function SlackBell() {
                     {d.replyTo && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#9A9A95", borderLeft: "2px solid #E0E0DD", paddingLeft: 8, marginBottom: 6 }}>{String(d.replyTo).slice(0, 140)}</div>}
                     <textarea value={edit[d.id] != null ? edit[d.id] : d.text} onChange={(e) => setEdit((s) => ({ ...s, [d.id]: e.target.value }))} rows={3}
                       style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
+                    {d.answered && (
+                      <div style={{ marginTop: 7, background: "#FBF7F0", border: "1px solid #E8DFD0", borderRadius: 2, padding: "8px 10px" }}>
+                        <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676", marginBottom: 4 }}>Already answered — {d.answered.by} replied</div>
+                        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: "#71716C" }}>{d.answered.text}</div>
+                        <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 11, color: "#1A1A1A", marginTop: 5 }}>Sending this would reply twice.</div>
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      <button disabled={busy === d.id} onClick={() => sendDraft(d)}
-                        style={{ border: "1px solid #1A1A1A", background: "#1A1A1A", color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === d.id ? "Sending…" : "Approve & send"}</button>
+                      <button disabled={busy === d.id} onClick={() => sendDraft(d, !!d.answered)}
+                        style={{ border: "1px solid " + (d.answered ? "#E0E0DD" : "#1A1A1A"), background: d.answered ? "transparent" : "#1A1A1A", color: d.answered ? "#71716C" : "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === d.id ? "Sending…" : d.answered ? "Send anyway" : "Approve & send"}</button>
                       <button disabled={busy === d.id} onClick={() => discardDraft(d)}
                         style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Discard</button>
                     </div>

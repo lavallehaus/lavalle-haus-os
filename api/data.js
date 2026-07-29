@@ -736,7 +736,7 @@ export default async function handler(req, res) {
             .slice(0, 400);
           const feed = (await kvGet("slack_feed")) || [];
           // channelId + ts are what a reply needs to land in the right place.
-          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, channelId: ev.channel, user: userName, text, ts: ev.ts, at: new Date().toISOString() });
+          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, channelId: ev.channel, user: userName, userId: ev.user || "", text, ts: ev.ts, at: new Date().toISOString() });
           await kvSet("slack_feed", feed.slice(0, 200)); // capped
         }
       }
@@ -1036,6 +1036,16 @@ export default async function handler(req, res) {
     const feed = (await kvGet("slack_feed")) || [];
     const since = parseFloat(req.query.since || "0") || 0;
     const drafts = ((await kvGet("slack_drafts")) || []).filter((d) => d.status === "pending");
+    // ?check=1 (sent when she opens the panel) asks Slack whether each pending
+    // draft has been overtaken by a real reply, so a stale one is flagged before
+    // she can tap Send. Kept off the 60s poll — it costs a Slack call per draft.
+    if (req.query.check === "1" && drafts.length) {
+      const map = (await kvGet("slack_oauth")) || {};
+      for (const d of drafts) {
+        const answered = await alreadyAnswered(map[d.teamId], d);
+        if (answered) d.answered = answered;
+      }
+    }
     res.json({ feed: feed.slice(0, 60), drafts, latest: feed.length ? parseFloat(feed[0].ts) : 0, unread: since ? feed.filter((f) => parseFloat(f.ts) > since).length : feed.length });
     return;
   }
@@ -1052,6 +1062,35 @@ export default async function handler(req, res) {
   // ── Replying on Kiabeth's behalf, with her hand on the trigger ──────────────
   // A draft is only ever QUEUED here; it sits in the bell until she taps Send.
   // Nothing in this file posts to Slack without that explicit approval step.
+  //
+  // A queued draft also goes STALE the moment the conversation moves on. She
+  // often answers Sarah in Slack directly, and a draft written before that would
+  // make her reply to her own business partner twice. So before a draft is shown
+  // as actionable — and again, authoritatively, at send time — we ask Slack
+  // whether anyone on her side has already answered since the message it replies
+  // to. Checked at send, not just on display, because the panel can sit open.
+  async function alreadyAnswered(team, d) {
+    if (!team || !d || !d.channelId) return null;
+    try {
+      const since = d.threadTs || d.sinceTs;
+      const url = d.threadTs
+        ? `https://slack.com/api/conversations.replies?channel=${encodeURIComponent(d.channelId)}&ts=${encodeURIComponent(d.threadTs)}&limit=50`
+        : `https://slack.com/api/conversations.history?channel=${encodeURIComponent(d.channelId)}&oldest=${encodeURIComponent(since || "0")}&limit=50`;
+      const r = await (await fetch(url, { headers: { Authorization: "Bearer " + team.token } })).json();
+      if (!r.ok || !Array.isArray(r.messages)) return null;
+      const after = parseFloat(since || "0") || 0;
+      // Anyone who isn't the original author and isn't our own bot counts as an
+      // answer — she may reply as herself, or a teammate may have covered it.
+      const reply = r.messages.find((m) => parseFloat(m.ts) > after && m.user && m.user !== team.botUserId && m.user !== d.fromUserId && !m.bot_id && m.text);
+      if (!reply) return null;
+      let who = reply.user;
+      try {
+        const ur = await (await fetch("https://slack.com/api/users.info?user=" + reply.user, { headers: { Authorization: "Bearer " + team.token } })).json();
+        if (ur.ok) who = ur.user.profile.display_name || ur.user.real_name || ur.user.name;
+      } catch {}
+      return { by: who, text: String(reply.text).slice(0, 300), ts: reply.ts };
+    } catch { return null; }
+  }
   if (op === "slack_draft" && req.method === "POST") {
     const b = req.body || {};
     if (!b.teamId || !b.channelId || !String(b.text || "").trim()) { res.status(400).json({ error: "teamId, channelId and text are required." }); return; }
@@ -1059,7 +1098,8 @@ export default async function handler(req, res) {
     const draft = {
       id: "d" + randomBytes(6).toString("hex"),
       teamId: b.teamId, team: b.team || "", channelId: b.channelId, channel: b.channel || "",
-      threadTs: b.threadTs || null, replyTo: b.replyTo || "",
+      threadTs: b.threadTs || null, sinceTs: b.threadTs || b.sinceTs || null,
+      fromUserId: b.fromUserId || "", replyTo: b.replyTo || "",
       text: String(b.text).slice(0, 2000), status: "pending", createdAt: new Date().toISOString(),
     };
     drafts.unshift(draft);
@@ -1077,6 +1117,16 @@ export default async function handler(req, res) {
     const map = (await kvGet("slack_oauth")) || {};
     const team = map[d.teamId];
     if (!team) { res.status(400).json({ error: "That workspace is no longer connected." }); return; }
+    // Last line of defence against double-replying to a real person.
+    if (!b.force) {
+      const answered = await alreadyAnswered(team, d);
+      if (answered) {
+        d.status = "stale"; d.answered = answered;
+        await kvSet("slack_drafts", drafts);
+        res.status(409).json({ error: "already_answered", answered });
+        return;
+      }
+    }
     const post = await (await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: { Authorization: "Bearer " + team.token, "Content-Type": "application/json; charset=utf-8" },
