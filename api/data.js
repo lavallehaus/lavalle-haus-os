@@ -654,7 +654,9 @@ export default async function handler(req, res) {
   if (req.method === "GET" && op === "slack_auth") {
     const cid = process.env.SLACK_CLIENT_ID;
     if (!cid) { res.status(500).send("SLACK_CLIENT_ID is not set in Vercel env vars yet."); return; }
-    const scopes = ["channels:read", "channels:join", "channels:history", "groups:read", "groups:history", "team:read", "users:read"].join(",");
+    // chat:write lets the bot post replies FOR Kiabeth — but only ever after she
+    // taps approve in the app (see slack_draft / slack_send). Nothing auto-sends.
+    const scopes = ["channels:read", "channels:join", "channels:history", "groups:read", "groups:history", "team:read", "users:read", "chat:write"].join(",");
     const params = new URLSearchParams({ client_id: cid, scope: scopes, redirect_uri: "https://lavalle-haus-os.vercel.app/api/slack-callback" });
     res.writeHead(302, { Location: "https://slack.com/oauth/v2/authorize?" + params.toString() });
     res.end(); return;
@@ -712,7 +714,8 @@ export default async function handler(req, res) {
             .replace(/<(https?:[^>]+)>/g, "$1")
             .slice(0, 400);
           const feed = (await kvGet("slack_feed")) || [];
-          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, user: userName, text, ts: ev.ts, at: new Date().toISOString() });
+          // channelId + ts are what a reply needs to land in the right place.
+          feed.unshift({ team: team.team, teamId: b.team_id, channel: chName, channelId: ev.channel, user: userName, text, ts: ev.ts, at: new Date().toISOString() });
           await kvSet("slack_feed", feed.slice(0, 200)); // capped
         }
       }
@@ -1003,20 +1006,75 @@ export default async function handler(req, res) {
   if (!auth) { res.status(401).json({ error: "Locked" }); return; }
 
   // Slack: recent messages for the header bell + connection status.
+  // OWNER ONLY — these are Kiabeth's private workspace conversations, so staff
+  // accounts never see the bell or reach the feed, even by URL.
+  if (op === "slack_feed" || op === "slack_status" || op === "slack_clear" || op === "slack_draft" || op === "slack_send" || op === "slack_discard") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+  }
   if (req.method === "GET" && op === "slack_feed") {
     const feed = (await kvGet("slack_feed")) || [];
     const since = parseFloat(req.query.since || "0") || 0;
-    res.json({ feed: feed.slice(0, 60), latest: feed.length ? parseFloat(feed[0].ts) : 0, unread: since ? feed.filter((f) => parseFloat(f.ts) > since).length : feed.length });
+    const drafts = ((await kvGet("slack_drafts")) || []).filter((d) => d.status === "pending");
+    res.json({ feed: feed.slice(0, 60), drafts, latest: feed.length ? parseFloat(feed[0].ts) : 0, unread: since ? feed.filter((f) => parseFloat(f.ts) > since).length : feed.length });
     return;
   }
   if (req.method === "GET" && op === "slack_status") {
     const map = (await kvGet("slack_oauth")) || {};
-    res.json({ teams: Object.values(map).map((t) => ({ team: t.team, installedAt: t.installedAt })) });
+    res.json({ teams: Object.values(map).map((t) => ({ team: t.team, teamId: t.teamId, installedAt: t.installedAt })) });
     return;
   }
   if (op === "slack_clear") {
-    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     await kvSet("slack_feed", []);
+    res.json({ ok: true });
+    return;
+  }
+  // ── Replying on Kiabeth's behalf, with her hand on the trigger ──────────────
+  // A draft is only ever QUEUED here; it sits in the bell until she taps Send.
+  // Nothing in this file posts to Slack without that explicit approval step.
+  if (op === "slack_draft" && req.method === "POST") {
+    const b = req.body || {};
+    if (!b.teamId || !b.channelId || !String(b.text || "").trim()) { res.status(400).json({ error: "teamId, channelId and text are required." }); return; }
+    const drafts = (await kvGet("slack_drafts")) || [];
+    const draft = {
+      id: "d" + randomBytes(6).toString("hex"),
+      teamId: b.teamId, team: b.team || "", channelId: b.channelId, channel: b.channel || "",
+      threadTs: b.threadTs || null, replyTo: b.replyTo || "",
+      text: String(b.text).slice(0, 2000), status: "pending", createdAt: new Date().toISOString(),
+    };
+    drafts.unshift(draft);
+    await kvSet("slack_drafts", drafts.slice(0, 50));
+    res.json({ ok: true, draft });
+    return;
+  }
+  if (op === "slack_send" && req.method === "POST") {
+    const b = req.body || {};
+    const drafts = (await kvGet("slack_drafts")) || [];
+    const d = drafts.find((x) => x.id === b.id && x.status === "pending");
+    if (!d) { res.status(404).json({ error: "That draft is no longer waiting to be sent." }); return; }
+    const text = String(b.text || d.text).trim(); // she can edit right before it goes
+    if (!text) { res.status(400).json({ error: "Nothing to send." }); return; }
+    const map = (await kvGet("slack_oauth")) || {};
+    const team = map[d.teamId];
+    if (!team) { res.status(400).json({ error: "That workspace is no longer connected." }); return; }
+    const post = await (await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + team.token, "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ channel: d.channelId, text, ...(d.threadTs ? { thread_ts: d.threadTs } : {}) }),
+    })).json();
+    if (!post.ok) {
+      const hint = post.error === "missing_scope" ? "Reconnect the workspace — the bot needs the newer chat:write permission." : post.error;
+      res.status(400).json({ error: "Slack refused the message: " + hint });
+      return;
+    }
+    d.status = "sent"; d.text = text; d.sentAt = new Date().toISOString();
+    await kvSet("slack_drafts", drafts);
+    res.json({ ok: true });
+    return;
+  }
+  if (op === "slack_discard" && req.method === "POST") {
+    const drafts = (await kvGet("slack_drafts")) || [];
+    const d = drafts.find((x) => x.id === (req.body || {}).id);
+    if (d) { d.status = "discarded"; await kvSet("slack_drafts", drafts); }
     res.json({ ok: true });
     return;
   }

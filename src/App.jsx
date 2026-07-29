@@ -2367,12 +2367,49 @@ function SlackBell() {
   const [feed, setFeed] = useState([]);
   const [teams, setTeams] = useState(null);
   const [unread, setUnread] = useState(0);
+  // Replies the bot has written for Kiabeth. They sit here until she says go —
+  // nothing reaches Slack without her tapping Send on this list.
+  const [drafts, setDrafts] = useState([]);
+  const [edit, setEdit] = useState({});   // draft id → edited text
+  const [replyTo, setReplyTo] = useState(null); // feed row index she's answering
+  const [replyText, setReplyText] = useState("");
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
   const seen = () => { try { return parseFloat(localStorage.getItem("lh_slack_seen") || "0"); } catch { return 0; } };
   const load = async () => {
     try {
       const d = await (await fetch("/api/data?op=slack_feed&since=" + seen())).json();
-      setFeed(d.feed || []); setUnread(d.unread || 0);
+      setFeed(d.feed || []); setUnread(d.unread || 0); setDrafts(d.drafts || []);
     } catch {}
+  };
+  const post = async (op, body) => {
+    const r = await fetch("/api/data?op=" + op, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "That didn't go through.");
+    return d;
+  };
+  const sendDraft = async (d) => {
+    setBusy(d.id); setErr(null);
+    try { await post("slack_send", { id: d.id, text: edit[d.id] != null ? edit[d.id] : d.text }); await load(); }
+    catch (e) { setErr(String(e.message || e)); }
+    setBusy(null);
+  };
+  const discardDraft = async (d) => {
+    setBusy(d.id); setErr(null);
+    try { await post("slack_discard", { id: d.id }); await load(); }
+    catch (e) { setErr(String(e.message || e)); }
+    setBusy(null);
+  };
+  const sendReply = async (m) => {
+    const text = replyText.trim();
+    if (!text) return;
+    setBusy("reply"); setErr(null);
+    try {
+      const { draft } = await post("slack_draft", { teamId: m.teamId, team: m.team, channelId: m.channelId, channel: m.channel, threadTs: m.ts, replyTo: m.text, text });
+      await post("slack_send", { id: draft.id });
+      setReplyTo(null); setReplyText(""); await load();
+    } catch (e) { setErr(String(e.message || e)); }
+    setBusy(null);
   };
   useEffect(() => {
     load();
@@ -2392,7 +2429,7 @@ function SlackBell() {
       <button onClick={openPanel} title="Slack — mensajes recientes"
         style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase", position: "relative" }}>
         🔔 Slack
-        {unread > 0 && <span style={{ position: "absolute", top: -7, right: -7, background: "#9b5e5e", color: "#fff", borderRadius: 9, minWidth: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", fontFamily: "'Jost', sans-serif" }}>{unread > 99 ? "99+" : unread}</span>}
+        {(unread > 0 || drafts.length > 0) && <span style={{ position: "absolute", top: -7, right: -7, background: drafts.length ? "#8F8676" : "#9b5e5e", color: "#fff", borderRadius: 9, minWidth: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", fontFamily: "'Jost', sans-serif" }}>{drafts.length ? "✍ " + drafts.length : unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
         <>
@@ -2402,6 +2439,26 @@ function SlackBell() {
               <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#71716C" }}>Slack — latest</span>
               {teams !== null && <a href="/api/slack-auth" target="_blank" rel="noreferrer" style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676" }}>{teams.length ? teams.length + " connected · add another" : "Connect a workspace"}</a>}
             </div>
+            {err && <div style={{ padding: "9px 14px", background: "#FBF3F3", borderBottom: "1px solid #E0E0DD", fontFamily: "'Jost', sans-serif", fontSize: 11.5, color: "#9b5e5e" }}>{err}</div>}
+            {drafts.length > 0 && (
+              <div style={{ background: "#FAF9F6", borderBottom: "1px solid #E0E0DD" }}>
+                <div style={{ padding: "9px 14px 2px", fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676" }}>Waiting for your OK</div>
+                {drafts.map((d) => (
+                  <div key={d.id} style={{ padding: "8px 14px 12px" }}>
+                    <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#9A9A95", marginBottom: 5 }}>Reply to {d.team} · {d.channel}</div>
+                    {d.replyTo && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#9A9A95", borderLeft: "2px solid #E0E0DD", paddingLeft: 8, marginBottom: 6 }}>{String(d.replyTo).slice(0, 140)}</div>}
+                    <textarea value={edit[d.id] != null ? edit[d.id] : d.text} onChange={(e) => setEdit((s) => ({ ...s, [d.id]: e.target.value }))} rows={3}
+                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <button disabled={busy === d.id} onClick={() => sendDraft(d)}
+                        style={{ border: "1px solid #1A1A1A", background: "#1A1A1A", color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === d.id ? "Sending…" : "Approve & send"}</button>
+                      <button disabled={busy === d.id} onClick={() => discardDraft(d)}
+                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Discard</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {feed.length === 0 && <div style={{ padding: 18, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: "#71716C" }}>No messages yet — once a workspace is connected, new Slack messages land here.</div>}
             {feed.map((m, i) => (
               <div key={m.ts + i} style={{ padding: "10px 14px", borderBottom: "1px solid #F0F0EE" }}>
@@ -2410,6 +2467,22 @@ function SlackBell() {
                   <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, color: "#9A9A95" }}>{ago(m.at)}</span>
                 </div>
                 <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A" }}><b>{m.user}</b>&nbsp; {m.text}</div>
+                {m.channelId && replyTo !== i && (
+                  <button onClick={() => { setReplyTo(i); setReplyText(""); }}
+                    style={{ marginTop: 5, border: "none", background: "transparent", padding: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676", cursor: "pointer" }}>Reply in thread →</button>
+                )}
+                {replyTo === i && (
+                  <div style={{ marginTop: 6 }}>
+                    <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={3} autoFocus placeholder="Your reply — posts as Lavalle Haus OS"
+                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <button disabled={busy === "reply" || !replyText.trim()} onClick={() => sendReply(m)}
+                        style={{ border: "1px solid #1A1A1A", background: replyText.trim() ? "#1A1A1A" : "#9A9A95", color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === "reply" ? "Sending…" : "Send"}</button>
+                      <button onClick={() => setReplyTo(null)}
+                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -3027,7 +3100,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
-<SlackBell />
+{iAmOwner && <SlackBell />}
 {visibleNav.some(n => n.id === "brain") && <button onClick={() => setCommandView(true)}
   title="Open Command View — vista de comando"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
