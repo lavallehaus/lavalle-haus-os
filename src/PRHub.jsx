@@ -23,24 +23,27 @@ const chipColor = (v) => /approve|yes|shipped/i.test(v) ? c.green
 // into Instagram or TikTok by hand. Handles are stored bare (@name) and usually
 // work on both apps, so each one gets an IG and a TT jump; a pasted full URL
 // wins outright and just opens itself.
-const socialLinks = (raw) => {
+// Not everyone is on both — @zayitbemmel has no Instagram — so each chip can be
+// switched off per creator (row.noIg / row.noTt) and switched back on later.
+const socialLinks = (raw, row = {}) => {
   const v = String(raw || "").replace(/\(.*?\)/g, "").trim();
   if (!v) return [];
-  if (/^https?:\/\//i.test(v)) return [{ label: "↗", href: v }];
+  if (/^https?:\/\//i.test(v)) return [{ key: "url", label: "↗", href: v }];
   const h = v.replace(/^@+/, "").trim();
   if (!h) return [];
-  if (/tiktok\.com/i.test(v)) return [{ label: "TT", href: "https://" + v.replace(/^\/+/, "") }];
-  if (/instagram\.com/i.test(v)) return [{ label: "IG", href: "https://" + v.replace(/^\/+/, "") }];
-  return [
-    { label: "IG", href: "https://www.instagram.com/" + h + "/" },
-    { label: "TT", href: "https://www.tiktok.com/@" + h },
+  if (/tiktok\.com/i.test(v)) return [{ key: "tt", label: "TT", href: "https://" + v.replace(/^\/+/, "") }];
+  if (/instagram\.com/i.test(v)) return [{ key: "ig", label: "IG", href: "https://" + v.replace(/^\/+/, "") }];
+  const all = [
+    { key: "ig", label: "IG", href: "https://www.instagram.com/" + h + "/", off: !!row.noIg, flag: "noIg" },
+    { key: "tt", label: "TT", href: "https://www.tiktok.com/@" + h, off: !!row.noTt, flag: "noTt" },
   ];
+  return all;
 };
 
 const COLS = [
   { key: "approve", label: "Approve / Decline", type: "select", opts: APPROVE_OPTS, w: 120 },
   { key: "dateAdded", label: "Date added", type: "text", w: 100 },
-  { key: "ig", label: "IG / TikTok", type: "social", w: 175 },
+  { key: "ig", label: "IG / TikTok", type: "social", w: 205 },
   { key: "email", label: "Email", type: "text", w: 190 },
   { key: "name", label: "Name", type: "text", w: 140 },
   { key: "status", label: "Collaboration Status", type: "select", opts: STATUS_OPTS, w: 160 },
@@ -114,9 +117,20 @@ export default function PRHub({ data, onSave }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: 6 }}>
                         <input value={r[col.key] || ""} onChange={(e) => setCell(r.id, col.key, e.target.value)}
                           style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: sans, fontSize: 12, color: c.ink, background: "transparent" }} />
-                        {socialLinks(r[col.key]).map((l) => (
-                          <a key={l.label} href={l.href} target="_blank" rel="noreferrer" title={l.href}
-                            style={{ flex: "none", textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 1, padding: "2px 5px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, background: "#fff" }}>{l.label}</a>
+                        {socialLinks(r[col.key], r).map((l) => (
+                          l.off ? (
+                            <button key={l.key} onClick={() => setCell(r.id, l.flag, false)} title={`${l.label} — turn back on`}
+                              style={{ flex: "none", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "2px 4px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: "#C4C4C0", background: "transparent", cursor: "pointer" }}>+{l.label}</button>
+                          ) : (
+                            <span key={l.key} style={{ flex: "none", display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, background: "#fff" }}>
+                              <a href={l.href} target="_blank" rel="noreferrer" title={l.href}
+                                style={{ textDecoration: "none", padding: "2px 4px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub }}>{l.label}</a>
+                              {l.flag && (
+                                <button onClick={() => setCell(r.id, l.flag, true)} title={`This creator has no ${l.label === "IG" ? "Instagram" : "TikTok"}`}
+                                  style={{ border: "none", borderLeft: `1px solid ${c.line}`, background: "transparent", padding: "2px 4px", fontFamily: sans, fontSize: 8.5, lineHeight: 1, color: "#C4C4C0", cursor: "pointer" }}>×</button>
+                              )}
+                            </span>
+                          )
                         ))}
                       </div>
                     ) : col.type === "select" ? (
