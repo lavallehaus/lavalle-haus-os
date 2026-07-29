@@ -367,7 +367,7 @@ async function publishDueItems(only) {
           .sort((a, b) => ((parseInt(a.name) || 999) - (parseInt(b.name) || 999)) || a.name.localeCompare(b.name)).slice(0, 10);
         if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
         const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id + "&fit=igfeed");
-        const ccap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        const ccap = card.desc || "";
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
         const cr = await igPublishCarousel(tok, imageUrls, ccap);
         if (cr.ok) {
@@ -388,7 +388,7 @@ async function publishDueItems(only) {
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) {
         const reelId = ((card.assetUrl || "").match(/\/d\/([-\w]{20,})/) || [])[1];
         if (!reelId) { fail("no Reel video file is linked — the card points at a folder, not a .mov; link the file first"); continue; }
-        const rcap = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+        const rcap = card.desc || "";
         // Auto-convert the .mov to H.264 MP4 (Cloudinary) before Instagram — IG's
         // Reel API rejects HEVC. Skip if already converted (p.mp4Url).
         let videoUrl = p.mp4Url;
@@ -426,7 +426,7 @@ async function publishDueItems(only) {
       // Better a visible failure she can fix than a soft 300px photo on the
       // brand's feed, which can only be undone by deleting the post.
       if (isLowResPreview(imageUrl)) { fail("cover is only a 300px board preview — link the full-size photo from Drive on this card, then re-schedule"); continue; }
-      const caption = (card.hook ? card.hook + "\n\n" : "") + (card.desc || "");
+      const caption = card.desc || "";
       if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
       const r = await igPublishPhoto(tok, imageUrl, caption);
       if (r.ok) {

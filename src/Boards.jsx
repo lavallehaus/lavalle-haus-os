@@ -1131,6 +1131,7 @@ const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) retur
 function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
+  const [tags, setTags] = useState(card.tags || "");
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
   // PR/UGC auto-title: on a PR + UGC board, resolve the creator @handle from the
@@ -1227,7 +1228,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -1238,7 +1239,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
+  }, [name, hook, tags, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1257,7 +1258,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const runPost = async (confirm) => {
     const account = brandAcct || (pub && pub.account) || (pubAccounts && pubAccounts[0] && pubAccounts[0].username);
     if (!account) return;
-    if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video (auto-converts to H.264 first) + caption — a large video can take a minute or two." : "Posts the last saved cover + hook + caption."))) return;
+    if (confirm && !window.confirm('Post "' + name + '" to @' + account + " on Instagram right now?\n\n" + (isReelCard(card.name) ? "Uploads the linked Reel video (auto-converts to H.264 first) + caption — a large video can take a minute or two." : "Posts the last saved cover + caption (the on-screen hook and TikTok hashtags stay off Instagram)."))) return;
     setPostingNow(true);
     try {
       const r = await fetch("/api/data?op=publish_item", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boardKey, cardId: card.id, account }) });
@@ -1386,11 +1387,21 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
-        <div style={label}>Hook</div>
-        <input style={input} placeholder="The first line that stops the scroll…" value={hook} onChange={(e) => setHook(e.target.value)} />
+        <div style={label}>On-screen hook</div>
+        <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
+        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>
         <div style={label}>Caption</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         <NotesLinks text={desc} />
+        {/* TikTok-only hashtags: she wants 2 on TikTok and none on Instagram, so
+            these are stored apart from the caption and never reach the IG post. */}
+        <div style={label}>Hashtags · TikTok only</div>
+        <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
+        {tags.trim() && (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: (tags.match(/#/g) || []).length > 2 ? "#9b5e5e" : c.sub, marginTop: -6, marginBottom: 10 }}>
+            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"}{(tags.match(/#/g) || []).length > 2 ? " — you wanted 2" : ""}
+          </div>
+        )}
 
         {/* checklist — the film → edit → post steps live on the card */}
         <div style={label}>Checklist{checklist.length ? " · " + checklist.filter((x) => x.done).length + "/" + checklist.length : ""}</div>
@@ -1555,7 +1566,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               <div style={{ marginTop: 14, border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg, padding: "12px 14px" }}>
                 <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>TikTok · via TikTok Studio</div>
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 8 }}>TikTok can't post from here (their API declined internal tools), so it's scheduled natively in TikTok Studio — free, up to 10 days ahead. This copies your caption and opens the Studio upload page — switch to the right brand account, add the video, paste the caption, and pick the time.</div>
-                <button onClick={async () => { const cap = (hook ? hook + "\n\n" : "") + (desc || ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://www.tiktok.com/tiktokstudio/upload", "_blank", "noopener"); }}
+                <button onClick={async () => { const cap = (desc || "") + (tags.trim() ? "\n\n" + tags.trim() : ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://www.tiktok.com/tiktokstudio/upload", "_blank", "noopener"); }}
                   style={{ width: "100%", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
                   {plannCopied ? "✓ Caption copied — opening TikTok Studio…" : "📋 Copy caption & open TikTok Studio"}</button>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1634,7 +1645,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
+          onSave({ name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
