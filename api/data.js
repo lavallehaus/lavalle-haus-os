@@ -76,15 +76,15 @@ async function fitImage(buf, ctype, mode) {
     const Jimp = (await import("jimp")).default;
     const img = await Jimp.read(buf);
     const ar = img.getWidth() / img.getHeight();
-    if (m === "vertical") {
-      img.cover(1080, 1920);
-    } else if (ar < 0.8) {
-      img.cover(1080, 1350);
-    } else if (ar > 1.91) {
-      img.cover(1080, Math.round(1080 / 1.91));
-    } else {
-      return { buf, ctype }; // already inside Instagram's range
-    }
+    if (m === "vertical") img.cover(1080, 1920);
+    else if (ar < 0.8) img.cover(1080, 1350);
+    else if (ar > 1.91) img.cover(1080, Math.round(1080 / 1.91));
+    else if (img.getWidth() > 1080) img.resize(1080, Jimp.AUTO);
+    // ALWAYS re-encode to a bounded 1080px JPEG. An in-range photo used to be
+    // passed through untouched, which meant a full-size Drive original — one of
+    // The Fold's covers came out at 8.4MB — and Instagram rejects anything over
+    // 8MB, so the post silently never went out. 1080 is all Instagram serves.
+    img.quality(88);
     return { buf: await img.getBufferAsync(Jimp.MIME_JPEG), ctype: "image/jpeg" };
   } catch {
     return { buf, ctype }; // never fail a post over a resize
