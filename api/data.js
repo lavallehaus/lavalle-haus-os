@@ -1112,6 +1112,37 @@ export default async function handler(req, res) {
     res.json({ teams: Object.values(map).map((t) => ({ team: t.team, teamId: t.teamId, installedAt: t.installedAt })) });
     return;
   }
+  // Why isn't this posting? Replays the sweep's gating logic read-only and
+  // reports the verdict per card — no claims taken, nothing published.
+  if (req.method === "GET" && op === "publish_check") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const data = await kvGet("lavalle_data");
+    const blob = Array.isArray(data) ? data[0] : data;
+    const ledger = (await kvGet("lavalle_published")) || {};
+    const tokens = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const now = Date.now();
+    const out = [];
+    for (const [bKey, board] of Object.entries((blob && blob.boards) || {})) {
+      if (bKey.startsWith("_") || !board || !board.cards) continue;
+      for (const card of board.cards) {
+        const p = card.pub;
+        if (!p || !p.status || p.status === "published") continue;
+        const lk = "card:" + bKey + ":" + card.id;
+        const claimHeld = !!(await kvGet(lk.replace("card:", "claim:card:")));
+        let verdict = "would attempt";
+        if (ledger[lk]) verdict = "ledger says already published";
+        else if (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting") verdict = "status not publishable: " + p.status;
+        else if (card.dest && card.dest.ig === false) verdict = "dest.ig is false — TikTok only";
+        else if (p.status === "scheduled" && (!p.auto || !p.at)) verdict = "not armed (auto=" + p.auto + ", at=" + p.at + ")";
+        else if (p.status === "scheduled" && new Date(p.at).getTime() > now) verdict = "scheduled in the future";
+        else if (!tokens.find((t) => (t.username || "").toLowerCase() === (p.account || "").toLowerCase())) verdict = "no Instagram token for @" + p.account;
+        else if (claimHeld) verdict = "CLAIM HELD — a previous run locked it and never released";
+        out.push({ board: board.name, card: card.name, status: p.status, at: p.at, auto: !!p.auto, account: p.account, cover: cardCoverUrl(card, bKey), verdict });
+      }
+    }
+    res.json({ now: new Date().toISOString(), cards: out });
+    return;
+  }
   if (op === "slack_clear") {
     await kvSet("slack_feed", []);
     res.json({ ok: true });
