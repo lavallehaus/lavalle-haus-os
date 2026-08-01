@@ -680,8 +680,21 @@ export default async function handler(req, res) {
       res.status(403).json({ error: "Bad publish key" });
       return;
     }
-    try { res.json(await publishDueItems()); }
-    catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
+    // Record every sweep. The pinger only reports HTTP 200, which hides a run
+    // that published nothing — this keeps the actual verdict for inspection.
+    try {
+      const out = await publishDueItems();
+      await kvSet("publish_last", { at: new Date().toISOString(), ...out });
+      res.json(out);
+    } catch (e) {
+      await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
+      res.status(500).json({ error: String(e).slice(0, 300) });
+    }
+    return;
+  }
+  if (req.method === "GET" && op === "publish_last") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
     return;
   }
 
