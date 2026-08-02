@@ -532,8 +532,13 @@ async function kvSet(key, value) {
 // retry for the next half hour was silently skipped: from the app it just looked
 // like the post never went out.
 async function kvClaim(key, ex = 180) {
-  const r = await fetch(`${KV_URL}/set/${key}?NX=true&EX=${ex}`, {
-    method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` }, body: "1",
+  // The value belongs in the PATH. Sending it as the request body alongside
+  // ?NX&EX made Upstash answer 400 "ERR syntax error" every time, so this
+  // returned false on every call — and since a failed claim means "someone else
+  // is publishing this", EVERY post was silently skipped. That is why nothing
+  // published at all, on any board, once this lock was introduced.
+  const r = await fetch(`${KV_URL}/set/${key}/1?NX=true&EX=${ex}`, {
+    method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` },
   });
   const d = await r.json().catch(() => ({}));
   return d.result === "OK";
