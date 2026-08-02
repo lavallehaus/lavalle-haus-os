@@ -2066,7 +2066,23 @@ export default async function handler(req, res) {
     if (Array.isArray(data)) data = data[0];
     res.json(data || { products: [], materials: [], weekly: [] });
   } else if (req.method === "POST") {
+    // GUARDRAIL. This branch replaces the ENTIRE dataset, and it used to catch
+    // any POST that fell through — so a request to an op that didn't exist yet
+    // (a typo, or a deploy that hadn't landed) overwrote all 14 boards with its
+    // own little JSON body. That happened for real. Two locks now:
+    //   1. an unrecognised ?op= never reaches the writer
+    //   2. the body must actually look like the full app state
     const body = req.body;
+    if (op) {
+      res.status(400).json({ error: `Unknown op "${op}" — refusing to treat this as a full-state save.` });
+      return;
+    }
+    const looksLikeState = body && typeof body === "object" && !Array.isArray(body)
+      && (body.boards || body.products || body.gridPlanner);
+    if (!looksLikeState) {
+      res.status(400).json({ error: "Refusing to save: body doesn't look like the app state (no boards/products/gridPlanner)." });
+      return;
+    }
     await fetch(`${url}/set/lavalle_data`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
