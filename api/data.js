@@ -692,11 +692,6 @@ export default async function handler(req, res) {
     }
     return;
   }
-  if (req.method === "GET" && op === "publish_last") {
-    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
-    res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
-    return;
-  }
 
   // ── Auth (public ops) ────────────────────────────────────────────────────────
   // Login: house password (owner master key) or personal email + password.
@@ -1154,6 +1149,31 @@ export default async function handler(req, res) {
       }
     }
     res.json({ now: new Date().toISOString(), cards: out });
+    return;
+  }
+  if (req.method === "GET" && op === "publish_last") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
+    return;
+  }
+  // What does Mux actually say about a stuck conversion?
+  if (req.method === "GET" && op === "mux_status") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const job = String(req.query.job || "").replace(/[^a-zA-Z0-9]/g, "");
+    const mid = MUX_ID(), msec = MUX_SECRET();
+    if (!mid || !msec) { res.json({ error: "Mux not configured" }); return; }
+    const r = await fetch("https://api.mux.com/video/v1/assets/" + job, {
+      headers: { Authorization: "Basic " + Buffer.from(mid + ":" + msec).toString("base64") },
+    });
+    const d = await r.json();
+    const a = d.data || {};
+    res.json({
+      http: r.status, status: a.status, errors: a.errors || null,
+      duration: a.duration, created_at: a.created_at,
+      mp4_support: a.mp4_support || null,
+      static_renditions: a.static_renditions || null,
+      playback_ids: (a.playback_ids || []).map((x) => ({ id: x.id, policy: x.policy })),
+    });
     return;
   }
   if (op === "slack_clear") {
