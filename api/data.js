@@ -450,7 +450,7 @@ async function publishDueItems(only) {
         // The Reel cover = the card's assigned cover photo (else IG picks a video frame).
         // A Reel plays full-screen, so its cover is 9:16 — cropping it to the
         // feed's 4:5 left the thumbnail cut off at top and bottom.
-        const coverImageUrl = cardCoverUrl(card, bKey, "vertical");
+        const coverImageUrl = (only && only.noCover) ? null : cardCoverUrl(card, bKey, "vertical");
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
@@ -1473,7 +1473,7 @@ export default async function handler(req, res) {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can publish posts." }); return; }
     const b = req.body || {};
     if (!(b.feedId || b.boardKey) || !b.cardId) { res.status(400).json({ error: "feedId (grid) or boardKey (boards) plus cardId are required." }); return; }
-    try { res.json(await publishDueItems(b.boardKey ? { boardKey: b.boardKey, cardId: b.cardId, account: b.account } : { feedId: b.feedId, cardId: b.cardId })); }
+    try { res.json(await publishDueItems(b.boardKey ? { boardKey: b.boardKey, cardId: b.cardId, account: b.account, noCover: !!b.noCover } : { feedId: b.feedId, cardId: b.cardId })); }
     catch (e) { res.status(500).json({ error: String(e).slice(0, 300) }); }
     return;
   }
