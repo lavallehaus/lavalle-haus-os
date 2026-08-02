@@ -174,13 +174,18 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer, coverUrl
     if (!cd.id) return { ok: false, error: "container: " + JSON.stringify(cd.error || cd).slice(0, 220) };
     cid = cd.id;
   }
+  // Poll BRIEFLY, then hand back `pending` with the container id so a later
+  // sweep can resume it. This used to wait ~40s inside one request; for a big
+  // Reel that outran the function's own time limit, so it died before saving the
+  // container id — and because it never returned, the publish lock was never
+  // released either. Every retry then hit the lock and the post never went out.
   let status = "";
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < 4; i++) {
     const s = await (await fetch(`${base}/${cid}?fields=status_code&access_token=${encodeURIComponent(tok.access_token)}`)).json();
     status = s.status_code;
     if (status === "FINISHED") break;
     if (status === "ERROR" || status === "EXPIRED") return { ok: false, error: "video processing " + status + " — the file may not be a valid Reel (MP4/MOV, H.264)" };
-    await new Promise((z) => setTimeout(z, 3000));
+    if (i < 3) await new Promise((z) => setTimeout(z, 2500));
   }
   if (status !== "FINISHED") return { ok: false, pending: true, containerId: cid };
   const pub = await fetch(`${base}/${tok.user_id}/media_publish`, {
