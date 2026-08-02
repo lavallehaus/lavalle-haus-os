@@ -537,8 +537,13 @@ async function kvClaim(key, ex = 180) {
   // returned false on every call — and since a failed claim means "someone else
   // is publishing this", EVERY post was silently skipped. That is why nothing
   // published at all, on any board, once this lock was introduced.
-  const r = await fetch(`${KV_URL}/set/${key}/1?NX=true&EX=${ex}`, {
-    method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` },
+  // Send the Redis command as a JSON array to the root endpoint. Both URL forms
+  // (?NX&EX as query params, and value-in-path) came back "ERR syntax error"
+  // from Upstash, which made every claim fail and every post get skipped.
+  const r = await fetch(KV_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(["SET", key, "1", "NX", "EX", String(ex)]),
   });
   const d = await r.json().catch(() => ({}));
   return d.result === "OK";
