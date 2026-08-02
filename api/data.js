@@ -1146,7 +1146,9 @@ export default async function handler(req, res) {
         const p = card.pub;
         if (!p || !p.status || p.status === "published") continue;
         const lk = "card:" + bKey + ":" + card.id;
-        const claimHeld = !!(await kvGet(lk.replace("card:", "claim:card:")));
+        const claimKey = "claim:" + lk;
+        const claimRaw = await kvGet(claimKey);
+        const claimHeld = claimRaw !== null && claimRaw !== undefined;
         let verdict = "would attempt";
         if (ledger[lk]) verdict = "ledger says already published";
         else if (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting") verdict = "status not publishable: " + p.status;
@@ -1155,7 +1157,7 @@ export default async function handler(req, res) {
         else if (p.status === "scheduled" && new Date(p.at).getTime() > now) verdict = "scheduled in the future";
         else if (!tokens.find((t) => (t.username || "").toLowerCase() === (p.account || "").toLowerCase())) verdict = "no Instagram token for @" + p.account;
         else if (claimHeld) verdict = "CLAIM HELD — a previous run locked it and never released";
-        out.push({ board: board.name, card: card.name, status: p.status, at: p.at, auto: !!p.auto, account: p.account, cover: cardCoverUrl(card, bKey), verdict });
+        out.push({ board: board.name, card: card.name, status: p.status, at: p.at, auto: !!p.auto, account: p.account, claimKey, claimRaw, containerId: p.containerId || null, mp4Url: p.mp4Url ? "set" : null, verdict });
       }
     }
     res.json({ now: new Date().toISOString(), cards: out });
