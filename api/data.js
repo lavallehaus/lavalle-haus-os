@@ -1156,6 +1156,16 @@ export default async function handler(req, res) {
     res.json({ now: new Date().toISOString(), cards: out });
     return;
   }
+  // Release a stuck publish lock so a post can be retried immediately instead
+  // of waiting out the expiry. The ledger still prevents a double post.
+  if (op === "publish_unlock" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const b = req.body || {};
+    if (!b.boardKey || !b.cardId) { res.status(400).json({ error: "boardKey + cardId required." }); return; }
+    await kvDel("claim:card:" + b.boardKey + ":" + b.cardId);
+    res.json({ ok: true, released: "card:" + b.boardKey + ":" + b.cardId });
+    return;
+  }
   if (req.method === "GET" && op === "publish_last") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
