@@ -337,7 +337,7 @@ async function publishDueItems(only) {
       if (!tok) { fail("no Instagram token for @" + feed.account); continue; }
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
       const imageUrl = it.src ? "https://lavalle-haus-os.vercel.app" + it.src : "https://drive.google.com/thumbnail?id=" + it.driveId + "&sz=w2000";
-      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; } // another runner owns this post
+      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; } // another runner owns this post
       const r = await igPublishPhoto(tok, imageUrl, card.desc || "");
       if (r.ok) {
         const publishedAt = new Date().toISOString();
@@ -404,7 +404,7 @@ async function publishDueItems(only) {
         if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
         const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id + "&fit=igfeed");
         const ccap = card.desc || "";
-        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
+        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
         const cr = await igPublishCarousel(tok, imageUrls, ccap);
         if (cr.ok) {
           const publishedAt = new Date().toISOString();
@@ -440,7 +440,7 @@ async function publishDueItems(only) {
         // A Reel plays full-screen, so its cover is 9:16 — cropping it to the
         // feed's 4:5 left the thumbnail cut off at top and bottom.
         const coverImageUrl = cardCoverUrl(card, bKey, "vertical");
-        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
+        if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
           const publishedAt = new Date().toISOString();
@@ -465,7 +465,7 @@ async function publishDueItems(only) {
       // brand's feed, which can only be undone by deleting the post.
       if (isLowResPreview(imageUrl)) { fail("cover is only a 300px board preview — link the full-size photo from Drive on this card, then re-schedule"); continue; }
       const caption = card.desc || "";
-      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; continue; }
+      if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
       const r = await igPublishPhoto(tok, imageUrl, caption);
       if (r.ok) {
         const publishedAt = new Date().toISOString();
@@ -521,7 +521,12 @@ async function kvSet(key, value) {
 // app-level advancers on any number of open devices, manual "post now" — can
 // win the claim for a card, killing the duplicate-post race for good. TTL
 // covers a crashed run; on a non-publishing outcome the claim is released.
-async function kvClaim(key, ex = 1800) {
+// 3 minutes, not 30. This lock only needs to outlive ONE publish attempt — the
+// ledger is what actually prevents a double post. At 30 minutes a run that died
+// mid-publish (a timeout uploading a big Reel) left the card locked, and every
+// retry for the next half hour was silently skipped: from the app it just looked
+// like the post never went out.
+async function kvClaim(key, ex = 180) {
   const r = await fetch(`${KV_URL}/set/${key}?NX=true&EX=${ex}`, {
     method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` }, body: "1",
   });
