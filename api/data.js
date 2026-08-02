@@ -1173,6 +1173,19 @@ export default async function handler(req, res) {
     res.json({ ok: true, released: "card:" + b.boardKey + ":" + b.cardId });
     return;
   }
+  // Does the publish lock actually work? Exercises kvClaim on a scratch key and
+  // returns Upstash's raw reply.
+  if (req.method === "GET" && op === "claim_probe") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const key = "claimprobe:" + Date.now();
+    const r = await fetch(`${KV_URL}/set/${key}?NX=true&EX=30`, {
+      method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` }, body: "1",
+    });
+    const text = await r.text();
+    let parsed = null; try { parsed = JSON.parse(text); } catch {}
+    res.json({ http: r.status, raw: text.slice(0, 300), resultField: parsed ? parsed.result : null, wouldClaim: parsed && parsed.result === "OK" });
+    return;
+  }
   if (req.method === "GET" && op === "publish_last") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
