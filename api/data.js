@@ -369,7 +369,9 @@ async function publishDueItems(only) {
       // "Post now" (isOnly) forces a fresh attempt even from a failed/old state —
       // otherwise a failed card could never be retried. Already-published stays
       // safe via the ledger check below (no double post).
-      if (isOnly && p && p.status !== "processing" && p.status !== "converting") p = { ...p, status: "scheduled", error: null };
+      // A manual retry starts clean: drop the old Instagram container, or we
+      // just re-poll the upload it already rejected and fail identically.
+      if (isOnly && p && p.status !== "processing" && p.status !== "converting") p = { ...p, status: "scheduled", error: null, containerId: undefined };
       if (!p || (p.status !== "scheduled" && p.status !== "processing" && p.status !== "converting")) continue;
       // Instagram is opt-in per card. A TikTok-only post (dest.ig === false) is
       // handed to Plann for TikTok and must never auto-post to Instagram.
