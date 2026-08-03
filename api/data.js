@@ -181,10 +181,12 @@ async function igPublishReel(tok, videoUrl, caption, existingContainer, coverUrl
   // released either. Every retry then hit the lock and the post never went out.
   let status = "";
   for (let i = 0; i < 4; i++) {
-    const s = await (await fetch(`${base}/${cid}?fields=status_code&access_token=${encodeURIComponent(tok.access_token)}`)).json();
+    // ask for `status` as well: status_code is just ERROR, while `status`
+    // carries Instagram's actual reason (bad cover_url, download failed, …)
+    const s = await (await fetch(`${base}/${cid}?fields=status_code,status&access_token=${encodeURIComponent(tok.access_token)}`)).json();
     status = s.status_code;
     if (status === "FINISHED") break;
-    if (status === "ERROR" || status === "EXPIRED") return { ok: false, error: "video processing " + status + " — the file may not be a valid Reel (MP4/MOV, H.264)" };
+    if (status === "ERROR" || status === "EXPIRED") return { ok: false, error: "Instagram rejected the video (" + status + "): " + String(s.status || "no detail given").slice(0, 300) };
     if (i < 3) await new Promise((z) => setTimeout(z, 2500));
   }
   if (status !== "FINISHED") return { ok: false, pending: true, containerId: cid };
