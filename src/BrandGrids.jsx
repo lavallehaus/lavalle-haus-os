@@ -27,8 +27,25 @@ const SLOTS = 21, COLS = 3, ROWS = 7;
 // be the SAME reference when removed on drop, or scrolling locks up for good.
 const preventScroll = (e) => e.preventDefault();
 
+// Park uploads in the media store; the card keeps a short reference (inline
+// base64 in the blob is what once blew Vercel's 4.5MB save limit).
+async function storeImage(dataUrl) {
+  try {
+    const r = await fetch("/api/data?op=media_put", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) });
+    const d = await r.json();
+    return r.ok && d.url ? d.url : dataUrl;
+  } catch { return dataUrl; }
+}
+
 export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [acct, setAcct] = useState(BRANDS[0].acct);
+  // Lavalle Sisters runs TWO grids: Instagram and TikTok. Same 21 cards, but
+  // the TikTok side keeps its own covers (card.tiktokCover, falling back to the
+  // IG cover), its own order, its own zoom crops and its own lock — all stored
+  // under the separate "lavallesisters:tiktok" key.
+  const [platform, setPlatform] = useState("ig");
+  const tt = acct === "lavallesisters" && platform === "tt";
+  const gk = tt ? "lavallesisters:tiktok" : acct;
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const [pickIdx, setPickIdx] = useState(null); // tap-to-move still works as a fallback
@@ -61,17 +78,17 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         // and it's what pins the posted block — most cards are ticked off by
         // hand and never get a publish timestamp, so time alone can't order them.
         const n = parseInt(((card.name || "").match(/post\s*(\d+)/i) || [])[1], 10);
-        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: card.cover, coverUrl: card.coverUrl || "", name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, seq: Number.isFinite(n) ? n : 1000 + seq, boardName: board.name || "" };
+        map[bk + ":" + card.id] = { key: bk + ":" + card.id, cover: (tt && card.tiktokCover) || card.cover, coverUrl: tt && card.tiktokCover ? "" : (card.coverUrl || ""), hasTT: !!card.tiktokCover, name: card.name || "", done: !!card.done, postedAt: (card.pub && card.pub.publishedAt) || null, seq: Number.isFinite(n) ? n : 1000 + seq, boardName: board.name || "" };
         seq++;
       }
     }
     return map;
-  }, [boards, acct]);
+  }, [boards, acct, tt]);
 
   // Saved order merged with reality: dead refs drop out, new covers append
   // (append = next slot up — position 1 stays the earliest planned post).
   const order = useMemo(() => {
-    const saved = ((data || {})[acct] || {}).order || [];
+    const saved = ((data || {})[gk] || {}).order || [];
     const kept = saved.filter((k) => candidates[k]);
     const known = new Set(kept);
     const fresh = Object.keys(candidates).filter((k) => !known.has(k));
@@ -89,33 +106,54 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       return merged.indexOf(a) - merged.indexOf(b);
     });
     return [...posted, ...merged.filter((k) => !candidates[k].done)];
-  }, [data, acct, candidates]);
+  }, [data, gk, candidates]);
 
   // Auto-ingest persists the merged order the moment it differs from what's saved.
   useEffect(() => {
-    const j = acct + "|" + JSON.stringify(order);
+    const j = gk + "|" + JSON.stringify(order);
     if (savedRef.current === j) return;
-    const saved = ((data || {})[acct] || {}).order || [];
+    const saved = ((data || {})[gk] || {}).order || [];
     if (JSON.stringify(saved) !== JSON.stringify(order)) {
       savedRef.current = j;
-      onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), order } });
+      onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), order } });
     } else savedRef.current = j;
-  }, [order, acct]); // eslint-disable-line
+  }, [order, gk]); // eslint-disable-line
 
-  const zooms = ((data || {})[acct] || {}).zoom || {};
+  const zooms = ((data || {})[gk] || {}).zoom || {};
   const saveZoom = (key, z) => {
-    const cur = (data || {})[acct] || {};
+    const cur = (data || {})[gk] || {};
     const zoom = { ...(cur.zoom || {}) };
     if (z) zoom[key] = z; else delete zoom[key];
-    onSave({ ...(data || {}), [acct]: { ...cur, zoom } });
+    onSave({ ...(data || {}), [gk]: { ...cur, zoom } });
   };
   const items = order.map((k) => candidates[k]).filter(Boolean);
   const windowStart = Math.max(0, items.length - SLOTS);
   const visible = items.slice(windowStart); // newest 21 — older ones have shipped
 
-  const saveOrder = (next) => onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), order: next } });
-  const locked = !!((data || {})[acct] || {}).locked;
-  const setLocked = () => onSave({ ...(data || {}), [acct]: { ...((data || {})[acct] || {}), locked: !locked } });
+  const saveOrder = (next) => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), order: next } });
+  const locked = !!((data || {})[gk] || {}).locked;
+  const setLocked = () => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), locked: !locked } });
+
+  // A different photo entirely for TikTok — stored in the media store, written
+  // to card.tiktokCover; the Instagram grid never sees it.
+  const uploadTikTokCover = (file, it) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = async () => {
+        const maxW = 1440, sc = Math.min(1, maxW / img.width);
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+        const bk = it.key.slice(0, it.key.indexOf(":")), cardId = it.key.slice(it.key.indexOf(":") + 1);
+        if (onSaveBoards && boards && boards[bk]) onSaveBoards({ ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, tiktokCover: u } : cd)) } });
+        setMsg("TikTok cover set for " + (it.name || "this post") + " — the Instagram grid keeps its own.");
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  };
 
   const moveItem = (fromVis, toVis) => {
     if (locked) return; // finalised grid — nothing moves
@@ -324,15 +362,25 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     <div style={{ fontFamily: sans, maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
         {BRANDS.map((b) => (
-          <button key={b.acct} onClick={() => { setAcct(b.acct); setMsg(null); setPickIdx(null); }}
+          <button key={b.acct} onClick={() => { setAcct(b.acct); setPlatform("ig"); setMsg(null); setPickIdx(null); setEditKey(null); }}
             style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
             {b.label}
           </button>
         ))}
       </div>
+      {acct === "lavallesisters" && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {[["ig", "Instagram grid"], ["tt", "TikTok grid"]].map(([k, lab]) => (
+            <button key={k} onClick={() => { setPlatform(k); setMsg(null); setPickIdx(null); setEditKey(null); }}
+              style={{ border: `1px solid ${platform === k ? c.taupe : c.line}`, background: platform === k ? c.taupe : "transparent", color: platform === k ? "#fff" : c.sub, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
+              {lab}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
-          {brand.handle} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
+          {brand.handle}{acct === "lavallesisters" ? (tt ? " · TikTok" : " · Instagram") : ""} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {/* Finalised grids get locked so a second founder can't nudge the
@@ -359,6 +407,12 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink }}>Post {windowStart + pickIdx + 1} — tap the spot it should take, or:</div>
           <button onClick={() => { const it = visible[pickIdx]; if (it) { setEditKey(it.key); setEditZoom(zooms[it.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); } setPickIdx(null); }}
             style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>🔍 Reframe</button>
+          {tt && (
+            <label style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>
+              ⇪ Different TikTok cover
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; const it = visible[pickIdx]; if (f && it) uploadTikTokCover(f, it); setPickIdx(null); }} />
+            </label>
+          )}
         </div>
       )}
       {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
@@ -407,6 +461,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             style={{ position: "relative", aspectRatio: "3 / 4", overflow: "hidden", cursor: editKey === item.key ? "move" : "grab", touchAction: editKey === item.key ? "none" : "pan-y", zIndex: editKey === item.key ? 5 : "auto", boxShadow: editKey === item.key ? `0 0 0 3px ${c.ink}` : "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none", outline: pickIdx === slot ? `3px solid ${c.ink}` : overIdx === slot && dragIdx !== slot ? `2px solid ${c.taupe}` : "none", outlineOffset: pickIdx === slot ? -3 : 0, opacity: dragIdx === slot ? 0.4 : pickIdx != null && pickIdx !== slot ? 0.82 : 1 }}>
             <img src={item.cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none", transform: (editKey === item.key ? `translate(${editZoom.x}%, ${editZoom.y}%) scale(${editZoom.s})` : zooms[item.key] ? `translate(${zooms[item.key].x}%, ${zooms[item.key].y}%) scale(${zooms[item.key].s})` : "none") }} />
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
+            {tt && !item.hasTT && <div style={{ position: "absolute", left: 4, top: 4, background: "rgba(0,0,0,0.4)", color: "#fff", fontFamily: sans, fontSize: 8, letterSpacing: 1, padding: "1px 5px", borderRadius: 1 }}>IG cover</div>}
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
           </div>
         ) : (
@@ -441,7 +496,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             } else {
               const dataUrl = cv.toDataURL("image/jpeg", 0.88);
               const bk = editKey.slice(0, editKey.indexOf(":")), cardId = editKey.slice(editKey.indexOf(":") + 1);
-              if (onSaveBoards && boards && boards[bk]) onSaveBoards({ ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, cover: dataUrl } : cd)) } });
+              if (onSaveBoards && boards && boards[bk]) onSaveBoards({ ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, [tt ? "tiktokCover" : "cover"]: dataUrl } : cd)) } });
               saveZoom(editKey, null); // the crop IS the cover now
               setEditKey(null);
             }
@@ -462,7 +517,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
                 <button style={barBtn} onClick={() => { saveZoom(editKey, null); setEditKey(null); }}>Reset</button>
                 <button style={barBtn} onClick={() => setEditKey(null)}>Cancel</button>
                 <button style={barBtn} onClick={() => doExport("download")}>⬇ Download</button>
-                <button style={barBtn} onClick={() => doExport("cover")}>Set as cover</button>
+                <button style={barBtn} onClick={() => doExport("cover")}>{tt ? "Set as TikTok cover" : "Set as cover"}</button>
               </div>
             </div>
           </div>
