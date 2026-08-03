@@ -175,7 +175,10 @@ async function bakeCover(sourceUrl) {
     const buf = Buffer.from(await r.arrayBuffer());
     const id = "m" + randomBytes(10).toString("hex");
     await kvSet("media_" + id, { type: "image/jpeg", b64: buf.toString("base64"), at: new Date().toISOString() });
-    const url = APP_ORIGIN + "/api/data?op=media&id=" + id;
+    // Hand Instagram a clean ".jpg" path, not a query string. A cover_url of
+    // /api/data?op=media&id=... made Meta reject EVERY Reel container with a
+    // bare "ERROR"; the identical image at /cover/<id>.jpg is accepted.
+    const url = APP_ORIGIN + "/cover/" + id + ".jpg";
     await kvSet(key, { url, at: new Date().toISOString() });
     return url;
   } catch { return sourceUrl; }
