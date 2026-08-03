@@ -190,6 +190,10 @@ async function bakeCover(sourceUrl) {
     // bare "ERROR"; the identical image at /cover/<id>.jpg is accepted.
     const url = APP_ORIGIN + "/cover/" + id + ".jpg";
     await kvSet(key, { url, at: new Date().toISOString() });
+    // Warm the CDN so Meta's impatient fetcher gets an edge-cached answer in
+    // milliseconds, not a 2s cold serverless render. The media op serves
+    // immutable cache headers, so two fetches pin it at the edge.
+    try { await fetch(url); await fetch(url); } catch {}
     return url;
   } catch { return sourceUrl; }
 }
@@ -1236,6 +1240,24 @@ export default async function handler(req, res) {
     const second = await kvClaim(key, 30);
     await kvDel(key);
     res.json({ firstClaimWins: first, secondIsBlocked: second === false, healthy: first === true && second === false });
+    return;
+  }
+  if (req.method === "GET" && op === "cover_probe") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const data = await kvGet("lavalle_data");
+    const blob = Array.isArray(data) ? data[0] : data;
+    const card = blob && blob.boards && blob.boards[req.query.board] && (blob.boards[req.query.board].cards || []).find((x) => x.id === req.query.card);
+    if (!card) { res.status(404).json({ error: "card not found" }); return; }
+    const raw = cardCoverUrl(card, req.query.board, "vertical");
+    const baked = await bakeCover(raw);
+    let fetchInfo = null;
+    if (baked) {
+      const t0 = Date.now();
+      const r = await fetch(baked);
+      const buf = Buffer.from(await r.arrayBuffer());
+      fetchInfo = { status: r.status, ms: Date.now() - t0, type: r.headers.get("content-type"), bytes: buf.length, jpegMagic: buf[0] === 0xFF && buf[1] === 0xD8 };
+    }
+    res.json({ raw, baked, fetchInfo });
     return;
   }
   if (req.method === "GET" && op === "publish_last") {
