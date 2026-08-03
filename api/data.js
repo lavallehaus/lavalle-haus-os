@@ -169,7 +169,17 @@ async function bakeCover(sourceUrl) {
   try {
     const key = "bakedcover_" + createHash("sha1").update(sourceUrl).digest("hex").slice(0, 24);
     const existing = await kvGet(key);
-    if (existing && existing.url) return existing.url;
+    if (existing && existing.url) {
+      // Covers baked before the clean-path fix are cached with the old
+      // query-string URL — the very thing Meta rejects. Upgrade in place.
+      const old = existing.url.match(/op=media&id=([A-Za-z0-9_-]+)/);
+      if (old) {
+        const upgraded = APP_ORIGIN + "/cover/" + old[1] + ".jpg";
+        await kvSet(key, { url: upgraded, at: new Date().toISOString() });
+        return upgraded;
+      }
+      return existing.url;
+    }
     const r = await fetch(sourceUrl);
     if (!r.ok) return sourceUrl;
     const buf = Buffer.from(await r.arrayBuffer());
