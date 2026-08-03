@@ -1063,7 +1063,7 @@ export default async function handler(req, res) {
   }
   // Public like card_media/drive_img — <img> tags can't send the app token.
   if (req.method === "GET" && op === "media") {
-    const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const id = String(req.query.id || "").replace(/\.jpe?g$/i, "").replace(/[^a-zA-Z0-9_-]/g, "");
     const rec = id && (await kvGet("media_" + id));
     if (!rec || !rec.b64) { res.status(404).send("no media"); return; }
     // Same ?fit= shaping as Drive images — uploaded covers publish too.

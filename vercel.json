@@ -12,8 +12,8 @@
   ],
   "rewrites": [
     {
-      "source": "/cover/:id.jpg",
-      "destination": "/api/data?op=media&id=:id"
+      "source": "/cover/:file",
+      "destination": "/api/data?op=media&id=:file"
     },
     {
       "source": "/api/tiktok-auth",
