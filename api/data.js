@@ -159,6 +159,28 @@ async function igPublishPhoto(tok, imageUrl, caption) {
 // the 60s function budget, then publishes. If it's still processing when the
 // budget runs out, it returns { pending, containerId } so a later sweep finishes
 // it — no re-upload, no double post. The video is served publicly by drive_video.
+
+// Instagram fetches cover_url itself and errors the whole Reel container if that
+// fetch is slow or unhappy. Our cover endpoint re-reads Drive and re-crops on
+// every hit (~2-3s), so bake it ONCE into the media store and hand Instagram a
+// static URL it can pull instantly. Keyed by source, so it's baked one time.
+async function bakeCover(sourceUrl) {
+  if (!sourceUrl) return null;
+  try {
+    const key = "bakedcover_" + createHash("sha1").update(sourceUrl).digest("hex").slice(0, 24);
+    const existing = await kvGet(key);
+    if (existing && existing.url) return existing.url;
+    const r = await fetch(sourceUrl);
+    if (!r.ok) return sourceUrl;
+    const buf = Buffer.from(await r.arrayBuffer());
+    const id = "m" + randomBytes(10).toString("hex");
+    await kvSet("media_" + id, { type: "image/jpeg", b64: buf.toString("base64"), at: new Date().toISOString() });
+    const url = APP_ORIGIN + "/api/data?op=media&id=" + id;
+    await kvSet(key, { url, at: new Date().toISOString() });
+    return url;
+  } catch { return sourceUrl; }
+}
+
 async function igPublishReel(tok, videoUrl, caption, existingContainer, coverUrl) {
   const base = "https://graph.instagram.com/v23.0";
   let cid = existingContainer;
@@ -452,7 +474,7 @@ async function publishDueItems(only) {
         // The Reel cover = the card's assigned cover photo (else IG picks a video frame).
         // A Reel plays full-screen, so its cover is 9:16 — cropping it to the
         // feed's 4:5 left the thumbnail cut off at top and bottom.
-        const coverImageUrl = (only && only.noCover) ? null : cardCoverUrl(card, bKey, "vertical");
+        const coverImageUrl = (only && only.noCover) ? null : await bakeCover(cardCoverUrl(card, bKey, "vertical"));
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
         const rr = await igPublishReel(tok, videoUrl, rcap, p.containerId, coverImageUrl);
         if (rr.ok) {
