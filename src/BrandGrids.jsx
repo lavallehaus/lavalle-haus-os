@@ -485,6 +485,7 @@ function clampZoom(zz) {
 // original file, or she gets a 300px thumbnail blown up to 1080.
 function driveIdFrom(s) {
   if (typeof s !== "string" || s.startsWith("data:") || s.includes("/folders/")) return null;
+  if (s.includes("op=media") || s.includes("/cover/")) return null; // media-store id, not a Drive id
   const m = s.match(/[?&]id=([-\w]{20,})/) || s.match(/\/d\/([-\w]{20,})/)
     || (s.includes("drive.google.com") ? s.match(/([-\w]{25,})/) : null);
   return m ? m[1] : null;

@@ -101,6 +101,10 @@ async function fitImage(buf, ctype, mode) {
 function driveIdFrom(s) {
   if (typeof s !== "string" || s.startsWith("data:")) return null;
   if (s.includes("/folders/")) return null; // a folder of slides is not a photo
+  // Media-store refs carry an id= too — but it's OUR id, not Drive's. Treating
+  // it as a Drive file built a URL to a nonexistent file, so Instagram fetched
+  // a 404 page as the "cover" and errored every Lavalle Sisters reel.
+  if (s.includes("op=media") || s.includes("/cover/")) return null;
   const m = s.match(/[?&]id=([-\w]{20,})/) || s.match(/\/d\/([-\w]{20,})/)
     || (s.includes("drive.google.com") ? s.match(/([-\w]{25,})/) : null);
   return m ? m[1] : null;
