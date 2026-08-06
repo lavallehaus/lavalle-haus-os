@@ -1395,7 +1395,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 94vw)", height: "100%", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px", overflowY: "auto" }}>
+      {/* 100dvh, not 100% — Safari's 100% includes the strip under its bottom
+          toolbar, which is exactly where the Add card button sat: painted but
+          untappable, with no way to scroll it into reach. dvh tracks the
+          VISIBLE viewport. The extra bottom padding keeps the last button clear
+          of the home-indicator area once you do scroll down. */}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 94vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box", WebkitOverflowScrolling: "touch" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ fontFamily: sans, fontSize: 18, fontWeight: 300, color: c.ink }}>{isNew ? "New card" : "Card"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
