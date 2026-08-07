@@ -283,7 +283,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       const el = document.elementFromPoint(x, y);
       if (!el) return null;
       const cardEl = el.closest("[data-dragcard]");
-      if (cardEl && cardEl.dataset.dragcard !== touchDrag) return { type: "card", cardId: cardEl.dataset.dragcard, listId: cardEl.dataset.draglist };
+      if (cardEl && cardEl.dataset.dragcard !== touchDrag) {
+        const r = cardEl.getBoundingClientRect();
+        return { type: "card", cardId: cardEl.dataset.dragcard, listId: cardEl.dataset.draglist, after: y > r.top + r.height / 2 };
+      }
       const colEl = el.closest("[data-dragcol]");
       if (colEl) return { type: "list", listId: colEl.dataset.dragcol };
       return null;
@@ -298,7 +301,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     const onEnd = (e) => {
       const t = (e.changedTouches || [])[0];
       const h = t ? hintFor(t.clientX, t.clientY) : null;
-      if (h) moveCard(touchDrag, h.listId, h.type === "card" ? h.cardId : null);
+      if (h) moveCard(touchDrag, h.listId, h.type === "card" ? h.cardId : null, h.type === "card" ? h.after : false);
       suppressClick.current = Date.now();
       setTouchDrag(null); setDragCard(null); setDropHint(null); setTouchPos(null);
     };
@@ -384,15 +387,17 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
 
   // Trello-style drag & drop: drop on a card inserts before it, drop on the
   // list body appends. Order lives in the board's cards array.
-  const moveCard = (cardId, toListId, beforeCardId) => {
+  const moveCard = (cardId, toListId, anchorCardId, placeAfter) => {
     const b = boards[open];
     const moving = b.cards.find((x) => x.id === cardId);
-    if (!moving || (moving.listId === toListId && beforeCardId === cardId)) return;
+    if (!moving || (moving.listId === toListId && anchorCardId === cardId)) return;
     let rest = b.cards.filter((x) => x.id !== cardId);
     const moved = { ...moving, listId: toListId };
-    if (beforeCardId) {
-      const i = rest.findIndex((x) => x.id === beforeCardId);
-      rest = i === -1 ? [...rest, moved] : [...rest.slice(0, i), moved, ...rest.slice(i)];
+    if (anchorCardId) {
+      const i = rest.findIndex((x) => x.id === anchorCardId);
+      // placeAfter: dropped on the lower half of the anchor card → land below
+      // it. Insert-before-only meant dragging DOWN one slot was a no-op.
+      rest = i === -1 ? [...rest, moved] : [...rest.slice(0, i + (placeAfter ? 1 : 0)), moved, ...rest.slice(i + (placeAfter ? 1 : 0))];
     } else rest = [...rest, moved];
     patchBoard(open, { cards: rest });
   };
@@ -986,7 +991,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         onDragStart={(e) => { setDragCard(card.id); e.dataTransfer.effectAllowed = "move"; }}
                         onDragEnd={() => { setDragCard(null); setDropHint(null); }}
                         onDragOver={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); setDropHint(card.id); } }}
-                        onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); moveCard(dragCard, l.id, card.id); } setDragCard(null); setDropHint(null); }}
+                        onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); moveCard(dragCard, l.id, card.id, e.clientY > r.top + r.height / 2); } setDragCard(null); setDropHint(null); }}
                         onTouchStart={(e) => {
                           const t = e.touches[0];
                           touchStartPos.current = { x: t.clientX, y: t.clientY };
@@ -1327,7 +1332,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
-  const attachments = card.attachments || [];
+  const [attachments, setAttachments] = useState(card.attachments || []);
   const input = { width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 13, color: c.ink, outline: "none" };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "14px 0 4px" };
   // Set the cover AND persist it right away for existing cards, so the change
@@ -1345,7 +1350,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -1356,7 +1361,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, tags, draft, draftNotes, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
+  }, [name, hook, tags, draft, draftNotes, attachments, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -1494,18 +1499,34 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           {cover && <button onClick={() => applyCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
 
-        {/* photo attachments — tap one to make it the cover */}
-        {attachments.length > 0 && (
-          <div>
-            <div style={label}>Photos ({attachments.length}) — tap one to set as cover{!isNew ? " (saves instantly)" : ""}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
-              {attachments.map((a, i) => (
-                <img key={i} src={a} alt="" onClick={() => applyCover(a)}
-                  style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === a ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
-              ))}
+        {/* Card photos — up to 5 (an Instagram carousel's worth). First one
+            doubles as the cover unless she taps a different one. */}
+        <div style={label}>Photos ({attachments.length}/5) — tap one to set as cover</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5, marginBottom: 10 }}>
+          {attachments.map((a, i) => (
+            <div key={i} style={{ position: "relative" }}>
+              <img src={a} alt="" onClick={() => applyCover(a)}
+                style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === a ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
+              <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} title="Remove photo"
+                style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: `1px solid ${c.line}`, background: "#fff", color: c.sub, fontSize: 11, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
             </div>
-          </div>
-        )}
+          ))}
+          {attachments.length < 5 && (
+            <label style={{ height: 64, border: `1px dashed ${c.line}`, borderRadius: 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+              ⇪ Add
+              <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
+                const files = [...(e.target.files || [])].slice(0, 5 - attachments.length);
+                files.forEach((f) => fileToCover(f, (u) => setAttachments((cur) => {
+                  if (cur.length >= 5) return cur;
+                  const next = [...cur, u];
+                  if (!cover && next.length === 1) applyCover(u); // first photo becomes the cover
+                  return next;
+                })));
+                e.target.value = "";
+              }} />
+            </label>
+          )}
+        </div>
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />

@@ -132,7 +132,31 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
 
   const saveOrder = (next) => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), order: next } });
   const locked = !!((data || {})[gk] || {}).locked;
-  const setLocked = () => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), locked: !locked } });
+  const setLocked = () => {
+    const locking = !locked;
+    onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), locked: locking } });
+    // Locking = "this IS the sequence" — so the board's Schedule 1-21 list
+    // snaps to it: the card in grid position 1 becomes first in the list,
+    // position 2 second, and so on. Cards outside the grid keep their spots.
+    // Only the Instagram grid drives the board; the TikTok grid is view-only
+    // ordering for TikTok itself.
+    if (locking && !tt && onSaveBoards && boards) {
+      const bk = Object.keys(GRID_BOARDS).find((k) => GRID_BOARDS[k] === acct);
+      const b = bk && boards[bk];
+      if (b && b.cards) {
+        const seqIds = order.map((k) => k.slice(k.indexOf(":") + 1)).filter((id) => b.cards.some((cd) => cd.id === id));
+        const inGrid = new Set(seqIds);
+        const queue = [...seqIds];
+        const cards = b.cards.map((cd) => {
+          if (!inGrid.has(cd.id)) return cd;
+          const nextId = queue.shift(); // hoisted — inside find() it would shift once per comparison
+          return b.cards.find((x) => x.id === nextId) || cd;
+        });
+        onSaveBoards({ ...boards, [bk]: { ...b, cards } });
+        setMsg("Grid locked — the Schedule 1-21 list now matches this order, 1 through 21.");
+      }
+    }
+  };
 
   // A different photo entirely for TikTok — stored in the media store, written
   // to card.tiktokCover; the Instagram grid never sees it.

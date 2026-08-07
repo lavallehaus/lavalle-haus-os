@@ -34,6 +34,7 @@ const boardBrand = (boardKey, boards) => {
 const launchAllowed = (boardKey, listName) => {
   if (boardKey === "the-fold-rd") return true; // August Collection looks
   if (boardKey === "rh-operations") return /launch timeline/i.test(listName || ""); // LH launch products
+  if (boardKey === "rd") return /^r\s*&?\s*d$/i.test((listName || "").trim()); // LH R&D pipeline list
   return false;
 };
 // Not just photoshoots — any dated thing on the ops calendar.
@@ -47,6 +48,13 @@ const EVENT_TYPES = [
   { key: "deadline", label: "Deadline", icon: "⏳" },
 ];
 const typeMeta = (t) => EVENT_TYPES.find((x) => x.key === t) || EVENT_TYPES[0];
+// Tray categories — Kiaredza reads the pipeline off these colors.
+const CATS = {
+  launch: { label: "Launching", color: "#5a7a5a" },
+  rd:     { label: "R&D pipeline", color: "#7a5a7a" },
+  pr:     { label: "PR", color: "#5a6b7a" },
+};
+const catMeta = (k) => CATS[k] || CATS.launch;
 const to12h = (hhmm) => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ""); if (!m) return hhmm || ""; let h = +m[1]; const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return h + ":" + m[2] + " " + ap; };
 // Downscale an image file to a compact JPEG data URL for an event cover.
 const fileToCover = (file, cb) => { const r = new FileReader(); r.onload = () => { const img = new Image(); img.onload = () => { const max = 900; let w = img.width, h = img.height; if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); } const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").drawImage(img, 0, 0, w, h); cb(cv.toDataURL("image/jpeg", 0.82)); }; img.src = r.result; }; r.readAsDataURL(file); };
@@ -57,6 +65,8 @@ const input = { width: "100%", padding: "9px 10px", border: `1px solid ${c.line}
 
 export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchMonth }) {
   const [brand, setBrand] = useState("all");
+  // all · launch · rd · pr · happening — her "separate calendars and all together"
+  const [cat, setCat] = useState("all");
   const [editing, setEditing] = useState(null);
   const [ym, setYm] = useState(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); });
   const [ci, setCi] = useState(0);
@@ -74,11 +84,11 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       const br = boardBrand(bk, boards);
       if (!br || (brand !== "all" && br !== brand)) return;
       const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
-      b.cards.forEach((cd) => { if (cd.launchMonth === ym && cd.cover && launchAllowed(bk, listName[cd.listId])) out.push({ name: cd.name, cover: cd.cover, brand: br, board: b.name }); });
+      b.cards.forEach((cd) => { if (cd.launchMonth === ym && launchAllowed(bk, listName[cd.listId])) out.push({ name: cd.name, cover: cd.cover || null, brand: br, board: b.name, cat: cd.calCat || (bk === "rd" ? "rd" : "launch") }); });
     });
     return out;
   }, [boards, ym, brand]);
-  useEffect(() => { if (ci >= launchItems.length) setCi(0); }, [launchItems.length]); // eslint-disable-line
+  useEffect(() => { setCi(0); }, [cat, ym, brand]); // eslint-disable-line
 
   // Unscheduled looks — items on the boards with a cover but no launch month yet.
   const unscheduled = useMemo(() => {
@@ -108,8 +118,10 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
   const todayYm = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
   const todayD = now.getDate();
 
-  const n = launchItems.length;
-  const cur = launchItems[ci];
+  const shownLaunches = cat === "happening" ? [] : launchItems.filter((it) => cat === "all" || it.cat === cat);
+  const shownShootsByDay = cat === "all" || cat === "happening" ? shootsByDay : {};
+  const n = shownLaunches.length;
+  const cur = shownLaunches[ci];
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -126,6 +138,13 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
         ))}
       </div>
 
+      {/* category toggle: each tag its own calendar, or everything at once */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {[["all", "All", c.taupe], ["launch", CATS.launch.label, CATS.launch.color], ["rd", CATS.rd.label, CATS.rd.color], ["pr", CATS.pr.label, CATS.pr.color], ["happening", "Happening", c.ink]].map(([k, lab, col]) => (
+          <button key={k} onClick={() => setCat(k)} style={{ background: cat === k ? col : "transparent", color: cat === k ? "#FFFFFF" : c.sub, border: `1px solid ${cat === k ? col : c.line}`, borderRadius: 20, padding: "5px 13px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{lab}</button>
+        ))}
+      </div>
+
       {/* month nav */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginBottom: 12 }}>
         <button onClick={() => shiftMonth(-1)} style={navBtn}>‹</button>
@@ -136,15 +155,18 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       {/* this month's launching products — carousel */}
       {n > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 14, background: c.card, border: `1px solid ${c.line}`, borderRadius: 3, padding: 12, marginBottom: 14 }}>
-          <img src={cur.cover} alt={cur.name} style={{ width: 96, height: 124, objectFit: "cover", borderRadius: 2, flexShrink: 0, border: `1px solid ${c.line}` }} />
+          {cur.cover
+            ? <img src={cur.cover} alt={cur.name} style={{ width: 96, height: 124, objectFit: "cover", borderRadius: 2, flexShrink: 0, border: `1px solid ${c.line}` }} />
+            : <div style={{ width: 96, height: 124, borderRadius: 2, flexShrink: 0, border: `1px solid ${c.line}`, background: catMeta(cur.cat).color, display: "flex", alignItems: "center", justifyContent: "center", padding: 8, boxSizing: "border-box", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#fff", textAlign: "center" }}>{cur.name.slice(0, 40)}</div>}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe }}>Launching this month</div>
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: catMeta(cur.cat).color }}>{catMeta(cur.cat).label} · this month</div>
             <div style={{ fontFamily: sans, fontSize: 16, color: c.ink, margin: "3px 0 5px" }}>{cur.name}</div>
             <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: "#FFFFFF", background: (brandOf(cur.brand) || {}).color, borderRadius: 3, padding: "2px 8px" }}>{(brandOf(cur.brand) || {}).label}</span>
+            <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: "#FFFFFF", background: catMeta(cur.cat).color, borderRadius: 3, padding: "2px 8px", marginLeft: 6 }}>{catMeta(cur.cat).label}</span>
             {n > 1 && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
                 <button onClick={() => setCi((ci - 1 + n) % n)} style={miniBtn}>‹</button>
-                <div style={{ display: "flex", gap: 5 }}>{launchItems.map((_, i) => <div key={i} onClick={() => setCi(i)} style={{ width: i === ci ? 18 : 6, height: 6, borderRadius: 3, background: i === ci ? c.taupe : c.line, cursor: "pointer", transition: "width .2s" }} />)}</div>
+                <div style={{ display: "flex", gap: 5 }}>{shownLaunches.map((_, i) => <div key={i} onClick={() => setCi(i)} style={{ width: i === ci ? 18 : 6, height: 6, borderRadius: 3, background: i === ci ? c.taupe : c.line, cursor: "pointer", transition: "width .2s" }} />)}</div>
                 <button onClick={() => setCi((ci + 1) % n)} style={miniBtn}>›</button>
                 <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginLeft: 4 }}>{ci + 1} / {n}</span>
               </div>
@@ -162,7 +184,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", border: `1px solid ${c.line}`, borderRight: "none", borderBottom: "none" }}>
             {cells.map((d, i) => {
               const isToday = d && ym === todayYm && d === todayD;
-              const list = (d && shootsByDay[d]) || [];
+              const list = (d && shownShootsByDay[d]) || [];
               return (
                 <div key={i} onClick={() => d && setEditing({ brands: brand === "all" ? [] : [brand], date: ym + "-" + String(d).padStart(2, "0") })}
                   style={{ minHeight: 92, borderRight: `1px solid ${c.line}`, borderBottom: `1px solid ${c.line}`, padding: 5, background: d ? c.bg : "#FAFAF9", cursor: d ? "pointer" : "default", position: "relative" }}>
