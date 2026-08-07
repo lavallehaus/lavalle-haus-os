@@ -3043,7 +3043,7 @@ if (tab === "content") return (
 { id: "comms", label: "Comms", render: () => <CommsHub data={dbState.comms || null} team={(dbState.actionsBoard || {}).team || []} onSave={(cv) => setDbState((prev) => { const next = { ...prev, comms: cv }; dbSave(next); return next; })} /> },
 ]} />
 );
-if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} onSetLaunchMonth={(bk, cardId, month) => setDbState((prev) => { const boards = { ...(prev.boards || {}) }; const b = boards[bk]; if (b) boards[bk] = { ...b, cards: (b.cards || []).map((cd) => (cd.id === cardId ? { ...cd, launchMonth: month || null } : cd)) }; const next = { ...prev, boards }; dbSave(next); return next; })} />;
+if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} calNotes={dbState.calNotes || {}} onSaveCalNotes={(nv) => setDbState((prev) => { const next = { ...prev, calNotes: nv }; dbSave(next); return next; })} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} onSetLaunchMonth={(bk, cardId, month) => setDbState((prev) => { const boards = { ...(prev.boards || {}) }; const b = boards[bk]; if (b) boards[bk] = { ...b, cards: (b.cards || []).map((cd) => (cd.id === cardId ? { ...cd, launchMonth: month || null } : cd)) }; const next = { ...prev, boards }; dbSave(next); return next; })} />;
 if (tab === "roadmap") return <RoadmapTab />;
 if (tab === "ai") {
 if (activeSub === "advisor") return <AITab products={products} campaigns={campaigns} initialQuestion={askSeed} onSeedConsumed={() => setAskSeed(null)} />;

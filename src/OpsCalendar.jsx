@@ -63,7 +63,72 @@ const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const uid = () => "s" + Math.random().toString(36).slice(2, 9);
 const input = { width: "100%", padding: "9px 10px", border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 13, color: c.ink, boxSizing: "border-box", background: c.bg };
 
-export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchMonth }) {
+// ── Product timeline: live catalog (Shopify, current images) + pipeline ──────
+function ProductTimeline({ boards, notes, onSaveNotes }) {
+  const [shop, setShop] = useState(null);
+  const [editNote, setEditNote] = useState(null); // blip key being annotated
+  const [noteText, setNoteText] = useState("");
+  useEffect(() => {
+    let dead = false;
+    fetch("/api/data?op=shop_products").then((r) => r.json()).then((d) => { if (!dead) setShop(d.products || []); }).catch(() => setShop([]));
+    return () => { dead = true; };
+  }, []);
+  // Pipeline = launch-tagged and R&D cards with a launch month, current month on
+  const nowYm = (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();
+  const pipeline = [];
+  Object.entries(boards || {}).forEach(([bk, b]) => {
+    if (!b || !b.cards || bk.startsWith("_")) return;
+    const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
+    b.cards.forEach((cd) => {
+      if (cd.launchMonth && cd.launchMonth >= nowYm && launchAllowed(bk, listName[cd.listId]))
+        pipeline.push({ key: "card:" + bk + ":" + cd.id, title: cd.name, image: cd.cover || null, month: cd.launchMonth, cat: cd.calCat || (bk === "rd" ? "rd" : "launch") });
+    });
+  });
+  pipeline.sort((a, b2) => (a.month < b2.month ? -1 : 1));
+  const note = (k) => (notes || {})[k] || "";
+  const saveNote = (k) => { onSaveNotes({ ...(notes || {}), [k]: noteText.trim() || undefined }); setEditNote(null); };
+  const blip = (b2) => (
+    <div key={b2.key} style={{ flex: "0 0 92px", textAlign: "center", position: "relative" }}>
+      {b2.image
+        ? <img src={b2.image} alt="" style={{ width: 58, height: 58, borderRadius: "50%", objectFit: "cover", border: `2px solid ${b2.cat ? catMeta(b2.cat).color : c.green}` }} />
+        : <div style={{ width: 58, height: 58, borderRadius: "50%", margin: "0 auto", background: b2.cat ? catMeta(b2.cat).color : c.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 8, padding: 4, boxSizing: "border-box" }}>{(b2.title || "").slice(0, 16)}</div>}
+      <div style={{ fontFamily: sans, fontSize: 9, color: c.ink, lineHeight: 1.25, marginTop: 4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{b2.title}</div>
+      {b2.month && <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.sub }}>{MONTHS[Number(b2.month.slice(5)) - 1].slice(0, 3).toUpperCase()}</div>}
+      {note(b2.key)
+        ? <div title={note(b2.key)} onClick={() => { setEditNote(b2.key); setNoteText(note(b2.key)); }} style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 8.5, color: c.taupe, cursor: "pointer", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{note(b2.key)}</div>
+        : <button onClick={() => { setEditNote(b2.key); setNoteText(""); }} style={{ border: "none", background: "transparent", fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.line, cursor: "pointer", padding: 0 }}>+ note</button>}
+      {editNote === b2.key && (
+        <div style={{ position: "absolute", zIndex: 40, top: "100%", left: "50%", transform: "translateX(-50%)", width: 190, background: "#fff", border: `1px solid ${c.line}`, borderRadius: 3, boxShadow: "0 10px 26px rgba(0,0,0,0.16)", padding: 8 }}>
+          <textarea autoFocus rows={2} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Note for the team…" style={{ ...input, fontSize: 11, marginBottom: 6 }} />
+          <div style={{ display: "flex", gap: 5 }}>
+            <button onClick={() => saveNote(b2.key)} style={{ flex: 1, border: "none", background: c.ink, color: "#fff", borderRadius: 1, padding: "5px 0", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditNote(null)} style={{ flex: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "5px 0", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div style={{ border: `1px solid ${c.line}`, borderRadius: 3, background: c.card, padding: "10px 12px", marginBottom: 14 }}>
+      <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, marginBottom: 8 }}>
+        Live now · {shop === null ? "loading…" : (shop.length + " products, images straight from Shopify")}
+      </div>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
+        {(shop || []).map((p) => blip({ key: "shop:" + p.id, title: p.title, image: p.image, cat: null }))}
+      </div>
+      {pipeline.length > 0 && (
+        <>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "8px 0" }}>Coming · pipeline by month</div>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
+            {pipeline.map(blip)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchMonth, calNotes, onSaveCalNotes }) {
   const [brand, setBrand] = useState("all");
   // all · launch · rd · pr · happening — her "separate calendars and all together"
   const [cat, setCat] = useState("all");
@@ -137,6 +202,8 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
           <button key={b.key} onClick={() => setBrand(b.key)} style={{ background: brand === b.key ? b.color : "transparent", color: brand === b.key ? "#FFFFFF" : c.sub, border: `1px solid ${brand === b.key ? b.color : c.line}`, borderRadius: 20, padding: "6px 15px", fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
         ))}
       </div>
+
+      <ProductTimeline boards={boards} notes={calNotes} onSaveNotes={onSaveCalNotes || (() => {})} />
 
       {/* category toggle: each tag its own calendar, or everything at once */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
