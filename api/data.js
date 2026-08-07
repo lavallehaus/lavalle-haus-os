@@ -1264,6 +1264,32 @@ export default async function handler(req, res) {
     res.json({ raw, baked, fetchInfo });
     return;
   }
+  // Communications: email a recorded-call link to someone. The contact book
+  // lives client-side in dbState.comms; this just delivers the email.
+  if (op === "comm_send_recording" && req.method === "POST") {
+    const b = req.body || {};
+    const to = String(b.to || "").trim().toLowerCase();
+    const url2 = String(b.url || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { res.status(400).json({ error: "Valid email required." }); return; }
+    if (!/^https?:\/\//.test(url2)) { res.status(400).json({ error: "Recording link must be a full URL." }); return; }
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "RESEND_API_KEY not set" }); return; }
+    const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+    const title = String(b.title || "Meeting recording").slice(0, 140);
+    const chan = String(b.channel || "").slice(0, 80);
+    const html = '<div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:24px">'
+      + '<p style="font-size:15px;color:#1A1A1A">Here is the recording' + (chan ? " from our meeting (" + chan + ")" : "") + ":</p>"
+      + '<p><a href="' + url2 + '" style="display:inline-block;background:#1A1A1A;color:#fff;text-decoration:none;padding:12px 22px;letter-spacing:2px;font-family:Arial,sans-serif;font-size:12px;text-transform:uppercase">▶ ' + title + "</a></p>"
+      + '<p style="font-size:12px;color:#71716C">Sent from Lavalle Haus.</p></div>';
+    const r2 = await fetch("https://api.resend.com/emails", {
+      method: "POST", headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject: title + " — recording", html }),
+    });
+    const d2 = await r2.json().catch(() => ({}));
+    if (!r2.ok) { res.status(400).json({ error: "Resend refused: " + JSON.stringify(d2).slice(0, 160) }); return; }
+    res.json({ ok: true, id: d2.id });
+    return;
+  }
   if (req.method === "GET" && op === "publish_last") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
