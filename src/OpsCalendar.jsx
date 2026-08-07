@@ -73,14 +73,19 @@ function ProductTimeline({ boards, notes, onSaveNotes }) {
     fetch("/api/data?op=shop_products").then((r) => r.json()).then((d) => { if (!dead) setShop(d.products || []); }).catch(() => setShop([]));
     return () => { dead = true; };
   }, []);
-  // Pipeline = launch-tagged and R&D cards with a launch month, current month on
+  // Pipeline = PRODUCTS only: the Launch Timeline and the R&D list. The Fold's
+  // R&D "looks" feed the content grid and the monthly tray — they are NOT the
+  // operations product schedule and stay out of this strip.
+  const PRODUCT_SOURCES = (bk, listName) =>
+    (bk === "rh-operations" && /launch timeline/i.test(listName || "")) ||
+    (bk === "rd" && /^r\s*&?\s*d$/i.test((listName || "").trim()));
   const nowYm = (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();
   const pipeline = [];
   Object.entries(boards || {}).forEach(([bk, b]) => {
     if (!b || !b.cards || bk.startsWith("_")) return;
     const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
     b.cards.forEach((cd) => {
-      if (cd.launchMonth && cd.launchMonth >= nowYm && launchAllowed(bk, listName[cd.listId]))
+      if (cd.launchMonth && cd.launchMonth >= nowYm && PRODUCT_SOURCES(bk, listName[cd.listId]))
         pipeline.push({ key: "card:" + bk + ":" + cd.id, title: cd.name, image: cd.cover || null, month: cd.launchMonth, cat: cd.calCat || (bk === "rd" ? "rd" : "launch") });
     });
   });
