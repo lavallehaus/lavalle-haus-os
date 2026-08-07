@@ -2929,7 +2929,7 @@ const NAV = [
 { id: "weeklynums", label: "Weekly Numbers" },
 { id: "checklist", label: "Action Items" },
 ] },
-{ id: "content", label: "Content", labelEs: "Contenido" },
+{ id: "content", label: "Marketing", labelEs: "Marketing" },
 { id: "calendar", label: "Calendar", labelEs: "Calendario" },
 { id: "roadmap", label: "Roadmap", labelEs: "Hoja de ruta" },
 { id: "materials", label: "Materials", labelEs: "Materiales", subs: [
