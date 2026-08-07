@@ -2854,6 +2854,10 @@ const HIDDEN_SUBS = iAmOwner ? {} : { profit: ["finances", "finance"] };
 const myPages = (!iAmOwner && me && Array.isArray(me.pages) && me.pages.length)
   ? me.pages
   : (ROLE_TABS[myRole] || ROLE_TABS["Viewer"]);
+// Sub-tab denials: "content:pr" hides just the PR segment for this person while
+// the rest of the Marketing page stays open. Owners are never gated.
+const myDenySegs = (!iAmOwner && me && Array.isArray(me.denySegs)) ? me.denySegs : [];
+const segAllowed = (pageId, segId) => !myDenySegs.includes(pageId + ":" + segId);
 
 // The full signal set for the brain; staff get it through their lens so the
 // bubbles — and the percentage itself — are their own.
@@ -3041,7 +3045,7 @@ if (tab === "content") return (
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
 { id: "pr", label: "PR", render: () => <PRHub data={dbState.prHub || null} onSave={(pv) => setDbState((prev) => { const next = { ...prev, prHub: pv }; dbSave(next); return next; })} /> },
 { id: "comms", label: "Comms", render: () => <CommsHub data={dbState.comms || null} team={(dbState.actionsBoard || {}).team || []} onSave={(cv) => setDbState((prev) => { const next = { ...prev, comms: cv }; dbSave(next); return next; })} /> },
-]} />
+].filter((s) => segAllowed("content", s.id))} />
 );
 if (tab === "calendar") return <OpsCalendar boards={dbState.boards || null} shoots={dbState.opsShoots || []} calNotes={dbState.calNotes || {}} onSaveCalNotes={(nv) => setDbState((prev) => { const next = { ...prev, calNotes: nv }; dbSave(next); return next; })} onSaveShoots={(s) => setDbState((prev) => { const next = { ...prev, opsShoots: s }; dbSave(next); return next; })} onSetLaunchMonth={(bk, cardId, month) => setDbState((prev) => { const boards = { ...(prev.boards || {}) }; const b = boards[bk]; if (b) boards[bk] = { ...b, cards: (b.cards || []).map((cd) => (cd.id === cardId ? { ...cd, launchMonth: month || null } : cd)) }; const next = { ...prev, boards }; dbSave(next); return next; })} />;
 if (tab === "roadmap") return <RoadmapTab />;

@@ -40,7 +40,7 @@ async function getAuth(req) {
   const users = (await kvGet("lavalle_users")) || [];
   const u = users.find((x) => x.id === p.u);
   if (!u || u.revoked || !u.hash) return null;
-  return { role: u.role, name: u.name, email: u.email, userId: u.id, house: false, pages: u.pages || null };
+  return { role: u.role, name: u.name, email: u.email, userId: u.id, house: false, pages: u.pages || null, denySegs: u.denySegs || null };
 }
 // Per-person page overrides: null = the role's default set; an array = exactly
 // these tabs. Unknown ids are dropped; an empty result falls back to null.
@@ -778,7 +778,7 @@ export default async function handler(req, res) {
       const users = (await kvGet("lavalle_users")) || [];
       const u = users.find((x) => (x.email || "").toLowerCase() === email);
       if (u && !u.revoked && u.hash && passwordMatches(pw, u.salt, u.hash)) {
-        res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null } });
+        res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null, denySegs: u.denySegs || null } });
         return;
       }
     }
@@ -1156,7 +1156,7 @@ export default async function handler(req, res) {
     u.inviteExp = null;
     u.acceptedAt = new Date().toISOString();
     await kvSet("lavalle_users", users);
-    res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null } });
+    res.json({ token: makeUserToken(u), user: { name: u.name, role: u.role, email: u.email, pages: u.pages || null, denySegs: u.denySegs || null } });
     return;
   }
 
@@ -1458,7 +1458,7 @@ export default async function handler(req, res) {
 
   // Who am I — restores name/role on the client after a reload.
   if (req.method === "GET" && op === "me") {
-    res.json({ name: auth.name, role: auth.role, email: auth.email, pages: auth.pages || null });
+    res.json({ name: auth.name, role: auth.role, email: auth.email, pages: auth.pages || null, denySegs: auth.denySegs || null });
     return;
   }
 
@@ -1758,7 +1758,7 @@ export default async function handler(req, res) {
     const users = (await kvGet("lavalle_users")) || [];
 
     if (req.method === "GET" && op === "users") {
-      res.json({ users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, invitedAt: u.invitedAt || null, acceptedAt: u.acceptedAt || null, pages: u.pages || null, revoked: !!u.revoked, inviteExpired: !!(u.inviteToken && u.inviteExp && Date.now() > u.inviteExp) })) });
+      res.json({ users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, invitedAt: u.invitedAt || null, acceptedAt: u.acceptedAt || null, pages: u.pages || null, denySegs: u.denySegs || null, revoked: !!u.revoked, inviteExpired: !!(u.inviteToken && u.inviteExp && Date.now() > u.inviteExp) })) });
       return;
     }
 
@@ -1852,8 +1852,15 @@ export default async function handler(req, res) {
       const u = users.find((x) => x.id === b.id);
       if (!u) { res.status(404).json({ error: "No such user." }); return; }
       u.pages = cleanPages(b.pages);
+      // Sub-tab denials ("content:pr") — a page grant can still hide segments.
+      if (b.denySegs !== undefined) {
+        u.denySegs = Array.isArray(b.denySegs)
+          ? b.denySegs.map((x) => String(x).toLowerCase().replace(/[^a-z0-9:_-]/g, "")).filter(Boolean).slice(0, 40)
+          : null;
+        if (u.denySegs && !u.denySegs.length) u.denySegs = null;
+      }
       await kvSet("lavalle_users", users);
-      res.json({ ok: true, pages: u.pages });
+      res.json({ ok: true, pages: u.pages, denySegs: u.denySegs || null });
       return;
     }
 
