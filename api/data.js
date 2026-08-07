@@ -1290,6 +1290,31 @@ export default async function handler(req, res) {
     res.json({ ok: true, id: d2.id });
     return;
   }
+  // Live Shopify products for the calendar's product timeline — title, current
+  // featured image, status. Cached 6h in KV so browsing the calendar doesn't
+  // hammer the Shopify API; images stay current because Shopify serves them
+  // from the product's CDN URL (an image swap in Shopify shows up here).
+  if (req.method === "GET" && op === "shop_products") {
+    const cached = await kvGet("shop_products_cache");
+    if (cached && cached.at && Date.now() - new Date(cached.at).getTime() < 6 * 3600 * 1000 && req.query.fresh !== "1") { res.json(cached); return; }
+    const so = (await kvGet("shopify_oauth")) || {};
+    const stok = so.accessToken || so.token;
+    if (!stok || !so.shop) { res.json({ products: [], error: "shopify_not_connected" }); return; }
+    const q = `query { products(first: 100, query: "status:active") { edges { node { id title status onlineStoreUrl featuredImage { url(transform: { maxWidth: 360 }) } totalInventory } } } }`;
+    const r3 = await fetch(`https://${so.shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stok },
+      body: JSON.stringify({ query: q }),
+    });
+    const d3 = await r3.json().catch(() => ({}));
+    const products = (((d3.data || {}).products || {}).edges || []).map((e) => ({
+      id: e.node.id, title: e.node.title, image: (e.node.featuredImage || {}).url || null,
+      url: e.node.onlineStoreUrl || null, inventory: e.node.totalInventory,
+    }));
+    const out = { at: new Date().toISOString(), products };
+    if (products.length) await kvSet("shop_products_cache", out);
+    res.json(out);
+    return;
+  }
   if (req.method === "GET" && op === "publish_last") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
