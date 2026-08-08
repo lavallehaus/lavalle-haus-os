@@ -22,6 +22,10 @@ const API_VERSION = "2025-10";
 // clutter the "unmatched" warning — the quantities flow to no visible card.
 const TITLE_MAP = {
   "seashell sand wax candle set": 1,
+  // Renamed in Shopify ("Refillable Candle Set" naming) — keep both spellings
+  "seashell refillable candle set": 1,
+  "dough bowl refillable candle set": 7,
+  "vanilla cashmere body scrub": 8,
   "mini spiced apple botanical candle": 4,
   "large spiced apple botanical candle": 5,
   "dough bowl sand wax candle set": 7,
