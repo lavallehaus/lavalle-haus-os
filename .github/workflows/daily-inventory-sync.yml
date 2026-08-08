@@ -1,0 +1,20 @@
+name: Daily inventory sync
+# Refresh Amazon FBA + Shopify inventory into the app's product rows once a
+# day, so the Inventory page never shows stale hand-entered numbers again.
+on:
+  schedule:
+    - cron: "20 13 * * *"   # ~6:20am Pacific, before the workday
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Amazon FBA sync
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/amazon-sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null
+      - name: Shopify sync
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/shopify-sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null

@@ -236,6 +236,9 @@ function appToken() {
 }
 function isAuthed(req) {
   if (!process.env.APP_PASSWORD) return true;
+  // The daily GitHub Actions refresher authenticates with the publish key —
+  // same shared secret the 15-min publish pinger already uses.
+  if (process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY) return true;
   return (req.headers["x-app-token"] || "") === appToken();
 }
 
@@ -1285,6 +1288,26 @@ export default async function handler(req, res) {
     }
     const items = Object.entries(byId).map(([id, v]) => ({ productId: Number(id), fba: v.fba, inbound: v.inbound }));
 
+    // Persist into the app's product rows. available/inbound/unitsSold30 have
+    // always MEANT the Amazon FBA numbers — but nothing ever wrote them back,
+    // so the Inventory page showed hand-entered values from June while the
+    // Vanilla Cashmere sand sold out on Amazon. Now every sync updates the
+    // stored rows and the page tells the truth without a manual refresh.
+    try {
+      const raw = await kvGet("lavalle_data");
+      const blob = Array.isArray(raw) ? raw[0] : raw;
+      if (blob && Array.isArray(blob.products)) {
+        const at = new Date().toISOString();
+        for (const it of items) {
+          const prow = blob.products.find((x) => x.id === it.productId);
+          if (prow) { prow.available = it.fba; prow.inbound = it.inbound; prow.amzSyncedAt = at; }
+        }
+        // sold arrives later in this handler for mapped SKUs; write what we have
+        blob._amzSyncAt = at;
+        await kvSet("lavalle_data", blob);
+      }
+    } catch (e) { /* never fail the sync over persistence */ }
+
     // Sold/30d per mapped SKU — sequential with a small gap (Sales API ~0.5 rps).
     let sold = [];
     let soldError = null;
@@ -1307,6 +1330,19 @@ export default async function handler(req, res) {
 
     const syncedAt = new Date().toISOString();
     await kvSet("amazon_meta", { lastSync: syncedAt });
+
+    // Persist Amazon sold/30d the same way the quantities were persisted above.
+    try {
+      const raw2 = await kvGet("lavalle_data");
+      const blob2 = Array.isArray(raw2) ? raw2[0] : raw2;
+      if (blob2 && Array.isArray(blob2.products) && sold.length) {
+        for (const srow of sold) {
+          const prow = blob2.products.find((x) => x.id === srow.productId);
+          if (prow) prow.unitsSold30 = srow.qty;
+        }
+        await kvSet("lavalle_data", blob2);
+      }
+    } catch (e) {}
 
     res.status(200).json({ connected: true, syncedAt, items, sold, skuDetail, unmatchedSkus, soldError });
   } catch (e) {

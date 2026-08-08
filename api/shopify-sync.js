@@ -298,6 +298,9 @@ function appToken() {
 }
 function isAuthed(req) {
   if (!process.env.APP_PASSWORD) return true;
+  // The daily GitHub Actions refresher authenticates with the publish key —
+  // same shared secret the 15-min publish pinger already uses.
+  if (process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY) return true;
   return (req.headers["x-app-token"] || "") === appToken();
 }
 
@@ -426,6 +429,22 @@ export default async function handler(req, res) {
 
     const syncedAt = new Date().toISOString();
     await kvSet("shopify_oauth", { ...auth, lastSync: syncedAt });
+
+    // Persist the Shopify side onto the product rows as their own fields —
+    // available/inbound stay Amazon's; shopifyQty/shopifySold30 sit alongside
+    // so both channels are visible and current everywhere products render.
+    try {
+      const raw = await kvGet("lavalle_data");
+      const blob = Array.isArray(raw) ? raw[0] : raw;
+      if (blob && Array.isArray(blob.products)) {
+        const soldMap = {}; sold.forEach((x) => (soldMap[x.productId] = x.qty));
+        for (const it of items) {
+          const prow = blob.products.find((x) => x.id === it.productId);
+          if (prow) { prow.shopifyQty = it.qty; prow.shopifySold30 = soldMap[it.productId] || 0; prow.shopSyncedAt = syncedAt; }
+        }
+        await kvSet("lavalle_data", blob);
+      }
+    } catch (e) {}
 
     res.status(200).json({ connected: true, syncedAt, items, sold, ugcSold, variantDetail, unmatched, soldUnmatched, soldError });
   } catch (e) {
