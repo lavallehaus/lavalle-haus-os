@@ -2547,6 +2547,10 @@ export default function App() {
 // Refresh keeps you where you were — the tab is validated against the
 // person's visible pages below, so nobody lands on a page they can't see.
 const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab") || "brain"; } catch { return "brain"; } });
+// Owner "chief" views — the whole app at once is overwhelming, so a view
+// narrows the tab bar to one department. Purely visual: no permissions change.
+const [viewMode, setViewMode] = useState(() => { try { return localStorage.getItem("lh_view") || "all"; } catch { return "all"; } });
+useEffect(() => { try { localStorage.setItem("lh_view", viewMode); } catch {} }, [viewMode]);
 // App-level reel finisher: on ANY screen, every ~12s, nudge any post still
 // converting/processing so reels finish without babysitting the board. Reads
 // server truth (not local state), so it never clobbers the live status.
@@ -2943,10 +2947,17 @@ const NAV = [
 { id: "ai", label: "✦ AI", labelEs: "Asesor AI", subs: [{ id: "coo", label: "AI COO" }, { id: "advisor", label: "Advisor" }] },
 ];
 
+const CHIEF_VIEWS = {
+  all: { label: "Everything", tabs: null },
+  marketing: { label: "Chief of Marketing", tabs: ["brain", "content", "calendar", "growth"] },
+  operations: { label: "Chief of Operations", tabs: ["brain", "profit", "ads", "inventory", "materials", "roadmap"] },
+};
+const chiefTabs = iAmOwner && CHIEF_VIEWS[viewMode] ? CHIEF_VIEWS[viewMode].tabs : null;
 const visibleNav = NAV
   // the Business Brain home is for everyone — its bubbles, insights and the
   // health percentage itself already pass through the person's lens
   .filter(n => iAmOwner || n.id === "brain" || myPages.includes(n.id))
+  .filter(n => !chiefTabs || chiefTabs.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
 
 if (!visibleNav.some(n => n.id === tab)) { setTab(visibleNav[0].id); return null; }
@@ -3170,6 +3181,14 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 
 {/* TOP NAV — 7 permanent homes */}
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", alignItems: "center", position: "sticky", top: 0, zIndex: 40, maxWidth: "100vw" }}>
+{iAmOwner && (
+<select value={viewMode} onChange={(e) => setViewMode(e.target.value)} title="Narrow the app to one department"
+  style={{ flexShrink: 0, border: "1px solid #E0E0DD", background: "#FFFFFF", borderRadius: 1, margin: "8px 10px 8px 0", padding: "5px 8px", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: viewMode === "all" ? "#71716C" : "#1A1A1A", cursor: "pointer" }}>
+  <option value="all">◉ Everything</option>
+  <option value="marketing">Chief of Marketing</option>
+  <option value="operations">Chief of Operations</option>
+</select>
+)}
 {visibleNav.map(n => (
 <button key={n.id} onClick={() => { setTab(n.id); if (n.id === "content") window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id: "content", seg: "boards" } })); }} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
 {n.label}

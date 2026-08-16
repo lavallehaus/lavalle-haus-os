@@ -147,13 +147,19 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         const seqIds = order.map((k) => k.slice(k.indexOf(":") + 1)).filter((id) => b.cards.some((cd) => cd.id === id));
         const inGrid = new Set(seqIds);
         const queue = [...seqIds];
+        // position index for each grid card, so names renumber to 1..21
+        const posOf = {}; seqIds.forEach((id, i) => (posOf[id] = i + 1));
         const cards = b.cards.map((cd) => {
           if (!inGrid.has(cd.id)) return cd;
           const nextId = queue.shift(); // hoisted — inside find() it would shift once per comparison
-          return b.cards.find((x) => x.id === nextId) || cd;
+          const src = b.cards.find((x) => x.id === nextId) || cd;
+          // Her rule: the Post number IS the grid position. Dates/tags in the
+          // name stay; only the leading number changes.
+          const renamed = (src.name || "").replace(/^(\s*Post\s*)\d+/i, "$1" + posOf[src.id]);
+          return renamed !== src.name ? { ...src, name: renamed } : src;
         });
         onSaveBoards({ ...boards, [bk]: { ...b, cards } });
-        setMsg("Grid locked — the Schedule 1-21 list now matches this order, 1 through 21.");
+        setMsg("Grid locked — Schedule 1-21 now matches this order, and every card is renumbered to its grid position.");
       }
     }
   };
