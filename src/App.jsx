@@ -2388,6 +2388,72 @@ function InstallAppNudge() {
 // Header bell: recent Slack messages from the connected workspaces
 // (Refillery Haus / Refillery Haus 2 / Assist-Her Agency …). Polls the tiny
 // slack_feed op every 60s; badge counts messages newer than last-seen.
+// Which external accounts power which page, in plain words. This is the
+// standing rule: every upload/connection/sync a page relies on is visible ON
+// that page, so a future public user knows exactly what to connect and why.
+const CONNECTION_DEFS = {
+  content: [
+    { key: "instagram", name: "Instagram", does: "Auto-posts your scheduled cards and pulls post analytics.", connect: "/api/instagram-auth", status: "/api/data?op=instagram_status" },
+    { key: "tiktok", name: "TikTok", does: "Direct posting (pending TikTok's app audit); until then the Studio hand-off copies your caption.", connect: "/api/tiktok-auth" },
+    { key: "gdrive", name: "Google Drive", does: "Covers, reels and carousel folders load straight from your Drive.", connect: "/api/google-auth" },
+    { key: "vision", name: "AI vision", does: "Reads your covers (faces, colors, tile type) so Auto-arrange can build an editorial grid." },
+  ],
+  calendar: [
+    { key: "shopify", name: "Shopify", does: "The Live-now product strip shows your real catalog with current images.", connect: "/api/shopify-auth", status: "/api/shopify-sync" },
+  ],
+  inventory: [
+    { key: "amazon", name: "Amazon Seller", does: "FBA stock, inbound shipments and 30-day sales fill the product rows.", status: "/api/amazon-sync" },
+    { key: "shopify", name: "Shopify", does: "Store inventory and sales per variant sit beside the Amazon numbers.", connect: "/api/shopify-auth", status: "/api/shopify-sync" },
+  ],
+  profit: [
+    { key: "shopify", name: "Shopify", does: "Orders and revenue feed the sales views.", connect: "/api/shopify-auth", status: "/api/shopify-sync" },
+    { key: "amazon", name: "Amazon Seller", does: "Daily Amazon revenue, fees and refunds.", status: "/api/amazon-sync" },
+  ],
+};
+function ConnectionsChip({ tab }) {
+  const defs = CONNECTION_DEFS[tab] || [];
+  const [open, setOpen] = useState(false);
+  const [stat, setStat] = useState({});
+  useEffect(() => { setOpen(false); }, [tab]);
+  const check = async () => {
+    setOpen(!open);
+    if (open) return;
+    for (const d of defs) {
+      if (!d.status) continue;
+      try {
+        const r = await fetch(d.status).then((x) => x.json());
+        setStat((s) => ({ ...s, [d.key]: !!(r.connected || (r.accounts && r.accounts.length) || (r.teams && r.teams.length)) }));
+      } catch { setStat((s) => ({ ...s, [d.key]: false })); }
+    }
+  };
+  if (!defs.length) return null;
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button onClick={check} title="What this page connects to"
+        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#9A9A95", padding: "4px 6px" }}>
+        ◦ Connections
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
+          <div style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 95, width: 300, background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 14px 40px rgba(0,0,0,0.14)", padding: "6px 0" }}>
+            {defs.map((d) => (
+              <div key={d.key} style={{ padding: "8px 14px", borderBottom: "1px solid #F4F4F3" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 4, background: stat[d.key] === undefined ? "#E0E0DD" : stat[d.key] ? "#5a7a5a" : "#9b5e5e", flexShrink: 0 }} />
+                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: "#1A1A1A" }}>{d.name}</span>
+                  {d.connect && <a href={d.connect} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: "#8F8676" }}>connect →</a>}
+                </div>
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#71716C", marginTop: 3 }}>{d.does}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SlackBell() {
   const [open, setOpen] = useState(false);
   const [feed, setFeed] = useState([]);
@@ -3181,6 +3247,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 
 {/* TOP NAV — 7 permanent homes */}
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", alignItems: "center", position: "sticky", top: 0, zIndex: 40, maxWidth: "100vw" }}>
+<ConnectionsChip tab={tab} />
 {iAmOwner && (
 <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} title="Narrow the app to one department"
   style={{ flexShrink: 0, border: "1px solid #E0E0DD", background: "#FFFFFF", borderRadius: 1, margin: "8px 10px 8px 0", padding: "5px 8px", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: viewMode === "all" ? "#71716C" : "#1A1A1A", cursor: "pointer" }}>
