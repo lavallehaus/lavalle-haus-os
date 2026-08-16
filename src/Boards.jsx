@@ -288,16 +288,46 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
         return { type: "card", cardId: cardEl.dataset.dragcard, listId: cardEl.dataset.draglist, after: y > r.top + r.height / 2 };
       }
       const colEl = el.closest("[data-dragcol]");
-      if (colEl) return { type: "list", listId: colEl.dataset.dragcol };
+      if (colEl) {
+        // Not on a card — snap to the NEAREST card in this column by vertical
+        // distance. Landing in a 6px gap used to mean "append to the end",
+        // which yanked the card straight back to the bottom of the list.
+        let best = null, bestD = Infinity;
+        colEl.querySelectorAll("[data-dragcard]").forEach((ce) => {
+          if (ce.dataset.dragcard === touchDrag) return;
+          const r = ce.getBoundingClientRect();
+          const d2 = Math.abs(y - (r.top + r.height / 2));
+          if (d2 < bestD) { bestD = d2; best = { type: "card", cardId: ce.dataset.dragcard, listId: ce.dataset.draglist, after: y > r.top + r.height / 2 }; }
+        });
+        return best || { type: "list", listId: colEl.dataset.dragcol };
+      }
       return null;
     };
+    const lastPos = { x: 0, y: 0 };
     const onMove = (e) => {
       e.preventDefault();
       const t = e.touches[0];
+      lastPos.x = t.clientX; lastPos.y = t.clientY;
       setTouchPos({ x: t.clientX, y: t.clientY });
       const h = hintFor(t.clientX, t.clientY);
       setDropHint(h ? (h.type === "card" ? h.cardId : "list:" + h.listId) : null);
     };
+    // While the card is lifted the page can't scroll (deliberate), so the
+    // column scrolls itself whenever the finger parks near its edges.
+    const scroller = setInterval(() => {
+      if (!lastPos.y) return;
+      const el = document.elementFromPoint(lastPos.x, lastPos.y);
+      const colEl = el && el.closest("[data-dragcol]");
+      const scrollEl = colEl && [...colEl.querySelectorAll("div")].find((d2) => d2.scrollHeight > d2.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(d2).overflowY));
+      if (scrollEl) {
+        const r = scrollEl.getBoundingClientRect();
+        if (lastPos.y < r.top + 90) scrollEl.scrollTop -= 16;
+        else if (lastPos.y > r.bottom - 90) scrollEl.scrollTop += 16;
+      }
+      // and the page itself, for reaching other lists on a phone
+      if (lastPos.y < 100) window.scrollBy(0, -14);
+      else if (lastPos.y > window.innerHeight - 100) window.scrollBy(0, 14);
+    }, 50);
     const onEnd = (e) => {
       const t = (e.changedTouches || [])[0];
       const h = t ? hintFor(t.clientX, t.clientY) : null;
@@ -309,6 +339,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     document.addEventListener("touchend", onEnd);
     document.addEventListener("touchcancel", onEnd);
     return () => {
+      clearInterval(scroller);
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", onEnd);
       document.removeEventListener("touchcancel", onEnd);
@@ -999,7 +1030,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           touchTimer.current = setTimeout(() => {
                             setTouchDrag(card.id); setDragCard(card.id); setTouchPos({ x: t.clientX, y: t.clientY });
                             if (navigator.vibrate) navigator.vibrate(30);
-                          }, 400);
+                          }, 300);
                         }}
                         onTouchMove={(e) => {
                           if (touchDrag) return;
