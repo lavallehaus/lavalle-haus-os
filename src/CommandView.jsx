@@ -9,8 +9,8 @@ import { ASK_SUGGESTIONS } from "./businessBrain.js";
 // Desktop first; typography scales with the viewport for TVs, and after a few
 // idle minutes Ambient Mode slowly rotates through what matters.
 
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 // Atmospheric background themes (CSS-only; texture without distraction).
 const BACKGROUNDS = {
@@ -338,7 +338,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => (listening ? (recogRef.current && recogRef.current.stop()) : startListen())} title="Ask the Chief out loud — e.g. “Hi Chief, what are today's stats?”"
             style={{ ...tbBtn(t), border: `1px solid ${listening ? t.red : t.brass}`, color: listening ? t.red : t.accent, background: listening ? "rgba(155,94,94,0.08)" : "transparent" }}>
-            {listening ? "● Listening…" : "🎙 Hi Chief"}
+            {listening ? "● Listening…" : "Mic Hi Chief"}
           </button>
           <button onClick={() => setBriefing((b) => !b)} title={AGENT_NAME + " briefs each area as you open it"}
             style={{ ...tbBtn(t), border: `1px solid ${briefing ? t.brass : t.line}`, color: briefing ? t.accent : t.sub }}>
@@ -347,7 +347,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
           {briefing && (
             <button onClick={() => setVoiceOn((v) => !v)} title={voiceOn ? "Mute — replies stay in the chat" : "Unmute — speak replies aloud"}
               style={{ ...tbBtn(t), border: `1px solid ${voiceOn ? t.brass : t.line}`, color: voiceOn ? t.accent : t.sub }}>
-              {voiceOn ? "🔊 Unmuted" : "🔇 Muted"}
+              {voiceOn ? "Sound on Unmuted" : "Muted Muted"}
             </button>
           )}
           <select value={bg} onChange={(e) => setBg(e.target.value)} aria-label="Background theme"
@@ -461,7 +461,7 @@ export default function CommandView({ model, themeId, onToggleTheme, onExit, onN
 }
 
 function StewardBrief({ brief, t, chat = [], busy, onAsk, areaLabel, lang = "en" }) {
-  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const sansF = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   const [q, setQ] = useState("");
   const endRef = useRef(null);
   useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ block: "nearest" }); }, [chat.length, busy]);

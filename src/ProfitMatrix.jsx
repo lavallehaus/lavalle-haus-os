@@ -26,8 +26,8 @@ const c = {
   line:"#e4ddd0", lineSoft:"#efe9de", sage:"#6b7257", clay:"#a8643c", gold:"#b08d57",
   green:"#5c7a52", yellow:"#b78b2e", red:"#a8483a",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans  = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans  = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const faintEs = { fontFamily:sans, fontSize:10.5, fontStyle:"italic", color:"rgba(111,102,87,0.6)", marginTop:1, lineHeight:1.3, fontWeight:400, letterSpacing:0, textTransform:"none" };
 
 const FEES = { amazonReferralPct:0.15, shopifyProcessingPct:0.029, shopifyProcessingFlat:0.3, returnsPct:0.02 };
@@ -1059,7 +1059,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
                 {as.custom && <input value={as.name||""} placeholder="Name · nombre" onChange={(ev)=>setAssignee(r.key,{ name:ev.target.value })} style={{ ...ain, width:120 }} />}
                 {as.custom && <input value={as.email||""} type="email" placeholder="email@…" onChange={(ev)=>setAssignee(r.key,{ email:ev.target.value })} style={{ ...ain, width:160 }} />}
                 <a href={mailto||undefined} onClick={(ev)=>{ if(!mailto){ ev.preventDefault(); } }}
-                  style={{ fontFamily:sans, fontSize:12, textDecoration:"none", padding:"5px 12px", borderRadius:2, border:`1px solid ${mailto?c.ink:c.line}`, background:mailto?c.ink:"transparent", color:mailto?c.bg:c.sub, cursor:mailto?"pointer":"not-allowed", whiteSpace:"nowrap" }}>✉ Send · enviar</a>
+                  style={{ fontFamily:sans, fontSize:12, textDecoration:"none", padding:"5px 12px", borderRadius:2, border:`1px solid ${mailto?c.ink:c.line}`, background:mailto?c.ink:"transparent", color:mailto?c.bg:c.sub, cursor:mailto?"pointer":"not-allowed", whiteSpace:"nowrap" }}>Send · enviar</a>
               </div>
             </div>
           </div>);

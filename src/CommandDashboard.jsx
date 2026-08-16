@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 // Quiet-luxury command-center: a central business-health core orbited by seven
 // sector nodes on a living node-graph. Canvas draws the animated field (rings,
 // pulses, particles, radar); DOM holds everything with text/interaction. The
-// "Chief" answers in the ask bar and by voice ("🎙 Hi Chief"). Recreated from the
+// "Chief" answers in the ask bar and by voice ("Mic Hi Chief"). Recreated from the
 // design handoff; wired to the live Business Brain model + the TTS voice.
 
 const STAGE_W = 1400, STAGE_H = 900;
@@ -265,7 +265,7 @@ export default function CommandDashboard({ model, onNavigate }) {
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: pal.bg, borderTop: `1px solid ${pal.cardBorder}`, padding: "10px 12px", zIndex: 30 }}>
           {brief && <div style={{ fontFamily: serifD, fontStyle: "italic", fontSize: 13, color: pal.muted, textAlign: "center", marginBottom: 8 }}>{thinking ? "Chief is thinking…" : "Chief · " + brief}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => (listening ? recogRef.current && recogRef.current.stop() : startListen())} style={{ ...tbtn(pal), border: `1px solid ${listening ? pal.risk : pal.accent}`, color: listening ? pal.risk : pal.accent, fontSize: 14 }}>{listening ? "●" : "🎙"}</button>
+            <button onClick={() => (listening ? recogRef.current && recogRef.current.stop() : startListen())} style={{ ...tbtn(pal), border: `1px solid ${listening ? pal.risk : pal.accent}`, color: listening ? pal.risk : pal.accent, fontSize: 14 }}>{listening ? "●" : "Mic"}</button>
             <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask(q)} placeholder="Ask the Chief…" style={{ flex: 1, background: pal.card, border: `1px solid ${pal.cardBorder}`, color: pal.ink, fontFamily: serifD, fontSize: 16, padding: "10px 14px", outline: "none" }} />
             <button onClick={() => ask(q)} style={{ border: "none", background: pal.ink, color: pal.bg, fontFamily: mono, fontSize: 11, letterSpacing: 2, padding: "0 16px" }}>ASK</button>
           </div>
@@ -376,7 +376,7 @@ export default function CommandDashboard({ model, onNavigate }) {
           <div style={{ fontFamily: serifD, fontStyle: "italic", fontSize: 17, color: pal.muted, textAlign: "center", minHeight: 24, marginBottom: 10, transition: "opacity .5s" }}>{brief ? "Chief · " + brief : ""}</div>
           <div style={{ display: "flex", gap: 10, maxWidth: 720, margin: "0 auto" }}>
             <button onClick={() => (listening ? recogRef.current && recogRef.current.stop() : startListen())} title="Ask out loud — “Hi Chief, what are today's stats?”"
-              style={{ ...tbtn(pal), padding: "0 16px", border: `1px solid ${listening ? pal.risk : pal.accent}`, color: listening ? pal.risk : pal.accent, fontSize: 11 }}>{listening ? "● LISTENING" : "🎙 HI CHIEF"}</button>
+              style={{ ...tbtn(pal), padding: "0 16px", border: `1px solid ${listening ? pal.risk : pal.accent}`, color: listening ? pal.risk : pal.accent, fontSize: 11 }}>{listening ? "● LISTENING" : "Mic HI CHIEF"}</button>
             <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask(q)} placeholder="Ask the Chief anything about the business…"
               style={{ flex: 1, background: pal.card, border: `1px solid ${pal.cardBorder}`, color: pal.ink, fontFamily: serifD, fontSize: 18, padding: "12px 18px", outline: "none" }} />
             <button onClick={() => ask(q)} style={{ border: "none", cursor: "pointer", padding: "0 34px", background: pal.ink, color: pal.bg, fontFamily: mono, fontSize: 12, letterSpacing: 4 }}>ASK</button>

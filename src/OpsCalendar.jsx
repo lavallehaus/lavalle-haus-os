@@ -7,7 +7,7 @@ import { WORKSPACES } from "./Boards.jsx";
 // operations boards) show as a carousel you can flip through. Toggle a brand or
 // see them all. Founder shoots tag multiple brands so they appear on each.
 
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
 
 const BRANDS = [
@@ -39,13 +39,13 @@ const launchAllowed = (boardKey, listName) => {
 };
 // Not just photoshoots — any dated thing on the ops calendar.
 const EVENT_TYPES = [
-  { key: "shoot", label: "Photoshoot", icon: "📸" },
-  { key: "tradeshow", label: "Trade show", icon: "👗" },
-  { key: "event", label: "Event", icon: "★" },
-  { key: "meeting", label: "Meeting", icon: "🤝" },
-  { key: "launch", label: "Launch", icon: "🚀" },
-  { key: "travel", label: "Travel", icon: "✈️" },
-  { key: "deadline", label: "Deadline", icon: "⏳" },
+  { key: "shoot", label: "Photoshoot", icon: "" },
+  { key: "tradeshow", label: "Trade show", icon: "" },
+  { key: "event", label: "Event", icon: "" },
+  { key: "meeting", label: "Meeting", icon: "" },
+  { key: "launch", label: "Launch", icon: "" },
+  { key: "travel", label: "Travel", icon: "" },
+  { key: "deadline", label: "Deadline", icon: "" },
 ];
 const typeMeta = (t) => EVENT_TYPES.find((x) => x.key === t) || EVENT_TYPES[0];
 // Tray categories — Kiaredza reads the pipeline off these colors.
@@ -204,7 +204,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       {/* brand toggle */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {[{ key: "all", label: "All", color: c.taupe }, ...BRANDS].map((b) => (
-          <button key={b.key} onClick={() => setBrand(b.key)} style={{ background: brand === b.key ? b.color : "transparent", color: brand === b.key ? "#FFFFFF" : c.sub, border: `1px solid ${brand === b.key ? b.color : c.line}`, borderRadius: 20, padding: "6px 15px", fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
+          <button key={b.key} onClick={() => setBrand(b.key)} style={{ background: brand === b.key ? b.color : "transparent", color: brand === b.key ? "#FFFFFF" : c.sub, border: `1px solid ${brand === b.key ? b.color : c.line}`, borderRadius: 2, padding: "6px 15px", fontFamily: sans, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
         ))}
       </div>
 
@@ -213,7 +213,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
       {/* category toggle: each tag its own calendar, or everything at once */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {[["all", "All", c.taupe], ["launch", CATS.launch.label, CATS.launch.color], ["rd", CATS.rd.label, CATS.rd.color], ["pr", CATS.pr.label, CATS.pr.color], ["happening", "Happening", c.ink]].map(([k, lab, col]) => (
-          <button key={k} onClick={() => setCat(k)} style={{ background: cat === k ? col : "transparent", color: cat === k ? "#FFFFFF" : c.sub, border: `1px solid ${cat === k ? col : c.line}`, borderRadius: 20, padding: "5px 13px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{lab}</button>
+          <button key={k} onClick={() => setCat(k)} style={{ background: cat === k ? col : "transparent", color: cat === k ? "#FFFFFF" : c.sub, border: `1px solid ${cat === k ? col : c.line}`, borderRadius: 2, padding: "5px 13px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1.2, textTransform: "uppercase", cursor: "pointer" }}>{lab}</button>
         ))}
       </div>
 
@@ -266,7 +266,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
                       <button key={s.id} onClick={(e) => { e.stopPropagation(); setEditing(s); }} title={s.title}
                         style={{ display: "flex", alignItems: "center", gap: 4, textAlign: "left", border: "none", borderRadius: 3, padding: "3px 5px", cursor: "pointer", background: (brandOf((s.brands || [])[0]) || {}).color || c.taupe, color: "#FFFFFF", fontFamily: sans, fontSize: 9, lineHeight: 1.25, overflow: "hidden" }}>
                         {s.cover && <img src={s.cover} alt="" style={{ width: 16, height: 16, borderRadius: 2, objectFit: "cover", flexShrink: 0 }} />}
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{typeMeta(s.type).icon} {s.title || typeMeta(s.type).label}{s.start ? " · " + to12h(s.start) : ""}{s.tbd ? " · TBD" : s.tentative ? " ~" : ""}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title || typeMeta(s.type).label}{s.start ? " · " + to12h(s.start) : ""}{s.tbd ? " · TBD" : s.tentative ? " ~" : ""}
                           {(s.brands || []).length > 1 && <span style={{ fontSize: 8, opacity: 0.85 }}> · {(s.brands || []).map((b) => (brandOf(b) || {}).label).join(" + ")}</span>}</span>
                       </button>
                     ))}
@@ -338,7 +338,7 @@ function ShootEditor({ shoot, onSave, onDelete, onClose }) {
         <div style={label}>Type</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {EVENT_TYPES.map((t) => (
-            <button key={t.key} onClick={() => setType(t.key)} style={{ background: type === t.key ? c.ink : "transparent", color: type === t.key ? "#FFFFFF" : c.sub, border: `1px solid ${type === t.key ? c.ink : c.line}`, borderRadius: 20, padding: "6px 12px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, cursor: "pointer" }}>{t.icon} {t.label}</button>
+            <button key={t.key} onClick={() => setType(t.key)} style={{ background: type === t.key ? c.ink : "transparent", color: type === t.key ? "#FFFFFF" : c.sub, border: `1px solid ${type === t.key ? c.ink : c.line}`, borderRadius: 2, padding: "6px 12px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, cursor: "pointer" }}>{t.icon} {t.label}</button>
           ))}
         </div>
 
@@ -358,7 +358,7 @@ function ShootEditor({ shoot, onSave, onDelete, onClose }) {
         <div style={label}>Brands (optional — tag one or more; a founder shoot can be all)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {BRANDS.map((b) => (
-            <button key={b.key} onClick={() => toggle(b.key)} style={{ background: brands.includes(b.key) ? b.color : "transparent", color: brands.includes(b.key) ? "#FFFFFF" : c.sub, border: `1px solid ${brands.includes(b.key) ? b.color : c.line}`, borderRadius: 20, padding: "6px 13px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
+            <button key={b.key} onClick={() => toggle(b.key)} style={{ background: brands.includes(b.key) ? b.color : "transparent", color: brands.includes(b.key) ? "#FFFFFF" : c.sub, border: `1px solid ${brands.includes(b.key) ? b.color : c.line}`, borderRadius: 2, padding: "6px 13px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>{b.label}</button>
           ))}
         </div>
 

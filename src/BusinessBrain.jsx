@@ -7,8 +7,8 @@ import { ASK_SUGGESTIONS, HEALTH_PURPOSE } from "./businessBrain.js";
 // The standard dashboard stays one click away — this is a navigation layer,
 // not a replacement.
 
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 // ── Day / Night themes ───────────────────────────────────────────────────────
 export const BRAIN_THEMES = {

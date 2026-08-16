@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 // service is reachable, and shows how to start it when it isn't.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", green: "#5a7a5a", red: "#9b5e5e", taupe: "#8F8676" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const SCHEDULER_URL = "http://localhost:8787";
 

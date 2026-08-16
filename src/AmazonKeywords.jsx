@@ -10,8 +10,8 @@ const c = {
   ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", green: "#5a7a5a",
   clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const mono = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const mono = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const SEED = ["candle", "candles", "wax", "beeswax", "soy candle", "scented candle", "sand candle", "sand wax", "apple candle", "vanilla candle", "cinnamon", "pumpkin spice", "fall candle", "autumn", "harvest", "vessel candle", "dough bowl", "seashell", "scrub", "sugar scrub", "body scrub", "salt scrub", "exfoliat", "body polish", "bath salt", "bath soak", "bath salts", "epsom salt", "epsom", "soaking salt", "mineral bath", "muscle soak", "foot soak", "dead sea salt", "himalayan salt", "magnesium flakes", "bath bomb", "lavender bath", "sea salt soak", "detox bath", "body oil", "body butter", "body lotion", "shea butter", "botanical", "aromatherapy", "home fragrance", "wax melt", "candle gift", "luxury candle", "natural candle", "spa gift", "vase", "vessel", "home decor", "coastal decor", "beach decor", "nautical decor", "ocean decor", "centerpiece", "table centerpiece", "farmhouse decor", "rustic decor", "boho decor", "decorative bowl", "shelf decor", "mantel decor", "coastal", "nautical"];
 const STOP = ["candle", "large", "small", "with", "sand", "vanilla", "apple", "the", "and", "set", "pack", "oz"];

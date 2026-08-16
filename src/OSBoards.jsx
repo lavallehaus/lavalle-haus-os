@@ -3,11 +3,11 @@ import { useEffect, useState } from "react";
 // LAVALLE HAUS OS — the OS boards, under the Business Brain.
 // Every section of the operating system laid out like the content boards:
 // photo tiles that jump straight to Sales, Ads, Inventory, Growth… with the
-// same 👥 access chips (wired to the per-person page permissions) and a
+// same access chips (wired to the per-person page permissions) and a
 // Recently viewed strip.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const CAPTIONS = {
   profit: "Profit matrix · pricing · finances",
@@ -90,7 +90,7 @@ export default function OSBoards({ nav, tiles = {}, onSaveTile, iAmOwner, roleTa
     <div style={{ padding: "26px 24px 30px", maxWidth: 1180, margin: "0 auto" }}>
       {recentTabs.length > 0 && (
         <div style={{ marginBottom: 24 }}>
-          <div style={{ ...label, marginBottom: 8 }}>🕐 Recently viewed</div>
+          <div style={{ ...label, marginBottom: 8 }}>Recently viewed</div>
           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {recentTabs.map((id) => {
               const n = items.find((x) => x.id === id);
@@ -129,7 +129,7 @@ export default function OSBoards({ nav, tiles = {}, onSaveTile, iAmOwner, roleTa
                     <button onClick={(e) => { e.stopPropagation(); setAccessMenu(accessMenu === n.id ? null : n.id); }}
                       title="Who can open this section"
                       style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
-                      👥 {withAccess ? withAccess.length + " member" + (withAccess.length === 1 ? "" : "s") : "…"}
+                      {withAccess ? withAccess.length + " member" + (withAccess.length === 1 ? "" : "s") : "…"}
                     </button>
                     {accessMenu === n.id && (
                       <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 95, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 12, width: 230 }}>

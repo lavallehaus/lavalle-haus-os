@@ -7,7 +7,7 @@ import { BrainCanvas, BRAIN_THEMES } from "./BusinessBrain.jsx";
 // Lavalle Haus · The Fold) plus the all-accounts view. Tapping a node jumps
 // to where that number is managed.
 
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
 // workspace ↔ Instagram account mapping (TikTok joins after its app review)

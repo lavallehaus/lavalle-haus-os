@@ -6,7 +6,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 // comments with a reply box that posts straight back to Instagram.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 const fmt = (n) => (n == null ? "—" : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n));
 

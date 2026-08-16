@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 // Drag tiles to replan the feed; click one to schedule it or mark it posted.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
 const thumb = (id, w) => `https://drive.google.com/thumbnail?id=${id}&sz=w${w || 800}`;

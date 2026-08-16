@@ -21,8 +21,8 @@ const c = {
   line: "#e4ddd0", lineSoft: "#efe9de", clay: "#a8643c", gold: "#b08d57",
   green: "#5c7a52", yellow: "#b78b2e", red: "#a8483a", blue: "#5a6a86",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const faintEs = { fontFamily: sans, fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 1 };
 
 const IN_RATE = 3 / 1e6, OUT_RATE = 15 / 1e6;

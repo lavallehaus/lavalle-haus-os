@@ -15,8 +15,8 @@ const c = {
   bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
   green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const card = { background: c.card, border: `1px solid ${c.line}`, borderRadius: 1, padding: 14, marginBottom: 12 };
 const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
 const input = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "5px 7px", borderRadius: 1, boxSizing: "border-box", fontFamily: sans };
@@ -497,7 +497,7 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
                   const err = st && st.indexOf("err:") === 0;
                   return (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <button onClick={() => notifyAll(it)} disabled={!canSend || st === "sending"} title={canSend ? "Email all assignees" : "Assign a team member who has an email first"} style={{ ...btnGhost, color: st === "sent" ? c.green : (canSend ? c.clay : c.sub), borderColor: st === "sent" ? c.green : (canSend ? c.clay : c.line), opacity: (!canSend || st === "sending") ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent" : "✉ Email assignees"}</button>
+                      <button onClick={() => notifyAll(it)} disabled={!canSend || st === "sending"} title={canSend ? "Email all assignees" : "Assign a team member who has an email first"} style={{ ...btnGhost, color: st === "sent" ? c.green : (canSend ? c.clay : c.sub), borderColor: st === "sent" ? c.green : (canSend ? c.clay : c.line), opacity: (!canSend || st === "sending") ? 0.5 : 1 }}>{st === "sending" ? "Sending…" : st === "sent" ? "✓ Sent" : "Email assignees"}</button>
                       {err && <span style={{ fontFamily: sans, fontSize: 9, color: c.red, maxWidth: 220 }}>{st.slice(4)}</span>}
                     </span>
                   );

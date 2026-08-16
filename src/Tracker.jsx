@@ -11,8 +11,8 @@ const c = {
   bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
   green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const btnGhost = { padding: "5px 12px", fontSize: 10, fontFamily: sans, letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, textTransform: "uppercase" };
 const cellInput = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, boxSizing: "border-box", width: "100%", fontFamily: serif };
 const selStyle = { background: "#F0F0EE", border: `1px solid ${c.line}`, color: c.ink, fontSize: 12, padding: "4px 6px", borderRadius: 1, fontFamily: sans, width: "100%" };

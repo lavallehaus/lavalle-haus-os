@@ -29,8 +29,8 @@ const c = {
   line: "#d8d1c4", lineSoft: "#ece7dd", clay: "#8F8676", green: "#5a7a5a",
   red: "#9b5e5e", amber: "#b06a2e", slate: "#7a7a9a",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const mono = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const mono = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const faintEs = { fontFamily: serif, fontSize: 10.5, fontStyle: "italic", color: "rgba(140,125,107,0.7)", marginTop: 1 };
 
 const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? 0 : Number(v));

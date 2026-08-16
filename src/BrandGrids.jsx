@@ -4,11 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // Plann-style 21-slot planning grid per brand account. The moment a card on a
 // brand board gets a cover photo it appears in that brand's grid — position 1
 // at the BOTTOM-LEFT, new covers stacking upward (7 rows × 3). Drag tiles to
-// hand-arrange; ✨ Auto-arrange orders by tone so neighbors alternate
+// hand-arrange; Arrange orders by tone so neighbors alternate
 // light/dark and similar shots don't clump.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", green: "#5a7a5a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
 const BRANDS = [
@@ -215,7 +215,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
 
   const saveOrder = (next) => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), order: next } });
   const locked = !!((data || {})[gk] || {}).locked;
-  // 📌 individual placements she's happy with — auto-arrange must not move
+  // Pinned individual placements she's happy with — auto-arrange must not move
   // them even while it reshuffles everything else ("I like 9 of the 21").
   const pins = ((data || {})[gk] || {}).pins || [];
   const togglePin = (key) => {
@@ -380,7 +380,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     return merged;
   };
 
-  // ✨ Auto-arrange: art-director pass when classes are available (who's in
+  // Arrange: art-director pass when classes are available (who's in
   // frame, tile kind, color family — plus the active reference-grid rhythm);
   // falls back to the original tone interleave if classification fails.
   const autoArrange = async () => {
@@ -616,18 +616,18 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               someone deliberately unlocks it. */}
           <button onClick={setLocked}
             style={{ border: `1px solid ${locked ? c.green : c.line}`, background: locked ? c.green : "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: locked ? "#fff" : c.sub, cursor: "pointer" }}>
-            {locked ? "🔒 Grid locked" : "🔓 Lock grid"}
+            {locked ? "Grid locked" : "Lock grid"}
           </button>
           <button onClick={autoArrange} disabled={locked || arranging || visible.length < 4}
             title={locked ? "Unlock the grid to re-arrange it" : ""}
             style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, cursor: locked ? "not-allowed" : "pointer", opacity: locked || arranging || visible.length < 4 ? 0.4 : 1 }}>
-            {arranging ? "Arranging…" : "✨ Auto-arrange"}
+            {arranging ? "Arranging…" : "Arrange"}
           </button>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
         <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
-          ⇪ Add photos to grid
+          Add photos to grid
           <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files && e.target.files.length) uploadToGrid(e.target.files); e.target.value = ""; }} />
         </label>
         <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: tplBusy ? c.taupe : c.sub, cursor: "pointer" }}>
@@ -651,10 +651,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink }}>Post {windowStart + pickIdx + 1} — tap the spot it should take, or:</div>
           <button onClick={() => { const it = visible[pickIdx]; if (it) { setEditKey(it.key); setEditZoom(zooms[it.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); } setPickIdx(null); }}
-            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>🔍 Reframe</button>
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>Reframe</button>
           {tt && (
             <label style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>
-              ⇪ Different TikTok cover
+              Different TikTok cover
               <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; const it = visible[pickIdx]; if (f && it) uploadTikTokCover(f, it); setPickIdx(null); }} />
             </label>
           )}
@@ -708,7 +708,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
             {tt && !item.hasTT && <div style={{ position: "absolute", left: 4, top: 4, background: "rgba(0,0,0,0.4)", color: "#fff", fontFamily: sans, fontSize: 8, letterSpacing: 1, padding: "1px 5px", borderRadius: 1 }}>IG cover</div>}
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
-            {!item.done && pins.includes(item.key) && <div title="Pinned — auto-arrange keeps this placement" style={{ position: "absolute", right: 4, top: 4, background: c.taupe, color: "#fff", fontSize: 9, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>📌</div>}
+            {!item.done && pins.includes(item.key) && <div title="Pinned — auto-arrange keeps this placement" style={{ position: "absolute", right: 4, top: 4, background: c.taupe, color: "#fff", fontSize: 9, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>●</div>}
           </div>
         ) : (
           <div key={"empty" + slot} data-slot={slot}
@@ -762,7 +762,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
                 <button style={{ ...barBtn, background: c.ink, color: "#fff", borderColor: c.ink }} onClick={() => { saveZoom(editKey, clampZoom(editZoom)); setEditKey(null); }}>Save</button>
                 <button style={barBtn} onClick={() => { saveZoom(editKey, null); setEditKey(null); }}>Reset</button>
                 <button style={barBtn} onClick={() => setEditKey(null)}>Cancel</button>
-                <button style={barBtn} onClick={() => doExport("download")}>⬇ Download</button>
+                <button style={barBtn} onClick={() => doExport("download")}>Download</button>
                 <button style={barBtn} onClick={() => doExport("cover")}>{tt ? "Set as TikTok cover" : "Set as cover"}</button>
               </div>
             </div>

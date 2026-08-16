@@ -12,7 +12,7 @@ import { useState } from "react";
 // via Microsoft sign-in — flagged in the UI, not yet wired.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", green: "#5a7a5a", red: "#9b5e5e", blue: "#5a6b7a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 const input = { width: "100%", boxSizing: "border-box", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 10px", fontFamily: sans, fontSize: 12.5, color: c.ink, background: "#fff" };
 const uid = () => "cm" + Math.random().toString(36).slice(2, 9);
@@ -135,7 +135,7 @@ export default function CommsHub({ data, onSave, team = [] }) {
                   <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: c.sub }}>{r.date ? new Date(r.date).toLocaleDateString([], { month: "short", day: "numeric" }) : ""}</span>
                   <span style={{ flex: 1 }} />
                   <button onClick={() => { setSendFor(sendFor === r.id ? null : r.id); setSendTo(ch.email || ""); setMsg(null); }}
-                    style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>✉ Send link</button>
+                    style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>Send link</button>
                   <button onClick={() => { if (window.confirm("Remove this recording link?")) patchCh(ch.id, { recordings: ch.recordings.filter((q) => q.id !== r.id) }); }}
                     style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 14 }}>×</button>
                 </div>

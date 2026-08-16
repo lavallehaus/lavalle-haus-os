@@ -9,8 +9,8 @@ const c = {
   bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
   green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const money = (v) => (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -394,7 +394,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                     <g>
                       <line x1={pts[hoverIdx][0]} y1={PAD} x2={pts[hoverIdx][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
                       <circle cx={pts[hoverIdx][0]} cy={pts[hoverIdx][1]} r="4" fill={c.clay} />
-                      <text x={Math.min(W - 90, Math.max(90, pts[hoverIdx][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.ink}>
+                      <text x={Math.min(W - 90, Math.max(90, pts[hoverIdx][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Helvetica Neue', Helvetica, Arial, sans-serif" fill={c.ink}>
                         {pDays[hoverIdx].date.slice(5)} · {money(pDays[hoverIdx].real)}{pDays[hoverIdx].sales - pDays[hoverIdx].real > 0.005 ? ` (Amazon: ${money(pDays[hoverIdx].sales)})` : ""}
                       </text>
                     </g>
@@ -403,7 +403,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                     const pi = pDays.indexOf(peak);
                     return <g>
                       <circle cx={pts[pi][0]} cy={pts[pi][1]} r="3" fill={c.green} />
-                      <text x={Math.min(W - 70, Math.max(40, pts[pi][0]))} y={Math.max(12, pts[pi][1] - 8)} textAnchor="middle" fontSize="10" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.sub}>{money(peak.real)}</text>
+                      <text x={Math.min(W - 70, Math.max(40, pts[pi][0]))} y={Math.max(12, pts[pi][1] - 8)} textAnchor="middle" fontSize="10" fontFamily="'Helvetica Neue', Helvetica, Arial, sans-serif" fill={c.sub}>{money(peak.real)}</text>
                     </g>;
                   })()}
                   <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke={c.line} strokeWidth="1" />
@@ -519,7 +519,7 @@ export default function AmazonProfit({ products = [], accountHealth = null, onSa
                   {hoverNet !== null && pts[hoverNet] && (
                     <g>
                       <line x1={pts[hoverNet][0]} y1={PAD} x2={pts[hoverNet][0]} y2={H - PAD} stroke={c.clay} strokeWidth="1" strokeDasharray="3,3" />
-                      <text x={Math.min(W - 110, Math.max(110, pts[hoverNet][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Jost', 'Helvetica Neue', Arial, sans-serif" fill={c.ink}>
+                      <text x={Math.min(W - 110, Math.max(110, pts[hoverNet][0]))} y={14} textAnchor="middle" fontSize="11" fontFamily="'Helvetica Neue', Helvetica, Arial, sans-serif" fill={c.ink}>
                         {buckets[hoverNet].label} · net {money(buckets[hoverNet].net)}
                       </text>
                     </g>

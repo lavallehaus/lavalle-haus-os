@@ -8,7 +8,7 @@ import { useState } from "react";
 // address, phone, tracking number, comments — with colored status chips.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", green: "#5a7a5a", red: "#9b5e5e", blue: "#5a6b7a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
 const APPROVE_OPTS = ["Pending", "Approve", "Decline"];

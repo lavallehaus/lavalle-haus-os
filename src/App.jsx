@@ -101,7 +101,7 @@ async function dbSave(record) {
   }
 }
 
-const FONT_LINK = "https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap";
+const FONT_LINK = "https://fonts.googleapis.com/css2?family=display=swap";
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -272,7 +272,7 @@ return `${prefix}${parseFloat(n).toFixed(2)}`;
 // ── COMPONENTS ───────────────────────────────────────────────────────────────
 
 function Tag({ color, label }) {
-return <span style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, padding: "2px 8px", borderRadius: 1, background: color + "22", color, border: `1px solid ${color}44` }}>{label}</span>;
+return <span style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, padding: "2px 8px", borderRadius: 1, background: color + "22", color, border: `1px solid ${color}44` }}>{label}</span>;
 }
 
 function Card({ children, style = {} }) {
@@ -280,7 +280,7 @@ return <div style={{ background: "#F4F4F3", border: "1px solid #E0E0DD", borderR
 }
 
 function SectionTitle({ children }) {
-return <div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", marginBottom: 20, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontWeight: 400 }}>{children}</div>;
+return <div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", marginBottom: 20, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontWeight: 400 }}>{children}</div>;
 }
 
 function NumInput({ value, onChange, prefix = "$", placeholder = "Enter" }) {
@@ -289,7 +289,7 @@ return (
 value={value === null || value === undefined ? "" : value}
 onChange={e => onChange(e.target.value === "" ? null : e.target.value)}
 placeholder={placeholder}
-style={{ width: 72, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "3px 6px", color: "#1A1A1A", fontSize: 12, textAlign: "center", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}
+style={{ width: 72, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "3px 6px", color: "#1A1A1A", fontSize: 12, textAlign: "center", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}
 />
 );
 }
@@ -411,67 +411,67 @@ return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 <SectionTitle>Amazon FBA Inventory</SectionTitle>
 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: past.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>UNDO</button>
-<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: future.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>REDO</button>
-<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: past.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>UNDO</button>
+<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: future.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>REDO</button>
+<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
 <button onClick={suggestMins} title="Sets Min Stock to 6 weeks of cover at current sales velocity. Only fills blanks — your own minimums are never overwritten. Undo reverses it."
-style={{ marginLeft: "auto", background: "transparent", border: "1px solid #8F8676", color: "#8F8676", borderRadius: 1, padding: "4px 14px", cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>SUGGEST MINS</button>
+style={{ marginLeft: "auto", background: "transparent", border: "1px solid #8F8676", color: "#8F8676", borderRadius: 1, padding: "4px 14px", cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>SUGGEST MINS</button>
 </div>
 <Card style={{ borderLeft: `3px solid ${shopify && shopify.connected ? "#5a7a5a" : "#8F8676"}`, padding: "12px 16px" }}>
 {shopify && shopify.connected ? (
 <>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
 <div>
-<span style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: "#5a7a5a" }}>● SHOPIFY CONNECTED · LIVE STOCK</span>
-{shopify.syncedAt && <span style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#9A9A95", marginLeft: 10 }}>synced {new Date(shopify.syncedAt).toLocaleTimeString()}</span>}
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Shopify conectado — inventario en vivo en cada producto</div>
+<span style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: "#5a7a5a" }}>● SHOPIFY CONNECTED · LIVE STOCK</span>
+{shopify.syncedAt && <span style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#9A9A95", marginLeft: 10 }}>synced {new Date(shopify.syncedAt).toLocaleTimeString()}</span>}
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Shopify conectado — inventario en vivo en cada producto</div>
 </div>
-<button onClick={() => { onShopifySync(); if (onAmazonSync) onAmazonSync(); }} disabled={shopify.syncing || (amazon && amazon.syncing)} style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: (shopify.syncing || (amazon && amazon.syncing)) ? "default" : "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>{(shopify.syncing || (amazon && amazon.syncing)) ? "SYNCING…" : "SYNC NOW"}</button>
+<button onClick={() => { onShopifySync(); if (onAmazonSync) onAmazonSync(); }} disabled={shopify.syncing || (amazon && amazon.syncing)} style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", color: "#5a7a5a", borderRadius: 1, padding: "5px 14px", cursor: (shopify.syncing || (amazon && amazon.syncing)) ? "default" : "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>{(shopify.syncing || (amazon && amazon.syncing)) ? "SYNCING…" : "SYNC NOW"}</button>
 </div>
-<div style={{ marginTop: 6, fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: amazon && amazon.connected ? "#5a7a5a" : "#8F8676" }}>
+<div style={{ marginTop: 6, fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: amazon && amazon.connected ? "#5a7a5a" : "#8F8676" }}>
 {amazon && amazon.connected ? "● AMAZON SP-API · LIVE FBA" : "○ AMAZON SP-API NOT CONNECTED"}
 {amazon && amazon.syncedAt ? <span style={{ letterSpacing: 0, color: "#71716C" }}> · synced {new Date(amazon.syncedAt).toLocaleTimeString()}</span> : null}
 </div>
 {amazon && amazon.unmatchedSkus && amazon.unmatchedSkus.length > 0 && (
 <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #0000000d" }}>
-<div style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: "#8F8676", marginBottom: 4 }}>⚠ AMAZON SKUS NOT YET MAPPED</div>
+<div style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: "#8F8676", marginBottom: 4 }}>⚠ AMAZON SKUS NOT YET MAPPED</div>
 {amazon.unmatchedSkus.map((u, i) => (
-<div key={"az" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>· {u.sku} — {u.qty} units</div>
+<div key={"az" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>· {u.sku} — {u.qty} units</div>
 ))}
 </div>
 )}
 {((shopify.unmatched && shopify.unmatched.length > 0) || (shopify.soldUnmatched && shopify.soldUnmatched.length > 0)) && (
 <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #0000000d" }}>
-<div style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: "#8F8676", marginBottom: 4 }}>⚠ SHOPIFY PRODUCTS NOT YET MAPPED TO THIS APP</div>
+<div style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: "#8F8676", marginBottom: 4 }}>⚠ SHOPIFY PRODUCTS NOT YET MAPPED TO THIS APP</div>
 {(shopify.unmatched || []).map((u, i) => (
-<div key={"u" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>· {u.title} — {u.qty} in stock</div>
+<div key={"u" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>· {u.title} — {u.qty} in stock</div>
 ))}
 {(shopify.soldUnmatched || []).map((u, i) => (
-<div key={"s" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>· {u.title} — {u.qty} sold/30d</div>
+<div key={"s" + i} style={{ fontSize: 11, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>· {u.title} — {u.qty} sold/30d</div>
 ))}
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 4, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Estos títulos de Shopify aún no están enlazados a un producto del app — compártelos con Claude para mapearlos.</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 4, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Estos títulos de Shopify aún no están enlazados a un producto del app — compártelos con Claude para mapearlos.</div>
 </div>
 )}
 </>
 ) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
 <div>
-<span style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: "#8F8676" }}>○ SHOPIFY NOT CONNECTED</span>
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Conecta Shopify para ver el inventario en vivo de tu tienda</div>
+<span style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: "#8F8676" }}>○ SHOPIFY NOT CONNECTED</span>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Conecta Shopify para ver el inventario en vivo de tu tienda</div>
 </div>
-<a href="/api/shopify-auth" style={{ background: "#1A1A1A", color: "#FFFFFF", borderRadius: 1, padding: "6px 16px", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, textDecoration: "none" }}>CONNECT SHOPIFY</a>
+<a href="/api/shopify-auth" style={{ background: "#1A1A1A", color: "#FFFFFF", borderRadius: 1, padding: "6px 16px", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, textDecoration: "none" }}>CONNECT SHOPIFY</a>
 </div>
 )}
 </Card>
 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
 {["All", "Amazon", "Shopify", "B2B"].map(ch => (
-<button key={ch} onClick={() => setChannelFilter(ch)} style={{ padding: "5px 16px", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${channelFilter === ch ? "#1A1A1A" : "#E0E0DD"}`, background: channelFilter === ch ? "#1A1A1A" : "transparent", color: channelFilter === ch ? "#FFFFFF" : "#71716C" }}>{ch.toUpperCase()}</button>
+<button key={ch} onClick={() => setChannelFilter(ch)} style={{ padding: "5px 16px", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, cursor: "pointer", borderRadius: 1, border: `1px solid ${channelFilter === ch ? "#1A1A1A" : "#E0E0DD"}`, background: channelFilter === ch ? "#1A1A1A" : "transparent", color: channelFilter === ch ? "#FFFFFF" : "#71716C" }}>{ch.toUpperCase()}</button>
 ))}
 </div>
 {reorderList.length > 0 && (
 <Card style={{ borderLeft: "3px solid #b06a2e", background: "#b06a2e10" }}>
-<div style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, color: "#b06a2e" }}>⚠ REORDER NEEDED · {reorderList.length}</div>
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, marginBottom: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Productos agotados o en/bajo su umbral mínimo</div>
+<div style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, color: "#b06a2e" }}>⚠ REORDER NEEDED · {reorderList.length}</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, marginBottom: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Productos agotados o en/bajo su umbral mínimo</div>
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 {reorderList.map(p => {
 const stock = effectiveStock(p, shopify, amazon);
@@ -479,13 +479,13 @@ const min = +p.minStock || 0;
 const need = min > 0 ? Math.max(min * 2 - stock, min) : null;
 return (
 <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid #0000000d", paddingTop: 6 }}>
-<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{p.name}
-<span style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginLeft: 8 }}>{stock} on hand{min > 0 ? ` · min ${min}` : " · set a min in Edit"}{need ? ` · suggest +${need}` : ""}</span>
+<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{p.name}
+<span style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginLeft: 8 }}>{stock} on hand{min > 0 ? ` · min ${min}` : " · set a min in Edit"}{need ? ` · suggest +${need}` : ""}</span>
 </div>
 {p.reorderLink && p.reorderLink.trim() !== "" ? (
-<a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, color: "#b06a2e", textDecoration: "none", border: "1px solid #b06a2e40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>
+<a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#b06a2e", textDecoration: "none", border: "1px solid #b06a2e40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>
 ) : (
-<span style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>add link in Edit</span>
+<span style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>add link in Edit</span>
 )}
 </div>
 );
@@ -496,14 +496,14 @@ return (
 {displayList.map(p => {
 if (p.__sampleToggle) return (
 <div key={p.id} onClick={() => setOpenSamples(openSamples === p.parentId ? null : p.parentId)}
-style={{ cursor: "pointer", marginLeft: 24, marginTop: -4, fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, color: "#9A9A95" }}>
+style={{ cursor: "pointer", marginLeft: 24, marginTop: -4, fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#9A9A95" }}>
 {openSamples === p.parentId ? "▾" : "▸"} {p.count} SAMPLE{p.count === 1 ? "" : "S"} / TESTER{p.count === 1 ? "" : "S"}
 </div>
 );
 if (p.__sampleHeader) return (
 <div key="__samplehdr" style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid #ddd8d0" }}>
-<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Samples / Testers</div>
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Muestras sin producto padre asignado</div>
+<div style={{ fontSize: 9, letterSpacing: 4, color: "#b0a89a", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Samples / Testers</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Muestras sin producto padre asignado</div>
 </div>
 );
 const st = stockStatus(p, shopify, amazon);
@@ -515,19 +515,19 @@ return (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1, minWidth: 200 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 15, color: "#1A1A1A" }}>{p.name}</span>
+<span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 15, color: "#1A1A1A" }}>{p.name}</span>
 <Tag color={color} label={label} />
 </div>
-<div style={{ fontSize: 11, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>{p.sku}{p.asin ? ` · ${p.asin}` : ""}</div>
+<div style={{ fontSize: 11, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>{p.sku}{p.asin ? ` · ${p.asin}` : ""}</div>
 <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
 {(p.channels || ["Amazon"]).map(ch => (
-<span key={ch} style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1.5, padding: "2px 8px", background: ch === "Amazon" ? "#8F867614" : ch === "Shopify" ? "#5a7a5a14" : "#7a7a9a14", color: ch === "Amazon" ? "#8F8676" : ch === "Shopify" ? "#5a7a5a" : "#7a7a9a", border: `1px solid ${ch === "Amazon" ? "#8F867630" : ch === "Shopify" ? "#5a7a5a30" : "#7a7a9a30"}` }}>
+<span key={ch} style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1.5, padding: "2px 8px", background: ch === "Amazon" ? "#8F867614" : ch === "Shopify" ? "#5a7a5a14" : "#7a7a9a14", color: ch === "Amazon" ? "#8F8676" : ch === "Shopify" ? "#5a7a5a" : "#7a7a9a", border: `1px solid ${ch === "Amazon" ? "#8F867630" : ch === "Shopify" ? "#5a7a5a30" : "#7a7a9a30"}` }}>
 {ch.toUpperCase()}
 </span>
 ))}
 </div>
 {p.notes && <div style={{ fontSize: 12, color: "#71716C", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
-{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
+{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
 {(() => {
 const sv = shopify && shopify.variantDetail && shopify.variantDetail[p.id] && shopify.variantDetail[p.id].length > 0 ? shopify.variantDetail[p.id] : null;
 const ak = amazon && amazon.skuDetail && amazon.skuDetail[p.id] && amazon.skuDetail[p.id].length > 0 ? amazon.skuDetail[p.id] : null;
@@ -535,19 +535,19 @@ if (!sv && !ak) return null;
 const count = (sv ? sv.length : 0) + (ak ? ak.length : 0);
 return (
 <div style={{ marginBottom: 8 }}>
-<div onClick={() => setOpenVariants(openVariants === p.id ? null : p.id)} style={{ cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", display: "inline-block" }}>
+<div onClick={() => setOpenVariants(openVariants === p.id ? null : p.id)} style={{ cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", display: "inline-block" }}>
 {openVariants === p.id ? "▾" : "▸"} {count} LIVE DETAIL{count === 1 ? "" : "S"}
 </div>
 {openVariants === p.id && (
 <div style={{ marginTop: 6, borderLeft: "2px solid #5a7a5a40", paddingLeft: 10 }}>
 {sv && sv.map((v, i) => (
-<div key={"s" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#71716C", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
+<div key={"s" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#71716C", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
 <span>SHOPIFY · {v.name}</span>
 <span>{v.qty} in stock{v.sold ? ` · ${v.sold} sold/30d` : ""}{v.ugc ? ` · ${v.ugc} ugc` : ""}</span>
 </div>
 ))}
 {ak && ak.map((v, i) => (
-<div key={"a" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#71716C", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
+<div key={"a" + i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#71716C", padding: "2px 0", borderBottom: "1px solid #00000008" }}>
 <span>FBA · {v.sku}</span>
 <span>{v.fba} in FBA{v.inbound ? ` · ${v.inbound} inbound` : ""}{v.sold ? ` · ${v.sold} sold/30d` : ""}</span>
 </div>
@@ -561,7 +561,7 @@ return (
 <div style={{ flex: 1, height: 4, background: "#F0F0EE", borderRadius: 1 }}>
 <div style={{ width: `${Math.min((weeks / 26) * 100, 100)}%`, height: "100%", background: color, borderRadius: 1 }} />
 </div>
-<span style={{ fontSize: 12, color, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", minWidth: 40 }}>{weeks === 0 ? "—" : weeks > 99 ? "99+w" : `${weeks}w`}</span>
+<span style={{ fontSize: 12, color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", minWidth: 40 }}>{weeks === 0 ? "—" : weeks > 99 ? "99+w" : `${weeks}w`}</span>
 </div>
 </div>
 <div>
@@ -570,29 +570,29 @@ return (
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Product Name</div>
 <input value={draft.name || ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 <div style={{ display: "flex", gap: 8 }}>
 {[["available", "On Hand"], ["inbound", "Inbound to FBA"], ["unitsSold30", "Sold last 30d"], ["minStock", "Reorder at"]].map(([f, l]) => (
 <div key={f}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: 56, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 6px", color: "#1A1A1A", fontSize: 13, textAlign: "center", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: 56, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 6px", color: "#1A1A1A", fontSize: 13, textAlign: "center", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 ))}
 </div>
 <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} rows={2}
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "6px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", resize: "none" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "6px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", resize: "none" }} />
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Reorder Link (supplier / Amazon URL)</div>
 <input value={draft.reorderLink || ""} onChange={e => setDraft(d => ({ ...d, reorderLink: e.target.value }))} placeholder="https://..."
-style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#1A1A1A", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#1A1A1A", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 <div style={{ marginBottom: 4 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>Sold On</div>
+<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>Sold On</div>
 <div style={{ display: "flex", gap: 8 }}>
 {["Amazon", "Shopify", "B2B"].map(ch => (
-<div key={ch} onClick={() => toggleChannel(ch)} style={{ cursor: "pointer", padding: "4px 12px", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, border: `1px solid ${draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F8676" : "#5a7a5a") : "#E0E0DD"}`, color: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F8676" : "#5a7a5a") : "#9A9A95", background: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F867614" : "#5a7a5a14") : "transparent" }}>
+<div key={ch} onClick={() => toggleChannel(ch)} style={{ cursor: "pointer", padding: "4px 12px", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, border: `1px solid ${draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F8676" : "#5a7a5a") : "#E0E0DD"}`, color: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F8676" : "#5a7a5a") : "#9A9A95", background: draft.channels && draft.channels.includes(ch) ? (ch === "Amazon" ? "#8F867614" : "#5a7a5a14") : "transparent" }}>
 {ch}
 </div>
 ))}
@@ -600,7 +600,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: 
 </div>
 <div onClick={() => setDraft(d => ({ ...d, isSample: !d.isSample }))} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
 <span style={{ width: 11, height: 11, border: "1px solid #D6D6D2", background: draft.isSample ? "#8F8676" : "transparent", display: "inline-block" }} />
-<span style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, color: "#71716C" }}>SAMPLE / TESTER — concealed under its parent product</span>
+<span style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#71716C" }}>SAMPLE / TESTER — concealed under its parent product</span>
 </div>
 <div style={{ display: "flex", gap: 6 }}>
 <button onClick={() => saveEdit(p.id)} style={{ flex: 1, background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
@@ -611,7 +611,7 @@ style={{ width: "100%", boxSizing: "border-box", background: "#F0F0EE", border: 
 ) : (
 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{[...(amazonInfo(p, amazon) ? [["In FBA", amazonInfo(p, amazon).fba], ["Inbound to FBA", amazonInfo(p, amazon).inbound]] : [["On Hand", p.available], ["Inbound to FBA", p.inbound]]), ["Sold 30d", effectiveSold(p, shopify, amazon)], ["Reorder at", p.minStock || 0], ...(shopify && shopify.items && shopify.items[p.id] !== undefined ? [["Shopify", shopify.items[p.id]]] : []), ...(shopify && shopify.ugc && shopify.ugc[p.id] ? [["UGC/Mktg", shopify.ugc[p.id]]] : [])].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{v}</div>
+<div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
 </div>
 ))}
@@ -644,7 +644,7 @@ return (
 { label: "Overall TACOS", value: `${overallTacos}%`, color: overallTacos > 30 ? "#9b5e5e" : "#5a7a5a" },
 ].map(s => (
 <Card key={s.label} style={{ flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
-<div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{s.value}</div>
+<div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s.value}</div>
 <div style={{ fontSize: 10, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>{s.label}</div>
 </Card>
 ))}
@@ -657,7 +657,7 @@ return (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 13, color: "#1A1A1A" }}>{c.name}</span>
+<span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 13, color: "#1A1A1A" }}>{c.name}</span>
 <Tag color={color} label={label} />
 </div>
 <div style={{ fontSize: 12, color: "#71716C", fontStyle: "italic" }}>{c.recommendation}</div>
@@ -665,7 +665,7 @@ return (
 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
 {[["Budget", `$${c.budget}/d`], ["Spend 7d", `$${c.spend7d}`], ["Sales 7d", `$${c.sales7d}`], ["ROAS", c.roas || "—"]].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{v}</div>
+<div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 0.5, textTransform: "uppercase" }}>{l}</div>
 </div>
 ))}
@@ -676,7 +676,7 @@ return (
 })}
 </div>
 <Card style={{ marginTop: 16, borderLeft: "3px solid #8b8bff" }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 8 }}>IMMEDIATE ACTION</div>
+<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 8 }}>IMMEDIATE ACTION</div>
 <div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 Pause "Broad Match Expansion" today — $62.97 spent this week with zero purchases. Reallocate that $5/day to H10 High Search Volume (ROAS 2.50).
 </div>
@@ -718,14 +718,14 @@ return (
 <div>
 <SectionTitle>Profit Matrix · For Accountant Review</SectionTitle>
 <Card style={{ borderLeft: "3px solid #f5a623", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#8F8676", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>ACCOUNTANT NOTE</div><div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
+<div style={{ fontSize: 12, color: "#8F8676", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>ACCOUNTANT NOTE</div><div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 Amazon fees (15% referral + 3% EV commission) and FBA fulfillment/storage are pre-filled based on Amazon's fee schedule. Please fill in: <strong style={{ color: "#1A1A1A" }}>COGS per unit, per-unit shipping cost, and estimated ad spend per unit</strong> for each product. Scrub products need Spain freight cost divided by units per shipment.
 </div>
 </Card>
 
 {[{ label: "Current Products", data: current }, { label: "Upcoming Products", data: upcoming }].map(section => (
 <div key={section.label} style={{ marginBottom: 24 }}>
-<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 12 }}>{section.label}</div>
+<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 12 }}>{section.label}</div>
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 {section.data.map(r => {
 const calc = calcProfit(r);
@@ -734,7 +734,7 @@ return (
 <Card key={r.id} style={{ borderLeft: `3px solid ${calc ? (parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#8F8676") : "#E0E0DD"}` }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1, minWidth: 160 }}>
-<div style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>{r.name.replace(" (UPCOMING)", "")}</div>
+<div style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>{r.name.replace(" (UPCOMING)", "")}</div>
 {r.accountantNote && <div style={{ fontSize: 11, color: "#8F8676", fontStyle: "italic", marginBottom: 6 }}>{r.accountantNote}</div>}
 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
 {[
@@ -745,18 +745,18 @@ return (
 ["Ad Spend", fmt(r.adSpend)],
 ].map(([l, v]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: v === "—" ? "#E0E0DD" : "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{v}</div>
+<div style={{ fontSize: 13, color: v === "—" ? "#E0E0DD" : "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
 </div>
 ))}
 {calc && (
 <>
 <div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: parseFloat(calc.profit) > 0 ? "#5a7a5a" : "#9b5e5e", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontWeight: 700 }}>{fmt(calc.profit)}</div>
+<div style={{ fontSize: 13, color: parseFloat(calc.profit) > 0 ? "#5a7a5a" : "#9b5e5e", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontWeight: 700 }}>{fmt(calc.profit)}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>Est. Profit</div>
 </div>
 <div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 13, color: parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#8F8676", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontWeight: 700 }}>{calc.margin}%</div>
+<div style={{ fontSize: 13, color: parseFloat(calc.margin) > 20 ? "#5a7a5a" : "#8F8676", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontWeight: 700 }}>{calc.margin}%</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>Margin</div>
 </div></>
 )}
@@ -774,7 +774,7 @@ return (
 ))}
 </div>
 <input value={r.accountantNote} onChange={e => update(r.id, "accountantNote", e.target.value)} placeholder="Notes..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 <button onClick={() => setEditing(null)} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, padding: "6px 0", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Done</button>
 </div>
 ) : (
@@ -809,14 +809,14 @@ return (
 <div>
 <SectionTitle>Price Per Oz · Positioning Analysis</SectionTitle>
 <Card style={{ borderLeft: "3px solid #8b8bff", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>WHY THIS MATTERS</div>
+<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>WHY THIS MATTERS</div>
 <div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 Your Sugar Scrub 8oz Tin at $38 = <strong style={{ color: "#1A1A1A" }}>$4.75/oz</strong> — premium positioning vs competitors at $1.81–$2.37/oz. This is defensible if your branding and ingredients story is strong. The 32oz pouch at $89.60 = $2.80/oz is more competitive.
 </div>
 </Card>
 {categories.map(cat => (
 <div key={cat} style={{ marginBottom: 20 }}>
-<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 10 }}>{cat}</div>
+<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 10 }}>{cat}</div>
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 {rows.filter(r => r.category === cat).sort((a, b) => (pricePerOz(b) || 0) - (pricePerOz(a) || 0)).map(r => {
 const ppoz = pricePerOz(r);
@@ -824,22 +824,22 @@ const color = r.yours ? "#71716C" : "#9A9A95";
 return (
 <div key={r.id} style={{ background: "#F4F4F3", border: `1px solid ${r.yours ? "#E0E0DD" : "#F0F0EE"}`, borderLeft: `3px solid ${r.yours ? "#71716C" : "#E8E8E6"}`, borderRadius: 1, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
 <div>
-<div style={{ fontSize: 13, color: r.yours ? "#1A1A1A" : "#8A8A85", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
-{r.name} {r.yours && <span style={{ fontSize: 10, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>YOU</span>}
+<div style={{ fontSize: 13, color: r.yours ? "#1A1A1A" : "#8A8A85", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+{r.name} {r.yours && <span style={{ fontSize: 10, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>YOU</span>}
 </div>
-<div style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginTop: 2 }}>{r.asin}</div>
+<div style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginTop: 2 }}>{r.asin}</div>
 </div>
 <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
 <div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{fmt(r.price)}</div>
+<div style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{fmt(r.price)}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>Price</div>
 </div>
 <div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#5a5550", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{r.oz ? `${r.oz}oz` : "—"}</div>
+<div style={{ fontSize: 14, color: "#5a5550", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{r.oz ? `${r.oz}oz` : "—"}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>Size</div>
 </div>
 <div style={{ textAlign: "center", minWidth: 60 }}>
-<div style={{ fontSize: 16, fontWeight: 700, color: ppoz ? color : "#E0E0DD", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{ppoz ? `$${ppoz}` : "—"}</div>
+<div style={{ fontSize: 16, fontWeight: 700, color: ppoz ? color : "#E0E0DD", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{ppoz ? `$${ppoz}` : "—"}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>/oz</div>
 </div>
 </div>
@@ -881,7 +881,7 @@ return (
 <div>
 <SectionTitle>Weekly Numbers · Enter Each Monday</SectionTitle>
 <Card style={{ borderLeft: "3px solid #A39B8B", marginBottom: 20 }}>
-<div style={{ fontSize: 12, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>HOW TO USE</div>
+<div style={{ fontSize: 12, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>HOW TO USE</div>
 <div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 Every Monday, pull your weekly numbers from Amazon Seller Central → Reports → Business Reports. Takes 5 minutes. Paste in below to track trends over time.
 </div>
@@ -889,31 +889,31 @@ Every Monday, pull your weekly numbers from Amazon Seller Central → Reports �
 
 {adding ? (
 <Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}>
-<div style={{ fontSize: 12, color: "#5a7a5a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 12 }}>NEW WEEK ENTRY</div>
+<div style={{ fontSize: 12, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 12 }}>NEW WEEK ENTRY</div>
 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
 {[["date","Week of (date)","text"], ["units","Units Sold","number"], ["revenue","Total Revenue $","number"], ["adSpend","Ad Spend $","number"], ["adSales","Ad Sales $","number"], ["organicSales","Organic Sales $","number"], ["sessions","Sessions","number"]].map(([f, l, t]) => (
 <div key={f}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
 <input type={t} value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: t === "text" ? 110 : 80, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: t === "text" ? 110 : 80, background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 ))}
 </div>
 <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes (promotions, stockouts, anything unusual)..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "6px 10px", color: "#71716C", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 10 }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", borderRadius: 1, padding: "6px 10px", color: "#71716C", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 10 }} />
 <div style={{ display: "flex", gap: 8 }}>
 <button onClick={saveWeek} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, padding: "7px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save Week</button>
 <button onClick={() => setAdding(false)} style={{ background: "#F0F0EE", color: "#8A8A85", border: "1px solid #D6D6D2", borderRadius: 1, padding: "7px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
 </div>
 </Card>) : (
-<button onClick={() => setAdding(true)} style={{ background: "#F0F0EE", border: "1px dashed #D6D6D2", color: "#8A8A85", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
+<button onClick={() => setAdding(true)} style={{ background: "#F0F0EE", border: "1px dashed #D6D6D2", color: "#8A8A85", borderRadius: 1, padding: "10px 20px", cursor: "pointer", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, marginBottom: 16, width: "100%" }}>
 + ADD THIS WEEK'S NUMBERS
 </button>
 )}
 
 {weeks.length === 0 && !adding && (
 <Card style={{ textAlign: "center", padding: "32px 20px" }}>
-<div style={{ fontSize: 13, color: "#E0E0DD", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>No weekly data yet. Add your first entry above.</div></Card>
+<div style={{ fontSize: 13, color: "#E0E0DD", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>No weekly data yet. Add your first entry above.</div></Card>
 )}
 
 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -927,7 +927,7 @@ return (
 <Card key={w.id} style={{ borderLeft: `3px solid ${i === 0 ? "#71716C" : "#E8E8E6"}` }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
 <div>
-<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>Week of {w.date}</div>
+<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>Week of {w.date}</div>
 {w.notes && <div style={{ fontSize: 11, color: "#71716C", fontStyle: "italic" }}>{w.notes}</div>}
 </div>
 <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -939,7 +939,7 @@ return (
 ["Sessions", w.sessions || "—", "#7a7a9a"],
 ].map(([l, v, c]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 15, fontWeight: 700, color: c, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{v}</div>
+<div style={{ fontSize: 15, fontWeight: 700, color: c, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{v}</div>
 {l === "Revenue" && revChange && <div style={{ fontSize: 9, color: parseFloat(revChange) > 0 ? "#5a7a5a" : "#9b5e5e" }}>{revChange > 0 ? "+" : ""}{revChange}% vs prior</div>}
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
 </div>
@@ -970,14 +970,14 @@ return (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
 <SectionTitle>Bi-Weekly Review Checklist</SectionTitle>
 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-{lastRun && <span style={{ fontSize: 11, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Last: {lastRun}</span>}
+{lastRun && <span style={{ fontSize: 11, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Last: {lastRun}</span>}
 <button onClick={reset} style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", color: "#8A8A85", borderRadius: 1, padding: "5px 12px", cursor: "pointer", fontSize: 11 }}>Reset</button>
 </div>
 </div>
-{allDone && <Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}><div style={{ color: "#5a7a5a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 13 }}>All done! Come back in 2 weeks.</div></Card>}
+{allDone && <Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}><div style={{ color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 13 }}>All done! Come back in 2 weeks.</div></Card>}
 {categories.map(cat => (
 <div key={cat} style={{ marginBottom: 20 }}>
-<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 10, paddingLeft: 4 }}>{cat}</div>
+<div style={{ fontSize: 11, color: "#8A8A85", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 10, paddingLeft: 4 }}>{cat}</div>
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 {CHECKLIST_ITEMS.filter(i => i.category === cat).map(item => (
 <div key={item.id} onClick={() => toggle(item.id)} style={{ display: "flex", gap: 12, alignItems: "flex-start", background: checked[item.id] ? "#F4F4F3" : "#F4F4F3", border: `1px solid ${checked[item.id] ? "#30d15840" : "#E8E8E6"}`, borderRadius: 1, padding: "12px 14px", cursor: "pointer" }}>
@@ -985,7 +985,7 @@ return (
 {checked[item.id] && <span style={{ color: "#FFFFFF", fontSize: 11, fontWeight: 400 }}>✓</span>}
 </div>
 <div>
-<div style={{ fontSize: 13, color: checked[item.id] ? "#9A9A95" : "#1A1A1A", textDecoration: checked[item.id] ? "line-through" : "none", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{item.task}</div>
+<div style={{ fontSize: 13, color: checked[item.id] ? "#9A9A95" : "#1A1A1A", textDecoration: checked[item.id] ? "line-through" : "none", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{item.task}</div>
 <div style={{ fontSize: 11, color: "#9A9A95", marginTop: 3 }}>{item.detail}</div>
 </div>
 </div>
@@ -1064,16 +1064,16 @@ return (
 <div>
 <SectionTitle>Raw Materials · Reorder Status</SectionTitle>
 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: past.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>UNDO</button>
-<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: future.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>REDO</button>
-<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
+<button onClick={undo} disabled={!past.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: past.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: past.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>UNDO</button>
+<button onClick={redo} disabled={!future.length} style={{ background: "transparent", border: "1px solid #E0E0DD", color: future.length ? "#71716C" : "#E0E0DD", borderRadius: 1, padding: "4px 14px", cursor: future.length ? "pointer" : "default", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>REDO</button>
+<span style={{ fontSize: 10, color: "#b0a89a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{past.length ? `${past.length} change${past.length === 1 ? "" : "s"} this session` : "no changes yet"}</span>
 </div>
 
 <Card style={{ marginBottom: 20, borderLeft: "2px solid #8F8676" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
 <div>
-<div style={{ fontSize: 9, letterSpacing: 3, color: "#9A9A95", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>Weekly Materials Budget</div>
-<div style={{ fontSize: 11, color: "#8A8A85", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+<div style={{ fontSize: 9, letterSpacing: 3, color: "#9A9A95", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>Weekly Materials Budget</div>
+<div style={{ fontSize: 11, color: "#8A8A85", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 Enter estimated cost per item to track against your $250 weekly budget
 </div>
 </div>
@@ -1083,7 +1083,7 @@ Enter estimated cost per item to track against your $250 weekly budget
 { label: "Remaining", value: `$${remaining.toFixed(2)}`, color: remaining < 0 ? "#9b5e5e" : "#5a7a5a" },
 ].map(s => (
 <div key={s.label} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 18, fontWeight: 400, color: s.color, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{s.value}</div>
+<div style={{ fontSize: 18, fontWeight: 400, color: s.color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#b0a89a", letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
@@ -1094,7 +1094,7 @@ Enter estimated cost per item to track against your $250 weekly budget
 </div>
 </Card>
 
-<div style={{ fontSize: 11, color: "#b0a89a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 16, letterSpacing: 0.5 }}>
+<div style={{ fontSize: 11, color: "#b0a89a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 16, letterSpacing: 0.5 }}>
 Click <strong style={{ color: "#8A8A85" }}>Edit</strong> on any item to add a purchase link and estimated cost. Tap status badge to cycle: OK → REORDER → OUT.
 </div>
 
@@ -1109,52 +1109,52 @@ return (
 <div key={m.id} style={{ background: "#f0ede8", border: "1px solid #ddd8d0", borderLeft: `2px solid ${color}`, padding: "14px 16px" }}>
 {isEditing ? (
 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>{m.name}</div>
+<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>{m.name}</div>
 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
 <div style={{ flex: 2, minWidth: 200 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>Purchase URL</div>
+<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>Purchase URL</div>
 <input value={draft.buyLink} onChange={e => setDraft(d => ({ ...d, buyLink: e.target.value }))} placeholder="https://amazon.com/dp/..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", outline: "none" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", outline: "none" }} />
 </div>
 <div style={{ minWidth: 100 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>Est. Cost ($)</div>
+<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>Est. Cost ($)</div>
 <input value={draft.estCost} onChange={e => setDraft(d => ({ ...d, estCost: e.target.value }))} placeholder="0.00" type="number"
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", outline: "none" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", outline: "none" }} />
 </div>
 <div style={{ flex: 2, minWidth: 160 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>Notes</div>
+<div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>Notes</div>
 <input value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} placeholder="Supplier name, qty needed..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", outline: "none" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padding: "6px 10px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", outline: "none" }} />
 </div>
 </div>
 <div style={{ display: "flex", gap: 8 }}>
-<button onClick={() => saveEdit(m.id)} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", padding: "6px 18px", cursor: "pointer", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>SAVE</button>
-<button onClick={() => setEditId(null)} style={{ background: "transparent", color: "#9A9A95", border: "1px solid #E0E0DD", padding: "6px 14px", cursor: "pointer", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>CANCEL</button>
+<button onClick={() => saveEdit(m.id)} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", padding: "6px 18px", cursor: "pointer", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>SAVE</button>
+<button onClick={() => setEditId(null)} style={{ background: "transparent", color: "#9A9A95", border: "1px solid #E0E0DD", padding: "6px 14px", cursor: "pointer", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>CANCEL</button>
 </div>
 </div>
 ) : (
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3, flexWrap: "wrap" }}>
 {hasLink ? (
-<a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", textDecoration: "underline", textDecorationColor: "#E0E0DD", textUnderlineOffset: 3 }}>{m.name}</a>
+<a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", textDecoration: "underline", textDecorationColor: "#E0E0DD", textUnderlineOffset: 3 }}>{m.name}</a>
 ) : (
-<span style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{m.name}</span>
+<span style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{m.name}</span>
 )}
-{hasLink && <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "2px 8px" }}>↗ OPEN LINK</a>}
+{hasLink && <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "2px 8px" }}>↗ OPEN LINK</a>}
 </div>
 {m.note && <div style={{ fontSize: 11, color: "#8A8A85", fontStyle: "italic" }}>{m.note}</div>}
 </div>
 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
 {m.estCost && (
 <div style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, color: "#8F8676", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>${parseFloat(m.estCost).toFixed(2)}</div>
+<div style={{ fontSize: 14, color: "#8F8676", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>${parseFloat(m.estCost).toFixed(2)}</div>
 <div style={{ fontSize: 9, color: "#b0a89a", textTransform: "uppercase", letterSpacing: 1 }}>Est.</div>
 </div>
 )}
 <div onClick={() => toggleStatus(m.id)} style={{ cursor: "pointer" }}>
 <Tag color={color} label={label} />
 </div>
-<button onClick={() => startEdit(m)} style={{ background: "transparent", color: "#9A9A95", border: "1px solid #E0E0DD", padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>EDIT</button>
+<button onClick={() => startEdit(m)} style={{ background: "transparent", color: "#9A9A95", border: "1px solid #E0E0DD", padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>EDIT</button>
 </div>
 </div>
 )}
@@ -1170,7 +1170,7 @@ recordHistory();
 persistMaterials([...materials, newMaterial]);
 setEditId(newId);
 setDraft({ buyLink: "", estCost: "", note: "" });
-}} style={{ marginTop: 14, width: "100%", background: "transparent", border: "1px dashed #E0E0DD", color: "#9A9A95", padding: "10px 0", cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2 }}>
+}} style={{ marginTop: 14, width: "100%", background: "transparent", border: "1px dashed #E0E0DD", color: "#9A9A95", padding: "10px 0", cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2 }}>
 + ADD MATERIAL
 </button>
 </div>
@@ -1199,12 +1199,12 @@ return (
 <Card key={i} style={{ borderLeft: `3px solid ${i === 0 ? "#8F8676" : "#E0E0DD"}` }}>
 <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
 <div style={{ minWidth: 80 }}>
-<div style={{ fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: i === 0 ? "#8F8676" : "#8A8A85", letterSpacing: 1 }}>{r.month}</div>
-{i === 0 && <div style={{ fontSize: 9, color: "#8F8676", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginTop: 2 }}>NOW</div>}
+<div style={{ fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: i === 0 ? "#8F8676" : "#8A8A85", letterSpacing: 1 }}>{r.month}</div>
+{i === 0 && <div style={{ fontSize: 9, color: "#8F8676", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginTop: 2 }}>NOW</div>}
 </div>
 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
 {r.items.map((item, j) => (
-<div key={j} style={{ fontSize: 13, color: i === 0 ? "#1A1A1A" : "#8A8A85", paddingLeft: 12, borderLeft: `1px solid ${i === 0 ? "#E0E0DD" : "#F0F0EE"}`, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{item}</div>
+<div key={j} style={{ fontSize: 13, color: i === 0 ? "#1A1A1A" : "#8A8A85", paddingLeft: 12, borderLeft: `1px solid ${i === 0 ? "#E0E0DD" : "#F0F0EE"}`, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{item}</div>
 ))}
 </div>
 </div>
@@ -1214,19 +1214,19 @@ return (
 
 <div style={{ height: 30 }} />
 <SectionTitle>Chief Platform Rollout</SectionTitle>
-<div style={{ fontSize: 11, fontStyle: "italic", color: "rgba(111,102,87,0.7)", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginTop: -14, marginBottom: 14 }}>
+<div style={{ fontSize: 11, fontStyle: "italic", color: "rgba(111,102,87,0.7)", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginTop: -14, marginBottom: 14 }}>
 One platform, industry modules — this app is the internal master; each version below is a customer-facing slice. “Know exactly what to do next.”
 </div>
 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 {CHIEF_ROLLOUT.map((v, i) => (
 <Card key={v.version} style={{ borderLeft: `3px solid ${v.status === "building here" ? "#8F8676" : "#E0E0DD"}` }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
-<div style={{ fontSize: 16, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#1A1A1A" }}>{v.version}</div>
-<div style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, textTransform: "uppercase", color: v.status === "building here" ? "#8F8676" : "#8A8A85" }}>{v.status}</div>
+<div style={{ fontSize: 16, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#1A1A1A" }}>{v.version}</div>
+<div style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, textTransform: "uppercase", color: v.status === "building here" ? "#8F8676" : "#8A8A85" }}>{v.status}</div>
 </div>
-<div style={{ fontSize: 12, fontStyle: "italic", color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginTop: 3 }}>{v.promise}</div>
-<div style={{ fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#8A8A85", marginTop: 6 }}>{v.who} · {v.price}</div>
-<div style={{ fontSize: 12.5, color: "#2A2A28", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", lineHeight: 1.6, marginTop: 6 }}>{v.includes}</div>
+<div style={{ fontSize: 12, fontStyle: "italic", color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginTop: 3 }}>{v.promise}</div>
+<div style={{ fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#8A8A85", marginTop: 6 }}>{v.who} · {v.price}</div>
+<div style={{ fontSize: 12.5, color: "#2A2A28", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", lineHeight: 1.6, marginTop: 6 }}>{v.includes}</div>
 </Card>
 ))}
 </div>
@@ -1303,7 +1303,7 @@ function GlobalSearch({ nav, dbState, onGo }) {
   const [hi, setHi] = useState(0);
   const boxRef = useRef(null);
   const inputRef = useRef(null);
-  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const sansF = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   const allowed = useMemo(() => new Set(nav.map((n) => n.id)), [nav]);
 
   // Pages index: tabs, sub-tabs, and the pill sections inside Content/Growth.
@@ -1449,7 +1449,7 @@ function SegTabs({ id, segments }) {
     return () => window.removeEventListener("lh-seg", onSeg);
   }, [id, segments]);
   const active = segments.find((s) => s.id === seg) || segments[0];
-  const sansF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const sansF = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
@@ -1470,8 +1470,8 @@ function EmbeddedPage({ src, title, openLabel = "Open full window" }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 12, color: "#71716C" }}>{title}</div>
-        <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 3 }}>{openLabel} ↗</a>
+        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12, color: "#71716C" }}>{title}</div>
+        <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 3 }}>{openLabel} ↗</a>
       </div>
       <iframe title={title} src={src} style={{ width: "100%", height: "calc(100vh - 250px)", minHeight: 560, border: "1px solid #E0E0DD", borderRadius: 1, background: "#FFFFFF" }} />
     </div>
@@ -1491,7 +1491,7 @@ const POPPY_PHASES = [
 ];
 
 function PoppyStudio() {
-const serifF = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serifF = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 return (
 <div>
 <SectionTitle>Poppy Creative Studio</SectionTitle>
@@ -1502,7 +1502,7 @@ Competitor and trend intelligence, transformed into original brand-aligned creat
 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
 {POPPY_PHASES.map((ph, i) => (
 <div key={ph.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-<span style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", border: "1px solid #E0E0DD", borderRadius: 1, padding: "6px 12px", background: "#F4F4F3" }}>{ph.title}</span>
+<span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", border: "1px solid #E0E0DD", borderRadius: 1, padding: "6px 12px", background: "#F4F4F3" }}>{ph.title}</span>
 {i < POPPY_PHASES.length - 1 && <span style={{ color: "#8A8A85" }}>→</span>}
 </div>
 ))}
@@ -1602,7 +1602,7 @@ return (
 <div style={{ fontSize: 12, color: "#9A9A95", marginBottom: 10 }}>Suggested questions:</div>
 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
 {suggestions.map(s => (
-<button key={s} onClick={() => ask(s)} style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", color: "#71716C", borderRadius: 1, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{s}</button>
+<button key={s} onClick={() => ask(s)} style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", color: "#71716C", borderRadius: 1, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s}</button>
 ))}
 </div>
 </div>
@@ -1610,16 +1610,16 @@ return (
 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, maxHeight: 420, overflowY: "auto" }}>
 {history.map((m, i) => (
 <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-<div style={{ maxWidth: "82%", background: m.role === "user" ? "#E8E8E6" : "#F4F4F3", border: `1px solid #E0E0DD`, borderRadius: 1, padding: "10px 14px", fontSize: 13, color: m.role === "user" ? "#1A1A1A" : "#3a4a3a", lineHeight: 1.65, fontFamily: m.role === "user" ? "'Jost', 'Helvetica Neue', Arial, sans-serif" : "'Jost', 'Helvetica Neue', Arial, sans-serif", whiteSpace: "pre-wrap" }}>
+<div style={{ maxWidth: "82%", background: m.role === "user" ? "#E8E8E6" : "#F4F4F3", border: `1px solid #E0E0DD`, borderRadius: 1, padding: "10px 14px", fontSize: 13, color: m.role === "user" ? "#1A1A1A" : "#3a4a3a", lineHeight: 1.65, fontFamily: m.role === "user" ? "'Helvetica Neue', Helvetica, Arial, sans-serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif", whiteSpace: "pre-wrap" }}>
 {m.content}
 </div>
 </div>
 ))}
-{loading && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ background: "#F4F4F3", border: "1px solid #2a4a2a", borderRadius: 1, padding: "10px 14px", fontSize: 13, color: "#7a9a7a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Thinking...</div></div>}
+{loading && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ background: "#F4F4F3", border: "1px solid #2a4a2a", borderRadius: 1, padding: "10px 14px", fontSize: 13, color: "#7a9a7a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Thinking...</div></div>}
 </div>
 <div style={{ display: "flex", gap: 10 }}>
 <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && ask(q)} placeholder="Ask anything about your business..."
-style={{ flex: 1, background: "#F4F4F3", border: "1px solid #D6D6D2", borderRadius: 1, padding: "10px 14px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", outline: "none" }} />
+style={{ flex: 1, background: "#F4F4F3", border: "1px solid #D6D6D2", borderRadius: 1, padding: "10px 14px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", outline: "none" }} />
 <button onClick={() => ask(q)} disabled={loading} style={{ background: loading ? "#E8E8E6" : "#71716C", color: loading ? "#9A9A95" : "#0a0a06", border: "none", borderRadius: 1, padding: "10px 20px", cursor: loading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700 }}>Ask</button>
 </div>
 </div>
@@ -1751,7 +1751,7 @@ return (
 { label: "Pause Now", value: pauseCount, color: pauseCount > 0 ? "#9b5e5e" : "#5a7a5a" },
 ].map(s => (
 <Card key={s.label} style={{ flex: 1, minWidth: 100, textAlign: "center", padding: "12px 10px" }}>
-<div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{s.value}</div>
+<div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase", marginTop: 3 }}>{s.label}</div>
 </Card>
 ))}
@@ -1760,11 +1760,11 @@ return (
 {/* Filter */}
 <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
 {["all", "keep", "pause", "test", "watch"].map(f => (
-<button key={f} onClick={() => setFilter(f)} style={{ background: filter === f ? "#1A1A1A" : "#F0F0EE", color: filter === f ? "#FFFFFF" : "#8A8A85", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1, textTransform: "uppercase" }}>
+<button key={f} onClick={() => setFilter(f)} style={{ background: filter === f ? "#1A1A1A" : "#F0F0EE", color: filter === f ? "#FFFFFF" : "#8A8A85", border: "1px solid #D6D6D2", borderRadius: 1, padding: "4px 12px", cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, textTransform: "uppercase" }}>
 {f}
 </button>
 ))}
-<button onClick={() => { setAdding(true); setDraft(BLANK); }} style={{ marginLeft: "auto", background: "#F0F0EE", border: "1px dashed #D6D6D2", color: "#8A8A85", borderRadius: 1, padding: "4px 16px", cursor: "pointer", fontSize: 10, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 1 }}>
+<button onClick={() => { setAdding(true); setDraft(BLANK); }} style={{ marginLeft: "auto", background: "#F0F0EE", border: "1px dashed #D6D6D2", color: "#8A8A85", borderRadius: 1, padding: "4px 16px", cursor: "pointer", fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1 }}>
 + ADD KEYWORD
 </button>
 </div>
@@ -1772,31 +1772,31 @@ return (
 {/* Add form */}
 {adding && (
 <Card style={{ borderLeft: "3px solid #30d158", marginBottom: 16 }}>
-<div style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 12 }}>NEW KEYWORD</div>
+<div style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 12 }}>NEW KEYWORD</div>
 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
 <div style={{ flex: 2, minWidth: 160 }}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Product</div>
 <select value={draft.product} onChange={e => setDraft(d => ({ ...d, product: e.target.value }))}
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {productNames.map(p => <option key={p}>{p}</option>)}
 </select>
 </div>
 <div style={{ flex: 3, minWidth: 180 }}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
 <input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))} placeholder="beeswax candle sand"
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
 <select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
-style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
 </select>
 </div>
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
 <select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
-style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
 </select>
 </div>
@@ -1806,12 +1806,12 @@ style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px",
 <div key={f}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
 <input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))} placeholder="0"
-style={{ width: 70, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", textAlign: "center" }} />
+style={{ width: 70, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", textAlign: "center" }} />
 </div>
 ))}
 </div>
 <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 10 }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 10 }} />
 <div style={{ display: "flex", gap: 8 }}>
 <button onClick={saveNew} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", padding: "6px 20px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Save</button>
 <button onClick={() => setAdding(false)} style={{ background: "#F0F0EE", color: "#8A8A85", border: "1px solid #D6D6D2", padding: "6px 16px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
@@ -1832,19 +1832,19 @@ return (
 <div style={{ flex: 3, minWidth: 180 }}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Keyword</div>
 <input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))}
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 </div>
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Match</div>
 <select value={draft.matchType} onChange={e => setDraft(d => ({ ...d, matchType: e.target.value }))}
-style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {["exact", "phrase", "broad"].map(m => <option key={m}>{m}</option>)}
 </select>
 </div>
 <div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Status</div>
 <select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
-style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {["keep", "pause", "test", "watch"].map(s => <option key={s}>{s}</option>)}
 </select>
 </div>
@@ -1852,12 +1852,12 @@ style={{ background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px",
 <div key={f}>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>{l}</div>
 <input value={draft[f]} onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-style={{ width: 60, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 6px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", textAlign: "center" }} />
+style={{ width: 60, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 6px", color: "#1A1A1A", fontSize: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", textAlign: "center" }} />
 </div>
 ))}
 </div>
 <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} placeholder="Notes..."
-style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
+style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "5px 8px", color: "#71716C", fontSize: 11, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
 <div style={{ display: "flex", gap: 8 }}>
 <button onClick={() => saveEdit(k.id)} style={{ background: "#1A1A1A", color: "#FFFFFF", border: "none", padding: "5px 18px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Save</button>
 <button onClick={() => setEditId(null)} style={{ background: "#F0F0EE", color: "#8A8A85", border: "1px solid #D6D6D2", padding: "5px 14px", cursor: "pointer", fontSize: 11 }}>Cancel</button>
@@ -1866,11 +1866,11 @@ style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padd
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
 <div style={{ flex: 1 }}>
 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-<span style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{k.keyword}</span>
-<span style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", padding: "2px 7px", background: MATCH_COLORS[k.matchType] + "22", color: MATCH_COLORS[k.matchType], border: `1px solid ${MATCH_COLORS[k.matchType]}44`, letterSpacing: 1 }}>{k.matchType.toUpperCase()}</span>
+<span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{k.keyword}</span>
+<span style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", padding: "2px 7px", background: MATCH_COLORS[k.matchType] + "22", color: MATCH_COLORS[k.matchType], border: `1px solid ${MATCH_COLORS[k.matchType]}44`, letterSpacing: 1 }}>{k.matchType.toUpperCase()}</span>
 <Tag color={color} label={label} />
 </div>
-<div style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 4 }}>{k.product}</div>
+<div style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 4 }}>{k.product}</div>
 {k.notes && <div style={{ fontSize: 11, color: "#71716C", fontStyle: "italic" }}>{k.notes}</div>}
 </div>
 <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>{[
@@ -1880,7 +1880,7 @@ style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padd
 ["ACOS", k.acos ? `${k.acos}%` : "—", k.acos ? (k.acos < 30 ? "#5a7a5a" : k.acos < 60 ? "#8F8676" : "#9b5e5e") : "#9A9A95"],
 ].map(([l, v, c]) => (
 <div key={l} style={{ textAlign: "center" }}>
-<div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{v}</div>
+<div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{v}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
 </div>
 ))}
@@ -1897,42 +1897,42 @@ style={{ width: "100%", background: "#F0F0EE", border: "1px solid #D6D6D2", padd
 <div style={{ borderTop: "1px solid #E8E8E6", paddingTop: 24 }}>
 <SectionTitle>AI Keyword Research · Generate New Keywords</SectionTitle>
 <Card style={{ borderLeft: "3px solid #8b8bff", marginBottom: 16 }}>
-<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 6 }}>HOW TO USE</div>
+<div style={{ fontSize: 12, color: "#7a7a9a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 6 }}>HOW TO USE</div>
 <div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 Select a product and click Generate — AI will suggest 12 high-intent keywords based on your product type and category. Click any keyword to add it to your tracker.
 </div>
 </Card>
 <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
-<input value={newProd} onChange={e => setNewProd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { addProduct(newProd); setNewProd(""); } }} placeholder="Add a new product (e.g. Lavender Body Oil)" style={{ flex: 1, minWidth: 200, background: "#fff", border: "1px solid #E0E0DD", padding: "8px 12px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }} />
-<button onClick={() => { addProduct(newProd); setNewProd(""); }} disabled={!newProd.trim()} style={{ background: newProd.trim() ? "#8F8676" : "#E8E8E6", color: newProd.trim() ? "#fff" : "#9A9A95", border: "none", padding: "8px 20px", cursor: newProd.trim() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>+ Add product</button>
+<input value={newProd} onChange={e => setNewProd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { addProduct(newProd); setNewProd(""); } }} placeholder="Add a new product (e.g. Lavender Body Oil)" style={{ flex: 1, minWidth: 200, background: "#fff", border: "1px solid #E0E0DD", padding: "8px 12px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }} />
+<button onClick={() => { addProduct(newProd); setNewProd(""); }} disabled={!newProd.trim()} style={{ background: newProd.trim() ? "#8F8676" : "#E8E8E6", color: newProd.trim() ? "#fff" : "#9A9A95", border: "none", padding: "8px 20px", cursor: newProd.trim() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>+ Add product</button>
 </div>
 <div style={{ fontSize: 11, color: "#71716C", marginBottom: 16, fontStyle: "italic" }}>Adds it to your catalog and the dropdown below — for body oil, lotion, or any new launch.</div>
 <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
 <select value={aiProduct} onChange={e => setAiProduct(e.target.value)}
-style={{ flex: 1, minWidth: 200, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "8px 12px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ flex: 1, minWidth: 200, background: "#F0F0EE", border: "1px solid #D6D6D2", padding: "8px 12px", color: "#1A1A1A", fontSize: 13, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 <option value="">Select a product...</option>
 {productNames.map(p => <option key={p}>{p}</option>)}
 </select>
 <button onClick={generateKeywords} disabled={!aiProduct || aiLoading}
-style={{ background: aiLoading || !aiProduct ? "#E8E8E6" : "#71716C", color: aiLoading || !aiProduct ? "#9A9A95" : "#0a0a06", border: "none", padding: "8px 24px", cursor: !aiProduct || aiLoading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+style={{ background: aiLoading || !aiProduct ? "#E8E8E6" : "#71716C", color: aiLoading || !aiProduct ? "#9A9A95" : "#0a0a06", border: "none", padding: "8px 24px", cursor: !aiProduct || aiLoading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 {aiLoading ? "Generating..." : "Generate Keywords"}
 </button>
 </div>
 {aiResults.length > 0 && (
 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, marginBottom: 4 }}>CLICK TO ADD TO TRACKER</div>
+<div style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, marginBottom: 4 }}>CLICK TO ADD TO TRACKER</div>
 {aiResults.map((kw, i) => (
 <div key={i} onClick={() => addAiKeyword(kw)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F4F4F3", border: "1px solid #E8E8E6", borderLeft: `3px solid ${MATCH_COLORS[kw.matchType] || "#71716C"}`, padding: "10px 14px", cursor: "pointer", gap: 12 }}
 onMouseEnter={e => e.currentTarget.style.background = "#F0F0EE"}
 onMouseLeave={e => e.currentTarget.style.background = "#F4F4F3"}>
 <div>
-<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 2 }}>{kw.keyword}</div>
+<div style={{ fontSize: 13, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 2 }}>{kw.keyword}</div>
 <div style={{ fontSize: 11, color: "#71716C", fontStyle: "italic" }}>{kw.notes}</div>
 </div>
 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-<span style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", padding: "2px 7px", background: MATCH_COLORS[kw.matchType] + "22", color: MATCH_COLORS[kw.matchType], border: `1px solid ${MATCH_COLORS[kw.matchType]}44`, letterSpacing: 1 }}>{kw.matchType?.toUpperCase()}</span>
-<span style={{ fontSize: 9, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", padding: "2px 7px", background: kw.intent === "high" ? "#5a7a5a22" : "#8F867622", color: kw.intent === "high" ? "#5a7a5a" : "#8F8676", border: `1px solid ${kw.intent === "high" ? "#5a7a5a44" : "#8F867644"}`, letterSpacing: 1 }}>{kw.intent?.toUpperCase()} INTENT</span>
-<span style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>+ ADD</span>
+<span style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", padding: "2px 7px", background: MATCH_COLORS[kw.matchType] + "22", color: MATCH_COLORS[kw.matchType], border: `1px solid ${MATCH_COLORS[kw.matchType]}44`, letterSpacing: 1 }}>{kw.matchType?.toUpperCase()}</span>
+<span style={{ fontSize: 9, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", padding: "2px 7px", background: kw.intent === "high" ? "#5a7a5a22" : "#8F867622", color: kw.intent === "high" ? "#5a7a5a" : "#8F8676", border: `1px solid ${kw.intent === "high" ? "#5a7a5a44" : "#8F867644"}`, letterSpacing: 1 }}>{kw.intent?.toUpperCase()} INTENT</span>
+<span style={{ fontSize: 11, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>+ ADD</span>
 </div>
 </div>
 ))}
@@ -1949,18 +1949,18 @@ function ComingSoon({ title, titleEs, lines }) {
 return (
 <div>
 <SectionTitle>{title}</SectionTitle>
-{titleEs && <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: -14, marginBottom: 18, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{titleEs}</div>}
+{titleEs && <div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: -14, marginBottom: 18, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{titleEs}</div>}
 <Card style={{ borderLeft: "3px solid #A39B8B" }}>
-<div style={{ fontSize: 9, color: "#8F8676", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2, marginBottom: 8 }}>SCAFFOLDED · NEXT PHASE</div>
+<div style={{ fontSize: 9, color: "#8F8676", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2, marginBottom: 8 }}>SCAFFOLDED · NEXT PHASE</div>
 <div style={{ fontSize: 13, color: "#5a5550", lineHeight: 1.6 }}>
 This section now has its permanent home. We'll build it out in an upcoming phase so no data lives in two places.
-<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 3, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>Esta sección ya tiene su hogar permanente. La construiremos en una fase próxima para que ningún dato viva en dos lugares.</div>
+<div style={{ fontSize: 10.5, fontStyle: "italic", color: "rgba(111,102,87,0.6)", marginTop: 3, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Esta sección ya tiene su hogar permanente. La construiremos en una fase próxima para que ningún dato viva en dos lugares.</div>
 </div>
 {lines && (
 <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-<div style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", letterSpacing: 2 }}>WILL TRACK</div>
+<div style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 2 }}>WILL TRACK</div>
 {lines.map((l, i) => (
-<div key={i} style={{ fontSize: 12, color: "#71716C", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", paddingLeft: 12, borderLeft: "1px solid #E8E8E6" }}>{l}</div>
+<div key={i} style={{ fontSize: 12, color: "#71716C", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", paddingLeft: 12, borderLeft: "1px solid #E8E8E6" }}>{l}</div>
 ))}
 </div>
 )}
@@ -1981,13 +1981,13 @@ function finishLogin(d) {
 }
 
 const loginInput = { width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 38px 10px 38px", fontSize: 14, color: "#1A1A1A", textAlign: "center", letterSpacing: 1, outline: "none" };
-const loginBtn = { width: "100%", marginTop: 10, padding: "10px 0", background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" };
+const loginBtn = { width: "100%", marginTop: 10, padding: "10px 0", background: "#1A1A1A", color: "#FFFFFF", border: "none", borderRadius: 1, fontSize: 10, letterSpacing: 3, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" };
 
 function LoginShell({ children }) {
   return (
-    <div style={{ minHeight: "100vh", background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
       <div style={{ background: "#F4F4F3", border: "1px solid #E0E0DD", borderRadius: 1, padding: "40px 44px", textAlign: "center", maxWidth: 340, width: "90%" }}>
-        <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
+        <div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
         <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase", color: "#1A1A1A" }}>Operating System</div>
         {children}
       </div>
@@ -2020,7 +2020,7 @@ function TeamLens({ scoreFor, driveMap, onSaveDriveMap, navTabs }) {
   const [sel, setSel] = useState("");
   const [busy, setBusy] = useState(false);
   const [driveOpen, setDriveOpen] = useState(false);
-  const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+  const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   useEffect(() => {
     if (open && users === null) {
       fetch("/api/data?op=users").then((r) => r.json()).then((d) => setUsers((d.users || []).filter((u) => !u.revoked))).catch(() => setUsers([]));
@@ -2175,21 +2175,21 @@ function LoginScreen() {
           onClick={() => setShow(s => !s)}
           aria-label={show ? "Hide password" : "Show password"}
           title={show ? "Hide password — ocultar" : "Show password — mostrar"}
-          style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
-          {show ? "Hide" : "👁 Show"}
+          style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
+          {show ? "Hide" : "Show"}
         </button>
         </div>
         <button onClick={submit} disabled={busy} style={loginBtn}>
           {busy ? "Unlocking…" : "Enter"}
         </button>
         {err && (
-          <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+          <div style={{ marginTop: 12, fontSize: 11, color: "#9b5e5e", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
             {err}
             {mode === "user" && <div style={{ marginTop: 6, color: "#8F8676", fontStyle: "italic", fontFamily: "Georgia, serif" }}>Forgot it? Ask the owner to resend your invite — the link lets you set a fresh password.</div>}
           </div>
         )}
         <button onClick={() => { setMode(m => m === "user" ? "house" : "user"); setErr(null); setPw(""); }}
-          style={{ marginTop: 16, background: "none", border: "none", cursor: "pointer", fontSize: 10, letterSpacing: 1, color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+          style={{ marginTop: 16, background: "none", border: "none", cursor: "pointer", fontSize: 10, letterSpacing: 1, color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
           {mode === "user" ? "Use the house password instead" : "Sign in with your email instead"}
         </button>
     </LoginShell>
@@ -2248,8 +2248,8 @@ function AcceptInvite({ invite }) {
           <div style={{ position: "relative", marginBottom: 8 }}>
             <input type={show ? "text" : "password"} value={pw} autoFocus onChange={(e) => setPw(e.target.value)} placeholder="New password (8+ characters)" style={{ ...loginInput, paddingRight: 78 }} />
             <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? "Hide password" : "Show password"}
-              style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
-              {show ? "Hide" : "👁 Show"}
+              style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: `1px solid ${show ? "#1A1A1A" : "#D9D6D0"}`, borderRadius: 3, cursor: "pointer", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: show ? "#1A1A1A" : "#71716C", padding: "5px 9px", lineHeight: 1 }}>
+              {show ? "Hide" : "Show"}
             </button>
           </div>
           <input type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder="Repeat password" style={loginInput} />
@@ -2264,9 +2264,9 @@ function AcceptInvite({ invite }) {
 function PrivacyModal({ onClose }) {
   const wrap = { position: "fixed", inset: 0, background: "rgba(26,23,20,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 };
   const card = { background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, maxWidth: 680, maxHeight: "85vh", overflowY: "auto", padding: "28px 32px", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" };
-  const h = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#1A1A1A" };
-  const p = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 13, lineHeight: 1.6, color: "#2A2A28", margin: "8px 0" };
-  const hd = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", marginTop: 18 };
+  const h = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#1A1A1A" };
+  const p = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 13, lineHeight: 1.6, color: "#2A2A28", margin: "8px 0" };
+  const hd = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", marginTop: 18 };
   return (
     <div style={wrap} onClick={onClose}>
       <div style={card} onClick={(e) => e.stopPropagation()}>
@@ -2274,7 +2274,7 @@ function PrivacyModal({ onClose }) {
           <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Privacy Policy</h1>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#71716C", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus OS · Effective June 2026 · Last reviewed June 2026</div>
+        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Lavalle Haus OS · Effective June 2026 · Last reviewed June 2026</div>
         <div style={hd}>Who we are</div>
         <p style={p}>Lavalle Haus OS is an internal business application operated by Lavalle Haus (“we,” “us”). It is used by the business's owners to manage the company's own operations, inventory, advertising, and finances. It is not a product offered to outside consumers, and it does not create accounts for third-party end users.</p>
         <div style={hd}>What information the application accesses</div>
@@ -2299,9 +2299,9 @@ function PrivacyModal({ onClose }) {
 function RetentionModal({ onClose }) {
   const wrap = { position: "fixed", inset: 0, background: "rgba(26,23,20,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 };
   const card = { background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, maxWidth: 680, maxHeight: "85vh", overflowY: "auto", padding: "28px 32px", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" };
-  const h = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", color: "#1A1A1A" };
-  const p = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 13, lineHeight: 1.6, color: "#2A2A28", margin: "8px 0" };
-  const hd = { fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", marginTop: 18 };
+  const h = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", color: "#1A1A1A" };
+  const p = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 13, lineHeight: 1.6, color: "#2A2A28", margin: "8px 0" };
+  const hd = { fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", marginTop: 18 };
   return (
     <div style={wrap} onClick={onClose}>
       <div style={card} onClick={(e) => e.stopPropagation()}>
@@ -2309,7 +2309,7 @@ function RetentionModal({ onClose }) {
           <h1 style={{ ...h, fontSize: 26, fontWeight: 400, margin: 0 }}>Data Retention & Deletion Policy</h1>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, color: "#71716C", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Owner: Lavalle Haus · Applies to Lavalle Haus OS · Last reviewed June 2026 · Reviewed at least annually</div>
+        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, color: "#71716C", letterSpacing: 1, marginBottom: 6 }}>Owner: Lavalle Haus · Applies to Lavalle Haus OS · Last reviewed June 2026 · Reviewed at least annually</div>
         <div style={hd}>1. Principle</div>
         <p style={p}>We retain only the data needed to operate the business, for only as long as it is useful for that purpose, and we provide clear ways to delete it.</p>
         <div style={hd}>2. What we store and for how long</div>
@@ -2355,29 +2355,29 @@ function InstallAppNudge() {
       {/* Banner rides at the TOP — Safari's floating bottom bar was swallowing
           taps when it sat at the bottom. The whole banner is one big button. */}
       <div onClick={activate} role="button"
-        style={{ position: "fixed", left: 10, right: 10, top: "calc(env(safe-area-inset-top, 0px) + 10px)", zIndex: 400, background: "#1A1A1A", color: "#F4F2EC", borderRadius: 6, padding: "13px 14px", boxShadow: "0 12px 40px rgba(0,0,0,0.4)", fontFamily: "'Jost', sans-serif", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+        style={{ position: "fixed", left: 10, right: 10, top: "calc(env(safe-area-inset-top, 0px) + 10px)", zIndex: 400, background: "#1A1A1A", color: "#F4F2EC", borderRadius: 6, padding: "13px 14px", boxShadow: "0 12px 40px rgba(0,0,0,0.4)", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
         <img src="/icons/icon-192.png" alt="" style={{ width: 38, height: 38, borderRadius: 8, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase" }}>Put Lavalle Haus on your phone</div>
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, opacity: 0.85 }}>{deferred ? "Tap here to install it like a normal app." : "Tap here — 2 quick steps."}</div>
         </div>
-        <button onClick={snooze} style={{ border: "1px solid rgba(244,242,236,0.4)", background: "transparent", color: "#F4F2EC", borderRadius: 2, padding: "9px 11px", fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", flexShrink: 0 }}>Later</button>
+        <button onClick={snooze} style={{ border: "1px solid rgba(244,242,236,0.4)", background: "transparent", color: "#F4F2EC", borderRadius: 2, padding: "9px 11px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", flexShrink: 0 }}>Later</button>
       </div>
       {guide && (
         <div onClick={() => setGuide(false)} style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F4F2EC", color: "#1A1A1A", borderRadius: 8, padding: "26px 22px", maxWidth: 330, width: "100%", fontFamily: "'Jost', sans-serif", textAlign: "center" }}>
-            <img src="/icons/icon-192.png" alt="" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 12 }} />
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F4F2EC", color: "#1A1A1A", borderRadius: 8, padding: "26px 22px", maxWidth: 330, width: "100%", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", textAlign: "center" }}>
+            <img src="/icons/icon-192.png" alt="" style={{ width: 56, height: 56, borderRadius: 2, marginBottom: 12 }} />
             <div style={{ fontSize: 13, letterSpacing: 2, textTransform: "uppercase", marginBottom: 18 }}>Two taps in Safari</div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", marginBottom: 14 }}>
-              <div style={{ fontSize: 26, width: 40, textAlign: "center" }}>⬆️</div>
+              <div style={{ fontSize: 26, width: 40, textAlign: "center" }}>↑</div>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 14 }}><b>1.</b> Tap the <b>Share</b> button — the square with the arrow, at the bottom middle of Safari.</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", marginBottom: 20 }}>
-              <div style={{ fontSize: 26, width: 40, textAlign: "center" }}>➕</div>
+              <div style={{ fontSize: 26, width: 40, textAlign: "center" }}>+</div>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 14 }}><b>2.</b> Scroll the list and tap <b>"Add to Home Screen"</b>, then <b>Add</b>.</div>
             </div>
             <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12.5, color: "#71716C", marginBottom: 18 }}>The LH icon lands on your home screen — from then on it opens like any app.</div>
-            <button onClick={() => setGuide(false)} style={{ border: "none", background: "#1A1A1A", color: "#F4F2EC", borderRadius: 3, padding: "12px 22px", fontFamily: "'Jost', sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Got it</button>
+            <button onClick={() => setGuide(false)} style={{ border: "none", background: "#1A1A1A", color: "#F4F2EC", borderRadius: 3, padding: "12px 22px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Got it</button>
           </div>
         </div>
       )}
@@ -2430,7 +2430,7 @@ function ConnectionsChip({ tab }) {
   return (
     <div style={{ position: "relative", display: "inline-block" }}>
       <button onClick={check} title="What this page connects to"
-        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#9A9A95", padding: "4px 6px" }}>
+        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#9A9A95", padding: "4px 6px" }}>
         ◦ Connections
       </button>
       {open && (
@@ -2441,7 +2441,7 @@ function ConnectionsChip({ tab }) {
               <div key={d.key} style={{ padding: "8px 14px", borderBottom: "1px solid #F4F4F3" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 7, height: 7, borderRadius: 4, background: stat[d.key] === undefined ? "#E0E0DD" : stat[d.key] ? "#5a7a5a" : "#9b5e5e", flexShrink: 0 }} />
-                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: "#1A1A1A" }}>{d.name}</span>
+                  <span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: "#1A1A1A" }}>{d.name}</span>
                   {d.connect && <a href={d.connect} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: "#8F8676" }}>connect →</a>}
                 </div>
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#71716C", marginTop: 3 }}>{d.does}</div>
@@ -2530,9 +2530,9 @@ function SlackBell() {
   return (
     <div style={{ position: "relative" }}>
       <button onClick={openPanel} title="Slack — mensajes recientes"
-        style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase", position: "relative" }}>
-        🔔 Slack
-        {(unread > 0 || drafts.length > 0) && <span style={{ position: "absolute", top: -7, right: -7, background: drafts.length ? "#8F8676" : "#9b5e5e", color: "#fff", borderRadius: 9, minWidth: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", fontFamily: "'Jost', sans-serif" }}>{drafts.length ? "✍ " + drafts.length : unread > 99 ? "99+" : unread}</span>}
+        style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase", position: "relative" }}>
+        Slack
+        {(unread > 0 || drafts.length > 0) && <span style={{ position: "absolute", top: -7, right: -7, background: drafts.length ? "#8F8676" : "#9b5e5e", color: "#fff", borderRadius: 9, minWidth: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{drafts.length ? "" + drafts.length : unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
         <>
@@ -2544,31 +2544,31 @@ function SlackBell() {
             ? { position: "fixed", left: 8, right: 8, top: 62, zIndex: 95, maxHeight: "72vh", overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }
             : { position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 95, width: 360, maxWidth: "88vw", maxHeight: 460, overflowY: "auto", background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,0.15)" }}>
             <div style={{ padding: "12px 14px", borderBottom: "1px solid #E0E0DD", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#71716C" }}>Slack — latest</span>
+              <span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#71716C" }}>Slack — latest</span>
               {teams !== null && <a href="/api/slack-auth" target="_blank" rel="noreferrer" style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676" }}>{teams.length ? teams.length + " connected · add another" : "Connect a workspace"}</a>}
             </div>
-            {err && <div style={{ padding: "9px 14px", background: "#FBF3F3", borderBottom: "1px solid #E0E0DD", fontFamily: "'Jost', sans-serif", fontSize: 11.5, color: "#9b5e5e" }}>{err}</div>}
+            {err && <div style={{ padding: "9px 14px", background: "#FBF3F3", borderBottom: "1px solid #E0E0DD", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11.5, color: "#9b5e5e" }}>{err}</div>}
             {drafts.length > 0 && (
               <div style={{ background: "#FAF9F6", borderBottom: "1px solid #E0E0DD" }}>
-                <div style={{ padding: "9px 14px 2px", fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676" }}>Waiting for your OK</div>
+                <div style={{ padding: "9px 14px 2px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676" }}>Waiting for your OK</div>
                 {drafts.map((d) => (
                   <div key={d.id} style={{ padding: "8px 14px 12px" }}>
-                    <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#9A9A95", marginBottom: 5 }}>Reply to {d.team} · {d.channel}</div>
+                    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#9A9A95", marginBottom: 5 }}>Reply to {d.team} · {d.channel}</div>
                     {d.replyTo && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#9A9A95", borderLeft: "2px solid #E0E0DD", paddingLeft: 8, marginBottom: 6 }}>{String(d.replyTo).slice(0, 140)}</div>}
                     <textarea value={edit[d.id] != null ? edit[d.id] : d.text} onChange={(e) => setEdit((s) => ({ ...s, [d.id]: e.target.value }))} rows={3}
-                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
+                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
                     {d.answered && (
                       <div style={{ marginTop: 7, background: "#FBF7F0", border: "1px solid #E8DFD0", borderRadius: 2, padding: "8px 10px" }}>
-                        <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676", marginBottom: 4 }}>Already answered — {d.answered.by} replied</div>
+                        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676", marginBottom: 4 }}>Already answered — {d.answered.by} replied</div>
                         <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: "#71716C" }}>{d.answered.text}</div>
-                        <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 11, color: "#1A1A1A", marginTop: 5 }}>Sending this would reply twice.</div>
+                        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, color: "#1A1A1A", marginTop: 5 }}>Sending this would reply twice.</div>
                       </div>
                     )}
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       <button disabled={busy === d.id} onClick={() => sendDraft(d, !!d.answered)}
-                        style={{ border: "1px solid " + (d.answered ? "#E0E0DD" : "#1A1A1A"), background: d.answered ? "transparent" : "#1A1A1A", color: d.answered ? "#71716C" : "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === d.id ? "Sending…" : d.answered ? "Send anyway" : "Approve & send"}</button>
+                        style={{ border: "1px solid " + (d.answered ? "#E0E0DD" : "#1A1A1A"), background: d.answered ? "transparent" : "#1A1A1A", color: d.answered ? "#71716C" : "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === d.id ? "Sending…" : d.answered ? "Send anyway" : "Approve & send"}</button>
                       <button disabled={busy === d.id} onClick={() => discardDraft(d)}
-                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Discard</button>
+                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Discard</button>
                     </div>
                   </div>
                 ))}
@@ -2578,10 +2578,10 @@ function SlackBell() {
             {feed.map((m, i) => (
               <div key={m.ts + i} style={{ padding: "10px 14px", borderBottom: "1px solid #F0F0EE" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676" }}>{m.team} · {m.channel}</span>
-                  <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 10, color: "#9A9A95" }}>{ago(m.at)}</span>
+                  <span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676" }}>{m.team} · {m.channel}</span>
+                  <span style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, color: "#9A9A95" }}>{ago(m.at)}</span>
                 </div>
-                <div style={{ fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><b>{m.user}</b>&nbsp; {m.text}</div>
+                <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12.5, color: "#1A1A1A", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><b>{m.user}</b>&nbsp; {m.text}</div>
                 {m.channelId && replyTo !== i && (
                   <button onClick={() => { setReplyTo(i); setReplyText(""); }}
                     style={{ marginTop: 5, border: "none", background: "transparent", padding: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676", cursor: "pointer" }}>Reply in thread →</button>
@@ -2589,12 +2589,12 @@ function SlackBell() {
                 {replyTo === i && (
                   <div style={{ marginTop: 6 }}>
                     <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={3} autoFocus placeholder="Your reply — posts as Lavalle Haus OS"
-                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Jost', sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
+                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: 8, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12.5, color: "#1A1A1A", resize: "vertical" }} />
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       <button disabled={busy === "reply" || !replyText.trim()} onClick={() => sendReply(m)}
-                        style={{ border: "1px solid #1A1A1A", background: replyText.trim() ? "#1A1A1A" : "#9A9A95", color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === "reply" ? "Sending…" : "Send"}</button>
+                        style={{ border: "1px solid #1A1A1A", background: replyText.trim() ? "#1A1A1A" : "#9A9A95", color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{busy === "reply" ? "Sending…" : "Send"}</button>
                       <button onClick={() => setReplyTo(null)}
-                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Jost', sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+                        style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 1, padding: "6px 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
                     </div>
                   </div>
                 )}
@@ -3035,7 +3035,7 @@ const setSubFor = (id) => setSub(s => ({ ...s, [tab]: id }));
 if (!loaded) {
 return (
 <div style={{ minHeight: "100vh", background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
-<div style={{ fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 12, color: "#9A9A95", letterSpacing: 3 }}>LOADING...</div>
+<div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12, color: "#9A9A95", letterSpacing: 3 }}>LOADING...</div>
 </div>
 );
 }
@@ -3211,11 +3211,11 @@ const hour = new Date().getHours();
 const timeOfDay = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
 return (
-<div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#1A1A1A", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>
+<div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
 <button onClick={() => { setCommandView(false); setTab(visibleNav[0].id); }} title="Home"
 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
-<div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
+<div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
 <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
 {me && me.name && <div style={{ fontSize: 11, fontStyle: "italic", color: "#8F8676", marginTop: 3 }}>{timeOfDay}, {me.name.split(" ")[0]}.</div>}
 </button>
@@ -3227,19 +3227,19 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 { label: "Campaigns", value: campaigns.length, color: "#7a7a9a" },
 ].map(s => (
 <div key={s.label} style={{ textAlign: "center", padding: "7px 12px", background: "#F4F4F3", borderRadius: 1, border: "1px solid #E0E0DD" }}>
-<div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif" }}>{s.value}</div>
+<div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
 </div>
 ))}
 {iAmOwner && <SlackBell />}
 {visibleNav.some(n => n.id === "brain") && <button onClick={() => setCommandView(true)}
   title="Open Command View — vista de comando"
-  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
+  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
   ⌘ Command View
 </button>}
 <button onClick={() => { localStorage.removeItem("lh_token"); localStorage.removeItem("lh_user"); window.location.reload(); }}
   title="Lock the app — cerrar con llave"
-  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
+  style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
   ⏻ Lock
 </button>
 </div>
@@ -3250,21 +3250,21 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 <ConnectionsChip tab={tab} />
 {iAmOwner && (
 <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} title="Narrow the app to one department"
-  style={{ flexShrink: 0, border: "1px solid #E0E0DD", background: "#FFFFFF", borderRadius: 1, margin: "8px 10px 8px 0", padding: "5px 8px", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: viewMode === "all" ? "#71716C" : "#1A1A1A", cursor: "pointer" }}>
+  style={{ flexShrink: 0, border: "1px solid #E0E0DD", background: "#FFFFFF", borderRadius: 1, margin: "8px 10px 8px 0", padding: "5px 8px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: viewMode === "all" ? "#71716C" : "#1A1A1A", cursor: "pointer" }}>
   <option value="all">◉ Everything</option>
   <option value="marketing">Chief of Marketing</option>
   <option value="operations">Chief of Operations</option>
 </select>
 )}
 {visibleNav.map(n => (
-<button key={n.id} onClick={() => { setTab(n.id); if (n.id === "content") window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id: "content", seg: "boards" } })); }} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+<button key={n.id} onClick={() => { setTab(n.id); if (n.id === "content") window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id: "content", seg: "boards" } })); }} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: tab === n.id ? "2px solid #A39B8B" : "2px solid transparent", color: tab === n.id ? "#1A1A1A" : "#9A9A95", padding: "11px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
 {n.label}
 {n.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{n.alert}</span>}
 </button>
 ))}
 {(dbState.driveMap || {})[tab] && (
 <a href={dbState.driveMap[tab]} target="_blank" rel="noopener noreferrer" title="This tab's Drive folder"
-style={{ marginLeft: "auto", flexShrink: 0, border: "1px solid #E0E0DD", borderRadius: 1, padding: "4px 10px", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#8F8676", textDecoration: "none", whiteSpace: "nowrap" }}>
+style={{ marginLeft: "auto", flexShrink: 0, border: "1px solid #E0E0DD", borderRadius: 1, padding: "4px 10px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#8F8676", textDecoration: "none", whiteSpace: "nowrap" }}>
 Drive ⤴
 </a>
 )}
@@ -3274,7 +3274,7 @@ Drive ⤴
 {activeNav.subs && (
 <div style={{ background: "#FAFAF9", borderBottom: "1px solid #E8E8E6", padding: "0 24px", display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
 {activeNav.subs.map(s => (
-<button key={s.id} onClick={() => setSubFor(s.id)} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: activeSub === s.id ? "2px solid #A39B8B" : "2px solid transparent", color: activeSub === s.id ? "#1A1A1A" : "#9A9A95", padding: "9px 13px", cursor: "pointer", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap" }}>
+<button key={s.id} onClick={() => setSubFor(s.id)} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: activeSub === s.id ? "2px solid #A39B8B" : "2px solid transparent", color: activeSub === s.id ? "#1A1A1A" : "#9A9A95", padding: "9px 13px", cursor: "pointer", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: -1, whiteSpace: "nowrap" }}>
 {s.label}
 </button>
 ))}
@@ -3284,12 +3284,12 @@ Drive ⤴
 <div style={(tab === "profit" || tab === "brain") ? {} : tab === "content" ? { padding: "22px 24px" } : { padding: "22px 24px", maxWidth: 960, margin: "0 auto" }}>
 {renderBody()}
 </div>
-<div style={{ borderTop: "1px solid #E8E8E6", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 1, color: "#9A9A95" }}>
+<div style={{ borderTop: "1px solid #E8E8E6", padding: "14px 24px", display: "flex", justifyContent: "center", gap: 12, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, color: "#9A9A95" }}>
 <span>© {new Date().getFullYear()} Lavalle Haus</span>
 <span>·</span>
-<button onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
+<button onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
 <span>·</span>
-<button onClick={() => setShowRetention(true)} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontFamily: "'Jost', 'Helvetica Neue', Arial, sans-serif", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Data Retention</button>
+<button onClick={() => setShowRetention(true)} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textDecoration: "underline", padding: 0 }}>Data Retention</button>
 </div>
 {showPrivacy && <PrivacyModal onClose={() => setShowPrivacy(false)} />}
 {showRetention && <RetentionModal onClose={() => setShowRetention(false)} />}

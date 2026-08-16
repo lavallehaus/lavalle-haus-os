@@ -10,7 +10,7 @@ import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EM
 // (delivery needs their email on the Team roster). Undo/Redo on every change.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 export const WORKSPACES = [
   { id: "lavalle-sisters", label: "Lavalle Sisters", tagline: "Sister founder business", boards: ["lavalle-sisters", "archives-lavalle-sisters", "master-projects"] },
@@ -41,8 +41,8 @@ export const linkMeta = (u) => {
     if (h.includes("pinterest.")) return { icon: "◌", label: "Pinterest" };
     if (h.includes("thefoldlabel.com")) return { icon: "⌂", label: "The Fold site" };
     if (h.includes("refilleryhaus.com")) return { icon: "⌂", label: "Refillery site" };
-    return { icon: "🔗", label: h };
-  } catch { return { icon: "🔗", label: String(u).slice(0, 30) }; }
+    return { icon: "↗", label: h };
+  } catch { return { icon: "↗", label: String(u).slice(0, 30) }; }
 };
 export function NotesLinks({ text }) {
   const urls = [...new Set(String(text || "").match(URL_RX) || [])];
@@ -702,7 +702,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           {/* recently viewed — Trello's home strip, personal to each member */}
           {recents.filter((k) => boards[k] && boards[k].lists && canSee(boards[k])).length > 0 && (
             <div style={{ marginBottom: 26 }}>
-              <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>🕐 Recently viewed</div>
+              <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Recently viewed</div>
               <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
                 {recents.filter((k) => boards[k] && boards[k].lists && canSee(boards[k])).slice(0, 6).map((k) => (
                   <div key={k} onClick={() => openBoard(k)} style={{ flex: "0 0 172px", borderRadius: 8, overflow: "hidden", border: `1px solid ${c.line}`, background: c.bg, cursor: "pointer" }}>
@@ -744,7 +744,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   <div style={{ position: "relative", marginTop: 8 }}>
                     <button title="Who can open this board" onClick={(e) => { e.stopPropagation(); setAccessMenu(accessMenu === key ? null : key); }}
                       style={{ background: "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "3px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: b.access && b.access.length ? c.taupe : c.sub, cursor: "pointer" }}>
-                      👥 {b.access && b.access.length ? b.access.length + " member" + (b.access.length > 1 ? "s" : "") : "Everyone"}
+                      {b.access && b.access.length ? b.access.length + " member" + (b.access.length > 1 ? "s" : "") : "Everyone"}
                     </button>
                     {accessMenu === key && (
                       <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 80, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 12, width: 220 }}>
@@ -792,7 +792,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     style={{ display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 4 }}>
                     {shown.map((t, i) => <span key={t.id || t.name} style={{ marginLeft: i ? -8 : 0, display: "inline-flex" }}><Avatar member={t} /></span>)}
                     {members.length > shown.length && <span style={{ marginLeft: -8, width: 26, height: 26, borderRadius: "50%", border: "2px solid #FFFFFF", background: c.card, color: c.sub, fontFamily: sans, fontSize: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>+{members.length - shown.length}</span>}
-                    {!members.length && <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, border: `1px solid ${c.line}`, borderRadius: 6, padding: "4px 9px" }}>👥 Members</span>}
+                    {!members.length && <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, border: `1px solid ${c.line}`, borderRadius: 6, padding: "4px 9px" }}>Members</span>}
                   </button>
                 );
               })()}
@@ -805,7 +805,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 const activity = board.cards.flatMap((cd) => (cd.comments || []).filter((x) => x.by === t.name).map((x) => ({ ...x, cardName: cd.name }))).sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 5);
                 const row = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "12px 16px", fontFamily: sans, fontSize: 13.5, color: "#F2F0EC", cursor: "pointer" };
                 return (
-                  <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 300, borderRadius: 10, overflow: "hidden", boxShadow: "0 14px 40px rgba(26,26,26,0.3)" }}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 300, borderRadius: 2, overflow: "hidden", boxShadow: "0 14px 40px rgba(26,26,26,0.3)" }}>
                     <div style={{ position: "relative", height: 78, background: "linear-gradient(120deg, #CDBBA7, #8F8676)" }}>
                       <button onClick={() => { setProfileMember(null); setProfileActivity(false); }}
                         style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, background: "rgba(0,0,0,0.15)", border: "1.5px solid rgba(255,255,255,0.8)", borderRadius: 6, color: "#FFFFFF", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
@@ -887,7 +887,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   {viewer.owner && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 8 }}>Untick someone and the board disappears for them. Photos show wherever members appear.</div>}
                 </div>
               )}
-              <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "⛓ Link assets"}</button>
+              <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "Link assets"}</button>
               {viewer.owner && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
               <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
@@ -943,7 +943,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } else if (dragList && dragList !== l.id) { e.preventDefault(); moveList(dragList, l.id); } setDragCard(null); setDragList(null); setDropHint(null); }}
-                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 12, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
+                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
                   <div
                     draggable
                     onDragStart={(e) => { e.stopPropagation(); setDragList(l.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -1030,13 +1030,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
                               {card.due && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: card.done ? "#DFE8DF" : new Date(card.due) < new Date() ? "#F3E3E0" : "#EEECE6", color: card.done ? c.green : new Date(card.due) < new Date() ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
-                                  {card.done ? "✓" : "🕐"} {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  {card.done ? "✓" : "◦"} {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                 </span>
                               )}
                               {(card.hook || card.desc) && <span title="Has hook/caption" style={{ fontFamily: sans, fontSize: 11, color: c.sub }}>≡</span>}
                               {(card.checklist || []).length > 0 && (
                                 <span title="Checklist" style={{ fontFamily: sans, fontSize: 9, color: (card.checklist || []).every((x) => x.done) ? "#FFFFFF" : c.sub, background: (card.checklist || []).every((x) => x.done) ? c.green : "transparent", border: (card.checklist || []).every((x) => x.done) ? "none" : `1px solid ${c.line}`, borderRadius: 4, padding: "1px 6px" }}>
-                                  ☑ {(card.checklist || []).filter((x) => x.done).length}/{(card.checklist || []).length}
+                                  ✓ {(card.checklist || []).filter((x) => x.done).length}/{(card.checklist || []).length}
                                 </span>
                               )}
                               {(card.exampleUrl || firstVideoUrl(card.desc)) && (
@@ -1060,9 +1060,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                                 </span>
                               )}
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
-                              {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>💬 {(card.comments || []).filter((x) => !x.sys).length}</span>}
-                              {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>🔗 {(card.links || []).length}</span>}
-                              {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>📎 {(card.attachments || []).length}</span>}
+                              {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>✎ {(card.comments || []).filter((x) => !x.sys).length}</span>}
+                              {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>↗ {(card.links || []).length}</span>}
+                              {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>⊞ {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
                                 <span key={"m" + i} style={{ display: "inline-flex" }}><Avatar member={teamByName[m] || { name: m }} size={20} ring="#FFFFFF" /></span>
                               ))}
@@ -1093,7 +1093,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               <div
                 onDragOver={(e) => { e.preventDefault(); setDropHint("listmove:end"); }}
                 onDrop={(e) => { e.preventDefault(); moveList(dragList, null); setDragList(null); setDropHint(null); }}
-                style={{ flex: "0 0 90px", alignSelf: "stretch", minHeight: 120, border: `2px dashed ${dropHint === "listmove:end" ? "#A39B8B" : c.line}`, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>
+                style={{ flex: "0 0 90px", alignSelf: "stretch", minHeight: 120, border: `2px dashed ${dropHint === "listmove:end" ? "#A39B8B" : c.line}`, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>
                 End
               </div>
             )}
@@ -1101,7 +1101,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           {touchDragList && touchPos && (() => {
             const l0 = board.lists.find((x) => x.id === touchDragList);
             return l0 ? (
-              <div style={{ position: "fixed", left: touchPos.x - 60, top: touchPos.y - 46, zIndex: 400, pointerEvents: "none", background: "rgba(250,249,247,0.97)", border: `1px solid ${c.line}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(0,0,0,0.3)", padding: "10px 16px", transform: "rotate(2deg)", fontFamily: sans, fontSize: 12, fontWeight: 500, color: c.ink, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ position: "fixed", left: touchPos.x - 60, top: touchPos.y - 46, zIndex: 400, pointerEvents: "none", background: "rgba(250,249,247,0.97)", border: `1px solid ${c.line}`, borderRadius: 2, boxShadow: "0 14px 34px rgba(0,0,0,0.3)", padding: "10px 16px", transform: "rotate(2deg)", fontFamily: sans, fontSize: 12, fontWeight: 500, color: c.ink, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 ⣿ {l0.name}
               </div>
             ) : null;
@@ -1116,7 +1116,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             ) : null;
           })()}
           {narrow && (
-            <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", gap: 8, alignItems: "center", background: "rgba(29,32,34,0.95)", borderRadius: 24, padding: "8px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+            <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", gap: 8, alignItems: "center", background: "rgba(29,32,34,0.95)", borderRadius: 2, padding: "8px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
               <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", color: "#E8E6E1", fontFamily: sans, fontSize: 12, cursor: "pointer", padding: 0 }}>☰ Boards</button>
               <select value={open} onChange={(e) => openBoard(e.target.value)} title="Switch boards"
                 style={{ background: "transparent", color: "#E8E6E1", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 14, fontFamily: sans, fontSize: 12, padding: "3px 8px", maxWidth: 160 }}>
@@ -1192,14 +1192,14 @@ function LookbookView({ board, shoots, onClose }) {
         <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: "#EDE9E2" }}>{board.name} · Lookbook</div>
         <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", justifyContent: "center", WebkitOverflowScrolling: "touch" }}>
           {groups.map((gg, i) => (
-            <button key={gg.key} onClick={() => setGi(i)} style={{ flexShrink: 0, background: i === gi ? "#EDE9E2" : "transparent", color: i === gi ? "#1a1a1a" : "rgba(237,233,226,0.6)", border: `1px solid ${i === gi ? "#EDE9E2" : "rgba(237,233,226,0.25)"}`, borderRadius: 20, padding: "5px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap" }}>{gg.label}</button>
+            <button key={gg.key} onClick={() => setGi(i)} style={{ flexShrink: 0, background: i === gi ? "#EDE9E2" : "transparent", color: i === gi ? "#1a1a1a" : "rgba(237,233,226,0.6)", border: `1px solid ${i === gi ? "#EDE9E2" : "rgba(237,233,226,0.25)"}`, borderRadius: 2, padding: "5px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap" }}>{gg.label}</button>
           ))}
         </div>
         <button onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(237,233,226,0.4)", borderRadius: 6, color: "#EDE9E2", width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>×</button>
       </div>
       {/* shoot-date banner */}
       <div style={{ textAlign: "center", padding: "8px 16px", fontFamily: sans, fontSize: 11, letterSpacing: 1, color: shot ? "#CDBBA7" : "rgba(237,233,226,0.4)" }}>
-        {shot ? "📸 Shoot with Sacia · " + shot.label : "📸 Shoot date — connect your calendar to show it here"}
+        {shot ? "Shoot with Sacia · " + shot.label : "Shoot date — connect your calendar to show it here"}
       </div>
       {/* swipeable stage */}
       <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
@@ -1467,7 +1467,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             <input value={outreachEmail} onChange={(e) => setOutreachEmail(e.target.value)} placeholder="creator's email (once they reply)" style={{ ...input, marginBottom: 6 }} />
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginBottom: 4 }}>Subject: {UGC_EMAIL_SUBJECT}</div>
             <textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={7} style={{ ...input, fontFamily: sans, fontSize: 11, lineHeight: 1.5, resize: "vertical" }} />
-            <a href={UGC_BRIEF_PDF} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", margin: "6px 0", fontFamily: sans, fontSize: 10, color: c.taupe, textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 4, padding: "4px 9px" }}>📎 Lavalle Haus — Creator Brief.pdf</a>
+            <a href={UGC_BRIEF_PDF} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", margin: "6px 0", fontFamily: sans, fontSize: 10, color: c.taupe, textDecoration: "none", border: `1px solid ${c.line}`, borderRadius: 4, padding: "4px 9px" }}>Lavalle Haus — Creator Brief.pdf</a>
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 4 }}>The 3 videos above are appended automatically.</div>
             <button disabled={!outreachEmail.trim() || emailState === "sending"} onClick={async () => {
               setEmailState("sending");
@@ -1590,7 +1590,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>{beat.label}</span>
                   <button onClick={() => setNoteOn(noteOn === beat.key ? null : beat.key)}
                     style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", fontFamily: sans, fontSize: 10, color: openCount ? c.taupe : c.line }}
-                    title="Comment on this section">💬{openCount ? " " + openCount : ""}</button>
+                    title="Comment on this section">✎{openCount ? " " + openCount : ""}</button>
                   {beat.key === "point3" && !draft.point3 && (
                     <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.line }}>optional</span>
                   )}
@@ -1737,7 +1737,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   {brandAcct ? (
                     <div style={{ ...input, width: "auto", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 6 }} title="Locked to this board's brand account">
                       <span style={{ fontFamily: sans, fontSize: 12, color: c.ink }}>@{brandAcct}</span>
-                      <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>🔒 locked</span>
+                      <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>locked</span>
                     </div>
                   ) : (
                     <select style={{ ...input, width: "auto", flex: "0 0 auto" }} value={(pub && pub.account) || pubAccounts[0].username}
@@ -1774,7 +1774,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                 <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 8 }}>TikTok can't post from here (their API declined internal tools), so it's scheduled natively in TikTok Studio — free, up to 10 days ahead. This copies your caption and opens the Studio upload page — switch to the right brand account, add the video, paste the caption, and pick the time.</div>
                 <button onClick={async () => { const cap = (desc || "") + (tags.trim() ? "\n\n" + tags.trim() : ""); try { await navigator.clipboard.writeText(cap); setPlannCopied(true); setTimeout(() => setPlannCopied(false), 1800); } catch {} window.open("https://www.tiktok.com/tiktokstudio/upload", "_blank", "noopener"); }}
                   style={{ width: "100%", background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
-                  {plannCopied ? "✓ Caption copied — opening TikTok Studio…" : "📋 Copy caption & open TikTok Studio"}</button>
+                  {plannCopied ? "✓ Caption copied — opening TikTok Studio…" : "Copy caption & open TikTok Studio"}</button>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {assetUrlState && <a href={assetUrlState} target="_blank" rel="noopener noreferrer" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>▶ Video in Drive</a>}
                   {cover && <a href={cover} download={(name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>⤓ Cover</a>}

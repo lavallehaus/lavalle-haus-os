@@ -9,8 +9,8 @@ const c = {
   bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD",
   green: "#5a7a5a", clay: "#8F8676", red: "#9b5e5e", card: "#F4F4F3",
 };
-const serif = "'Jost', 'Helvetica Neue', Arial, sans-serif";
-const sans = "'Jost', 'Helvetica Neue', Arial, sans-serif";
+const serif = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const STATUS_COLOR = {
   WORKING: c.clay, READY_TO_SHIP: c.clay, SHIPPED: c.green, IN_TRANSIT: c.green,
