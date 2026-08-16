@@ -1160,6 +1160,68 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Team meetings (Fathom) ───────────────────────────────────────────────────
+  // Fathom fires this webhook when a meeting finishes processing. The meeting is
+  // stored for the Meetings tab, and its notes are auto-emailed to the saved
+  // recipients. Secured by the shared publish key in the URL she pastes into
+  // Fathom's webhook settings.
+  if (op === "fathom_webhook" && req.method === "POST") {
+    if (!process.env.PUBLISH_KEY || req.query.key !== process.env.PUBLISH_KEY) { res.status(403).json({ error: "bad key" }); return; }
+    const b = req.body || {};
+    // liberal field mapping — Fathom payloads vary by event version
+    const title = String(b.title || b.meeting_title || (b.meeting || {}).title || "Meeting").slice(0, 160);
+    const url2 = String(b.share_url || b.url || b.recording_url || (b.recording || {}).url || "").slice(0, 500);
+    const when = String(b.started_at || b.created_at || (b.meeting || {}).scheduled_start_time || new Date().toISOString());
+    const summary = String(b.summary || (b.ai_summary || {}).markdown_formatted || b.markdown_formatted || "").slice(0, 6000);
+    const raw = await kvGet("lavalle_data");
+    const blob = Array.isArray(raw) ? raw[0] : raw;
+    if (!blob) { res.json({ ok: false }); return; }
+    blob.teamMeetings = blob.teamMeetings || { recipients: [], items: [] };
+    const item = { id: "mt" + randomBytes(5).toString("hex"), title, url: url2, date: when, summary, from: "fathom", sentTo: [] };
+    blob.teamMeetings.items.unshift(item);
+    blob.teamMeetings.items = blob.teamMeetings.items.slice(0, 300);
+    const recips = (blob.teamMeetings.recipients || []).filter((e2) => /@/.test(e2));
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey && recips.length) {
+      const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
+      const html = '<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:24px">'
+        + '<p style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8F8676;font-family:Arial">Meeting notes</p>'
+        + '<p style="font-size:17px;color:#1A1A1A">' + title + "</p>"
+        + (summary ? '<div style="font-size:13px;color:#444;white-space:pre-wrap">' + summary.replace(/</g, "&lt;") + "</div>" : "")
+        + (url2 ? '<p><a href="' + url2 + '" style="display:inline-block;background:#1A1A1A;color:#fff;text-decoration:none;padding:11px 20px;letter-spacing:2px;font-family:Arial;font-size:11px;text-transform:uppercase">View recording</a></p>' : "")
+        + '<p style="font-size:11px;color:#71716C">Sent automatically from Lavalle Haus.</p></div>';
+      for (const to of recips) {
+        try {
+          const rr = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ from, to: [to], subject: "Meeting notes — " + title, html }) });
+          if (rr.ok) item.sentTo.push(to);
+        } catch (e2) {}
+      }
+    }
+    await kvSet("lavalle_data", blob);
+    res.json({ ok: true, stored: item.id, emailed: item.sentTo.length });
+    return;
+  }
+  // Calendar-subscription feed: add this URL once in Google Calendar
+  // ("Other calendars → From URL") and every meeting shows up and stays synced.
+  if (op === "meetings_ics" && req.method === "GET") {
+    if (!process.env.PUBLISH_KEY || req.query.key !== process.env.PUBLISH_KEY) { res.status(403).send("bad key"); return; }
+    const raw = await kvGet("lavalle_data");
+    const blob = Array.isArray(raw) ? raw[0] : raw;
+    const items = ((blob || {}).teamMeetings || {}).items || [];
+    const esc = (t) => String(t || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+    const dt = (iso) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Lavalle Haus//Meetings//EN", "X-WR-CALNAME:Lavalle Haus Meetings"];
+    for (const m of items) {
+      const start = new Date(m.date || Date.now());
+      const end = new Date(start.getTime() + 3600000);
+      lines.push("BEGIN:VEVENT", "UID:" + m.id + "@lavalle-haus-os", "DTSTAMP:" + dt(start.toISOString()), "DTSTART:" + dt(start.toISOString()), "DTEND:" + dt(end.toISOString()), "SUMMARY:" + esc(m.title), "DESCRIPTION:" + esc((m.summary || "").slice(0, 500) + (m.url ? "\n" + m.url : "")), "END:VEVENT");
+    }
+    lines.push("END:VCALENDAR");
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.send(lines.join("\r\n"));
+    return;
+  }
+
   const auth = await getAuth(req);
   if (!auth) { res.status(401).json({ error: "Locked" }); return; }
 
@@ -1388,67 +1450,6 @@ export default async function handler(req, res) {
       const parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
       res.json({ pattern: (parsed.pattern || []).slice(0, 42), logic: String(parsed.logic || "").slice(0, 240) });
     } catch (e) { res.status(400).json({ error: "couldn't parse the reference grid" }); }
-    return;
-  }
-  // ── Team meetings (Fathom) ───────────────────────────────────────────────────
-  // Fathom fires this webhook when a meeting finishes processing. The meeting is
-  // stored for the Meetings tab, and its notes are auto-emailed to the saved
-  // recipients. Secured by the shared publish key in the URL she pastes into
-  // Fathom's webhook settings.
-  if (op === "fathom_webhook" && req.method === "POST") {
-    if (!process.env.PUBLISH_KEY || req.query.key !== process.env.PUBLISH_KEY) { res.status(403).json({ error: "bad key" }); return; }
-    const b = req.body || {};
-    // liberal field mapping — Fathom payloads vary by event version
-    const title = String(b.title || b.meeting_title || (b.meeting || {}).title || "Meeting").slice(0, 160);
-    const url2 = String(b.share_url || b.url || b.recording_url || (b.recording || {}).url || "").slice(0, 500);
-    const when = String(b.started_at || b.created_at || (b.meeting || {}).scheduled_start_time || new Date().toISOString());
-    const summary = String(b.summary || (b.ai_summary || {}).markdown_formatted || b.markdown_formatted || "").slice(0, 6000);
-    const raw = await kvGet("lavalle_data");
-    const blob = Array.isArray(raw) ? raw[0] : raw;
-    if (!blob) { res.json({ ok: false }); return; }
-    blob.teamMeetings = blob.teamMeetings || { recipients: [], items: [] };
-    const item = { id: "mt" + randomBytes(5).toString("hex"), title, url: url2, date: when, summary, from: "fathom", sentTo: [] };
-    blob.teamMeetings.items.unshift(item);
-    blob.teamMeetings.items = blob.teamMeetings.items.slice(0, 300);
-    const recips = (blob.teamMeetings.recipients || []).filter((e2) => /@/.test(e2));
-    const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey && recips.length) {
-      const from = process.env.RESEND_FROM || "Lavalle Haus OS <onboarding@resend.dev>";
-      const html = '<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:24px">'
-        + '<p style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8F8676;font-family:Arial">Meeting notes</p>'
-        + '<p style="font-size:17px;color:#1A1A1A">' + title + "</p>"
-        + (summary ? '<div style="font-size:13px;color:#444;white-space:pre-wrap">' + summary.replace(/</g, "&lt;") + "</div>" : "")
-        + (url2 ? '<p><a href="' + url2 + '" style="display:inline-block;background:#1A1A1A;color:#fff;text-decoration:none;padding:11px 20px;letter-spacing:2px;font-family:Arial;font-size:11px;text-transform:uppercase">View recording</a></p>' : "")
-        + '<p style="font-size:11px;color:#71716C">Sent automatically from Lavalle Haus.</p></div>';
-      for (const to of recips) {
-        try {
-          const rr = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ from, to: [to], subject: "Meeting notes — " + title, html }) });
-          if (rr.ok) item.sentTo.push(to);
-        } catch (e2) {}
-      }
-    }
-    await kvSet("lavalle_data", blob);
-    res.json({ ok: true, stored: item.id, emailed: item.sentTo.length });
-    return;
-  }
-  // Calendar-subscription feed: add this URL once in Google Calendar
-  // ("Other calendars → From URL") and every meeting shows up and stays synced.
-  if (op === "meetings_ics" && req.method === "GET") {
-    if (!process.env.PUBLISH_KEY || req.query.key !== process.env.PUBLISH_KEY) { res.status(403).send("bad key"); return; }
-    const raw = await kvGet("lavalle_data");
-    const blob = Array.isArray(raw) ? raw[0] : raw;
-    const items = ((blob || {}).teamMeetings || {}).items || [];
-    const esc = (t) => String(t || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-    const dt = (iso) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Lavalle Haus//Meetings//EN", "X-WR-CALNAME:Lavalle Haus Meetings"];
-    for (const m of items) {
-      const start = new Date(m.date || Date.now());
-      const end = new Date(start.getTime() + 3600000);
-      lines.push("BEGIN:VEVENT", "UID:" + m.id + "@lavalle-haus-os", "DTSTAMP:" + dt(start.toISOString()), "DTSTART:" + dt(start.toISOString()), "DTEND:" + dt(end.toISOString()), "SUMMARY:" + esc(m.title), "DESCRIPTION:" + esc((m.summary || "").slice(0, 500) + (m.url ? "\n" + m.url : "")), "END:VEVENT");
-    }
-    lines.push("END:VCALENDAR");
-    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
-    res.send(lines.join("\r\n"));
     return;
   }
   // Owner-only: the two URLs she pastes — webhook into Fathom, ICS into GCal.
