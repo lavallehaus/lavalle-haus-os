@@ -132,6 +132,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
 
   const saveOrder = (next) => onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), order: next } });
   const locked = !!((data || {})[gk] || {}).locked;
+  // 📌 individual placements she's happy with — auto-arrange must not move
+  // them even while it reshuffles everything else ("I like 9 of the 21").
+  const pins = ((data || {})[gk] || {}).pins || [];
+  const togglePin = (key) => {
+    const next = pins.includes(key) ? pins.filter((k) => k !== key) : [...pins, key];
+    onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), pins: next } });
+  };
   const setLocked = () => {
     const locking = !locked;
     onSave({ ...(data || {}), [gk]: { ...((data || {})[gk] || {}), locked: locking } });
@@ -211,7 +218,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         } catch { return { l: 0.5 + Math.random() * 0.001, h: Math.random() }; }
       }));
       // RULE: posted (✓) tiles are locked in place — only unposted ones move.
-      const lockedSlots = new Set(visible.map((it, i) => (it.done ? i : -1)).filter((i) => i >= 0));
+      const lockedSlots = new Set(visible.map((it, i) => (it.done || pins.includes(it.key) ? i : -1)).filter((i) => i >= 0));
       const freeIdx = visible.map((_, i) => i).filter((i) => !lockedSlots.has(i)).sort((a, b) => tones[a].l - tones[b].l);
       const half = Math.ceil(freeIdx.length / 2);
       const darks = freeIdx.slice(0, half), lights = freeIdx.slice(half).reverse();
@@ -493,6 +500,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             <div style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,0.55)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1, padding: "2px 6px", borderRadius: 1 }}>{windowStart + slot + 1}</div>
             {tt && !item.hasTT && <div style={{ position: "absolute", left: 4, top: 4, background: "rgba(0,0,0,0.4)", color: "#fff", fontFamily: sans, fontSize: 8, letterSpacing: 1, padding: "1px 5px", borderRadius: 1 }}>IG cover</div>}
             {item.done && <div style={{ position: "absolute", right: 4, top: 4, background: c.green, color: "#fff", fontSize: 10, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</div>}
+            {!item.done && pins.includes(item.key) && <div title="Pinned — auto-arrange keeps this placement" style={{ position: "absolute", right: 4, top: 4, background: c.taupe, color: "#fff", fontSize: 9, width: 16, height: 16, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>📌</div>}
           </div>
         ) : (
           <div key={"empty" + slot} data-slot={slot}
