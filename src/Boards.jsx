@@ -269,6 +269,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [dragCard, setDragCard] = useState(null); // card id being dragged (Trello drag & drop)
   const [dropHint, setDropHint] = useState(null); // card id we'd drop before, or "list:<id>" for end-of-list
   const [touchDrag, setTouchDrag] = useState(null); // card id being long-press dragged (phone)
+  // Live-reorder preview: while the finger travels, the list re-flows so cards
+  // part around the drag — and the drop commits WHEREVER THE GAP IS, never a
+  // recalculation at lift (recalculating at lift is what snapped cards back to
+  // the bottom when the finger released over a header, gap or sticky bar).
+  const [previewAt, setPreviewAt] = useState(null); // { listId, anchorId|null, after }
+  const previewRef = useRef(null);
   const [touchPos, setTouchPos] = useState(null); // finger position for the drag ghost
   const touchTimer = useRef(null);
   const touchStartPos = useRef(null);
@@ -310,7 +316,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       lastPos.x = t.clientX; lastPos.y = t.clientY;
       setTouchPos({ x: t.clientX, y: t.clientY });
       const h = hintFor(t.clientX, t.clientY);
-      setDropHint(h ? (h.type === "card" ? h.cardId : "list:" + h.listId) : null);
+      if (h) {
+        const p = h.type === "card" ? { listId: h.listId, anchorId: h.cardId, after: h.after } : { listId: h.listId, anchorId: null, after: true };
+        previewRef.current = p;
+        setPreviewAt(p);
+      }
+      // h === null (sticky bar, page chrome): the last good preview stands
     };
     // While the card is lifted the page can't scroll (deliberate), so the
     // column scrolls itself whenever the finger parks near its edges.
@@ -328,12 +339,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       if (lastPos.y < 100) window.scrollBy(0, -14);
       else if (lastPos.y > window.innerHeight - 100) window.scrollBy(0, 14);
     }, 50);
-    const onEnd = (e) => {
-      const t = (e.changedTouches || [])[0];
-      const h = t ? hintFor(t.clientX, t.clientY) : null;
-      if (h) moveCard(touchDrag, h.listId, h.type === "card" ? h.cardId : null, h.type === "card" ? h.after : false);
+    const onEnd = () => {
+      const p = previewRef.current;
+      if (p) moveCard(touchDrag, p.listId, p.anchorId, p.after);
       suppressClick.current = Date.now();
-      setTouchDrag(null); setDragCard(null); setDropHint(null); setTouchPos(null);
+      previewRef.current = null;
+      setPreviewAt(null); setTouchDrag(null); setDragCard(null); setDropHint(null); setTouchPos(null);
     };
     document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", onEnd);
@@ -969,7 +980,16 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           </div>
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
             {board.lists.map((l) => {
-              const cards = board.cards.filter((x) => x.listId === l.id);
+              let cards = board.cards.filter((x) => x.listId === l.id);
+              if (touchDrag && previewAt) {
+                const dragged = board.cards.find((x) => x.id === touchDrag);
+                cards = cards.filter((x) => x.id !== touchDrag);
+                if (dragged && previewAt.listId === l.id) {
+                  let at = previewAt.anchorId ? cards.findIndex((x) => x.id === previewAt.anchorId) : cards.length;
+                  if (at < 0) at = cards.length; else if (previewAt.after) at += 1;
+                  cards = [...cards.slice(0, at), dragged, ...cards.slice(at)];
+                }
+              }
               return (
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
