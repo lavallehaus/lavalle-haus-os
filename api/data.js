@@ -622,7 +622,7 @@ async function googleToken() {
 }
 async function driveListFolder(folderId, token) {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: "Bearer " + token } });
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`, { headers: { Authorization: "Bearer " + token } });
   const d = await r.json();
   return (d.files || []).map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder" }));
 }
@@ -2085,7 +2085,7 @@ export default async function handler(req, res) {
       const td = await tr.json();
       if (!td.access_token) { res.status(400).json({ error: "google_token_failed" }); return; }
       const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-      const fr = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: "Bearer " + td.access_token } });
+      const fr = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`, { headers: { Authorization: "Bearer " + td.access_token } });
       const fd = await fr.json();
       if (!fr.ok) { res.status(400).json({ error: (fd.error && fd.error.message) || "drive_error" }); return; }
       const wantAll = !!(req.body || {}).all; // asset linking needs folders + videos too
