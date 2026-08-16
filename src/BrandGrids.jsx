@@ -27,6 +27,89 @@ const SLOTS = 21, COLS = 3, ROWS = 7;
 // be the SAME reference when removed on drop, or scrolling locks up for good.
 const preventScroll = (e) => e.preventDefault();
 
+const guid = () => "g" + Math.random().toString(36).slice(2, 9);
+
+// ── The Row-level arranger ───────────────────────────────────────────────────
+// Works on art-director labels (who / kind / color / tone from Claude vision),
+// not just pixels. Slots s and s±1 share a row (when in the same row band) and
+// s±3 stack vertically, so adjacency in slot space IS visual adjacency.
+function slotNeighbors(s2, n) {
+  const out = [];
+  const row = Math.floor(s2 / 3);
+  if (s2 - 1 >= 0 && Math.floor((s2 - 1) / 3) === row) out.push(s2 - 1);
+  if (s2 + 1 < n && Math.floor((s2 + 1) / 3) === row) out.push(s2 + 1);
+  if (s2 - 3 >= 0) out.push(s2 - 3);
+  if (s2 + 3 < n) out.push(s2 + 3);
+  return out;
+}
+function slotsWithin2(s2, n) {
+  const r = Math.floor(s2 / 3), c2 = s2 % 3, out = [];
+  for (let q = 0; q < n; q++) {
+    if (q === s2) continue;
+    const qr = Math.floor(q / 3), qc = q % 3;
+    if (Math.abs(qr - r) + Math.abs(qc - c2) <= 2) out.push(q);
+  }
+  return out;
+}
+// pattern is read top-left→bottom-right on screen; convert a visual index to a
+// slot number (position 1 renders bottom-right)
+function visualToSlot(v, n) {
+  const rows = Math.ceil(n / 3);
+  const r = Math.floor(v / 3), c2 = v % 3;
+  return (rows - 1 - r) * 3 + (2 - c2);
+}
+function arrangeByClasses(visible, lockedSlots, classes, pattern) {
+  const n = visible.length;
+  const tplBySlot = {};
+  if (pattern && pattern.length) {
+    for (let v = 0; v < n; v++) tplBySlot[visualToSlot(v, n)] = pattern[v % pattern.length];
+  }
+  const cls = (key) => classes[key] || {};
+  const personOf = (key) => { const w = cls(key).w; return w === "kiabeth" || w === "kiaredza" || w === "both" ? w : null; };
+  const cost = (pos) => {
+    let total = 0;
+    for (let s2 = 0; s2 < n; s2++) {
+      const a = cls(visible[pos[s2]].key);
+      // template rhythm: the strongest editorial signal when a reference is set
+      if (tplBySlot[s2] && a.k && a.k !== tplBySlot[s2]) total += 4;
+      for (const q of slotNeighbors(s2, n)) {
+        if (q < s2) continue; // count each edge once
+        const b2 = cls(visible[pos[q]].key);
+        if (a.k === "face" && b2.k === "face") total += 6;           // never two faces touching
+        if (a.k && a.k === b2.k && a.k !== "face") total += 1.5;    // same kind clumps read flat
+        if (a.c && a.c === b2.c) total += 3;                        // color families separate
+        if (a.t && a.t === b2.t) total += 1;                        // tonal rhythm
+      }
+      const pa = personOf(visible[pos[s2]].key);
+      if (pa) for (const q of slotsWithin2(s2, n)) {
+        if (q < s2) continue;
+        const pb = personOf(visible[pos[q]].key);
+        if (pb && (pa === pb || pa === "both" || pb === "both")) total += pa === pb ? 8 : 3; // same sister needs distance
+      }
+    }
+    return total;
+  };
+  let pos = visible.map((_, i) => i);
+  const free = pos.map((_, s2) => s2).filter((s2) => !lockedSlots.has(s2));
+  if (free.length < 2) return pos;
+  let best = [...pos], bestCost = cost(pos), cur = bestCost;
+  for (let it = 0; it < 3200; it++) {
+    const i = free[Math.floor(Math.random() * free.length)];
+    const j = free[Math.floor(Math.random() * free.length)];
+    if (i === j) continue;
+    [pos[i], pos[j]] = [pos[j], pos[i]];
+    const c2 = cost(pos);
+    const temp = 3 * (1 - it / 3200);
+    if (c2 <= cur || Math.random() < Math.exp((cur - c2) / Math.max(0.05, temp))) {
+      cur = c2;
+      if (c2 < bestCost) { bestCost = c2; best = [...pos]; }
+    } else {
+      [pos[i], pos[j]] = [pos[j], pos[i]];
+    }
+  }
+  return best;
+}
+
 // Park uploads in the media store; the card keeps a short reference (inline
 // base64 in the blob is what once blew Vercel's 4.5MB save limit).
 async function storeImage(dataUrl) {
@@ -192,6 +275,63 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     fr.readAsDataURL(file);
   };
 
+  // A reference grid = a screenshot of a feed whose editorial rhythm she wants.
+  // The vision op reads its tile pattern; arranging then follows that rhythm.
+  const [tplBusy, setTplBusy] = useState(false);
+  const gridCfg = (data || {})[gk] || {};
+  const templates = gridCfg.templates || [];
+  const addTemplate = (file) => {
+    const fr = new FileReader();
+    fr.onload = async () => {
+      setTplBusy(true); setMsg(null);
+      try {
+        const r = await fetch("/api/data?op=grid_template", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl: fr.result }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "couldn't read the grid");
+        const t = { id: guid(), name: "Reference " + (templates.length + 1), pattern: d.pattern, logic: d.logic };
+        onSave({ ...(data || {}), [gk]: { ...gridCfg, templates: [...templates, t].slice(-3), tplActive: t.id } });
+        setMsg("Reference grid read — " + (d.logic || "pattern of " + d.pattern.length + " tiles") + ". Auto-arrange now follows it.");
+      } catch (e) { setMsg("Reference grid failed: " + String(e.message || e).slice(0, 90)); }
+      setTplBusy(false);
+    };
+    fr.readAsDataURL(file);
+  };
+  const setTplActive = (id) => onSave({ ...(data || {}), [gk]: { ...gridCfg, tplActive: gridCfg.tplActive === id ? null : id } });
+  const removeTemplate = (id) => onSave({ ...(data || {}), [gk]: { ...gridCfg, templates: templates.filter((t) => t.id !== id), tplActive: gridCfg.tplActive === id ? null : gridCfg.tplActive } });
+
+  // Direct upload: photos become real cards on the brand board's Schedule 1-21
+  // list (cards are what publish), cover stored in the media store.
+  const uploadToGrid = (files) => {
+    const bk = Object.keys(GRID_BOARDS).find((k) => GRID_BOARDS[k] === acct);
+    const b = bk && boards && boards[bk];
+    if (!b) { setMsg("No board found for this account."); return; }
+    const list = (b.lists || []).find((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim()));
+    if (!list) { setMsg('This board needs a "Schedule 1-21" list first.'); return; }
+    const arr = [...files].slice(0, 21);
+    let done = 0; const made = [];
+    arr.forEach((f) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const img = new Image();
+        img.onload = async () => {
+          const maxW = 1440, sc = Math.min(1, maxW / img.width);
+          const cv = document.createElement("canvas");
+          cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+          cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+          const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+          made.push({ id: guid(), listId: list.id, name: "Post — new upload", cover: u, labels: [], members: [], desc: "", done: false, comments: [] });
+          done++;
+          if (done === arr.length && onSaveBoards) {
+            onSaveBoards({ ...boards, [bk]: { ...b, cards: [...b.cards, ...made] } });
+            setMsg(made.length + " photo" + (made.length === 1 ? "" : "s") + " added to the grid — they're real cards on " + b.name + "'s Schedule 1-21, so they can publish like any post.");
+          }
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(f);
+    });
+  };
+
   const moveItem = (fromVis, toVis) => {
     if (locked) return; // finalised grid — nothing moves
     if (fromVis === toVis) return;
@@ -205,11 +345,62 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     saveOrder(next);
   };
 
-  // ✨ Auto-arrange: sample each cover's tone (tiny canvas), then interleave
-  // light/dark and polish with swap passes so grid neighbors contrast.
+  // Classes live on the card (cd.gclass) so one classification pays forever.
+  const classesOf = () => {
+    const m = {};
+    visible.forEach((it) => { const bk = it.key.slice(0, it.key.indexOf(":")); const cd = boards[bk] && boards[bk].cards.find((x) => x.id === it.key.slice(it.key.indexOf(":") + 1)); if (cd && cd.gclass) m[it.key] = cd.gclass; });
+    return m;
+  };
+  const absUrl = (u) => (u && u.startsWith("/") ? window.location.origin + u : u);
+  const ensureClasses = async () => {
+    const have = classesOf();
+    const todo = visible.filter((it) => !have[it.key]).map((it) => ({ key: it.key, url: absUrl(hiResSource(it)) }));
+    if (!todo.length) return have;
+    // Reference faces come from her own FTC tags — a solo (Kiabeth FTC) cover
+    // and a solo (Kiaredza FTC) cover teach the model who is who.
+    const refs = {};
+    for (const it of visible) {
+      const nm = it.name || "";
+      if (!refs.kiabeth && /\(kiabeth\s+ftc\)/i.test(nm)) refs.kiabeth = absUrl(hiResSource(it));
+      if (!refs.kiaredza && /\(kiaredza\s+ftc\)/i.test(nm)) refs.kiaredza = absUrl(hiResSource(it));
+    }
+    const r = await fetch("/api/data?op=grid_classify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: todo, refs }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "classification failed");
+    const merged = { ...have, ...(d.classes || {}) };
+    // persist onto the cards so re-runs are free
+    if (onSaveBoards && d.classes && Object.keys(d.classes).length) {
+      const next = { ...boards };
+      for (const [key, cls] of Object.entries(d.classes)) {
+        const bk = key.slice(0, key.indexOf(":")), cid = key.slice(key.indexOf(":") + 1);
+        if (next[bk]) next[bk] = { ...next[bk], cards: next[bk].cards.map((cd) => (cd.id === cid ? { ...cd, gclass: cls } : cd)) };
+      }
+      onSaveBoards(next);
+    }
+    return merged;
+  };
+
+  // ✨ Auto-arrange: art-director pass when classes are available (who's in
+  // frame, tile kind, color family — plus the active reference-grid rhythm);
+  // falls back to the original tone interleave if classification fails.
   const autoArrange = async () => {
     if (locked) return;
     setArranging(true); setMsg(null);
+    try {
+      const lockedSlots0 = new Set(visible.map((it, i) => (it.done || pins.includes(it.key) ? i : -1)).filter((i) => i >= 0));
+      let classes = null;
+      try { classes = await ensureClasses(); } catch (e) { setMsg("Vision pass unavailable (" + String(e.message || e).slice(0, 60) + ") — using tone arrangement."); }
+      if (classes && Object.keys(classes).length >= Math.min(6, visible.length)) {
+        const tpl = (((data || {})[gk] || {}).templates || []).find((t) => t.id === ((data || {})[gk] || {}).tplActive);
+        const pos = arrangeByClasses(visible, lockedSlots0, classes, tpl ? tpl.pattern : null);
+        const head = order.slice(0, windowStart);
+        saveOrder([...head, ...pos.map((vi) => order[windowStart + vi])]);
+        const nfaces = visible.filter((it) => (classes[it.key] || {}).k === "face").length;
+        setMsg("Arranged editorially — " + nfaces + " face tiles separated, colors alternated" + (tpl ? ", following your reference grid “" + (tpl.name || "reference") + "”" : "") + (lockedSlots0.size ? "; " + lockedSlots0.size + " pinned/posted stayed put." : "."));
+        setArranging(false);
+        return;
+      }
+    } catch (e) { /* fall through to tone pass */ }
     try {
       const tones = await Promise.all(visible.map(async (it) => {
         try {
@@ -433,6 +624,23 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             {arranging ? "Arranging…" : "✨ Auto-arrange"}
           </button>
         </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          ⇪ Add photos to grid
+          <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files && e.target.files.length) uploadToGrid(e.target.files); e.target.value = ""; }} />
+        </label>
+        <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: tplBusy ? c.taupe : c.sub, cursor: "pointer" }}>
+          {tplBusy ? "Reading reference…" : "◫ Reference grid"}
+          <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) addTemplate(f); e.target.value = ""; }} />
+        </label>
+        {templates.map((t) => (
+          <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setTplActive(t.id)} title={t.logic || ""}
+              style={{ border: `1px solid ${gridCfg.tplActive === t.id ? c.taupe : c.line}`, background: gridCfg.tplActive === t.id ? c.taupe : "transparent", color: gridCfg.tplActive === t.id ? "#fff" : c.sub, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>{t.name}</button>
+            <button onClick={() => removeTemplate(t.id)} style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
+          </span>
+        ))}
       </div>
       {locked && (
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11.5, color: c.green, marginBottom: 10 }}>

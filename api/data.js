@@ -1315,6 +1315,81 @@ export default async function handler(req, res) {
     res.json(out);
     return;
   }
+  // ── Grid intelligence ────────────────────────────────────────────────────────
+  // Classify covers the way an art director reads a feed: who is in frame,
+  // what KIND of tile it is, its color family and tone. Claude vision does the
+  // reading; results are cached by cover URL so a grid re-run costs nothing.
+  if (op === "grid_classify" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const akey = process.env.ANTHROPIC_API_KEY;
+    if (!akey) { res.status(500).json({ error: "ANTHROPIC_API_KEY not set" }); return; }
+    const b = req.body || {};
+    const items = (b.items || []).slice(0, 24);
+    const refs = b.refs || {}; // { kiabeth: url, kiaredza: url } — pulled from her own FTC-tagged covers
+    const out = {};
+    const todo = [];
+    for (const it of items) {
+      const ck = "gclass_" + createHash("sha1").update(String(it.url)).digest("hex").slice(0, 20);
+      const cached = await kvGet(ck);
+      if (cached && cached.k) out[it.key] = cached; else todo.push({ ...it, ck });
+    }
+    // batches of 7 tiles per call keeps requests comfortably sized
+    for (let i = 0; i < todo.length; i += 7) {
+      const batch = todo.slice(i, i + 7);
+      const content = [];
+      if (refs.kiabeth) content.push({ type: "text", text: "Reference — this person is KIABETH:" }, { type: "image", source: { type: "url", url: refs.kiabeth } });
+      if (refs.kiaredza) content.push({ type: "text", text: "Reference — this person is KIAREDZA:" }, { type: "image", source: { type: "url", url: refs.kiaredza } });
+      batch.forEach((it, j) => content.push({ type: "text", text: "TILE " + (j + 1) + ":" }, { type: "image", source: { type: "url", url: it.url } }));
+      content.push({ type: "text", text:
+        "These are Instagram grid tiles for a quiet-luxury brand (The Row / Toteme editorial standard). For EACH tile return strict JSON in an array, one object per tile in order: " +
+        '{"w": who is prominently in frame — "kiabeth"|"kiaredza"|"both"|"other"|"none", ' +
+        '"k": tile kind — "face" (a person is the subject), "product" (product is the subject), "detail" (close texture/material/crop), "lifestyle" (scene/interior/place, no prominent person), ' +
+        '"c": dominant color family — one of "cream","brown","black","white","green","blue","red","pink","grey","tan", ' +
+        '"t": overall tone — "light"|"mid"|"dark"}. ' +
+        "Respond with ONLY the JSON array, no prose." });
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content }] }),
+      });
+      const d = await r.json();
+      if (!r.ok) { res.status(400).json({ error: "vision: " + JSON.stringify(d.error || d).slice(0, 200), partial: out }); return; }
+      let arr = [];
+      try { arr = JSON.parse(((d.content || [])[0] || {}).text.replace(/^[^\[]*/, "").replace(/[^\]]*$/, "")); } catch (e) {}
+      for (let j = 0; j < batch.length; j++) {
+        const c2 = arr[j];
+        if (c2 && c2.k) { out[batch[j].key] = c2; await kvSet(batch[j].ck, c2); }
+      }
+    }
+    res.json({ classes: out });
+    return;
+  }
+  // Read a REFERENCE grid (screenshot of a feed she admires) and extract its
+  // editorial rhythm — the top-to-bottom, left-to-right sequence of tile kinds.
+  if (op === "grid_template" && req.method === "POST") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
+    const akey = process.env.ANTHROPIC_API_KEY;
+    if (!akey) { res.status(500).json({ error: "ANTHROPIC_API_KEY not set" }); return; }
+    const b = req.body || {};
+    const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(b.dataUrl || ""));
+    if (!m) { res.status(400).json({ error: "Send the reference grid as an image data URL." }); return; }
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 900, messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } },
+        { type: "text", text: 'This is a screenshot of an Instagram grid used as an editorial reference. Reading top-left to bottom-right, classify every visible tile as one of "face","product","detail","lifestyle". Also describe the grid\'s editorial logic in one sentence. Return ONLY strict JSON: {"pattern": ["face","product",...], "logic": "..."}' },
+      ] }] }),
+    });
+    const d = await r.json();
+    if (!r.ok) { res.status(400).json({ error: "vision: " + JSON.stringify(d.error || d).slice(0, 200) }); return; }
+    try {
+      const txt = ((d.content || [])[0] || {}).text || "";
+      const parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+      res.json({ pattern: (parsed.pattern || []).slice(0, 42), logic: String(parsed.logic || "").slice(0, 240) });
+    } catch (e) { res.status(400).json({ error: "couldn't parse the reference grid" }); }
+    return;
+  }
   if (req.method === "GET" && op === "publish_last") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     res.json((await kvGet("publish_last")) || { note: "no sweep recorded yet" });
