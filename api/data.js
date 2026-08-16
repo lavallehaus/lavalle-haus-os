@@ -2057,6 +2057,20 @@ export default async function handler(req, res) {
   // Needs the drive.readonly scope — if Google was connected before that scope
   // was added, the query legally succeeds but only sees app-created files, so
   // the UI treats an empty result as "reconnect Google".
+  // Find folders/files by name — the Drive tree is deep and hand-walking it
+  // by parent id is hopeless for tasks like "the Loft folder for The Fold".
+  if (op === "drive_search" && req.method === "POST") {
+    const auth0b = await getAuthEarly(req);
+    if (!ownerRole(auth0b)) { res.status(403).json({ error: "Owner only." }); return; }
+    const name = String((req.body || {}).name || "").replace(/'/g, "");
+    if (!name) { res.status(400).json({ error: "name required" }); return; }
+    const gt = await googleToken();
+    if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const q = encodeURIComponent("name contains '" + name + "' and trashed = false");
+    const fr = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name,mimeType,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gt } })).json();
+    res.json({ files: fr.files || [] });
+    return;
+  }
   if (op === "drive_list" && req.method === "POST") {
     const folderId = ((req.body || {}).folderId || "").replace(/[^a-zA-Z0-9_-]/g, "");
     if (!folderId) { res.status(400).json({ error: "No folder id." }); return; }
