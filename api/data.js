@@ -1198,7 +1198,40 @@ export default async function handler(req, res) {
       }
     }
     await kvSet("lavalle_data", blob);
-    res.json({ ok: true, stored: item.id, emailed: item.sentTo.length });
+    // File the meeting into Drive: "Meeting Recordings" → Marketing | R&D.
+    // A text doc per meeting (title, date, notes, recording link) — the
+    // recording itself stays hosted on Fathom, the doc is the searchable trail.
+    let drive = null;
+    try {
+      const gt = await googleToken();
+      if (gt) {
+        const dept = /r\s*&\s*d|manufactur|supplier|formul|packag|lab\b|sample/i.test(title + " " + summary.slice(0, 400)) ? "R&D" : "Marketing";
+        const findOrCreate = async (name, parent) => {
+          const q = encodeURIComponent("name='" + name.replace(/'/g, "\\'") + "' and mimeType='application/vnd.google-apps.folder' and trashed=false" + (parent ? " and '" + parent + "' in parents" : ""));
+          const fr = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id)&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gt } })).json();
+          if (fr.files && fr.files[0]) return fr.files[0].id;
+          const cr = await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+            method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "application/json" },
+            body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: parent ? [parent] : undefined }),
+          })).json();
+          return cr.id;
+        };
+        const rootId = await findOrCreate("Meeting Recordings", null);
+        const deptId = await findOrCreate(dept, rootId);
+        const fname = (when || "").slice(0, 10) + " — " + title;
+        const body2 = title + "\n" + when + "\n\nRecording: " + (url2 || "(no link)") + "\n\n" + (summary || "(no notes)");
+        const boundary = "lhmeet" + Date.now();
+        const mp = "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+          + JSON.stringify({ name: fname, parents: [deptId], mimeType: "application/vnd.google-apps.document" })
+          + "\r\n--" + boundary + "\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body2 + "\r\n--" + boundary + "--";
+        const up = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true", {
+          method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "multipart/related; boundary=" + boundary },
+          body: mp,
+        })).json();
+        if (up.id) { drive = { fileId: up.id, dept }; item.driveFileId = up.id; item.dept = dept; await kvSet("lavalle_data", blob); }
+      }
+    } catch (e2) {}
+    res.json({ ok: true, stored: item.id, emailed: item.sentTo.length, drive });
     return;
   }
   // Calendar-subscription feed: add this URL once in Google Calendar
