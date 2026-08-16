@@ -11,10 +11,11 @@ const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card
 const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 
-const APPROVE_OPTS = ["Pending", "Approve", "Decline"];
+const APPROVE_OPTS = ["Ready for review", "Approved", "Decline"];
 const STATUS_OPTS = ["Pending", "Waiting for: Contract", "Waiting for Shipment", "Products Shipped"];
 const SHARED_OPTS = ["Pending", "Yes", "Additional Fee", "No"];
-const chipColor = (v) => /approve|yes|shipped/i.test(v) ? c.green
+const chipColor = (v) => /ready for review/i.test(v) ? "#a8842c"
+  : /approve|yes|shipped/i.test(v) ? c.green
   : /decline|^no$/i.test(v) ? c.red
   : /additional|contract/i.test(v) ? c.blue
   : /waiting for shipment/i.test(v) ? c.taupe : "#9A9A95";
@@ -62,7 +63,18 @@ export default function PRHub({ data, onSave }) {
   const folders = (data && data.folders) || [];
   const folder = folders.find((f) => f.id === openId);
 
-  const saveFolder = (fid, rows) => onSave({ ...(data || {}), folders: folders.map((f) => (f.id === fid ? { ...f, rows } : f)) });
+  // Undo/redo: every save pushes the PREVIOUS state; capped at 40 steps.
+  const histRef = useState({ past: [], future: [] })[0];
+  const save = (next) => {
+    histRef.past.push(JSON.stringify(data || {}));
+    if (histRef.past.length > 40) histRef.past.shift();
+    histRef.future.length = 0;
+    onSave(next);
+  };
+  const undo = () => { const prev = histRef.past.pop(); if (prev === undefined) return; histRef.future.push(JSON.stringify(data || {})); onSave(JSON.parse(prev)); };
+  const redo = () => { const nxt = histRef.future.pop(); if (nxt === undefined) return; histRef.past.push(JSON.stringify(data || {})); onSave(JSON.parse(nxt)); };
+
+  const saveFolder = (fid, rows) => save({ ...(data || {}), folders: folders.map((f) => (f.id === fid ? { ...f, rows } : f)) });
 
   if (!folder) {
     return (
@@ -87,7 +99,7 @@ export default function PRHub({ data, onSave }) {
 
   const rows = folder.rows || [];
   const setCell = (rid, key, val) => saveFolder(folder.id, rows.map((r) => (r.id === rid ? { ...r, [key]: val } : r)));
-  const addRow = () => saveFolder(folder.id, [...rows, { id: uid(), approve: "Pending", status: "Pending", shared: "Pending" }]);
+  const addRow = () => saveFolder(folder.id, [...rows, { id: uid(), approve: "Ready for review", status: "Pending", shared: "Pending" }]);
   const delRow = (rid) => { if (confirm("Remove this creator row?")) saveFolder(folder.id, rows.filter((r) => r.id !== rid)); };
 
   return (
@@ -96,7 +108,13 @@ export default function PRHub({ data, onSave }) {
         <button onClick={() => setOpenId(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>← Folders</button>
         <div style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>{folder.name}</div>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>{rows.length} creators</div>
-        <button onClick={addRow} style={{ marginLeft: "auto", border: `1px solid ${c.ink}`, background: c.ink, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>+ Add creator</button>
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+          <button onClick={undo} disabled={!histRef.past.length} title="Undo last change"
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: histRef.past.length ? c.ink : "#C4C4C0", cursor: "pointer" }}>Undo</button>
+          <button onClick={redo} disabled={!histRef.future.length} title="Redo"
+            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: histRef.future.length ? c.ink : "#C4C4C0", cursor: "pointer" }}>Redo</button>
+          <button onClick={addRow} style={{ border: `1px solid ${c.ink}`, background: c.ink, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>+ Add creator</button>
+        </span>
       </div>
       <div style={{ overflowX: "auto", border: `1px solid ${c.line}` }}>
         <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
@@ -125,18 +143,22 @@ export default function PRHub({ data, onSave }) {
                             <span key={l.key} style={{ flex: "none", display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, background: "#fff" }}>
                               <a href={l.href} target="_blank" rel="noreferrer" title={l.href}
                                 style={{ textDecoration: "none", padding: "2px 4px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub }}>{l.label}</a>
-                              {l.flag && (
-                                <button onClick={() => setCell(r.id, l.flag, true)} title={`This creator has no ${l.label === "IG" ? "Instagram" : "TikTok"}`}
-                                  style={{ border: "none", borderLeft: `1px solid ${c.line}`, background: "transparent", padding: "2px 4px", fontFamily: sans, fontSize: 8.5, lineHeight: 1, color: "#C4C4C0", cursor: "pointer" }}>×</button>
-                              )}
                             </span>
                           )
+                        ))}
+                        {/* the off switches live apart from the open-chips so a
+                            tap on IG/TT can't accidentally kill the handle */}
+                        {socialLinks(r[col.key], r).filter((l) => l.flag && !l.off).map((l) => (
+                          <button key={"off" + l.key}
+                            onClick={() => { if (window.confirm(`Turn off the ${l.label === "IG" ? "Instagram" : "TikTok"} link for this creator?`)) setCell(r.id, l.flag, true); }}
+                            title={`Mark: no ${l.label === "IG" ? "Instagram" : "TikTok"}`}
+                            style={{ flex: "none", marginLeft: 8, border: "none", background: "transparent", padding: "2px 3px", fontFamily: sans, fontSize: 9, lineHeight: 1, color: "#D8D8D4", cursor: "pointer" }}>×{l.label.toLowerCase()}</button>
                         ))}
                       </div>
                     ) : col.type === "select" ? (
                       <select value={r[col.key] || col.opts[0]} onChange={(e) => setCell(r.id, col.key, e.target.value)}
                         style={{ width: "100%", border: "none", outline: "none", padding: "8px 8px", fontFamily: sans, fontSize: 11, letterSpacing: 0.5, appearance: "none", WebkitAppearance: "none", background: chipColor(r[col.key] || col.opts[0]), color: "#fff", borderRadius: 0, cursor: "pointer", textAlign: "center" }}>
-                        {col.opts.map((o) => <option key={o} value={o} style={{ background: "#fff", color: c.ink }}>{o}</option>)}
+                        {[...col.opts, ...(r[col.key] && !col.opts.includes(r[col.key]) ? [r[col.key]] : [])].map((o) => <option key={o} value={o} style={{ background: "#fff", color: c.ink }}>{o}</option>)}
                       </select>
                     ) : (
                       <input value={r[col.key] || ""} onChange={(e) => setCell(r.id, col.key, e.target.value)}

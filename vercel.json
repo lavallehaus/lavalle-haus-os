@@ -12,6 +12,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/meetings.ics",
+      "destination": "/api/data?op=meetings_ics"
+    },
+    {
+      "source": "/api/fathom-webhook",
+      "destination": "/api/data?op=fathom_webhook"
+    },
+    {
       "source": "/cover/:file",
       "destination": "/api/data?op=media&id=:file"
     },
