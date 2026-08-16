@@ -93,6 +93,8 @@ export default function TeamMeetings({ data, onSave, iAmOwner }) {
             <button onClick={() => setOpenId(openId === it.id ? null : it.id)} style={{ border: "none", background: "transparent", padding: 0, fontFamily: sans, fontSize: 13, color: c.ink, cursor: "pointer", textAlign: "left" }}>{it.title}</button>
             <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>{new Date(it.date).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
             {it.url && <a href={it.url} target="_blank" rel="noreferrer" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, textDecoration: "none", marginLeft: "auto" }}>Recording →</a>}
+            <button onClick={() => { if (window.confirm("Remove this meeting from the app? (The Fathom recording itself is untouched.)")) save({ items: items.filter((x) => x.id !== it.id) }); }}
+              style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 13, padding: 0, marginLeft: it.url ? 0 : "auto" }}>×</button>
           </div>
           {(it.sentTo || []).length > 0 && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: c.green, marginTop: 3 }}>Notes sent to {(it.sentTo || []).join(", ")}</div>}
           {openId === it.id && it.summary && <div style={{ fontFamily: sans, fontSize: 12, color: "#3d3d3a", whiteSpace: "pre-wrap", marginTop: 8, borderTop: `1px solid ${c.card}`, paddingTop: 8 }}>{it.summary}</div>}
