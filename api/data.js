@@ -1530,13 +1530,20 @@ export default async function handler(req, res) {
 
     // ── Stage 1b: bake candidate images into the media store, 8 per run ─────
     if (plan.stage === "bake") {
+      // Bakes a SMALL (640px) JPEG for the vision request — images are embedded
+      // as base64 blocks, since Anthropic's URL fetcher refused 40 rapid
+      // downloads from one host ("Unable to download the file").
       const bakeOne = async (driveId) => {
         try {
           const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + driveId + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gt } });
           if (!ir.ok) return null;
-          const fitted = await fitImage(Buffer.from(await ir.arrayBuffer()), ir.headers.get("content-type") || "image/jpeg", "igfeed");
+          const Jimp = (await import("jimp")).default;
+          const img = await Jimp.read(Buffer.from(await ir.arrayBuffer()));
+          img.cover(640, 800);
+          img.quality(80);
+          const small = await img.getBufferAsync(Jimp.MIME_JPEG);
           const mid = "g" + randomBytes(8).toString("hex");
-          await kvSet("media_" + mid, { type: "image/jpeg", b64: fitted.buf.toString("base64"), at: new Date().toISOString() });
+          await kvSet("media_" + mid, { type: "image/jpeg", b64: small.toString("base64"), at: new Date().toISOString() });
           return mid;
         } catch (eB) { return null; }
       };
@@ -1568,14 +1575,20 @@ export default async function handler(req, res) {
       const pmi = (mi2 + 11) % 12, pyr = mi2 === 0 ? plan.year - 1 : plan.year;
       const usable = plan.cands.filter((c) => plan.baked[c.id]);
       const content = [];
+      const b64Of = async (mid) => { const rec = await kvGet("media_" + mid); return rec && rec.b64 ? rec.b64 : null; };
       if (plan.refMid) {
-        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/cover/" + plan.refMid + ".jpg" } });
-        content.push({ type: "text", text: "Above: LAST month's (" + MONg[pmi] + " " + pyr + ") published grid for @thefoldlabel — 7 rows x 3 columns, reads top-left to bottom-right, and slot 1 is the BOTTOM-RIGHT tile (Instagram stacking: new posts push old ones down). The new month must FLOW from it: the first posts of the new month (low slot numbers) sit visually next to the last rows of this grid, so the palette and rhythm must hand off without an abrupt break." });
+        const rb = await b64Of(plan.refMid);
+        if (rb) {
+          content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: rb } });
+          content.push({ type: "text", text: "Above: LAST month's (" + MONg[pmi] + " " + pyr + ") published grid for @thefoldlabel — 7 rows x 3 columns, reads top-left to bottom-right, and slot 1 is the BOTTOM-RIGHT tile (Instagram stacking: new posts push old ones down). The new month must FLOW from it: the first posts of the new month (low slot numbers) sit visually next to the last rows of this grid, so the palette and rhythm must hand off without an abrupt break." });
+        }
       }
-      usable.forEach((c, i) => {
-        content.push({ type: "text", text: "Candidate " + i + " (" + c.src + "):" });
-        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/cover/" + plan.baked[c.id] + ".jpg" } });
-      });
+      for (let i = 0; i < usable.length; i++) {
+        const cb = await b64Of(plan.baked[usable[i].id]);
+        if (!cb) { usable.splice(i, 1); i--; continue; }
+        content.push({ type: "text", text: "Candidate " + i + " (" + usable[i].src + "):" });
+        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: cb } });
+      }
       const wantN = Math.min(21, usable.length);
       content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + plan.month + " " + plan.year + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it; lean into what is on-trend for " + plan.month + " " + plan.year + " in this register (seasonal transition, texture, tone); never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
       const r7 = await fetch("https://api.anthropic.com/v1/messages", {
