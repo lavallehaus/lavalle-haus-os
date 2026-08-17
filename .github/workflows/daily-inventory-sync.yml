@@ -18,3 +18,7 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/shopify-sync" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null
+      - name: Fold cover watcher
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=fold_cover_sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null

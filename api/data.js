@@ -1255,6 +1255,87 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── The Fold cover watcher ───────────────────────────────────────────────────
+  // Runs daily: finds month folders under The Fold > Social Media that contain
+  // a "Cover Photos" subfolder (found via SEARCH, because child listings on
+  // that shared drive are patchy), syncs numbered files onto the Schedule 1-21
+  // cards, and writes a caption + 2 broad TikTok tags for each NEW cover using
+  // vision + the live thefoldlabel.com catalog. Old captions are stashed in
+  // card comments, never destroyed.
+  if (op === "fold_cover_sync" && req.method === "POST") {
+    const okKey = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const auth0c = okKey ? null : await getAuthEarly(req);
+    if (!okKey && !ownerRole(auth0c)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const SM = "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC"; // The Fold > Social Media
+    const gt = await googleToken();
+    if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const gfetch = async (u) => (await fetch(u, { headers: { Authorization: "Bearer " + gt } })).json();
+    // 1. all Cover Photos folders → keep those whose parent is a month under SM
+    const sr = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains 'Cover Photos' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id,name,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true");
+    const months = [];
+    for (const f of sr.files || []) {
+      const pid = (f.parents || [])[0];
+      if (!pid) continue;
+      const pm = await gfetch("https://www.googleapis.com/drive/v3/files/" + pid + "?fields=id,name,parents&supportsAllDrives=true");
+      if ((pm.parents || []).includes(SM) && /^(january|february|march|april|may|june|july|august|september|october|november|december)/i.test((pm.name || "").trim()))
+        months.push({ month: pm.name.trim(), folderId: f.id });
+    }
+    if (!months.length) { res.json({ ok: true, note: "no month folders found" }); return; }
+    // 2. the CURRENT month wins if present, else the latest by calendar order
+    const MO = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+    const nowM = MO[new Date().getMonth()];
+    const target = months.find((m) => m.month.toLowerCase().startsWith(nowM)) || months.sort((a, b) => MO.findIndex((x) => b.month.toLowerCase().startsWith(x)) - MO.findIndex((x) => a.month.toLowerCase().startsWith(x)))[0];
+    // 3. numbered files inside it
+    const lr = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + target.folderId + "' in parents and trashed=false") + "&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true");
+    const byN = {};
+    for (const f of lr.files || []) { const m2 = /^(\d{1,2})\./.exec(f.name); if (m2) byN[Number(m2[1])] = f.id; }
+    // 4. sync onto Schedule 1-21 cards
+    const raw = await kvGet("lavalle_data");
+    const blob = Array.isArray(raw) ? raw[0] : raw;
+    const board = blob && blob.boards && blob.boards["the-fold"];
+    if (!board) { res.json({ ok: false, error: "no board" }); return; }
+    const schedIds = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
+    const changed = [];
+    for (const card of board.cards) {
+      if (!schedIds.has(card.listId)) continue;
+      const m3 = /^post\s*(\d+)/i.exec(card.name || "");
+      const fid = m3 && byN[Number(m3[1])];
+      if (!fid || (card.cover || "").includes(fid)) continue;
+      if (card.desc) card.comments = [...(card.comments || []), { id: "bc" + randomBytes(4).toString("hex"), by: "Claude", sys: true, at: new Date().toISOString(), text: "Previous caption (cover replaced by " + target.month + " sync): " + card.desc }];
+      card.cover = "/api/data?op=drive_img&id=" + fid;
+      card.coverUrl = "https://drive.google.com/file/d/" + fid + "/view";
+      changed.push({ card, n: Number(m3[1]) });
+    }
+    // 5. caption + tags for new covers (vision, capped per run)
+    const akey = process.env.ANTHROPIC_API_KEY;
+    let captioned = 0;
+    if (akey && changed.length) {
+      let catalog = "Romy Cardigan, Lucia Dress, Olivia Dress, Iris Dress, Renata Dress, Margaux Blouse, Sera Top, Sable Pant, Luce Pants, Hazel Sweater, Dove Sweater, Selene Necklace, Cora Bracelet, Mira Earrings";
+      try {
+        const site = await (await fetch("https://thefoldlabel.com/collections/all")).text();
+        const names = [...new Set([...site.matchAll(/\/products\/([a-z0-9-]+)/g)].map((x) => x[1].replace(/-/g, " ")))].slice(0, 40);
+        if (names.length > 3) catalog = names.join(", ");
+      } catch (e3) {}
+      for (const ch of changed.slice(0, 8)) {
+        try {
+          const r4 = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 300, messages: [{ role: "user", content: [
+              { type: "image", source: { type: "url", url: APP_ORIGIN + ch.card.cover + "&fit=igfeed" } },
+              { type: "text", text: "This is a grid post for The Fold (thefoldlabel.com) — quiet-luxury womenswear, The Row/Toteme register. Catalog: " + catalog + ". Write ONE understated sentence describing what's pictured (name the product ONLY if clearly identifiable from the catalog), plus exactly 2 broad TikTok hashtags (never the brand name, no niche tags — think #quietluxury #ootd #minimalstyle #naturalfibers #knitwear #outfitideas #styleinspo). Return ONLY JSON: {\"caption\":\"…\",\"tags\":\"#a #b\"}" },
+            ] }] }),
+          });
+          const d4 = await r4.json();
+          const txt = ((d4.content || [])[0] || {}).text || "";
+          const parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+          if (parsed.caption) { ch.card.desc = String(parsed.caption).slice(0, 300); ch.card.tags = String(parsed.tags || "").slice(0, 80); captioned++; }
+        } catch (e4) {}
+      }
+    }
+    if (changed.length) await kvSet("lavalle_data", blob);
+    res.json({ ok: true, month: target.month, filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned });
+    return;
+  }
   const auth = await getAuth(req);
   if (!auth) { res.status(401).json({ error: "Locked" }); return; }
 
