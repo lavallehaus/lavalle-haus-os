@@ -1429,6 +1429,82 @@ export default async function handler(req, res) {
     res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned, format: fmt });
     return;
   }
+  // ── ClickUp → Drive: Ashe Design Haus deliveries ─────────────────────────────
+  // Ashe uploads her work as ClickUp attachments (playbook lists). This walks
+  // workspace 9014402696, finds attachments on playbook tasks (falling back to
+  // every task attachment), and files each NEW one into Drive under
+  // "Content by Ashe Design Haus" / <Month Year> — month from the attachment's
+  // own date. Dedupe by attachment id in KV, ≤5 new files per run (daily cron
+  // catches up), files over 80MB reported instead of transferred.
+  if (op === "clickup_sync" && req.method === "POST") {
+    const okKey2 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const auth0e = okKey2 ? null : await getAuthEarly(req);
+    if (!okKey2 && !ownerRole(auth0e)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const ct = process.env.CLICKUP_TOKEN;
+    if (!ct) { res.json({ ok: false, error: "CLICKUP_TOKEN not set — create a personal API token in ClickUp (avatar → Settings → Apps → API Token) and add it as CLICKUP_TOKEN in Vercel env vars." }); return; }
+    const cu = async (path) => (await fetch("https://api.clickup.com/api/v2" + path, { headers: { Authorization: ct } })).json();
+    const TEAM = "9014402696";
+    const ASHE_DRIVE = "1dK8yulLJGrhLeFT_dytYrQtgf2iRQ2fn"; // Content by Ashe Design Haus
+    const gt = await googleToken();
+    if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const seen = (await kvGet("clickup_seen")) || {};
+    const lists = [];
+    try {
+      const spaces = (await cu("/team/" + TEAM + "/space?archived=false")).spaces || [];
+      for (const sp of spaces) {
+        for (const fl of ((await cu("/space/" + sp.id + "/folder?archived=false")).folders || [])) for (const l of fl.lists || []) lists.push({ id: l.id, name: (fl.name + " " + l.name) });
+        for (const l of ((await cu("/space/" + sp.id + "/list?archived=false")).lists || [])) lists.push({ id: l.id, name: l.name });
+      }
+    } catch (e7) { res.json({ ok: false, error: "ClickUp API: " + String(e7).slice(0, 120) }); return; }
+    const playbook = lists.filter((l) => /playbook/i.test(l.name));
+    const scanLists = playbook.length ? playbook : lists;
+    const MONTHS2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const found = []; const skippedBig = [];
+    for (const l of scanLists.slice(0, 20)) {
+      const tasks = (await cu("/list/" + l.id + "/task?include_closed=true&page=0")).tasks || [];
+      for (const t of tasks) {
+        for (const a of t.attachments || []) {
+          if (!a.url || seen[a.id]) continue;
+          found.push({ id: a.id, title: a.title || ("attachment-" + a.id), url: a.url, date: Number(a.date) || Date.now(), task: t.name });
+        }
+      }
+    }
+    let uploaded = 0;
+    const folderCache = {};
+    const findOrCreate2 = async (name, parent) => {
+      const key2 = parent + "/" + name;
+      if (folderCache[key2]) return folderCache[key2];
+      const q7 = encodeURIComponent("name='" + name + "' and mimeType='application/vnd.google-apps.folder' and '" + parent + "' in parents and trashed=false");
+      const fr7 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q7 + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gt } })).json();
+      let id7 = fr7.files && fr7.files[0] && fr7.files[0].id;
+      if (!id7) {
+        const cr7 = await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json();
+        id7 = cr7.id;
+      }
+      folderCache[key2] = id7;
+      return id7;
+    };
+    for (const a of found.slice(0, 5)) {
+      try {
+        const fr8 = await fetch(a.url, { headers: { Authorization: ct } });
+        const len = Number(fr8.headers.get("content-length") || 0);
+        if (len > 80 * 1024 * 1024) { skippedBig.push(a.title); seen[a.id] = "too-big"; continue; }
+        const buf = Buffer.from(await fr8.arrayBuffer());
+        if (buf.length > 80 * 1024 * 1024) { skippedBig.push(a.title); seen[a.id] = "too-big"; continue; }
+        const d8 = new Date(a.date);
+        const monthFolder = await findOrCreate2(MONTHS2[d8.getMonth()] + " " + d8.getFullYear(), ASHE_DRIVE);
+        const meta8 = JSON.stringify({ name: a.title, parents: [monthFolder] });
+        const boundary8 = "cuup" + Date.now();
+        const head8 = Buffer.from("--" + boundary8 + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta8 + "\r\n--" + boundary8 + "\r\nContent-Type: " + (fr8.headers.get("content-type") || "application/octet-stream") + "\r\n\r\n");
+        const tail8 = Buffer.from("\r\n--" + boundary8 + "--");
+        const up8 = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "multipart/related; boundary=" + boundary8 }, body: Buffer.concat([head8, buf, tail8]) })).json();
+        if (up8.id) { seen[a.id] = up8.id; uploaded++; }
+      } catch (e8) {}
+    }
+    await kvSet("clickup_seen", seen);
+    res.json({ ok: true, listsScanned: scanLists.length, playbookLists: playbook.map((l) => l.name), newAttachments: found.length, uploaded, skippedTooBig: skippedBig, remaining: Math.max(0, found.length - 5) });
+    return;
+  }
   const auth = await getAuth(req);
   if (!auth) { res.status(401).json({ error: "Locked" }); return; }
 

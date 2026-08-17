@@ -22,3 +22,7 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=fold_cover_sync" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null
+      - name: ClickUp -> Ashe Drive sync
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=clickup_sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 240 -o /dev/null
