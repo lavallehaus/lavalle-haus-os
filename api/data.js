@@ -1539,7 +1539,7 @@ export default async function handler(req, res) {
       const txt7 = ((d7.content || [])[0] || {}).text || "";
       let parsed7;
       try { parsed7 = JSON.parse(txt7.slice(txt7.indexOf("{"), txt7.lastIndexOf("}") + 1)); } catch (e7b) {
-        res.json({ ok: false, stage: "plan", error: "vision_parse_failed", raw: txt7.slice(0, 300) }); return;
+        res.json({ ok: false, stage: "plan", error: "vision_parse_failed", raw: txt7.slice(0, 300), apiErr: d7.error || null, stop: d7.stop_reason || null, nCands: cands.length }); return;
       }
       const picks = (parsed7.picks || []).filter((p) => p && p.slot >= 1 && p.slot <= wantN && cands[p.i]).map((p) => ({ slot: p.slot, srcId: cands[p.i].id, srcName: cands[p.i].name, src: cands[p.i].src, done: false }));
       if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, note: parsed7.note || "", picks }); return; }
