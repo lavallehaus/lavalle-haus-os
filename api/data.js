@@ -1484,7 +1484,9 @@ export default async function handler(req, res) {
         return new Date(uy, um - 1, 1) < cutoff;
       };
       const candidates = []; // {id, name, src}
-      const pushImgs = (files, src) => { for (const f of files) if ((f.mimeType || "").startsWith("image/") && isFresh(f.id)) candidates.push({ id: f.id, name: f.name, src }); };
+      // JPEG/PNG/WebP only — HEIC (UGC phone shots) can't be decoded by the
+      // vision API or Jimp, and one bad image block fails the whole request.
+      const pushImgs = (files, src) => { for (const f of files) if (/^image\/(jpeg|png|webp)/.test(f.mimeType || "") && isFresh(f.id)) candidates.push({ id: f.id, name: f.name, src }); };
       // Ashe: "<Month> <Year>" or bare "<Month>" subfolder of the Ashe folder
       const asheKids = await listG(ASHEg);
       for (const f of asheKids) {
@@ -1492,10 +1494,14 @@ export default async function handler(req, res) {
         const nm = (f.name || "").trim().toLowerCase();
         if (nm === MONg[mi].toLowerCase() || nm === (MONg[mi] + " " + yr).toLowerCase()) pushImgs(await listG(f.id), "ashe");
       }
-      // Loft: root images + one level of subfolders
-      const loftKids = await listG(LOFTg);
-      pushImgs(loftKids, "loft");
-      for (const f of loftKids) if (f.mimeType === "application/vnd.google-apps.folder") pushImgs(await listG(f.id), "loft");
+      // Loft: transferred structure nests files two levels deep
+      // (Loft / "01. January 2026" / "Flat Lays" / photo.jpg) — walk depth 2.
+      const walkLoft = async (fid, depth) => {
+        const kids = await listG(fid);
+        pushImgs(kids, "loft");
+        if (depth < 2) for (const f of kids) if (f.mimeType === "application/vnd.google-apps.folder") await walkLoft(f.id, depth + 1);
+      };
+      await walkLoft(LOFTg, 0);
       if (!candidates.length) {
         res.json({ ok: false, stage: "plan", month: MONg[mi] + " " + yr, error: "No candidate images: Ashe folder has no " + MONg[mi] + " content and the Loft folder has nothing unused. Add content (ClickUp sync or manual) and re-run." });
         return;
