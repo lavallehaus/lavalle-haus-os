@@ -1518,11 +1518,19 @@ export default async function handler(req, res) {
         const ref = pmFiles.find((f) => /grid/i.test(f.name || "") && (f.mimeType || "").startsWith("image/"));
         if (ref) refUrl = APP_ORIGIN + "/api/data?op=drive_img&id=" + ref.id;
       }
-      if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, sample: cands.slice(0, 10).map((c) => c.src + ":" + c.name) }); return; }
+      // Competitor feed references (The Row / Toteme / Jacquemus montages) live
+      // in Ashe root/_gridrefs — refreshed captures of their live IG grids.
+      let compRefs = [];
+      try {
+        const grKids = await listG(ASHEg);
+        const grF = grKids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim() === "_gridrefs");
+        if (grF) compRefs = (await listG(grF.id)).filter((f) => /^image\/(jpeg|png|webp)/.test(f.mimeType || "") && !/-raw-/.test(f.name || "")).map((f) => ({ id: f.id, name: (f.name || "").replace(/\.\w+$/, "") }));
+      } catch (eGR) {}
+      if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, compRefs: compRefs.map((c) => c.name), sample: cands.slice(0, 10).map((c) => c.src + ":" + c.name) }); return; }
       // Anthropic's URL fetcher times out on 40 live drive_img proxies (each
       // one is a Vercel→Drive→Jimp chain), so bake candidates into the KV
       // media store first and run vision over instant /cover/ URLs.
-      plan = { stage: "bake", month: MONg[mi], year: yr, refUrl, refMid: null, cands, dropped, baked: {} };
+      plan = { stage: "bake", month: MONg[mi], year: yr, refUrl, refMid: null, cands, dropped, baked: {}, compRefs, compBaked: {} };
       await kvSet(planKey, plan);
       res.json({ ok: true, stage: "bake", month: MONg[mi] + " " + yr, candidates: cands.length, droppedFromVision: dropped, refUsed: !!refUrl, note: "baking candidate images — call again until stage advances" });
       return;
@@ -1554,13 +1562,20 @@ export default async function handler(req, res) {
         if (!plan.refMid) plan.refUrl = null; // ref bake failed — proceed without it
         did++;
       }
+      for (const cr of plan.compRefs || []) {
+        if (did >= 8) break;
+        if (plan.compBaked[cr.id] !== undefined) continue;
+        plan.compBaked[cr.id] = await bakeOne(cr.id);
+        did++;
+      }
       for (const c of plan.cands) {
         if (did >= 8) break;
         if (plan.baked[c.id] !== undefined) continue;
         plan.baked[c.id] = await bakeOne(c.id); // null marks a failed bake — skipped later
         did++;
       }
-      const remaining = plan.cands.filter((c) => plan.baked[c.id] === undefined).length;
+      const remaining = plan.cands.filter((c) => plan.baked[c.id] === undefined).length
+        + (plan.compRefs || []).filter((c) => plan.compBaked[c.id] === undefined).length;
       if (!remaining) plan.stage = "vision";
       await kvSet(planKey, plan);
       res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, baked: Object.keys(plan.baked).length, remaining });
@@ -1582,6 +1597,13 @@ export default async function handler(req, res) {
           content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: rb } });
           content.push({ type: "text", text: "Above: LAST month's (" + MONg[pmi] + " " + pyr + ") published grid for @thefoldlabel — 7 rows x 3 columns, reads top-left to bottom-right, and slot 1 is the BOTTOM-RIGHT tile (Instagram stacking: new posts push old ones down). The new month must FLOW from it: the first posts of the new month (low slot numbers) sit visually next to the last rows of this grid, so the palette and rhythm must hand off without an abrupt break." });
         }
+      }
+      for (const cr of plan.compRefs || []) {
+        const mid = (plan.compBaked || {})[cr.id];
+        const cb2 = mid ? await b64Of(mid) : null;
+        if (!cb2) continue;
+        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: cb2 } });
+        content.push({ type: "text", text: "Competitor reference — @" + cr.name + "'s current Instagram feed. Emulate this level of editorial rhythm, tonal discipline, negative space, and the cadence of mixing product, portrait and texture shots. NEVER copy or pick these images — they are style references only." });
       }
       for (let i = 0; i < usable.length; i++) {
         const cb = await b64Of(plan.baked[usable[i].id]);
@@ -1689,7 +1711,7 @@ export default async function handler(req, res) {
     const expect = createHash("sha256").update(appToken() + ":pbingest").digest("hex");
     if (!pb || pb.key !== expect) { res.status(403).json({ error: "bad key" }); return; }
     const mPB = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(pb.dataUrl || ""));
-    const srcOk = /^https:\/\/(prod\.playbookstatic\.com|img\.playbook\.com)\//.test(String(pb.srcUrl || ""));
+    const srcOk = /^https:\/\/(prod\.playbookstatic\.com|img\.playbook\.com|[\w.-]+\.cdninstagram\.com|[\w.-]+\.fbcdn\.net)\//.test(String(pb.srcUrl || ""));
     if (!mPB && !srcOk) { res.status(400).json({ error: "expected image data URL or a playbook srcUrl" }); return; }
     const gtPB = await googleToken();
     if (!gtPB) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -2738,7 +2760,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename") {
+  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -2809,6 +2831,20 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error", detail: d.error }); return; }
         res.json(d); return;
+      }
+      if (op === "drive_upload_session") {
+        // Mint a Google resumable-upload session: the returned session URI
+        // accepts the file bytes WITHOUT auth, so large local files (Playbook
+        // reels) can be PUT straight from the laptop into Drive.
+        const nameS = String(b.name || "upload.bin").slice(0, 120);
+        const parentS = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const rS = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true", {
+          method: "POST", headers: { ...AUTH, "Content-Type": "application/json", "X-Upload-Content-Type": b.mime || "video/mp4" },
+          body: JSON.stringify({ name: nameS, parents: parentS ? [parentS] : undefined }),
+        });
+        if (!rS.ok) { res.status(400).json({ error: "session " + rS.status, detail: (await rS.text()).slice(0, 200) }); return; }
+        res.json({ ok: true, sessionUrl: rS.headers.get("location") });
+        return;
       }
       if (op === "drive_upload_url") {
         // Fetch an image by URL (e.g. a live IG grid image — an already-edited,
