@@ -1673,6 +1673,22 @@ export default async function handler(req, res) {
     res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, note: plan.note });
     return;
   }
+  // Owner-only ClickUp API probe — lets us read chat/comment surfaces (e.g. the
+  // thread where Ashe shares Playbook delivery links) without shipping the
+  // token anywhere. Body: {path: "/v3/workspaces/…"} (v2 paths need /api/v2
+  // prefix stripped — pass path relative to api.clickup.com/api).
+  if (op === "clickup_probe" && req.method === "POST") {
+    const auth0p = await getAuthEarly(req);
+    if (!ownerRole(auth0p)) { res.status(403).json({ error: "Owner only." }); return; }
+    const ctp = process.env.CLICKUP_TOKEN;
+    if (!ctp) { res.json({ ok: false, error: "CLICKUP_TOKEN not set" }); return; }
+    const p = String((req.body || {}).path || "");
+    if (!p.startsWith("/")) { res.status(400).json({ error: "path required" }); return; }
+    const rp = await fetch("https://api.clickup.com/api" + p, { headers: { Authorization: ctp } });
+    const dp = await rp.json().catch(() => null);
+    res.status(200).json({ status: rp.status, body: dp });
+    return;
+  }
   // ── ClickUp → Drive: Ashe Design Haus deliveries ─────────────────────────────
   // Ashe uploads her work as ClickUp attachments (playbook lists). This walks
   // workspace 9014402696, finds attachments on playbook tasks (falling back to
