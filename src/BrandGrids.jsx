@@ -127,6 +127,15 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   // IG cover), its own order, its own zoom crops and its own lock — all stored
   // under the separate "lavallesisters:tiktok" key.
   const [platform, setPlatform] = useState("ig");
+  // Generated monthly grids (The Fold): archives at Social Media/<Month>/grid,
+  // listed once and viewable via the month dropdown.
+  const [genGrids, setGenGrids] = useState([]);
+  const [genSel, setGenSel] = useState("");
+  useEffect(() => {
+    let dead = false;
+    fetch("/api/data?op=fold_grid_list").then((r) => r.json()).then((d) => { if (!dead && d && d.grids) setGenGrids(d.grids); }).catch(() => {});
+    return () => { dead = true; };
+  }, []);
   const tt = acct === "lavallesisters" && platform === "tt";
   const gk = tt ? "lavallesisters:tiktok" : acct;
   const [dragIdx, setDragIdx] = useState(null);
@@ -604,6 +613,25 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               {lab}
             </button>
           ))}
+        </div>
+      )}
+      {acct === "thefoldlabel" && genGrids.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Generated grids</span>
+          <select value={genSel} onChange={(e) => setGenSel(e.target.value)}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
+            <option value="">Current planner</option>
+            {genGrids.map((g) => <option key={g.fileId} value={g.fileId}>{g.month}</option>)}
+          </select>
+        </div>
+      )}
+      {acct === "thefoldlabel" && genSel && (
+        <div style={{ marginBottom: 14 }}>
+          <img src={"/api/data?op=drive_img&id=" + genSel} alt="Generated grid"
+            style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
+            {genGrids.find((g) => g.fileId === genSel)?.month} — generated grid. Reads top-left to bottom-right; Post 1 is the bottom-right tile.
+          </div>
         </div>
       )}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>

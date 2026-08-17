@@ -15,3 +15,9 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=publish_due" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}"
+      # Also sweep The Fold's Drive folders so a freshly uploaded cover or a
+      # reel named "4" lands on Post 4 within ~15 minutes, not next morning.
+      - name: Fold cover + asset sync
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=fold_cover_sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true

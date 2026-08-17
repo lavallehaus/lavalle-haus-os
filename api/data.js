@@ -1442,6 +1442,32 @@ export default async function handler(req, res) {
   // One Vercel run can't move 21 images, so the op is a resumable state machine
   // (plan → copy in batches of 4 → composite), with progress in KV; call it
   // repeatedly until stage:"done". Body: {month?, year?, reset?, dry?}.
+  // Generated-grid archive list for the planner's month dropdown: every
+  // Social Media/<Month>/grid/"<Month> grid.jpg" that exists.
+  if (op === "fold_grid_list" && req.method === "GET") {
+    const authGL = await getAuthEarly(req);
+    if (!authGL) { res.status(401).json({ error: "Locked." }); return; }
+    const SMgl = "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC";
+    const gtGL = await googleToken();
+    if (!gtGL) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const listGL = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtGL } })).json()).files || [];
+    const MOgl = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const out = [];
+    try {
+      for (const f of await listGL(SMgl)) {
+        if (f.mimeType !== "application/vnd.google-apps.folder") continue;
+        const mi2 = MOgl.findIndex((m) => (f.name || "").trim().toLowerCase() === m.toLowerCase());
+        if (mi2 < 0) continue;
+        const sub = (await listGL(f.id)).find((s) => s.mimeType === "application/vnd.google-apps.folder" && (s.name || "").trim().toLowerCase() === "grid");
+        if (!sub) continue;
+        const gf = (await listGL(sub.id)).find((s) => / grid\.(jpe?g|png)$/i.test(s.name || ""));
+        if (gf) out.push({ month: MOgl[mi2], mi: mi2, fileId: gf.id });
+      }
+    } catch (eGL) {}
+    out.sort((a, b) => a.mi - b.mi);
+    res.json({ grids: out });
+    return;
+  }
   if (op === "fold_grid_gen" && req.method === "POST") {
     const okKeyG = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const auth0g = okKeyG ? null : await getAuthEarly(req);
@@ -1471,7 +1497,7 @@ export default async function handler(req, res) {
     let mi = b.month ? Number(b.month) - 1 : (now.getMonth() + 1) % 12;
     let yr = b.year ? Number(b.year) : now.getFullYear() + (b.month ? 0 : (now.getMonth() === 11 ? 1 : 0));
     const planKey = "gridgen_" + yr + "_" + (mi + 1);
-    if (b.reset) { await kvSet(planKey, null); res.json({ ok: true, stage: "reset", plan: planKey }); return; }
+    if (b.reset) { await kvSet(planKey, null); if (b.clearUsed) await kvSet("grid_used", {}); res.json({ ok: true, stage: "reset", plan: planKey, clearedUsed: !!b.clearUsed }); return; }
     let plan = await kvGet(planKey);
 
     // ── Stage 1: gather candidates ───────────────────────────────────────────
@@ -1506,17 +1532,27 @@ export default async function handler(req, res) {
         res.json({ ok: false, stage: "plan", month: MONg[mi] + " " + yr, error: "No candidate images: Ashe folder has no " + MONg[mi] + " content and the Loft folder has nothing unused. Add content (ClickUp sync or manual) and re-run." });
         return;
       }
-      const dropped = Math.max(0, candidates.length - 40);
-      const cands = candidates.slice(0, 40); // vision request cap; daily reruns see the rest as folders fill
-      // previous month's archived grid = the flow reference
+      // Vision request cap is 40. Blend the pools instead of first-come: Ashe's
+      // fresh shoot leads (~26) but unused Loft library images stay in the mix
+      // (~14) — her rule: the grid draws from both.
+      const asheC = candidates.filter((c) => c.src === "ashe");
+      const loftC = candidates.filter((c) => c.src === "loft");
+      let cands = [...asheC.slice(0, 40 - Math.min(14, loftC.length)), ...loftC.slice(0, 14)];
+      if (cands.length < 40) cands = cands.concat(asheC.slice(40 - Math.min(14, loftC.length)), loftC.slice(14)).slice(0, 40);
+      const dropped = Math.max(0, candidates.length - cands.length);
+      // previous month's archived grid = the flow reference. Archives live at
+      // Social Media/<Month>/grid/<Month> grid.jpg (her rule: per-month, not a
+      // separate top-level Grid folder).
       const pmi = (mi + 11) % 12, pyr = mi === 0 ? yr - 1 : yr;
       let refUrl = null;
-      const gridKids = await listG(GRIDg);
-      const pmFolder = gridKids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase().startsWith(MONg[pmi].toLowerCase()));
+      const smKids = await listG(SMg);
+      const pmFolder = smKids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === MONg[pmi].toLowerCase());
       if (pmFolder) {
-        const pmFiles = await listG(pmFolder.id);
-        const ref = pmFiles.find((f) => /grid/i.test(f.name || "") && (f.mimeType || "").startsWith("image/"));
-        if (ref) refUrl = APP_ORIGIN + "/api/data?op=drive_img&id=" + ref.id;
+        const pmSub = (await listG(pmFolder.id)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === "grid");
+        if (pmSub) {
+          const ref = (await listG(pmSub.id)).find((f) => / grid\.(jpe?g|png)$/i.test(f.name || "") && (f.mimeType || "").startsWith("image/"));
+          if (ref) refUrl = APP_ORIGIN + "/api/data?op=drive_img&id=" + ref.id;
+        }
       }
       // Competitor feed references (The Row / Toteme / Jacquemus montages) live
       // in Ashe root/_gridrefs — refreshed captures of their live IG grids.
@@ -1627,7 +1663,7 @@ export default async function handler(req, res) {
       const picks = (parsed7.picks || []).filter((p) => p && p.slot >= 1 && p.slot <= wantN && usable[p.i]).map((p) => ({ slot: p.slot, srcId: usable[p.i].id, srcName: usable[p.i].name, src: usable[p.i].src, done: false }));
       const monthFolderG = await mkdirG(plan.month, SMg);
       const coverFolderG = await mkdirG("Cover Photos", monthFolderG);
-      const gridMonthG = await mkdirG(plan.month, GRIDg);
+      const gridMonthG = await mkdirG("grid", monthFolderG);
       plan = { month: plan.month, year: plan.year, note: parsed7.note || "", refUsed: !!plan.refMid, coverFolderId: coverFolderG, gridMonthId: gridMonthG, picks, stage: "copy" };
       await kvSet(planKey, plan);
       res.json({ ok: true, stage: "planned", month: plan.month + " " + plan.year, refUsed: plan.refUsed, note: plan.note, picked: picks.length });
@@ -1689,7 +1725,18 @@ export default async function handler(req, res) {
       plan.stage = "done";
       plan.compositeId = cr.id || null;
       await kvSet(planKey, plan);
-      res.json({ ok: true, stage: "done", month: plan.month + " " + plan.year, composite: cr.name || null, note: plan.note, tiles: plan.picks.filter((p) => p.outId).length });
+      // Her rule: a completed generated grid locks automatically so the layout
+      // can't be nudged by accident (same flag the planner's lock button sets).
+      try {
+        const rawL = await kvGet("lavalle_data");
+        const blobL = Array.isArray(rawL) ? rawL[0] : rawL;
+        if (blobL) {
+          blobL.brandGrids = blobL.brandGrids || {};
+          blobL.brandGrids["thefoldlabel"] = { ...(blobL.brandGrids["thefoldlabel"] || {}), locked: true };
+          await kvSet("lavalle_data", blobL);
+        }
+      } catch (eL) {}
+      res.json({ ok: true, stage: "done", month: plan.month + " " + plan.year, composite: cr.name || null, note: plan.note, tiles: plan.picks.filter((p) => p.outId).length, locked: true });
       return;
     }
     res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, note: plan.note });
