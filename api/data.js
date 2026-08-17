@@ -1387,7 +1387,10 @@ export default async function handler(req, res) {
         const ls = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "'" + " in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true");
         for (const f of ls.files || []) {
           fmt.scanned++;
-          const m5 = /^(\d{1,2})\b/.exec((f.name || "").trim());
+          // Accept "3.mp4", "reel 3.mov", "Post 12", "carousel #4" — she names
+          // uploads either way, and both must land on the right Post card.
+          const nm5 = (f.name || "").trim().replace(/\.\w+$/, "");
+          const m5 = /^(\d{1,2})\b/.exec(nm5) || /^(?:reel|post|video|vid|carousel|story)\s*#?\s*(\d{1,2})$/i.exec(nm5);
           const isDir = f.mimeType === "application/vnd.google-apps.folder";
           if (m5) {
             const n5 = Number(m5[1]);
@@ -1425,8 +1428,27 @@ export default async function handler(req, res) {
         if (asset && card.assetUrl !== asset) { card.assetUrl = asset; fmt.linked++; }
       }
     } catch (e6) {}
-    if (changed.length || fmt.relabeled || fmt.linked) await kvSet("lavalle_data", blob);
-    res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned, format: fmt });
+    // Board backgrounds follow the covers (her rule): when a month's Cover
+    // Photos land, The Fold board's background becomes that month's Post 1
+    // cover; the other brand boards take their own newest card cover.
+    let bgChanged = 0;
+    try {
+      if (byN[1]) {
+        const bgUrl = "/api/data?op=drive_img&id=" + byN[1];
+        const fb = blob.boards && blob.boards["the-fold"];
+        if (fb && fb.bg !== bgUrl) { fb.bg = bgUrl; bgChanged++; }
+      }
+      for (const bk of ["refillery-haus", "lavalle-sisters"]) {
+        const bd = blob.boards && blob.boards[bk];
+        if (!bd || !Array.isArray(bd.cards)) continue;
+        const covered = bd.cards.filter((cd) => cd.cover && /^(\/api|https?:)/.test(cd.cover));
+        if (!covered.length) continue;
+        const newest = covered[covered.length - 1].cover;
+        if (bd.bg !== newest) { bd.bg = newest; bgChanged++; }
+      }
+    } catch (eBG) {}
+    if (changed.length || fmt.relabeled || fmt.linked || bgChanged) await kvSet("lavalle_data", blob);
+    res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned, format: fmt, bgChanged });
     return;
   }
   // ── Monthly grid generation: next month's 21-post grid, art-directed ─────────
