@@ -1375,8 +1375,13 @@ export default async function handler(req, res) {
       const monthParentQ = await gfetch("https://www.googleapis.com/drive/v3/files/" + target.folderId + "?fields=parents&supportsAllDrives=true");
       const monthId = (monthParentQ.parents || [])[0]; // the month folder itself (Cover Photos' parent)
       if (monthId) roots.push(monthId);
-      const loftQ = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains 'Loft' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id,name,parents)&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true");
-      for (const lf of loftQ.files || []) if ((lf.parents || []).some((pp) => pp === monthId || pp === SM)) roots.push(lf.id);
+      // Provider folders: The Loft (video/photo content) and Ashe Design
+      // (ecomm imagery) — both live under Social Media or inside the month,
+      // with month-named subfolders that the scanner walks into.
+      for (const provider of ["Loft", "Ashe"]) {
+        const pq = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains '" + provider + "' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id,name,parents)&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true");
+        for (const lf of pq.files || []) if ((lf.parents || []).some((pp) => pp === monthId || pp === SM)) roots.push(lf.id);
+      }
       const assets = {}; // N -> { videos: [ids], folders: [{id, imgs, vids}], images: [ids] }
       const scan = async (fid, depth) => {
         const ls = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "'" + " in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true");
