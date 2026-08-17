@@ -1363,8 +1363,65 @@ export default async function handler(req, res) {
         } catch (e4) {}
       }
     }
-    if (changed.length) await kvSet("lavalle_data", blob);
-    res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned });
+    // ── Step 3: format detection ─────────────────────────────────────────────
+    // Look at the month's ASSETS (videos, image sets) and label each post
+    // [reel] / [carousel] / [IG static] from what actually exists — plus link
+    // the asset onto the card so publishing has it. Expected mix: ~10-12 reels,
+    // mostly carousels, a couple of statics. Scans the month folder AND any
+    // "Content by the Loft" folder beside/inside it, one level of subfolders.
+    const fmt = { relabeled: 0, linked: 0, scanned: 0 };
+    try {
+      const roots = [target.folderId];
+      const monthParentQ = await gfetch("https://www.googleapis.com/drive/v3/files/" + target.folderId + "?fields=parents&supportsAllDrives=true");
+      const monthId = (monthParentQ.parents || [])[0]; // the month folder itself (Cover Photos' parent)
+      if (monthId) roots.push(monthId);
+      const loftQ = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains 'Loft' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id,name,parents)&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true");
+      for (const lf of loftQ.files || []) if ((lf.parents || []).some((pp) => pp === monthId || pp === SM)) roots.push(lf.id);
+      const assets = {}; // N -> { videos: [ids], folders: [{id, imgs, vids}], images: [ids] }
+      const scan = async (fid, depth) => {
+        const ls = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "'" + " in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true");
+        for (const f of ls.files || []) {
+          fmt.scanned++;
+          const m5 = /^(\d{1,2})\b/.exec((f.name || "").trim());
+          const isDir = f.mimeType === "application/vnd.google-apps.folder";
+          if (m5) {
+            const n5 = Number(m5[1]);
+            if (n5 >= 1 && n5 <= 21) {
+              assets[n5] = assets[n5] || { videos: [], folders: [], images: [] };
+              if (isDir) {
+                const inner = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + f.id + "'" + " in parents and trashed=false") + "&fields=files(id,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true");
+                const imgs = (inner.files || []).filter((x) => (x.mimeType || "").startsWith("image/")).length;
+                const vids = (inner.files || []).filter((x) => (x.mimeType || "").startsWith("video/")).length;
+                assets[n5].folders.push({ id: f.id, imgs, vids });
+              } else if ((f.mimeType || "").startsWith("video/")) assets[n5].videos.push(f.id);
+              else if ((f.mimeType || "").startsWith("image/") && fid !== target.folderId) assets[n5].images.push(f.id);
+            }
+          } else if (isDir && depth < 1 && !/cover photos/i.test(f.name || "")) {
+            await scan(f.id, depth + 1); // e.g. a "Reels" or "Carousels" folder
+          }
+        }
+      };
+      for (const r5 of roots) { try { await scan(r5, 0); } catch (e5) {} }
+      for (const card of board.cards) {
+        if (!schedIds.has(card.listId)) continue;
+        const m6 = /^post\s*(\d+)/i.exec(card.name || "");
+        if (!m6) continue;
+        const a6 = assets[Number(m6[1])];
+        if (!a6) continue;
+        const vidInFolder = a6.folders.find((x) => x.vids > 0);
+        const carFolder = a6.folders.find((x) => x.imgs >= 2);
+        let label = null, asset = null;
+        if (a6.videos.length || vidInFolder) { label = "reel"; asset = a6.videos[0] ? "https://drive.google.com/file/d/" + a6.videos[0] + "/view" : "https://drive.google.com/drive/folders/" + vidInFolder.id; }
+        else if (carFolder || a6.images.length >= 2) { label = "carousel"; asset = carFolder ? "https://drive.google.com/drive/folders/" + carFolder.id : null; }
+        else if (a6.images.length === 1 || a6.folders.some((x) => x.imgs === 1)) { label = "IG static"; const sf = a6.folders.find((x) => x.imgs === 1); asset = a6.images[0] ? "https://drive.google.com/file/d/" + a6.images[0] + "/view" : (sf ? "https://drive.google.com/drive/folders/" + sf.id : null); }
+        if (!label) continue;
+        const newName = /\[.*?\]/.test(card.name) ? card.name.replace(/\[.*?\]/, "[" + label + "]") : card.name + " [" + label + "]";
+        if (newName !== card.name) { card.name = newName; fmt.relabeled++; }
+        if (asset && card.assetUrl !== asset) { card.assetUrl = asset; fmt.linked++; }
+      }
+    } catch (e6) {}
+    if (changed.length || fmt.relabeled || fmt.linked) await kvSet("lavalle_data", blob);
+    res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned, format: fmt });
     return;
   }
   const auth = await getAuth(req);
