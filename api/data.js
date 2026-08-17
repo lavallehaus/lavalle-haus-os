@@ -1474,8 +1474,8 @@ export default async function handler(req, res) {
     if (b.reset) { await kvSet(planKey, null); res.json({ ok: true, stage: "reset", plan: planKey }); return; }
     let plan = await kvGet(planKey);
 
-    // ── Stage 1: gather candidates + vision arrangement ──────────────────────
-    if (!plan || !plan.picks) {
+    // ── Stage 1: gather candidates ───────────────────────────────────────────
+    if (!plan || !plan.stage) {
       const used = (await kvGet("grid_used")) || {}; // srcId -> "YYYY-M" it was used
       const cutoff = new Date(yr, mi - 2, 1); // used within the last 2 months = excluded
       const isFresh = (id) => {
@@ -1518,19 +1518,66 @@ export default async function handler(req, res) {
         const ref = pmFiles.find((f) => /grid/i.test(f.name || "") && (f.mimeType || "").startsWith("image/"));
         if (ref) refUrl = APP_ORIGIN + "/api/data?op=drive_img&id=" + ref.id;
       }
+      if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, sample: cands.slice(0, 10).map((c) => c.src + ":" + c.name) }); return; }
+      // Anthropic's URL fetcher times out on 40 live drive_img proxies (each
+      // one is a Vercel→Drive→Jimp chain), so bake candidates into the KV
+      // media store first and run vision over instant /cover/ URLs.
+      plan = { stage: "bake", month: MONg[mi], year: yr, refUrl, refMid: null, cands, dropped, baked: {} };
+      await kvSet(planKey, plan);
+      res.json({ ok: true, stage: "bake", month: MONg[mi] + " " + yr, candidates: cands.length, droppedFromVision: dropped, refUsed: !!refUrl, note: "baking candidate images — call again until stage advances" });
+      return;
+    }
+
+    // ── Stage 1b: bake candidate images into the media store, 8 per run ─────
+    if (plan.stage === "bake") {
+      const bakeOne = async (driveId) => {
+        try {
+          const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + driveId + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gt } });
+          if (!ir.ok) return null;
+          const fitted = await fitImage(Buffer.from(await ir.arrayBuffer()), ir.headers.get("content-type") || "image/jpeg", "igfeed");
+          const mid = "g" + randomBytes(8).toString("hex");
+          await kvSet("media_" + mid, { type: "image/jpeg", b64: fitted.buf.toString("base64"), at: new Date().toISOString() });
+          return mid;
+        } catch (eB) { return null; }
+      };
+      let did = 0;
+      if (plan.refUrl && !plan.refMid) {
+        const rid = (plan.refUrl.match(/id=([-\w]+)/) || [])[1];
+        plan.refMid = rid ? await bakeOne(rid) : null;
+        if (!plan.refMid) plan.refUrl = null; // ref bake failed — proceed without it
+        did++;
+      }
+      for (const c of plan.cands) {
+        if (did >= 8) break;
+        if (plan.baked[c.id] !== undefined) continue;
+        plan.baked[c.id] = await bakeOne(c.id); // null marks a failed bake — skipped later
+        did++;
+      }
+      const remaining = plan.cands.filter((c) => plan.baked[c.id] === undefined).length;
+      if (!remaining) plan.stage = "vision";
+      await kvSet(planKey, plan);
+      res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, baked: Object.keys(plan.baked).length, remaining });
+      return;
+    }
+
+    // ── Stage 1c: vision arrangement over the baked images ───────────────────
+    if (plan.stage === "vision") {
       const akey = process.env.ANTHROPIC_API_KEY;
       if (!akey) { res.status(400).json({ error: "ANTHROPIC_API_KEY not set" }); return; }
+      const mi2 = MONg.indexOf(plan.month);
+      const pmi = (mi2 + 11) % 12, pyr = mi2 === 0 ? plan.year - 1 : plan.year;
+      const usable = plan.cands.filter((c) => plan.baked[c.id]);
       const content = [];
-      if (refUrl) {
-        content.push({ type: "image", source: { type: "url", url: refUrl } });
+      if (plan.refMid) {
+        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/cover/" + plan.refMid + ".jpg" } });
         content.push({ type: "text", text: "Above: LAST month's (" + MONg[pmi] + " " + pyr + ") published grid for @thefoldlabel — 7 rows x 3 columns, reads top-left to bottom-right, and slot 1 is the BOTTOM-RIGHT tile (Instagram stacking: new posts push old ones down). The new month must FLOW from it: the first posts of the new month (low slot numbers) sit visually next to the last rows of this grid, so the palette and rhythm must hand off without an abrupt break." });
       }
-      cands.forEach((c, i) => {
+      usable.forEach((c, i) => {
         content.push({ type: "text", text: "Candidate " + i + " (" + c.src + "):" });
-        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/api/data?op=drive_img&id=" + c.id + "&fit=igfeed" } });
+        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/cover/" + plan.baked[c.id] + ".jpg" } });
       });
-      const wantN = Math.min(21, cands.length);
-      content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + MONg[mi] + " " + yr + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it; lean into what is on-trend for " + MONg[mi] + " " + yr + " in this register (seasonal transition, texture, tone); never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
+      const wantN = Math.min(21, usable.length);
+      content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + plan.month + " " + plan.year + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it; lean into what is on-trend for " + plan.month + " " + plan.year + " in this register (seasonal transition, texture, tone); never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
       const r7 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST", headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content }] }),
@@ -1539,16 +1586,16 @@ export default async function handler(req, res) {
       const txt7 = ((d7.content || [])[0] || {}).text || "";
       let parsed7;
       try { parsed7 = JSON.parse(txt7.slice(txt7.indexOf("{"), txt7.lastIndexOf("}") + 1)); } catch (e7b) {
-        res.json({ ok: false, stage: "plan", error: "vision_parse_failed", raw: txt7.slice(0, 300), apiErr: d7.error || null, stop: d7.stop_reason || null, nCands: cands.length }); return;
+        // plan stays at "vision" — calling the op again just retries this stage
+        res.json({ ok: false, stage: "vision", error: "vision_parse_failed", raw: txt7.slice(0, 300), apiErr: d7.error || null, stop: d7.stop_reason || null, nCands: usable.length }); return;
       }
-      const picks = (parsed7.picks || []).filter((p) => p && p.slot >= 1 && p.slot <= wantN && cands[p.i]).map((p) => ({ slot: p.slot, srcId: cands[p.i].id, srcName: cands[p.i].name, src: cands[p.i].src, done: false }));
-      if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, note: parsed7.note || "", picks }); return; }
-      const monthFolderG = await mkdirG(MONg[mi], SMg);
+      const picks = (parsed7.picks || []).filter((p) => p && p.slot >= 1 && p.slot <= wantN && usable[p.i]).map((p) => ({ slot: p.slot, srcId: usable[p.i].id, srcName: usable[p.i].name, src: usable[p.i].src, done: false }));
+      const monthFolderG = await mkdirG(plan.month, SMg);
       const coverFolderG = await mkdirG("Cover Photos", monthFolderG);
-      const gridMonthG = await mkdirG(MONg[mi], GRIDg);
-      plan = { month: MONg[mi], year: yr, note: parsed7.note || "", refUsed: !!refUrl, coverFolderId: coverFolderG, gridMonthId: gridMonthG, picks, stage: "copy" };
+      const gridMonthG = await mkdirG(plan.month, GRIDg);
+      plan = { month: plan.month, year: plan.year, note: parsed7.note || "", refUsed: !!plan.refMid, coverFolderId: coverFolderG, gridMonthId: gridMonthG, picks, stage: "copy" };
       await kvSet(planKey, plan);
-      res.json({ ok: true, stage: "planned", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, note: plan.note, picked: picks.length });
+      res.json({ ok: true, stage: "planned", month: plan.month + " " + plan.year, refUsed: plan.refUsed, note: plan.note, picked: picks.length });
       return;
     }
 
