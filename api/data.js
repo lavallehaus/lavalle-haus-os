@@ -1695,6 +1695,59 @@ export default async function handler(req, res) {
     res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, note: plan.note });
     return;
   }
+  // ── Competitor IG grid capture ───────────────────────────────────────────
+  // instagram.com's CSP blocks fetch() to us, but plain NAVIGATION is allowed —
+  // the profile page collects its tile URLs and navigates here with them
+  // base64url-encoded in the query. We pull the tiles server-side, build a 3-col
+  // montage, and store it as Ashe/_gridrefs/<brand>.jpg (the grid generator's
+  // competitor style references). Key = same derived pbingest key.
+  if (op === "ig_gridref" && req.method === "GET") {
+    const expect2 = createHash("sha256").update(appToken() + ":pbingest").digest("hex");
+    if (req.query.key !== expect2) { res.status(403).send("bad key"); return; }
+    let urls = [];
+    try { urls = JSON.parse(Buffer.from(String(req.query.urls || ""), "base64url").toString("utf8")); } catch (eU) {}
+    urls = (Array.isArray(urls) ? urls : []).filter((u) => /^https:\/\/[\w.-]+\.(cdninstagram\.com|fbcdn\.net)\//.test(String(u))).slice(0, 12);
+    const brand = String(req.query.brand || "brand").replace(/[^\w-]/g, "").slice(0, 30);
+    if (!urls.length) { res.status(400).send("no valid tile urls"); return; }
+    const gtI = await googleToken();
+    if (!gtI) { res.status(400).send("google_not_connected"); return; }
+    try {
+      const Jimp = (await import("jimp")).default;
+      const T = 360, cols = 3, rows = Math.ceil(urls.length / cols);
+      const canvas = await new Jimp(T * cols, T * rows, 0xffffffff);
+      let placed = 0;
+      for (let i = 0; i < urls.length; i++) {
+        try {
+          const ir = await fetch(urls[i]);
+          if (!ir.ok) continue;
+          const tile = await Jimp.read(Buffer.from(await ir.arrayBuffer()));
+          tile.cover(T, T);
+          canvas.composite(tile, (i % cols) * T, Math.floor(i / cols) * T);
+          placed++;
+        } catch (eT) {}
+      }
+      if (!placed) { res.status(400).send("no tiles fetched"); return; }
+      canvas.quality(88);
+      const buf = await canvas.getBufferAsync(Jimp.MIME_JPEG);
+      const ASHE_I = "1dK8yulLJGrhLeFT_dytYrQtgf2iRQ2fn";
+      const qI = encodeURIComponent("name='_gridrefs' and mimeType='application/vnd.google-apps.folder' and '" + ASHE_I + "' in parents and trashed=false");
+      const fI = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qI + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtI } })).json();
+      let fidI = fI.files && fI.files[0] && fI.files[0].id;
+      if (!fidI) fidI = (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtI, "Content-Type": "application/json" }, body: JSON.stringify({ name: "_gridrefs", mimeType: "application/vnd.google-apps.folder", parents: [ASHE_I] }) })).json()).id;
+      // replace any prior capture for this brand
+      const qOld = encodeURIComponent("name='" + brand + ".jpg' and '" + fidI + "' in parents and trashed=false");
+      const old = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qOld + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtI } })).json();
+      for (const of2 of old.files || []) await fetch("https://www.googleapis.com/drive/v3/files/" + of2.id + "?supportsAllDrives=true", { method: "PATCH", headers: { Authorization: "Bearer " + gtI, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+      const bdI = "lhi" + buf.length.toString(36);
+      const metaI = JSON.stringify({ name: brand + ".jpg", parents: [fidI] });
+      const preI = `--${bdI}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaI}\r\n--${bdI}\r\nContent-Type: image/jpeg\r\n\r\n`;
+      const bodyI = Buffer.concat([Buffer.from(preI, "utf8"), buf, Buffer.from(`\r\n--${bdI}--`, "utf8")]);
+      const urI = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtI, "Content-Type": `multipart/related; boundary=${bdI}` }, body: bodyI })).json();
+      res.setHeader("Content-Type", "text/html");
+      res.send("<body style='font-family:monospace'>ig_gridref ok — " + brand + ": " + placed + " tiles → " + (urI.name || "upload failed") + "</body>");
+    } catch (eI) { res.status(500).send("err " + String(eI).slice(0, 120)); }
+    return;
+  }
   // ── Playbook → Drive ingest ──────────────────────────────────────────────
   // Ashe delivers assets via playbook.com share boards. The share page (driven
   // in her browser) fetches each image and POSTs it here as a data URL; we file
