@@ -1429,6 +1429,184 @@ export default async function handler(req, res) {
     res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned, format: fmt });
     return;
   }
+  // ── Monthly grid generation: next month's 21-post grid, art-directed ─────────
+  // Her rule: a Grid folder under Social Media holds one archive image per month
+  // ("August grid.jpg" etc.). This op designs the NEXT month: it pulls candidate
+  // photos from "Content by Ashe Design Haus" (that month's folder) and "Content
+  // by the Loft" (skipping anything used in the last two months), shows Claude
+  // the previous month's archived grid as the flow reference, and asks for a
+  // 21-slot ordering tuned to the season's quiet-luxury trends. Then it copies
+  // the picks — resized to 1080×1440 — into Social Media/<Month>/Cover Photos as
+  // 1.jpg…21.jpg (which fold_cover_sync already dresses onto cards daily) and
+  // renders the montage into Grid/<Month>.
+  // One Vercel run can't move 21 images, so the op is a resumable state machine
+  // (plan → copy in batches of 4 → composite), with progress in KV; call it
+  // repeatedly until stage:"done". Body: {month?, year?, reset?, dry?}.
+  if (op === "fold_grid_gen" && req.method === "POST") {
+    const okKeyG = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const auth0g = okKeyG ? null : await getAuthEarly(req);
+    if (!okKeyG && !ownerRole(auth0g)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const SMg = "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC"; // The Fold > Social Media
+    const GRIDg = "1DEwOoGasztWJwk-OFUUBPxSmvg9QqSLG"; // Social Media > Grid
+    const ASHEg = "1dK8yulLJGrhLeFT_dytYrQtgf2iRQ2fn"; // Content by Ashe Design Haus
+    const LOFTg = "1776hhnJOfMAi84w3plQhl8NKroV24DlW"; // Content by the Loft
+    const MONg = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const gt = await googleToken();
+    if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const gfetchG = async (u) => (await fetch(u, { headers: { Authorization: "Bearer " + gt } })).json();
+    const listG = async (fid) => (await gfetchG("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true")).files || [];
+    const mkdirG = async (name, parent) => {
+      const kids = await listG(parent);
+      const hit = kids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === name.toLowerCase());
+      if (hit) return hit.id;
+      const d = await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", {
+        method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }),
+      })).json();
+      return d.id;
+    };
+    const b = req.body || {};
+    const now = new Date();
+    // default target = next calendar month
+    let mi = b.month ? Number(b.month) - 1 : (now.getMonth() + 1) % 12;
+    let yr = b.year ? Number(b.year) : now.getFullYear() + (b.month ? 0 : (now.getMonth() === 11 ? 1 : 0));
+    const planKey = "gridgen_" + yr + "_" + (mi + 1);
+    if (b.reset) { await kvSet(planKey, null); res.json({ ok: true, stage: "reset", plan: planKey }); return; }
+    let plan = await kvGet(planKey);
+
+    // ── Stage 1: gather candidates + vision arrangement ──────────────────────
+    if (!plan || !plan.picks) {
+      const used = (await kvGet("grid_used")) || {}; // srcId -> "YYYY-M" it was used
+      const cutoff = new Date(yr, mi - 2, 1); // used within the last 2 months = excluded
+      const isFresh = (id) => {
+        const u = used[id]; if (!u) return true;
+        const [uy, um] = u.split("-").map(Number);
+        return new Date(uy, um - 1, 1) < cutoff;
+      };
+      const candidates = []; // {id, name, src}
+      const pushImgs = (files, src) => { for (const f of files) if ((f.mimeType || "").startsWith("image/") && isFresh(f.id)) candidates.push({ id: f.id, name: f.name, src }); };
+      // Ashe: "<Month> <Year>" or bare "<Month>" subfolder of the Ashe folder
+      const asheKids = await listG(ASHEg);
+      for (const f of asheKids) {
+        if (f.mimeType !== "application/vnd.google-apps.folder") continue;
+        const nm = (f.name || "").trim().toLowerCase();
+        if (nm === MONg[mi].toLowerCase() || nm === (MONg[mi] + " " + yr).toLowerCase()) pushImgs(await listG(f.id), "ashe");
+      }
+      // Loft: root images + one level of subfolders
+      const loftKids = await listG(LOFTg);
+      pushImgs(loftKids, "loft");
+      for (const f of loftKids) if (f.mimeType === "application/vnd.google-apps.folder") pushImgs(await listG(f.id), "loft");
+      if (!candidates.length) {
+        res.json({ ok: false, stage: "plan", month: MONg[mi] + " " + yr, error: "No candidate images: Ashe folder has no " + MONg[mi] + " content and the Loft folder has nothing unused. Add content (ClickUp sync or manual) and re-run." });
+        return;
+      }
+      const dropped = Math.max(0, candidates.length - 40);
+      const cands = candidates.slice(0, 40); // vision request cap; daily reruns see the rest as folders fill
+      // previous month's archived grid = the flow reference
+      const pmi = (mi + 11) % 12, pyr = mi === 0 ? yr - 1 : yr;
+      let refUrl = null;
+      const gridKids = await listG(GRIDg);
+      const pmFolder = gridKids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase().startsWith(MONg[pmi].toLowerCase()));
+      if (pmFolder) {
+        const pmFiles = await listG(pmFolder.id);
+        const ref = pmFiles.find((f) => /grid/i.test(f.name || "") && (f.mimeType || "").startsWith("image/"));
+        if (ref) refUrl = APP_ORIGIN + "/api/data?op=drive_img&id=" + ref.id;
+      }
+      const akey = process.env.ANTHROPIC_API_KEY;
+      if (!akey) { res.status(400).json({ error: "ANTHROPIC_API_KEY not set" }); return; }
+      const content = [];
+      if (refUrl) {
+        content.push({ type: "image", source: { type: "url", url: refUrl } });
+        content.push({ type: "text", text: "Above: LAST month's (" + MONg[pmi] + " " + pyr + ") published grid for @thefoldlabel — 7 rows x 3 columns, reads top-left to bottom-right, and slot 1 is the BOTTOM-RIGHT tile (Instagram stacking: new posts push old ones down). The new month must FLOW from it: the first posts of the new month (low slot numbers) sit visually next to the last rows of this grid, so the palette and rhythm must hand off without an abrupt break." });
+      }
+      cands.forEach((c, i) => {
+        content.push({ type: "text", text: "Candidate " + i + " (" + c.src + "):" });
+        content.push({ type: "image", source: { type: "url", url: APP_ORIGIN + "/api/data?op=drive_img&id=" + c.id + "&fit=igfeed" } });
+      });
+      const wantN = Math.min(21, cands.length);
+      content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + MONg[mi] + " " + yr + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it; lean into what is on-trend for " + MONg[mi] + " " + yr + " in this register (seasonal transition, texture, tone); never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
+      const r7 = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content }] }),
+      });
+      const d7 = await r7.json();
+      const txt7 = ((d7.content || [])[0] || {}).text || "";
+      let parsed7;
+      try { parsed7 = JSON.parse(txt7.slice(txt7.indexOf("{"), txt7.lastIndexOf("}") + 1)); } catch (e7b) {
+        res.json({ ok: false, stage: "plan", error: "vision_parse_failed", raw: txt7.slice(0, 300) }); return;
+      }
+      const picks = (parsed7.picks || []).filter((p) => p && p.slot >= 1 && p.slot <= wantN && cands[p.i]).map((p) => ({ slot: p.slot, srcId: cands[p.i].id, srcName: cands[p.i].name, src: cands[p.i].src, done: false }));
+      if (b.dry) { res.json({ ok: true, stage: "dry", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, note: parsed7.note || "", picks }); return; }
+      const monthFolderG = await mkdirG(MONg[mi], SMg);
+      const coverFolderG = await mkdirG("Cover Photos", monthFolderG);
+      const gridMonthG = await mkdirG(MONg[mi], GRIDg);
+      plan = { month: MONg[mi], year: yr, note: parsed7.note || "", refUsed: !!refUrl, coverFolderId: coverFolderG, gridMonthId: gridMonthG, picks, stage: "copy" };
+      await kvSet(planKey, plan);
+      res.json({ ok: true, stage: "planned", month: MONg[mi] + " " + yr, candidates: candidates.length, droppedFromVision: dropped, refUsed: !!refUrl, note: plan.note, picked: picks.length });
+      return;
+    }
+
+    // ── Stage 2: copy + resize picks into Cover Photos, 4 per run ────────────
+    if (plan.stage === "copy") {
+      const Jimp = (await import("jimp")).default;
+      const todo = plan.picks.filter((p) => !p.done).slice(0, 4);
+      const used = (await kvGet("grid_used")) || {};
+      for (const p of todo) {
+        const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + p.srcId + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gt } });
+        if (!ir.ok) { p.err = "download " + ir.status; p.done = true; continue; }
+        let buf = Buffer.from(await ir.arrayBuffer());
+        try { const img = await Jimp.read(buf); img.cover(1080, 1440); img.quality(88); buf = await img.getBufferAsync(Jimp.MIME_JPEG); } catch (e8) { p.err = "resize"; }
+        const boundary = "lhg" + buf.length.toString(36);
+        const meta8 = JSON.stringify({ name: p.slot + ".jpg", parents: [plan.coverFolderId] });
+        const pre8 = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta8}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`;
+        const body8 = Buffer.concat([Buffer.from(pre8, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
+        const ur = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", {
+          method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": `multipart/related; boundary=${boundary}` }, body: body8,
+        })).json();
+        p.outId = ur.id || null;
+        p.done = true;
+        used[p.srcId] = plan.year + "-" + (MONg.indexOf(plan.month) + 1);
+      }
+      if (!plan.picks.some((p) => !p.done)) plan.stage = "composite";
+      await kvSet(planKey, plan);
+      await kvSet("grid_used", used);
+      res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, copied: plan.picks.filter((p) => p.done && p.outId).length, remaining: plan.picks.filter((p) => !p.done).length, errors: plan.picks.filter((p) => p.err).map((p) => p.slot + ":" + p.err) });
+      return;
+    }
+
+    // ── Stage 3: render the montage into Grid/<Month> ────────────────────────
+    if (plan.stage === "composite") {
+      const Jimp = (await import("jimp")).default;
+      const TW = 360, TH = 480;
+      const canvas = await new Jimp(TW * 3, TH * 7, 0xffffffff);
+      for (const p of plan.picks) {
+        if (!p.outId) continue;
+        try {
+          const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + p.outId + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gt } });
+          const tile = await Jimp.read(Buffer.from(await ir.arrayBuffer()));
+          tile.cover(TW, TH);
+          const row = 6 - Math.floor((p.slot - 1) / 3), col = 2 - ((p.slot - 1) % 3);
+          canvas.composite(tile, col * TW, row * TH);
+        } catch (e9) {}
+      }
+      canvas.quality(88);
+      const cbuf = await canvas.getBufferAsync(Jimp.MIME_JPEG);
+      const boundary9 = "lhc" + cbuf.length.toString(36);
+      const meta9 = JSON.stringify({ name: plan.month + " grid.jpg", parents: [plan.gridMonthId] });
+      const pre9 = `--${boundary9}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta9}\r\n--${boundary9}\r\nContent-Type: image/jpeg\r\n\r\n`;
+      const body9 = Buffer.concat([Buffer.from(pre9, "utf8"), cbuf, Buffer.from(`\r\n--${boundary9}--`, "utf8")]);
+      const cr = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", {
+        method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": `multipart/related; boundary=${boundary9}` }, body: body9,
+      })).json();
+      plan.stage = "done";
+      plan.compositeId = cr.id || null;
+      await kvSet(planKey, plan);
+      res.json({ ok: true, stage: "done", month: plan.month + " " + plan.year, composite: cr.name || null, note: plan.note, tiles: plan.picks.filter((p) => p.outId).length });
+      return;
+    }
+    res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, note: plan.note });
+    return;
+  }
   // ── ClickUp → Drive: Ashe Design Haus deliveries ─────────────────────────────
   // Ashe uploads her work as ClickUp attachments (playbook lists). This walks
   // workspace 9014402696, finds attachments on playbook tasks (falling back to
