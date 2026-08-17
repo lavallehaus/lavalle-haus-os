@@ -1689,22 +1689,38 @@ export default async function handler(req, res) {
     const expect = createHash("sha256").update(appToken() + ":pbingest").digest("hex");
     if (!pb || pb.key !== expect) { res.status(403).json({ error: "bad key" }); return; }
     const mPB = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(pb.dataUrl || ""));
-    if (!mPB) { res.status(400).json({ error: "expected image data URL" }); return; }
+    const srcOk = /^https:\/\/(prod\.playbookstatic\.com|img\.playbook\.com)\//.test(String(pb.srcUrl || ""));
+    if (!mPB && !srcOk) { res.status(400).json({ error: "expected image data URL or a playbook srcUrl" }); return; }
     const gtPB = await googleToken();
     if (!gtPB) { res.status(400).json({ error: "google_not_connected" }); return; }
     const ASHE_PB = "1dK8yulLJGrhLeFT_dytYrQtgf2iRQ2fn";
+    const findOrMk = async (nm, parent) => {
+      const q9 = encodeURIComponent("name='" + nm + "' and mimeType='application/vnd.google-apps.folder' and '" + parent + "' in parents and trashed=false");
+      const f9 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q9 + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtPB } })).json();
+      let id9 = f9.files && f9.files[0] && f9.files[0].id;
+      if (!id9) id9 = (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtPB, "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json()).id;
+      return id9;
+    };
     const sub = String(pb.folder || "September 2026").replace(/['"\\]/g, "").slice(0, 60);
-    const qPB = encodeURIComponent("name='" + sub + "' and mimeType='application/vnd.google-apps.folder' and '" + ASHE_PB + "' in parents and trashed=false");
-    const frPB = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qPB + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtPB } })).json();
-    let fidPB = frPB.files && frPB.files[0] && frPB.files[0].id;
-    if (!fidPB) {
-      fidPB = (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtPB, "Content-Type": "application/json" }, body: JSON.stringify({ name: sub, mimeType: "application/vnd.google-apps.folder", parents: [ASHE_PB] }) })).json()).id;
+    let fidPB = await findOrMk(sub, ASHE_PB);
+    if (pb.sub) fidPB = await findOrMk(String(pb.sub).replace(/['"\\]/g, "").slice(0, 60), fidPB);
+    let bufPB, ctypePB;
+    if (mPB) {
+      bufPB = Buffer.from(mPB[2], "base64");
+      ctypePB = mPB[1];
+    } else {
+      // server-side pull for large assets (videos) — the page only sends the
+      // signed URL, never the bytes
+      const vr = await fetch(pb.srcUrl);
+      if (!vr.ok) { res.status(400).json({ error: "src fetch " + vr.status }); return; }
+      bufPB = Buffer.from(await vr.arrayBuffer());
+      ctypePB = vr.headers.get("content-type") || "video/mp4";
+      if (bufPB.length > 150 * 1024 * 1024) { res.status(400).json({ error: "file too large" }); return; }
     }
-    const bufPB = Buffer.from(mPB[2], "base64");
     const namePB = String(pb.name || "asset.jpg").replace(/[/\\]/g, "-").slice(0, 120);
     const bd = "lhp" + bufPB.length.toString(36);
     const metaPB = JSON.stringify({ name: namePB, parents: [fidPB] });
-    const prePB = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaPB}\r\n--${bd}\r\nContent-Type: ${mPB[1]}\r\n\r\n`;
+    const prePB = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaPB}\r\n--${bd}\r\nContent-Type: ${ctypePB}\r\n\r\n`;
     const bodyPB = Buffer.concat([Buffer.from(prePB, "utf8"), bufPB, Buffer.from(`\r\n--${bd}--`, "utf8")]);
     const urPB = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtPB, "Content-Type": `multipart/related; boundary=${bd}` }, body: bodyPB })).json();
     res.json({ ok: !!urPB.id, id: urPB.id || null, name: urPB.name || null, err: (urPB.error && urPB.error.message) || null });
