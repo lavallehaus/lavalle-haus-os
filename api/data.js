@@ -1631,10 +1631,21 @@ export default async function handler(req, res) {
     try {
       const spResp = await cu("/team/" + TEAM + "/space?archived=false");
       const spaces = spResp.spaces || [];
-      cuDebug = { spacesErr: spResp.err || null, spaces: spaces.map((s) => s.name) };
+      const teams = (await cu("/team")).teams || [];
+      cuDebug = { spacesErr: spResp.err || null, spaces: spaces.map((s) => s.name), teams: teams.map((t) => t.id + ":" + t.name) };
       for (const sp of spaces) {
         for (const fl of ((await cu("/space/" + sp.id + "/folder?archived=false")).folders || [])) for (const l of fl.lists || []) lists.push({ id: l.id, name: (fl.name + " " + l.name) });
         for (const l of ((await cu("/space/" + sp.id + "/list?archived=false")).lists || [])) lists.push({ id: l.id, name: l.name });
+      }
+      // Guests see no spaces — only items explicitly shared with them, via the
+      // shared-hierarchy endpoint. Walk every workspace the token belongs to.
+      if (!lists.length) {
+        for (const tm of teams) {
+          const sh = (await cu("/team/" + tm.id + "/shared")).shared || {};
+          for (const fl of sh.folders || []) for (const l of fl.lists || []) lists.push({ id: l.id, name: (fl.name + " " + l.name) });
+          for (const l of sh.lists || []) lists.push({ id: l.id, name: l.name });
+        }
+        cuDebug.sharedLists = lists.map((l) => l.name);
       }
     } catch (e7) { res.json({ ok: false, error: "ClickUp API: " + String(e7).slice(0, 120) }); return; }
     const playbook = lists.filter((l) => /playbook/i.test(l.name));
