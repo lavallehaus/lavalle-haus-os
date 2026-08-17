@@ -1262,6 +1262,16 @@ export default async function handler(req, res) {
   // cards, and writes a caption + 2 broad TikTok tags for each NEW cover using
   // vision + the live thefoldlabel.com catalog. Old captions are stashed in
   // card comments, never destroyed.
+  // Whose Google account is the app? (i.e., whom to share Drive folders with)
+  if (req.method === "GET" && op === "drive_whoami") {
+    const auth0d = await getAuthEarly(req);
+    if (!ownerRole(auth0d)) { res.status(403).json({ error: "Owner only." }); return; }
+    const gt = await googleToken();
+    if (!gt) { res.json({ connected: false }); return; }
+    const d0 = await (await fetch("https://www.googleapis.com/drive/v3/about?fields=user", { headers: { Authorization: "Bearer " + gt } })).json();
+    res.json({ connected: true, user: d0.user || null });
+    return;
+  }
   if (op === "fold_cover_sync" && req.method === "POST") {
     const okKey = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const auth0c = okKey ? null : await getAuthEarly(req);
