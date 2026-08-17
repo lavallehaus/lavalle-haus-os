@@ -2898,7 +2898,7 @@ export default async function handler(req, res) {
       const b = req.body || {};
       if (op === "drive_meta") {
         const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
-        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,parents,mimeType&supportsAllDrives=true`, { headers: AUTH });
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,parents,mimeType,thumbnailLink&supportsAllDrives=true`, { headers: AUTH });
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error" }); return; }
         res.json(d); return;
