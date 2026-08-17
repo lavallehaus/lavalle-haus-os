@@ -1673,6 +1673,43 @@ export default async function handler(req, res) {
     res.json({ ok: true, stage: plan.stage, month: plan.month + " " + plan.year, note: plan.note });
     return;
   }
+  // ── Playbook → Drive ingest ──────────────────────────────────────────────
+  // Ashe delivers assets via playbook.com share boards. The share page (driven
+  // in her browser) fetches each image and POSTs it here as a data URL; we file
+  // it into Content by Ashe Design Haus/<folder>. CORS is scoped to
+  // playbook.com and auth uses a purpose-derived key (sha256 of the owner
+  // token + ":pbingest") so the owner token itself never enters that page.
+  // text/plain body avoids a CORS preflight.
+  if (op === "pb_ingest") {
+    res.setHeader("Access-Control-Allow-Origin", "https://www.playbook.com");
+    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    let pb = req.body;
+    if (typeof pb === "string") { try { pb = JSON.parse(pb); } catch (ePB) { res.status(400).json({ error: "bad json" }); return; } }
+    const expect = createHash("sha256").update(appToken() + ":pbingest").digest("hex");
+    if (!pb || pb.key !== expect) { res.status(403).json({ error: "bad key" }); return; }
+    const mPB = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(pb.dataUrl || ""));
+    if (!mPB) { res.status(400).json({ error: "expected image data URL" }); return; }
+    const gtPB = await googleToken();
+    if (!gtPB) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const ASHE_PB = "1dK8yulLJGrhLeFT_dytYrQtgf2iRQ2fn";
+    const sub = String(pb.folder || "September 2026").replace(/['"\\]/g, "").slice(0, 60);
+    const qPB = encodeURIComponent("name='" + sub + "' and mimeType='application/vnd.google-apps.folder' and '" + ASHE_PB + "' in parents and trashed=false");
+    const frPB = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qPB + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtPB } })).json();
+    let fidPB = frPB.files && frPB.files[0] && frPB.files[0].id;
+    if (!fidPB) {
+      fidPB = (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtPB, "Content-Type": "application/json" }, body: JSON.stringify({ name: sub, mimeType: "application/vnd.google-apps.folder", parents: [ASHE_PB] }) })).json()).id;
+    }
+    const bufPB = Buffer.from(mPB[2], "base64");
+    const namePB = String(pb.name || "asset.jpg").replace(/[/\\]/g, "-").slice(0, 120);
+    const bd = "lhp" + bufPB.length.toString(36);
+    const metaPB = JSON.stringify({ name: namePB, parents: [fidPB] });
+    const prePB = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaPB}\r\n--${bd}\r\nContent-Type: ${mPB[1]}\r\n\r\n`;
+    const bodyPB = Buffer.concat([Buffer.from(prePB, "utf8"), bufPB, Buffer.from(`\r\n--${bd}--`, "utf8")]);
+    const urPB = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtPB, "Content-Type": `multipart/related; boundary=${bd}` }, body: bodyPB })).json();
+    res.json({ ok: !!urPB.id, id: urPB.id || null, name: urPB.name || null, err: (urPB.error && urPB.error.message) || null });
+    return;
+  }
   // Owner-only ClickUp API probe — lets us read chat/comment surfaces (e.g. the
   // thread where Ashe shares Playbook delivery links) without shipping the
   // token anywhere. Body: {path: "/v3/workspaces/…"} (v2 paths need /api/v2
