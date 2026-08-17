@@ -1627,8 +1627,11 @@ export default async function handler(req, res) {
     if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
     const seen = (await kvGet("clickup_seen")) || {};
     const lists = [];
+    let cuDebug = null;
     try {
-      const spaces = (await cu("/team/" + TEAM + "/space?archived=false")).spaces || [];
+      const spResp = await cu("/team/" + TEAM + "/space?archived=false");
+      const spaces = spResp.spaces || [];
+      cuDebug = { spacesErr: spResp.err || null, spaces: spaces.map((s) => s.name) };
       for (const sp of spaces) {
         for (const fl of ((await cu("/space/" + sp.id + "/folder?archived=false")).folders || [])) for (const l of fl.lists || []) lists.push({ id: l.id, name: (fl.name + " " + l.name) });
         for (const l of ((await cu("/space/" + sp.id + "/list?archived=false")).lists || [])) lists.push({ id: l.id, name: l.name });
@@ -1638,10 +1641,16 @@ export default async function handler(req, res) {
     const scanLists = playbook.length ? playbook : lists;
     const MONTHS2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const found = []; const skippedBig = [];
+    // The list-tasks endpoint returns tasks WITHOUT their attachments — those
+    // only appear on the per-task detail call, so fetch details (capped).
+    let detailCalls = 0;
     for (const l of scanLists.slice(0, 20)) {
       const tasks = (await cu("/list/" + l.id + "/task?include_closed=true&page=0")).tasks || [];
       for (const t of tasks) {
-        for (const a of t.attachments || []) {
+        if (detailCalls >= 60) break;
+        detailCalls++;
+        const td = await cu("/task/" + t.id);
+        for (const a of td.attachments || []) {
           if (!a.url || seen[a.id]) continue;
           found.push({ id: a.id, title: a.title || ("attachment-" + a.id), url: a.url, date: Number(a.date) || Date.now(), task: t.name });
         }
@@ -1680,7 +1689,7 @@ export default async function handler(req, res) {
       } catch (e8) {}
     }
     await kvSet("clickup_seen", seen);
-    res.json({ ok: true, listsScanned: scanLists.length, playbookLists: playbook.map((l) => l.name), newAttachments: found.length, uploaded, skippedTooBig: skippedBig, remaining: Math.max(0, found.length - 5) });
+    res.json({ ok: true, listsScanned: scanLists.length, playbookLists: playbook.map((l) => l.name), newAttachments: found.length, uploaded, skippedTooBig: skippedBig, remaining: Math.max(0, found.length - 5), debug: cuDebug });
     return;
   }
   const auth = await getAuth(req);
