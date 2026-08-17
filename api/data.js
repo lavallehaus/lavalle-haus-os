@@ -1272,19 +1272,40 @@ export default async function handler(req, res) {
     const gfetch = async (u) => (await fetch(u, { headers: { Authorization: "Bearer " + gt } })).json();
     // 1. all Cover Photos folders → keep those whose parent is a month under SM
     const sr = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains 'Cover Photos' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id,name,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true");
+    // A month folder counts when its parent chain is Social Media directly
+    // (…/Social Media/September/Cover Photos) OR goes through a year folder
+    // (…/Social Media/2027/January/Cover Photos) — both layouts work, every
+    // month, every year, no per-month setup.
+    const MO = ["january","february","march","april","may","june","july","august","september","october","november","december"];
     const months = [];
     for (const f of sr.files || []) {
       const pid = (f.parents || [])[0];
       if (!pid) continue;
       const pm = await gfetch("https://www.googleapis.com/drive/v3/files/" + pid + "?fields=id,name,parents&supportsAllDrives=true");
-      if ((pm.parents || []).includes(SM) && /^(january|february|march|april|may|june|july|august|september|october|november|december)/i.test((pm.name || "").trim()))
-        months.push({ month: pm.name.trim(), folderId: f.id });
+      const mi = MO.findIndex((x) => (pm.name || "").trim().toLowerCase().startsWith(x));
+      if (mi < 0) continue;
+      const gpid = (pm.parents || [])[0];
+      let year = null;
+      if (gpid === SM) {
+        // no year folder: a month far behind today means NEXT year (a January
+        // folder made in November is January of the coming year)
+        const now = new Date();
+        year = now.getFullYear();
+        if (mi < now.getMonth() - 5) year += 1;
+      } else if (gpid) {
+        const gp = await gfetch("https://www.googleapis.com/drive/v3/files/" + gpid + "?fields=id,name,parents&supportsAllDrives=true");
+        const ym = /^(20\d{2})$/.exec((gp.name || "").trim());
+        if (ym && (gp.parents || []).includes(SM)) year = Number(ym[1]);
+      }
+      if (year !== null) months.push({ month: pm.name.trim(), year, mi, folderId: f.id, date: new Date(year, mi, 1) });
     }
     if (!months.length) { res.json({ ok: true, note: "no month folders found" }); return; }
-    // 2. the CURRENT month wins if present, else the latest by calendar order
-    const MO = ["january","february","march","april","may","june","july","august","september","october","november","december"];
-    const nowM = MO[new Date().getMonth()];
-    const target = months.find((m) => m.month.toLowerCase().startsWith(nowM)) || months.sort((a, b) => MO.findIndex((x) => b.month.toLowerCase().startsWith(x)) - MO.findIndex((x) => a.month.toLowerCase().startsWith(x)))[0];
+    // 2. prefer THIS month; else the nearest upcoming; else the latest past
+    const thisMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const current = months.find((m) => m.date.getTime() === thisMonth.getTime());
+    const upcoming = months.filter((m) => m.date > thisMonth).sort((a, b) => a.date - b.date)[0];
+    const latest = months.sort((a, b) => b.date - a.date)[0];
+    const target = current || upcoming || latest;
     // 3. numbered files inside it
     const lr = await gfetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + target.folderId + "' in parents and trashed=false") + "&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true");
     const byN = {};
@@ -1333,7 +1354,7 @@ export default async function handler(req, res) {
       }
     }
     if (changed.length) await kvSet("lavalle_data", blob);
-    res.json({ ok: true, month: target.month, filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned });
+    res.json({ ok: true, month: target.month + " " + target.year, candidates: months.map((m) => m.month + " " + m.year), filesFound: Object.keys(byN).length, coversUpdated: changed.length, captioned });
     return;
   }
   const auth = await getAuth(req);
