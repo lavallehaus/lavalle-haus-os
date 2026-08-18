@@ -1554,13 +1554,14 @@ export default async function handler(req, res) {
         res.json({ ok: false, stage: "plan", month: MONg[mi] + " " + yr, error: "No candidate images: Ashe folder has no " + MONg[mi] + " content and the Loft folder has nothing unused. Add content (ClickUp sync or manual) and re-run." });
         return;
       }
-      // Vision request cap is 40. Blend the pools instead of first-come: Ashe's
-      // fresh shoot leads (~26) but unused Loft library images stay in the mix
-      // (~14) — her rule: the grid draws from both.
+      // Vision request cap is 40. Blend the pools instead of first-come — her
+      // rule: unused Loft shoot imagery (lifestyle, texture) LEADS (~26) and
+      // Ashe's white-studio e-comm is the accent (~14). An Ashe-heavy pool made
+      // September read all-white; never again.
       const asheC = candidates.filter((c) => c.src === "ashe");
       const loftC = candidates.filter((c) => c.src === "loft");
-      let cands = [...asheC.slice(0, 40 - Math.min(14, loftC.length)), ...loftC.slice(0, 14)];
-      if (cands.length < 40) cands = cands.concat(asheC.slice(40 - Math.min(14, loftC.length)), loftC.slice(14)).slice(0, 40);
+      let cands = [...loftC.slice(0, 40 - Math.min(14, asheC.length)), ...asheC.slice(0, 14)];
+      if (cands.length < 40) cands = cands.concat(loftC.slice(40 - Math.min(14, asheC.length)), asheC.slice(14)).slice(0, 40);
       const dropped = Math.max(0, candidates.length - cands.length);
       // previous month's archived grid = the flow reference. Archives live at
       // Social Media/<Month>/grid/<Month> grid.jpg (her rule: per-month, not a
@@ -1670,7 +1671,7 @@ export default async function handler(req, res) {
         content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: cb } });
       }
       const wantN = Math.min(21, usable.length);
-      content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + plan.month + " " + plan.year + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it; lean into what is on-trend for " + plan.month + " " + plan.year + " in this register (seasonal transition, texture, tone); never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
+      content.push({ type: "text", text: "You are the art director for The Fold (thefoldlabel.com) — quiet-luxury womenswear in The Row / Toteme register. Design the " + plan.month + " " + plan.year + " Instagram grid: choose exactly " + wantN + " candidates and assign each a slot 1-" + wantN + ". Slot 1 = bottom-right of the grid, numbering right-to-left then upward (so visually the grid reads slot 21 at top-left down to slot 1 at bottom-right, and slot 1 is posted FIRST in the month). Rules: continue last month's visual story without repeating it — NEVER pick a candidate that already appears as a tile in the previous-month reference grid (it is posted; reusing it is a hard error); lean into what is on-trend for " + plan.month + " " + plan.year + " in this register (seasonal transition, texture, tone); BACKGROUND VARIETY IS MANDATORY — at most 8 of the " + wantN + " tiles may be white/seamless studio shots, the rest must be lifestyle, outdoor, interior, texture or detail imagery; never place two white-studio tiles adjacent; never place two near-identical images, two faces, or two same-dominant-color tiles adjacent (adjacent = left/right neighbor or directly above/below); alternate product, detail and lifestyle shots for rhythm. Return ONLY JSON: {\"picks\":[{\"slot\":1,\"i\":0},…],\"note\":\"one sentence on the direction\"} — every slot exactly once, every i a valid candidate index, no candidate twice." });
       const r7 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST", headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content }] }),

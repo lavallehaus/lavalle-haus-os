@@ -133,7 +133,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [genSel, setGenSel] = useState("");
   useEffect(() => {
     let dead = false;
-    fetch("/api/data?op=fold_grid_list").then((r) => r.json()).then((d) => { if (!dead && d && d.grids) setGenGrids(d.grids); }).catch(() => {});
+    fetch("/api/data?op=fold_grid_list").then((r) => r.json()).then((d) => {
+      if (dead || !d || !d.grids) return;
+      setGenGrids(d.grids);
+      // Default straight to the newest generated month — the live planner
+      // duplicates what the generated grid already shows.
+      if (d.grids.length) setGenSel(d.grids[d.grids.length - 1].fileId);
+    }).catch(() => {});
     return () => { dead = true; };
   }, []);
   const tt = acct === "lavallesisters" && platform === "tt";
@@ -620,7 +626,6 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Generated grids</span>
           <select value={genSel} onChange={(e) => setGenSel(e.target.value)}
             style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
-            <option value="">Current planner</option>
             {genGrids.map((g) => <option key={g.fileId} value={g.fileId}>{g.month}</option>)}
           </select>
         </div>
