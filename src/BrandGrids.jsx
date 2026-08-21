@@ -179,7 +179,11 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   // targets; release swaps. A quick touch or any movement before the hold
   // fires is treated as a normal scroll — the page stays scrollable.
   const startSisDrag = (kind, fromI, startX, startY, el, isTray, trayUrl, trayIdx) => {
-    if (sisDragRef.current) return;
+    // self-healing lock: a stale lock (ghost gone, no active drag) must never
+    // block the next press — that's what made the grid feel "dead"
+    if (sisDragRef.current && document.querySelector(".lh-drag-ghost")) return;
+    sisDragRef.current = false;
+    document.querySelectorAll(".lh-drag-ghost").forEach((g) => g.remove());
     const mv = kind === "pointer" ? "pointermove" : "mousemove";
     const up = kind === "pointer" ? "pointerup" : "mouseup";
     let armed = false, ghost = null, overI = null, lastX = startX, lastY = startY;
@@ -257,6 +261,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     window.addEventListener(mv, onMove, { passive: false });
     window.addEventListener(up, onUp);
     window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp, { once: true });
   };
   // FLIP: when tiles re-order, slide each image from its old spot to its new
   // one instead of snapping (the "moving really fast" complaint).
