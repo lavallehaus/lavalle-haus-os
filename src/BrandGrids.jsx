@@ -715,7 +715,12 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
                         overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
                         if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
                       };
-                      const onUp = () => {
+                      const onUp = (ev) => {
+                        if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
+                          const cell2 = document.elementFromPoint(ev.clientX, ev.clientY);
+                          const hit = cell2 && cell2.closest ? cell2.closest("[data-sistile]") : null;
+                          if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
+                        }
                         el.style.opacity = "";
                         document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
                         window.removeEventListener("pointermove", onMove);
