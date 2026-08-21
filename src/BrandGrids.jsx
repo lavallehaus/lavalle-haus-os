@@ -261,7 +261,6 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     window.addEventListener(mv, onMove, { passive: false });
     window.addEventListener(up, onUp);
     window.addEventListener("pointercancel", onUp);
-    window.addEventListener("blur", onUp, { once: true });
   };
   // FLIP: when tiles re-order, slide each image from its old spot to its new
   // one instead of snapping (the "moving really fast" complaint).
