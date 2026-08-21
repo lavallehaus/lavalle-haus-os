@@ -685,7 +685,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               {sisBusy ? "Saving…" : "Save arrangement"}</button>
             <button onClick={() => { setSisEdit(false); setSisPick(null); }} disabled={sisBusy}
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
-            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>tap two tiles to swap</span>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag a tile onto another to swap — or tap two tiles</span>
           </div>
           {(() => {
             const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
@@ -698,11 +698,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             return (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
                 {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
-                  <div key={v} onClick={() => {
+                  <div key={v} draggable onClick={() => {
                     if (sisPick == null) setSisPick(i);
                     else if (sisPick === i) setSisPick(null);
                     else { const t = [...sisTiles]; [t[sisPick], t[i]] = [t[i], t[sisPick]]; setSisTiles(t); setSisPick(null); }
-                  }} style={{ position: "relative", aspectRatio: "3/4", cursor: "pointer", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
+                  }}
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setSisPick(i); }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    onDrop={(e) => { e.preventDefault(); if (sisPick != null && sisPick !== i) { const t = [...sisTiles]; [t[sisPick], t[i]] = [t[i], t[sisPick]]; setSisTiles(t); } setSisPick(null); }}
+                    onDragEnd={() => setSisPick(null)}
+                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
                     <img src={sisTiles[i].cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                     {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
                   </div>
