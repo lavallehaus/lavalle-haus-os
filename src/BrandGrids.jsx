@@ -149,8 +149,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     let dead = false;
     fetch("/api/data?op=sisters_grid_list").then((r) => r.json()).then((d) => {
       if (dead || !d) return;
-      setSisGrids({ pregrid: d.pregrid || null, archive: d.archive || [] });
-      if (d.pregrid) setSisSel("pregrid");
+      setSisGrids({ pregrid: null, archive: d.archive || [] });
+      if (d.archive && d.archive.length) setSisSel(d.archive[0].fileId);
     }).catch(() => {});
     return () => { dead = true; };
   }, []);
@@ -642,20 +642,18 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           </select>
         </div>
       )}
-      {acct === "lavallesisters" && (sisGrids.pregrid || sisGrids.archive.length > 0) && (
+      {acct === "lavallesisters" && sisGrids.archive.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Pre-grid for Courtney</span>
+          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Grids</span>
           <select value={sisSel} onChange={(e) => setSisSel(e.target.value)}
             style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
-            <option value="">Live planner</option>
-            {sisGrids.pregrid && <option value="pregrid">Current pre-grid ({sisGrids.pregrid.kTiles} K + {sisGrids.pregrid.cTiles} C)</option>}
             {sisGrids.archive.map((g) => <option key={g.fileId} value={g.fileId}>{g.name.slice(0, 44)}</option>)}
           </select>
         </div>
       )}
       {acct === "lavallesisters" && sisSel && (
         <div style={{ marginBottom: 14 }}>
-          <img src={sisSel === "pregrid" ? sisGrids.pregrid.view : "/api/data?op=drive_img&id=" + sisSel} alt="Sisters grid"
+          <img src={"/api/data?op=drive_img&id=" + sisSel} alt="Sisters grid"
             style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
             Chronological — Post 1 bottom-right. Tiles with a taupe top strip are Courtney's Mon/Wed/Fri posts.

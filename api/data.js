@@ -1704,7 +1704,10 @@ export default async function handler(req, res) {
         }
       }
     } catch (eL2) {}
-    res.json({ pregrid: pg && pg.mid ? { view: "/cover/" + pg.mid + ".jpg", kTiles: pg.kTiles, cTiles: pg.cTiles, at: pg.at } : null, archive: out2 });
+    // Exactly the two named grids, "1 — …" first — the live render duplicates
+    // grid 1 and only confused the dropdown, so it is not listed.
+    out2.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    res.json({ pregrid: null, archive: out2 });
     return;
   }
   // ── Lavalle Sisters cycle automation ─────────────────────────────────────
