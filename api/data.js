@@ -1490,6 +1490,127 @@ export default async function handler(req, res) {
     res.json({ grids: out });
     return;
   }
+  // ── Lavalle Sisters cycle automation ─────────────────────────────────────
+  // Her planning rule: 21-post cycles (1/day = 3 weeks), never more on the
+  // grid at once. When Post 10 is checked off, the next cycle spawns: snapshot
+  // montage of the finishing cycle → Drive, a COMBINED montage weaving
+  // Courtney's Mon/Wed/Fri auto-posts (3/wk × 4wk = her 12/month contract)
+  // between the dailies — that composite is Courtney's instruction sheet —
+  // then the completed cards are DELETED (Drive holds the backup) and a fresh
+  // Post 1-21 set is written with continuing dates. Staged via KV so each
+  // 15-min pinger tick resumes safely if an invocation times out.
+  if (op === "sisters_cycle_check" && req.method === "POST") {
+    const okKeyS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authS = okKeyS ? null : await getAuthEarly(req);
+    if (!okKeyS && !ownerRole(authS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtS = await googleToken();
+    if (!gtS) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const rawS = await kvGet("lavalle_data");
+    const blobS = Array.isArray(rawS) ? rawS[0] : rawS;
+    const bdS = blobS && blobS.boards && blobS.boards["lavalle-sisters"];
+    if (!bdS) { res.json({ ok: false, error: "no lavalle-sisters board" }); return; }
+    const schedS = bdS.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+    if (!schedS) { res.json({ ok: false, error: "no Schedule 1-21 list" }); return; }
+    let courtS = bdS.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+    if (!courtS) {
+      courtS = { id: "l" + Math.random().toString(36).slice(2, 9), name: "Courtney Posts 1-12" };
+      bdS.lists.push(courtS);
+      await kvSet("lavalle_data", blobS);
+    }
+    const cardsS = bdS.cards.filter((c) => c.listId === schedS.id && /^post\s*\d+/i.test(c.name || ""));
+    const numS = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
+    const p10 = cardsS.find((c) => numS(c) === 10);
+    const p1 = cardsS.find((c) => numS(c) === 1);
+    const sigS = p1 ? p1.name : "none";
+    let st = (await kvGet("sisters_cycle_state")) || { lastSig: null, stage: null };
+    if (!p10 || p10.done !== true) { res.json({ ok: true, fired: false, reason: "Post 10 not completed" }); return; }
+    if (st.lastSig === sigS && !st.stage) { res.json({ ok: true, fired: false, reason: "cycle already rotated" }); return; }
+    if (st.lastSig !== sigS) st = { lastSig: sigS, stage: "montage" };
+    const MOS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const tileS = async (Jimp, url) => {
+      try {
+        const full = /^https?:/.test(url) ? url : APP_ORIGIN + url;
+        const r = await fetch(full);
+        if (!r.ok) return null;
+        const im = await Jimp.read(Buffer.from(await r.arrayBuffer()));
+        return im.cover(360, 480);
+      } catch (eT) { return null; }
+    };
+    const upS = async (buf, name, fid) => {
+      const bd9 = "lhs" + buf.length.toString(36);
+      const meta9 = JSON.stringify({ name, parents: [fid] });
+      const pre9 = `--${bd9}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta9}\r\n--${bd9}\r\nContent-Type: image/jpeg\r\n\r\n`;
+      return await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": `multipart/related; boundary=${bd9}` }, body: Buffer.concat([Buffer.from(pre9, "utf8"), buf, Buffer.from(`\r\n--${bd9}--`, "utf8")]) })).json();
+    };
+    if (st.stage === "montage") {
+      const Jimp = (await import("jimp")).default;
+      // Drive archive folder: My Drive root / "Lavalle Sisters — Grid Archive"
+      const q9 = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+      const f9 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q9 + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtS } })).json();
+      let arcId = f9.files && f9.files[0] && f9.files[0].id;
+      if (!arcId) arcId = (await (await fetch("https://www.googleapis.com/drive/v3/files", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Sisters — Grid Archive", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
+      // 1) finishing cycle snapshot (21 tiles, slot 1 bottom-right)
+      const cv1 = await new Jimp(1080, 3360, 0xffffffff);
+      for (const c of cardsS) {
+        const n = numS(c);
+        if (n < 1 || n > 21 || !c.cover) continue;
+        const t = await tileS(Jimp, c.cover);
+        if (t) cv1.composite(t, (2 - ((n - 1) % 3)) * 360, (6 - Math.floor((n - 1) / 3)) * 480);
+      }
+      cv1.quality(88);
+      const dateTag = new Date().toISOString().slice(0, 10);
+      await upS(await cv1.getBufferAsync(Jimp.MIME_JPEG), "Cycle ending " + dateTag + " — grid.jpg", arcId);
+      // 2) combined weave: K daily + Courtney on Mon/Wed/Fri, chronological
+      const courtCards = bdS.cards.filter((c) => c.listId === courtS.id && /\d+/.test(c.name || "") && c.cover)
+        .sort((a, b) => Number((/(\d+)/.exec(a.name) || [])[1]) - Number((/(\d+)/.exec(b.name) || [])[1]));
+      // cycle start = tomorrow (rotation moment); K post n on day n-1
+      const start = new Date(Date.now() + 86400000);
+      const seq = [];
+      let ci = 0;
+      const sorted = cardsS.filter((c) => numS(c) >= 1 && numS(c) <= 21).sort((a, b) => numS(a) - numS(b));
+      for (let d = 0; d < 21; d++) {
+        const day = new Date(start.getTime() + d * 86400000);
+        const k = sorted[d];
+        if (k) seq.push({ cover: k.cover, tag: "K" });
+        if ([1, 3, 5].includes(day.getUTCDay()) && ci < courtCards.length) { seq.push({ cover: courtCards[ci].cover, tag: "C" }); ci++; }
+      }
+      const rows = Math.ceil(seq.length / 3);
+      const cv2 = await new Jimp(1080, rows * 480, 0xffffffff);
+      for (let i = 0; i < seq.length; i++) {
+        if (!seq[i].cover) continue;
+        const t = await tileS(Jimp, seq[i].cover);
+        // chronological = slot 1 bottom-right, filling right-to-left upward
+        const slot = i, row = rows - 1 - Math.floor(slot / 3), col = 2 - (slot % 3);
+        if (t) {
+          if (seq[i].tag === "C") t.scan(0, 0, t.getWidth(), 12, function (x2, y2, idx2) { this.bitmap.data[idx2] = 143; this.bitmap.data[idx2 + 1] = 134; this.bitmap.data[idx2 + 2] = 118; });
+          cv2.composite(t, col * 360, row * 480);
+        }
+      }
+      cv2.quality(88);
+      await upS(await cv2.getBufferAsync(Jimp.MIME_JPEG), "Cycle from " + start.toISOString().slice(0, 10) + " — combined with Courtney (taupe strip = Courtney).jpg", arcId);
+      st.stage = "rotate";
+      await kvSet("sisters_cycle_state", st);
+      res.json({ ok: true, fired: true, stage: "montage done", courtneyWoven: ci });
+      return;
+    }
+    if (st.stage === "rotate") {
+      // delete finished cycle cards (her rule: Drive is the backup), spawn next 21
+      const ids = new Set(cardsS.map((c) => c.id));
+      bdS.cards = bdS.cards.filter((c) => !ids.has(c.id));
+      const start = new Date(Date.now() + 86400000);
+      for (let n = 1; n <= 21; n++) {
+        const day = new Date(start.getTime() + (n - 1) * 86400000);
+        bdS.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: schedS.id, name: "Post " + n + " " + MOS[day.getUTCMonth()] + " " + day.getUTCDate(), desc: "", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
+      }
+      await kvSet("lavalle_data", blobS);
+      st.stage = null;
+      await kvSet("sisters_cycle_state", st);
+      res.json({ ok: true, fired: true, stage: "rotated", newCards: 21 });
+      return;
+    }
+    res.json({ ok: true, fired: false, reason: "no stage" });
+    return;
+  }
   if (op === "fold_grid_gen" && req.method === "POST") {
     const okKeyG = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const auth0g = okKeyG ? null : await getAuthEarly(req);

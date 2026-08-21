@@ -21,3 +21,9 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=fold_cover_sync" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
+      # Lavalle Sisters: when Post 10 is checked off, archive montages to Drive
+      # and rotate in the next 21-post cycle (staged; each tick resumes safely).
+      - name: Sisters cycle check
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
