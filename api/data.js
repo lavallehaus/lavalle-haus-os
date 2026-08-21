@@ -1650,7 +1650,8 @@ export default async function handler(req, res) {
     if (mD) { startP = new Date(Date.UTC(new Date().getUTCFullYear(), MOP.indexOf(mD[1].toLowerCase()), Number(mD[2]))); }
     // Courtney's Mon/Wed/Fri posts only begin once she's actually onboarded —
     // before her start date the grid is Kiabeth's dailies alone.
-    if (b.courtneyStart) await kvSet("sisters_courtney_start", String(b.courtneyStart).slice(0, 10));
+    const bodyP = req.body || {};
+    if (bodyP.courtneyStart) await kvSet("sisters_courtney_start", String(bodyP.courtneyStart).slice(0, 10));
     const cStartS = await kvGet("sisters_courtney_start");
     const cStartT = cStartS ? Date.parse(cStartS + "T00:00:00Z") : 0;
     const seqP = [];
