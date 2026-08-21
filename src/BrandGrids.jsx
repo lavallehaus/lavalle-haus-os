@@ -689,68 +689,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
             <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag a tile onto another to swap — or tap two tiles</span>
           </div>
-          {(() => {
-            const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
-            const visual = [];
-            for (let v = 0; v < rowsS * 3; v++) {
-              const r = Math.floor(v / 3), col = v % 3;
-              const i = (rowsS - 1 - r) * 3 + (2 - col);
-              visual.push(i < nS ? i : null);
-            }
-            return (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
-                {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
-                  <div key={v} data-sistile={i}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      const fromI = i, startX = e.clientX, startY = e.clientY;
-                      let moved = false, overI = null;
-                      const el = e.currentTarget;
-                      try { el.setPointerCapture(e.pointerId); } catch {}
-                      const onMove = (ev) => {
-                        if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
-                        if (!moved) return;
-                        el.style.opacity = "0.45";
-                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                        const under = document.elementFromPoint(ev.clientX, ev.clientY);
-                        const cell = under && under.closest ? under.closest("[data-sistile]") : null;
-                        overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
-                        if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
-                      };
-                      const onUp = (ev) => {
-                        if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
-                          const cell2 = document.elementFromPoint(ev.clientX, ev.clientY);
-                          const hit = cell2 && cell2.closest ? cell2.closest("[data-sistile]") : null;
-                          if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
-                        }
-                        el.style.opacity = "";
-                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                        window.removeEventListener("pointermove", onMove);
-                        window.removeEventListener("pointerup", onUp);
-                        if (moved && overI != null && overI !== fromI) {
-                          setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
-                          setSisPick(null);
-                        } else if (!moved) {
-                          setSisPick((p) => {
-                            if (p == null) return fromI;
-                            if (p === fromI) return null;
-                            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
-                            return null;
-                          });
-                        }
-                      };
-                      window.addEventListener("pointermove", onMove);
-                      window.addEventListener("pointerup", onUp);
-                    }}
-                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
-                    <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
-                    {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-          <div style={{ marginTop: 14 }}>
+          <div style={{ margin: "4px 0 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Your photos ({sisTray.length})</span>
               <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
@@ -824,6 +763,67 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               {!sisTray.length && <div style={{ gridColumn: "1 / -1", fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No spare photos yet — add some above.</div>}
             </div>
           </div>
+          {(() => {
+            const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
+            const visual = [];
+            for (let v = 0; v < rowsS * 3; v++) {
+              const r = Math.floor(v / 3), col = v % 3;
+              const i = (rowsS - 1 - r) * 3 + (2 - col);
+              visual.push(i < nS ? i : null);
+            }
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+                {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
+                  <div key={v} data-sistile={i}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const fromI = i, startX = e.clientX, startY = e.clientY;
+                      let moved = false, overI = null;
+                      const el = e.currentTarget;
+                      try { el.setPointerCapture(e.pointerId); } catch {}
+                      const onMove = (ev) => {
+                        if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
+                        if (!moved) return;
+                        el.style.opacity = "0.45";
+                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+                        const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+                        overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
+                        if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
+                      };
+                      const onUp = (ev) => {
+                        if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
+                          const cell2 = document.elementFromPoint(ev.clientX, ev.clientY);
+                          const hit = cell2 && cell2.closest ? cell2.closest("[data-sistile]") : null;
+                          if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
+                        }
+                        el.style.opacity = "";
+                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                        window.removeEventListener("pointermove", onMove);
+                        window.removeEventListener("pointerup", onUp);
+                        if (moved && overI != null && overI !== fromI) {
+                          setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
+                          setSisPick(null);
+                        } else if (!moved) {
+                          setSisPick((p) => {
+                            if (p == null) return fromI;
+                            if (p === fromI) return null;
+                            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
+                            return null;
+                          });
+                        }
+                      };
+                      window.addEventListener("pointermove", onMove);
+                      window.addEventListener("pointerup", onUp);
+                    }}
+                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
+                    <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
+                    {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
       {acct === "lavallesisters" && sisSel && !sisEdit && (
@@ -831,6 +831,32 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           <button onClick={openSisEdit} disabled={sisBusy}
             style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.taupe, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
             {sisBusy ? "Loading…" : "Rearrange"}</button>
+          <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer", marginLeft: 8 }}>
+            Add photos
+            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={async (e) => {
+              const files = [...(e.target.files || [])]; e.target.value = "";
+              if (!files.length) return;
+              setSisBusy(true);
+              try {
+                const d0 = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
+                const urls = [];
+                await Promise.all(files.map((f) => new Promise((res) => {
+                  const fr = new FileReader();
+                  fr.onload = () => { const img = new Image(); img.onload = async () => {
+                    const sc = Math.min(1, 1440 / img.width);
+                    const cv = document.createElement("canvas");
+                    cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+                    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+                    urls.push(await storeImage(cv.toDataURL("image/jpeg", 0.9))); res();
+                  }; img.src = fr.result; };
+                  fr.readAsDataURL(f);
+                })));
+                const tray2 = [...(d0.tray || []), ...urls];
+                await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tray: tray2 }) });
+                setSisTiles(d0.tiles || []); setSisTray(tray2); setSisEdit(true); setSisPick(null);
+              } finally { setSisBusy(false); }
+            }} />
+          </label>
           <img src={"/api/data?op=drive_img&id=" + sisSel} alt="Sisters grid"
             style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
