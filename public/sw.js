@@ -1,6 +1,15 @@
-// Lavalle Haus OS — minimal service worker. Pure passthrough: it exists so the
-// app is installable everywhere; caching stays with the browser/CDN so the
-// team always runs the latest deploy (no stale-app headaches).
+// KILL SWITCH — this service worker replaced a stale one that hung all
+// requests. It installs, deletes every cache, unregisters itself, and
+// reloads open tabs so the app runs service-worker-free from now on.
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener("fetch", () => {});
+self.addEventListener("activate", (e) => {
+  e.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const cs = await self.clients.matchAll({ type: "window" });
+      cs.forEach((c) => c.navigate(c.url));
+    } catch (err) {}
+  })());
+});
