@@ -145,6 +145,32 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   // Lavalle Sisters pre-grid + cycle archive (Courtney's hand-off view).
   const [sisGrids, setSisGrids] = useState({ pregrid: null, archive: [] });
   const [sisSel, setSisSel] = useState("");
+  // Her rearrange editor: tap one tile, tap another, they swap. Save re-renders
+  // the montage server-side and updates the Drive archive file.
+  const [sisEdit, setSisEdit] = useState(false);
+  const [sisTiles, setSisTiles] = useState([]);
+  const [sisPick, setSisPick] = useState(null);
+  const [sisBusy, setSisBusy] = useState(false);
+  const sisGridNum = (() => { const g = sisGrids.archive.find((a) => a.fileId === sisSel); return g && g.name.startsWith("2") ? "2" : "1"; })();
+  const openSisEdit = async () => {
+    setSisBusy(true);
+    try {
+      const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
+      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisEdit(true); setSisPick(null); }
+      else alert("This grid isn't editable yet — ask Claude to seed its tiles.");
+    } finally { setSisBusy(false); }
+  };
+  const saveSisEdit = async () => {
+    setSisBusy(true);
+    try {
+      const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles }) })).json();
+      if (d && d.ok) {
+        setSisEdit(false);
+        const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
+        if (l && l.archive) { setSisGrids({ pregrid: null, archive: l.archive }); const hit = l.archive.find((a) => a.name.startsWith(sisGridNum)); if (hit) setSisSel(hit.fileId); }
+      }
+    } finally { setSisBusy(false); }
+  };
   useEffect(() => {
     let dead = false;
     fetch("/api/data?op=sisters_grid_list").then((r) => r.json()).then((d) => {
@@ -651,8 +677,46 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           </select>
         </div>
       )}
-      {acct === "lavallesisters" && sisSel && (
+      {acct === "lavallesisters" && sisSel && sisEdit && (
+        <div style={{ marginBottom: 14, maxWidth: 420 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <button onClick={saveSisEdit} disabled={sisBusy}
+              style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: sisBusy ? 0.5 : 1 }}>
+              {sisBusy ? "Saving…" : "Save arrangement"}</button>
+            <button onClick={() => { setSisEdit(false); setSisPick(null); }} disabled={sisBusy}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>tap two tiles to swap</span>
+          </div>
+          {(() => {
+            const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
+            const visual = [];
+            for (let v = 0; v < rowsS * 3; v++) {
+              const r = Math.floor(v / 3), col = v % 3;
+              const i = (rowsS - 1 - r) * 3 + (2 - col);
+              visual.push(i < nS ? i : null);
+            }
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+                {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
+                  <div key={v} onClick={() => {
+                    if (sisPick == null) setSisPick(i);
+                    else if (sisPick === i) setSisPick(null);
+                    else { const t = [...sisTiles]; [t[sisPick], t[i]] = [t[i], t[sisPick]]; setSisTiles(t); setSisPick(null); }
+                  }} style={{ position: "relative", aspectRatio: "3/4", cursor: "pointer", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
+                    <img src={sisTiles[i].cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+      {acct === "lavallesisters" && sisSel && !sisEdit && (
         <div style={{ marginBottom: 14 }}>
+          <button onClick={openSisEdit} disabled={sisBusy}
+            style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.taupe, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
+            {sisBusy ? "Loading…" : "Rearrange"}</button>
           <img src={"/api/data?op=drive_img&id=" + sisSel} alt="Sisters grid"
             style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>

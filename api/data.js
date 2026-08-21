@@ -1685,6 +1685,75 @@ export default async function handler(req, res) {
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
     return;
   }
+  // ── Sisters grid tiles: her hand-rearrange editor ────────────────────────
+  // KV holds each named grid's tile list (cover URL + K/C tag). GET returns it;
+  // POST {grid, tiles} seeds it; POST {grid, order} applies her tap-swap
+  // arrangement, re-renders the montage (white-dot C markers), updates the
+  // media-store view AND replaces the Drive archive file so every surface
+  // shows her version.
+  if (op === "sisters_grid_tiles") {
+    const authT2 = await getAuthEarly(req);
+    if (!authT2) { res.status(401).json({ error: "Locked." }); return; }
+    if (req.method === "GET") {
+      const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
+      const t = (await kvGet("sisters_grid_tiles_" + g)) || null;
+      res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null });
+      return;
+    }
+    const bT = req.body || {};
+    const g = String(bT.grid || "1").replace(/[^12]/g, "") || "1";
+    let rec = (await kvGet("sisters_grid_tiles_" + g)) || { tiles: [], mid: null };
+    if (Array.isArray(bT.tiles) && bT.tiles.length) {
+      rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
+    } else if (Array.isArray(bT.order) && bT.order.length === rec.tiles.length) {
+      const seen = new Set(bT.order.map(Number));
+      if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
+    } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
+    // render montage: slot 1 bottom-right, chronological
+    const Jimp = (await import("jimp")).default;
+    const nT = rec.tiles.length, rowsT = Math.ceil(nT / 3);
+    const cvT = await new Jimp(1080, rowsT * 480, 0xf2efe9ff);
+    for (let i = 0; i < nT; i++) {
+      try {
+        const u = /^https?:/.test(rec.tiles[i].cover) ? rec.tiles[i].cover : APP_ORIGIN + rec.tiles[i].cover;
+        const rr = await fetch(u);
+        if (!rr.ok) continue;
+        const t2 = (await Jimp.read(Buffer.from(await rr.arrayBuffer()))).cover(360, 480);
+        if (rec.tiles[i].tag === "C") {
+          const cx = 360 - 26, cy = 26, r = 9;
+          t2.scan(cx - r - 4, cy - r - 4, (r + 4) * 2, (r + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= r * r) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (r + 2) * (r + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } });
+        }
+        cvT.composite(t2, (2 - (i % 3)) * 360, (rowsT - 1 - Math.floor(i / 3)) * 480);
+      } catch (eT2) {}
+    }
+    cvT.quality(88);
+    const bufT = await cvT.getBufferAsync(Jimp.MIME_JPEG);
+    const midT = "sg" + createHash("sha256").update(bufT).digest("hex").slice(0, 14);
+    await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
+    rec.mid = midT;
+    await kvSet("sisters_grid_tiles_" + g, rec);
+    // replace the Drive archive file for this grid
+    try {
+      const gtT = await googleToken();
+      if (gtT) {
+        const qT = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+        const fT = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qT + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtT } })).json();
+        const arcT = fT.files && fT.files[0] && fT.files[0].id;
+        if (arcT) {
+          const kidsT = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + arcT + "' in parents and trashed=false") + "&fields=files(id,name)", { headers: { Authorization: "Bearer " + gtT } })).json();
+          const oldT = (kidsT.files || []).find((f) => (f.name || "").startsWith(g + " —"));
+          const nameT = oldT ? oldT.name : (g === "1" ? "1 — Current grid.jpg" : "2 — Next grid.jpg");
+          if (oldT) await fetch("https://www.googleapis.com/drive/v3/files/" + oldT.id, { method: "PATCH", headers: { Authorization: "Bearer " + gtT, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+          const bdT2 = "lht" + bufT.length.toString(36);
+          const metaT = JSON.stringify({ name: nameT, parents: [arcT] });
+          const preT = `--${bdT2}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaT}\r\n--${bdT2}\r\nContent-Type: image/jpeg\r\n\r\n`;
+          await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtT, "Content-Type": `multipart/related; boundary=${bdT2}` }, body: Buffer.concat([Buffer.from(preT, "utf8"), bufT, Buffer.from(`\r\n--${bdT2}--`, "utf8")]) });
+        }
+      }
+    } catch (eDR) {}
+    res.json({ ok: true, grid: g, view: "/cover/" + midT + ".jpg", tiles: rec.tiles.length });
+    return;
+  }
   // Pre-grid pointer + Drive archive listing for the sisters dropdown.
   if (op === "sisters_grid_list" && req.method === "GET") {
     const authGL2 = await getAuthEarly(req);
