@@ -170,62 +170,108 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acct, sisSel]);
   const sisDragRef = useRef(false);
-  // one starter for BOTH pointer and mouse input: some input paths (trackpads,
-  // automation, odd drivers) deliver only one family of events
+  // Plann-style drag: PRESS AND HOLD (~220ms, finger still) lifts the tile into
+  // a floating ghost that follows the pointer; other tiles highlight as drop
+  // targets; release swaps. A quick touch or any movement before the hold
+  // fires is treated as a normal scroll — the page stays scrollable.
   const startSisDrag = (kind, fromI, startX, startY, el, isTray, trayUrl, trayIdx) => {
     if (sisDragRef.current) return;
-    sisDragRef.current = true;
-    let moved = false, overI = null;
     const mv = kind === "pointer" ? "pointermove" : "mousemove";
     const up = kind === "pointer" ? "pointerup" : "mouseup";
+    let armed = false, ghost = null, overI = null, lastX = startX, lastY = startY;
+    const clearTargets = () => document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+    const arm = () => {
+      armed = true; sisDragRef.current = true;
+      document.addEventListener("touchmove", preventScroll, { passive: false });
+      try { navigator.vibrate && navigator.vibrate(8); } catch {}
+      const r = el.getBoundingClientRect();
+      ghost = el.cloneNode(true);
+      ghost.className = "lh-drag-ghost";
+      Object.assign(ghost.style, { position: "fixed", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px", margin: 0, zIndex: 9999, pointerEvents: "none", transform: "scale(1.06)", boxShadow: "0 12px 32px rgba(0,0,0,0.28)", transition: "transform 120ms ease", opacity: 0.95, outline: "none" });
+      document.body.appendChild(ghost);
+      el.style.opacity = "0.35";
+      ghost.__dx = lastX - r.left; ghost.__dy = lastY - r.top;
+    };
+    const timer = setTimeout(() => { if (!armed && Math.abs(lastX - startX) + Math.abs(lastY - startY) < 8) arm(); }, 220);
     const onMove = (ev) => {
-      if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
-      if (!moved) return;
-      el.style.opacity = "0.45";
-      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      lastX = ev.clientX; lastY = ev.clientY;
+      if (!armed) {
+        if (Math.abs(lastX - startX) + Math.abs(lastY - startY) >= 8) { clearTimeout(timer); cleanup(); } // it's a scroll, not a drag
+        return;
+      }
+      if (ev.cancelable) ev.preventDefault();
+      ghost.style.left = (lastX - ghost.__dx) + "px";
+      ghost.style.top = (lastY - ghost.__dy) + "px";
+      ghost.style.display = "none";
+      const under = document.elementFromPoint(lastX, lastY);
+      ghost.style.display = "";
       const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+      clearTargets();
       overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
       if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
     };
-    const onUp = (ev) => {
-      sisDragRef.current = false;
-      el.style.opacity = "";
-      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+    const cleanup = () => {
       window.removeEventListener(mv, onMove);
       window.removeEventListener(up, onUp);
-      if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
-        const c2 = document.elementFromPoint(ev.clientX, ev.clientY);
-        const hit = c2 && c2.closest ? c2.closest("[data-sistile]") : null;
-        if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
-      }
-      if (isTray) {
-        if (moved && overI != null) {
-          setSisTiles((prev) => {
-            const t = [...prev];
-            const benched = t[overI].cover;
-            t[overI] = { ...t[overI], cover: trayUrl };
-            setSisTray((tp) => { const n2 = [...tp]; n2[trayIdx] = benched; return n2; });
-            return t;
+      window.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("touchmove", preventScroll);
+      clearTargets();
+      el.style.opacity = "";
+      if (ghost) { ghost.remove(); ghost = null; }
+      sisDragRef.current = false;
+    };
+    const onUp = () => {
+      clearTimeout(timer);
+      const wasArmed = armed;
+      cleanup();
+      if (!wasArmed) {
+        // a plain tap: keep the tap-two-tiles fallback for grid tiles
+        if (!isTray && Math.abs(lastX - startX) + Math.abs(lastY - startY) < 8) {
+          setSisPick((p) => {
+            if (p == null) return fromI;
+            if (p === fromI) return null;
+            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
+            return null;
           });
         }
         return;
       }
-      if (moved && overI != null && overI !== fromI) {
+      if (overI == null) return;
+      if (isTray) {
+        setSisTiles((prev) => {
+          const t = [...prev];
+          const benched = t[overI].cover;
+          t[overI] = { ...t[overI], cover: trayUrl };
+          setSisTray((tp) => { const n2 = [...tp]; n2[trayIdx] = benched; return n2; });
+          return t;
+        });
+      } else if (overI !== fromI) {
         setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
         setSisPick(null);
-      } else if (!moved) {
-        setSisPick((p) => {
-          if (p == null) return fromI;
-          if (p === fromI) return null;
-          setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
-          return null;
-        });
       }
     };
-    window.addEventListener(mv, onMove);
+    window.addEventListener(mv, onMove, { passive: false });
     window.addEventListener(up, onUp);
+    window.addEventListener("pointercancel", onUp);
   };
+  // FLIP: when tiles re-order, slide each image from its old spot to its new
+  // one instead of snapping (the "moving really fast" complaint).
+  const sisRectsRef = useRef({});
+  useEffect(() => {
+    const cells = [...document.querySelectorAll("[data-sistile]")];
+    const prev = sisRectsRef.current, next = {};
+    cells.forEach((cell) => {
+      const img = cell.querySelector("img"); if (!img) return;
+      const key = img.getAttribute("src"); const r = cell.getBoundingClientRect(); next[key] = r;
+      const p = prev[key];
+      if (p && (Math.abs(p.left - r.left) > 1 || Math.abs(p.top - r.top) > 1)) {
+        cell.style.transition = "none";
+        cell.style.transform = `translate(${p.left - r.left}px, ${p.top - r.top}px)`;
+        requestAnimationFrame(() => { cell.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)"; cell.style.transform = ""; });
+      }
+    });
+    sisRectsRef.current = next;
+  }, [sisTiles]);
   const saveSisEdit = async () => {
     setSisBusy(true);
     try {
@@ -743,14 +789,14 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
         </div>
       )}
       {acct === "lavallesisters" && sisSel && sisEdit && (
-        <div style={{ marginBottom: 14, maxWidth: 420 }}>
+        <div style={{ margin: "0 auto 40px", maxWidth: 468, padding: "0 24px 48px", boxSizing: "border-box" }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
             <button onClick={saveSisEdit} disabled={sisBusy}
               style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: sisBusy ? 0.5 : 1 }}>
               {sisBusy ? "Saving…" : "Save arrangement"}</button>
             <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>
-            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag a tile onto another to swap — or tap two tiles</span>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap</span>
           </div>
           <div style={{ margin: "4px 0 16px", border: `1px solid ${c.line}`, background: c.card, padding: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -777,14 +823,15 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
                   });
                 }} />
               </label>
-              <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag one onto a grid tile to swap it in — × removes it</span>
+              <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold, then drag onto a grid tile to swap it in — × removes it</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4 }}>
               {sisTray.map((u, ti) => (
                 <div key={ti} data-sistray={ti}
-                  onPointerDown={(e) => { e.preventDefault(); startSisDrag("pointer", -1, e.clientX, e.clientY, e.currentTarget, true, u, ti); }}
-                  onMouseDown={(e) => { e.preventDefault(); startSisDrag("mouse", -1, e.clientX, e.clientY, e.currentTarget, true, u, ti); }}
-                  style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none" }}>
+                  onPointerDown={(e) => { startSisDrag("pointer", -1, e.clientX, e.clientY, e.currentTarget, true, u, ti); }}
+                  onMouseDown={(e) => { if (e.button === 0) e.preventDefault(); }}
+                  onDragStart={(e) => e.preventDefault()}
+                  style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                   <img src={u} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                   <button onClick={(e) => { e.stopPropagation(); setSisTray((p) => p.filter((_, k) => k !== ti)); }}
                     onPointerDown={(e) => e.stopPropagation()}
@@ -807,9 +854,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
                 {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
                   <div key={v} data-sistile={i}
-                    onPointerDown={(e) => { e.preventDefault(); startSisDrag("pointer", i, e.clientX, e.clientY, e.currentTarget, false); }}
-                    onMouseDown={(e) => { e.preventDefault(); startSisDrag("mouse", i, e.clientX, e.clientY, e.currentTarget, false); }}
-                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
+                    onPointerDown={(e) => { startSisDrag("pointer", i, e.clientX, e.clientY, e.currentTarget, false); }}
+                    onMouseDown={(e) => { if (e.button === 0) e.preventDefault(); }}
+                    onDragStart={(e) => e.preventDefault()}
+                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3, willChange: "transform" }}>
                     <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                     {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
                   </div>
