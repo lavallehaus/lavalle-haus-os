@@ -162,6 +162,63 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       else alert("This grid isn't editable yet — ask Claude to seed its tiles.");
     } finally { setSisBusy(false); }
   };
+  const sisDragRef = useRef(false);
+  // one starter for BOTH pointer and mouse input: some input paths (trackpads,
+  // automation, odd drivers) deliver only one family of events
+  const startSisDrag = (kind, fromI, startX, startY, el, isTray, trayUrl, trayIdx) => {
+    if (sisDragRef.current) return;
+    sisDragRef.current = true;
+    let moved = false, overI = null;
+    const mv = kind === "pointer" ? "pointermove" : "mousemove";
+    const up = kind === "pointer" ? "pointerup" : "mouseup";
+    const onMove = (ev) => {
+      if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
+      if (!moved) return;
+      el.style.opacity = "0.45";
+      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+      overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
+      if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
+    };
+    const onUp = (ev) => {
+      sisDragRef.current = false;
+      el.style.opacity = "";
+      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+      window.removeEventListener(mv, onMove);
+      window.removeEventListener(up, onUp);
+      if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
+        const c2 = document.elementFromPoint(ev.clientX, ev.clientY);
+        const hit = c2 && c2.closest ? c2.closest("[data-sistile]") : null;
+        if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
+      }
+      if (isTray) {
+        if (moved && overI != null) {
+          setSisTiles((prev) => {
+            const t = [...prev];
+            const benched = t[overI].cover;
+            t[overI] = { ...t[overI], cover: trayUrl };
+            setSisTray((tp) => { const n2 = [...tp]; n2[trayIdx] = benched; return n2; });
+            return t;
+          });
+        }
+        return;
+      }
+      if (moved && overI != null && overI !== fromI) {
+        setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
+        setSisPick(null);
+      } else if (!moved) {
+        setSisPick((p) => {
+          if (p == null) return fromI;
+          if (p === fromI) return null;
+          setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
+          return null;
+        });
+      }
+    };
+    window.addEventListener(mv, onMove);
+    window.addEventListener(up, onUp);
+  };
   const saveSisEdit = async () => {
     setSisBusy(true);
     try {
@@ -689,9 +746,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
             <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag a tile onto another to swap — or tap two tiles</span>
           </div>
-          <div style={{ margin: "4px 0 12px" }}>
+          <div style={{ margin: "4px 0 16px", border: `1px solid ${c.line}`, background: c.card, padding: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Your photos ({sisTray.length})</span>
+              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Photo pool — not on the grid ({sisTray.length})</span>
               <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
                 Add photos
                 <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
@@ -719,40 +776,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4 }}>
               {sisTray.map((u, ti) => (
                 <div key={ti} data-sistray={ti}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    const startX = e.clientX, startY = e.clientY;
-                    let moved = false; const el = e.currentTarget;
-                    const onMove = (ev) => {
-                      if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
-                      if (!moved) return;
-                      el.style.opacity = "0.4";
-                      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                      const under = document.elementFromPoint(ev.clientX, ev.clientY);
-                      const cell = under && under.closest ? under.closest("[data-sistile]") : null;
-                      if (cell) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
-                    };
-                    const onUp = (ev) => {
-                      el.style.opacity = "";
-                      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                      window.removeEventListener("pointermove", onMove);
-                      window.removeEventListener("pointerup", onUp);
-                      const under = document.elementFromPoint(ev.clientX, ev.clientY);
-                      const cell = under && under.closest ? under.closest("[data-sistile]") : null;
-                      if (moved && cell) {
-                        const gi = Number(cell.dataset.sistile);
-                        setSisTiles((prev) => {
-                          const t = [...prev];
-                          const benched = t[gi].cover;
-                          t[gi] = { ...t[gi], cover: u };
-                          setSisTray((tp) => { const n2 = [...tp]; n2[ti] = benched; return n2; });
-                          return t;
-                        });
-                      }
-                    };
-                    window.addEventListener("pointermove", onMove);
-                    window.addEventListener("pointerup", onUp);
-                  }}
+                  onPointerDown={(e) => { e.preventDefault(); startSisDrag("pointer", -1, e.clientX, e.clientY, e.currentTarget, true, u, ti); }}
+                  onMouseDown={(e) => { e.preventDefault(); startSisDrag("mouse", -1, e.clientX, e.clientY, e.currentTarget, true, u, ti); }}
                   style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none" }}>
                   <img src={u} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                   <button onClick={(e) => { e.stopPropagation(); setSisTray((p) => p.filter((_, k) => k !== ti)); }}
@@ -763,6 +788,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               {!sisTray.length && <div style={{ gridColumn: "1 / -1", fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No spare photos yet — add some above.</div>}
             </div>
           </div>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "2px 0 6px" }}>The grid — 21 tiles, Post 1 bottom-right</div>
           {(() => {
             const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
             const visual = [];
@@ -775,47 +801,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
                 {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
                   <div key={v} data-sistile={i}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      const fromI = i, startX = e.clientX, startY = e.clientY;
-                      let moved = false, overI = null;
-                      const el = e.currentTarget;
-                      try { el.setPointerCapture(e.pointerId); } catch {}
-                      const onMove = (ev) => {
-                        if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
-                        if (!moved) return;
-                        el.style.opacity = "0.45";
-                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                        const under = document.elementFromPoint(ev.clientX, ev.clientY);
-                        const cell = under && under.closest ? under.closest("[data-sistile]") : null;
-                        overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
-                        if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
-                      };
-                      const onUp = (ev) => {
-                        if (!moved && ev && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 2) {
-                          const cell2 = document.elementFromPoint(ev.clientX, ev.clientY);
-                          const hit = cell2 && cell2.closest ? cell2.closest("[data-sistile]") : null;
-                          if (hit && hit !== el) { moved = true; overI = Number(hit.dataset.sistile); }
-                        }
-                        el.style.opacity = "";
-                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
-                        window.removeEventListener("pointermove", onMove);
-                        window.removeEventListener("pointerup", onUp);
-                        if (moved && overI != null && overI !== fromI) {
-                          setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
-                          setSisPick(null);
-                        } else if (!moved) {
-                          setSisPick((p) => {
-                            if (p == null) return fromI;
-                            if (p === fromI) return null;
-                            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
-                            return null;
-                          });
-                        }
-                      };
-                      window.addEventListener("pointermove", onMove);
-                      window.addEventListener("pointerup", onUp);
-                    }}
+                    onPointerDown={(e) => { e.preventDefault(); startSisDrag("pointer", i, e.clientX, e.clientY, e.currentTarget, false); }}
+                    onMouseDown={(e) => { e.preventDefault(); startSisDrag("mouse", i, e.clientX, e.clientY, e.currentTarget, false); }}
                     style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
                     <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                     {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
