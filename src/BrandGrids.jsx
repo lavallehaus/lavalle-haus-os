@@ -159,9 +159,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     try {
       const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
       if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); }
-      else alert("This grid isn't editable yet — ask Claude to seed its tiles.");
+      else { setSisTiles([]); setSisEdit(false); }
     } finally { setSisBusy(false); }
   };
+  // The grid IS the editable tiles — selecting a grid loads it straight into
+  // the editor (her rule: no flat montage image to stare at, no extra mode).
+  useEffect(() => {
+    if (acct === "lavallesisters" && sisSel) openSisEdit();
+    else setSisEdit(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acct, sisSel]);
   const sisDragRef = useRef(false);
   // one starter for BOTH pointer and mouse input: some input paths (trackpads,
   // automation, odd drivers) deliver only one family of events
@@ -224,7 +231,6 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
     try {
       const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles, tray: sisTray }) })).json();
       if (d && d.ok) {
-        setSisEdit(false);
         const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
         if (l && l.archive) { setSisGrids({ pregrid: null, archive: l.archive }); const hit = l.archive.find((a) => a.name.startsWith(sisGridNum)); if (hit) setSisSel(hit.fileId); }
       }
@@ -742,8 +748,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             <button onClick={saveSisEdit} disabled={sisBusy}
               style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: sisBusy ? 0.5 : 1 }}>
               {sisBusy ? "Saving…" : "Save arrangement"}</button>
-            <button onClick={() => { setSisEdit(false); setSisPick(null); }} disabled={sisBusy}
-              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+            <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>
             <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag a tile onto another to swap — or tap two tiles</span>
           </div>
           <div style={{ margin: "4px 0 16px", border: `1px solid ${c.line}`, background: c.card, padding: 10 }}>
@@ -813,43 +819,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           })()}
         </div>
       )}
-      {acct === "lavallesisters" && sisSel && !sisEdit && (
-        <div style={{ marginBottom: 14 }}>
-          <button onClick={openSisEdit} disabled={sisBusy}
-            style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.taupe, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", marginBottom: 8 }}>
-            {sisBusy ? "Loading…" : "Rearrange"}</button>
-          <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer", marginLeft: 8 }}>
-            Add photos
-            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={async (e) => {
-              const files = [...(e.target.files || [])]; e.target.value = "";
-              if (!files.length) return;
-              setSisBusy(true);
-              try {
-                const d0 = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
-                const urls = [];
-                await Promise.all(files.map((f) => new Promise((res) => {
-                  const fr = new FileReader();
-                  fr.onload = () => { const img = new Image(); img.onload = async () => {
-                    const sc = Math.min(1, 1440 / img.width);
-                    const cv = document.createElement("canvas");
-                    cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
-                    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-                    urls.push(await storeImage(cv.toDataURL("image/jpeg", 0.9))); res();
-                  }; img.src = fr.result; };
-                  fr.readAsDataURL(f);
-                })));
-                const tray2 = [...(d0.tray || []), ...urls];
-                await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tray: tray2 }) });
-                setSisTiles(d0.tiles || []); setSisTray(tray2); setSisEdit(true); setSisPick(null);
-              } finally { setSisBusy(false); }
-            }} />
-          </label>
-          <img src={"/api/data?op=drive_img&id=" + sisSel} alt="Sisters grid"
-            style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
-          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
-            Chronological — Post 1 bottom-right. Tiles with a taupe top strip are Courtney's Mon/Wed/Fri posts.
-          </div>
-        </div>
+      {acct === "lavallesisters" && sisSel && !sisEdit && sisBusy && (
+        <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 10 }}>Loading the grid…</div>
       )}
       {acct === "thefoldlabel" && genSel && (
         <div style={{ marginBottom: 14 }}>
