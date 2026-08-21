@@ -1697,11 +1697,19 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
       const t = (await kvGet("sisters_grid_tiles_" + g)) || null;
-      res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null });
+      const tray = (await kvGet("sisters_grid_tray")) || [];
+      res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], tray, view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null });
       return;
     }
     const bT = req.body || {};
     const g = String(bT.grid || "1").replace(/[^12]/g, "") || "1";
+    // the tray (her photo pool) is shared across both grids and can be saved
+    // alone — deleting or adding pool photos shouldn't force a re-render
+    if (Array.isArray(bT.tray) && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
+      await kvSet("sisters_grid_tray", bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+      res.json({ ok: true, tray: true });
+      return;
+    }
     let rec = (await kvGet("sisters_grid_tiles_" + g)) || { tiles: [], mid: null };
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
       rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
@@ -1709,6 +1717,7 @@ export default async function handler(req, res) {
       const seen = new Set(bT.order.map(Number));
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
     } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
+    if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray", bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
     // render montage: slot 1 bottom-right, chronological
     const Jimp = (await import("jimp")).default;
     const nT = rec.tiles.length, rowsT = Math.ceil(nT / 3);

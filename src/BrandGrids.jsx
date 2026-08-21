@@ -149,21 +149,23 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   // the montage server-side and updates the Drive archive file.
   const [sisEdit, setSisEdit] = useState(false);
   const [sisTiles, setSisTiles] = useState([]);
+  const [sisTray, setSisTray] = useState([]);
   const [sisPick, setSisPick] = useState(null);
   const [sisBusy, setSisBusy] = useState(false);
+  const sisFocus = acct === "lavallesisters" && !!sisSel;
   const sisGridNum = (() => { const g = sisGrids.archive.find((a) => a.fileId === sisSel); return g && g.name.startsWith("2") ? "2" : "1"; })();
   const openSisEdit = async () => {
     setSisBusy(true);
     try {
       const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
-      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisEdit(true); setSisPick(null); }
+      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); }
       else alert("This grid isn't editable yet — ask Claude to seed its tiles.");
     } finally { setSisBusy(false); }
   };
   const saveSisEdit = async () => {
     setSisBusy(true);
     try {
-      const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles }) })).json();
+      const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles, tray: sisTray }) })).json();
       if (d && d.ok) {
         setSisEdit(false);
         const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
@@ -649,7 +651,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           </button>
         ))}
       </div>
-      {acct === "lavallesisters" && (
+      {acct === "lavallesisters" && !sisFocus && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           {[["ig", "Instagram grid"], ["tt", "TikTok grid"]].map(([k, lab]) => (
             <button key={k} onClick={() => { setPlatform(k); setMsg(null); setPickIdx(null); setEditKey(null); }}
@@ -748,6 +750,80 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               </div>
             );
           })()}
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Your photos ({sisTray.length})</span>
+              <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+                Add photos
+                <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
+                  const files = [...(e.target.files || [])]; e.target.value = "";
+                  files.forEach((f) => {
+                    const fr = new FileReader();
+                    fr.onload = () => {
+                      const img = new Image();
+                      img.onload = async () => {
+                        const sc = Math.min(1, 1440 / img.width);
+                        const cv = document.createElement("canvas");
+                        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+                        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+                        const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+                        setSisTray((p) => [...p, u]);
+                      };
+                      img.src = fr.result;
+                    };
+                    fr.readAsDataURL(f);
+                  });
+                }} />
+              </label>
+              <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>drag one onto a grid tile to swap it in — × removes it</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4 }}>
+              {sisTray.map((u, ti) => (
+                <div key={ti} data-sistray={ti}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const startX = e.clientX, startY = e.clientY;
+                    let moved = false; const el = e.currentTarget;
+                    const onMove = (ev) => {
+                      if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
+                      if (!moved) return;
+                      el.style.opacity = "0.4";
+                      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+                      const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+                      if (cell) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
+                    };
+                    const onUp = (ev) => {
+                      el.style.opacity = "";
+                      document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                      window.removeEventListener("pointermove", onMove);
+                      window.removeEventListener("pointerup", onUp);
+                      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+                      const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+                      if (moved && cell) {
+                        const gi = Number(cell.dataset.sistile);
+                        setSisTiles((prev) => {
+                          const t = [...prev];
+                          const benched = t[gi].cover;
+                          t[gi] = { ...t[gi], cover: u };
+                          setSisTray((tp) => { const n2 = [...tp]; n2[ti] = benched; return n2; });
+                          return t;
+                        });
+                      }
+                    };
+                    window.addEventListener("pointermove", onMove);
+                    window.addEventListener("pointerup", onUp);
+                  }}
+                  style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none" }}>
+                  <img src={u} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
+                  <button onClick={(e) => { e.stopPropagation(); setSisTray((p) => p.filter((_, k) => k !== ti)); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: 9, border: "none", background: "rgba(0,0,0,0.55)", color: "#fff", fontSize: 11, lineHeight: "16px", cursor: "pointer", padding: 0 }}>×</button>
+                </div>
+              ))}
+              {!sisTray.length && <div style={{ gridColumn: "1 / -1", fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No spare photos yet — add some above.</div>}
+            </div>
+          </div>
         </div>
       )}
       {acct === "lavallesisters" && sisSel && !sisEdit && (
@@ -771,7 +847,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           </div>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+      {!sisFocus && <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
           {brand.handle}{acct === "lavallesisters" ? (tt ? " · TikTok" : " · Instagram") : ""} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
         </div>
@@ -789,8 +865,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             {arranging ? "Arranging…" : "Arrange"}
           </button>
         </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+      </div>}
+      {!sisFocus && <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
         <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
           Add photos to grid
           <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files && e.target.files.length) uploadToGrid(e.target.files); e.target.value = ""; }} />
@@ -806,13 +882,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             <button onClick={() => removeTemplate(t.id)} style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
           </span>
         ))}
-      </div>
-      {locked && (
+      </div>}
+      {!sisFocus && locked && (
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11.5, color: c.green, marginBottom: 10 }}>
           This grid is finalised — tiles can't be dragged or re-arranged. Tap “Grid locked” to open it back up.
         </div>
       )}
-      {pickIdx != null && (
+      {!sisFocus && pickIdx != null && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.ink }}>Post {windowStart + pickIdx + 1} — tap the spot it should take, or:</div>
           <button onClick={() => { const it = visible[pickIdx]; if (it) { setEditKey(it.key); setEditZoom(zooms[it.key] || { s: 1.3, x: 0, y: 0 }); setEditMsg(null); } setPickIdx(null); }}
@@ -825,8 +901,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
           )}
         </div>
       )}
-      {msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
+      {!sisFocus && msg && !arranging && pickIdx == null && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.taupe, marginBottom: 8 }}>{msg}</div>}
+      {!sisFocus && <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 3, background: c.bg }}>
         {cells.map(({ slot, item }) => item ? (
           <div key={item.key} draggable={!locked && editKey !== item.key} data-slot={slot}
             onPointerDown={(e) => {
@@ -884,10 +960,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             {slot + windowStart + 1 <= items.length + SLOTS ? slot + 1 : ""}
           </div>
         ))}
-      </div>
-      <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
+      </div>}
+      {!sisFocus && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
         Covers land here the moment they're added to a card on a {brand.label} board. Press and hold a photo to drag it. Pinch a photo with two fingers to zoom it in place. Tap a photo to move it by tapping its new spot. ✓ posted tiles hold positions 1, 2, 3… in their real posted order and never move.
-      </div>
+      </div>}
       {editKey && candidates[editKey] && (() => {
         const item = candidates[editKey];
         const barBtn = { border: `1px solid ${c.line}`, background: "#fff", borderRadius: 1, padding: "8px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: c.ink, cursor: "pointer" };
