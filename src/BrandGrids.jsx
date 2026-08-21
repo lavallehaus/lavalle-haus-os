@@ -152,6 +152,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   const [sisTray, setSisTray] = useState([]);
   const [sisPick, setSisPick] = useState(null);
   const [sisBusy, setSisBusy] = useState(false);
+  // Reframe (zoom + pan) a grid tile; saving renders the crop to a new cover
+  // URL on the tile — Save arrangement then writes it onto the card itself.
+  const [sisReframe, setSisReframe] = useState(null); // { idx, z:{s,x,y} }
+  const sisPanRef = useRef(null);
   const sisFocus = acct === "lavallesisters" && !!sisSel;
   const sisGridNum = (() => { const g = sisGrids.archive.find((a) => a.fileId === sisSel); return g && g.name.startsWith("2") ? "2" : "1"; })();
   const openSisEdit = async () => {
@@ -796,8 +800,42 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               {sisBusy ? "Saving…" : "Save arrangement"}</button>
             <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>
-            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap</span>
+            {sisPick != null && (
+              <button onClick={() => setSisReframe({ idx: sisPick, z: { s: 1.3, x: 0, y: 0 } })}
+                style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Reframe selected</button>
+            )}
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap · tap a tile to select it, then Reframe to zoom/crop</span>
           </div>
+          {sisReframe && (() => {
+            const tile = sisTiles[sisReframe.idx]; if (!tile) return null;
+            const z = sisReframe.z;
+            const setZ = (nz) => setSisReframe({ ...sisReframe, z: nz });
+            return (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setSisReframe(null)}>
+                <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", padding: 14, borderRadius: 2, width: "min(92vw, 360px)" }}>
+                  <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, marginBottom: 8 }}>Reframe — drag to move, slider to zoom</div>
+                  <div style={{ width: "100%", aspectRatio: "3/4", overflow: "hidden", background: "#eee", position: "relative", touchAction: "none", cursor: "grab" }}
+                    onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); sisPanRef.current = { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y, w: e.currentTarget.clientWidth, h: e.currentTarget.clientHeight }; }}
+                    onPointerMove={(e) => { const p = sisPanRef.current; if (!p) return; const nx = Math.max(-50, Math.min(50, p.zx + ((e.clientX - p.x) / p.w) * 100 / z.s)); const ny = Math.max(-50, Math.min(50, p.zy + ((e.clientY - p.y) / p.h) * 100 / z.s)); setZ({ ...z, x: nx, y: ny }); }}
+                    onPointerUp={() => { sisPanRef.current = null; }}>
+                    <img src={tile.cover} alt="" draggable={false} style={{ position: "absolute", left: "50%", top: "50%", width: "100%", height: "100%", objectFit: "cover", transform: `translate(-50%, -50%) translate(${z.x}%, ${z.y}%) scale(${z.s})`, transformOrigin: "center", pointerEvents: "none" }} />
+                  </div>
+                  <input type="range" min="1" max="3" step="0.01" value={z.s} onChange={(e) => setZ({ ...z, s: Number(e.target.value) })} style={{ width: "100%", margin: "10px 0" }} />
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => setSisReframe(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+                    <button onClick={async () => {
+                      try {
+                        const cv = await renderCoverCrop(tile.cover, z, 1080);
+                        const url = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+                        setSisTiles((prev) => { const t = [...prev]; t[sisReframe.idx] = { ...t[sisReframe.idx], cover: url }; return t; });
+                        setSisReframe(null); setSisPick(null);
+                      } catch (e2) { alert("Couldn't render that crop — try again."); }
+                    }} style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Save crop</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ margin: "4px 0 16px", border: `1px solid ${c.line}`, background: c.card, padding: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Photo pool — not on the grid ({sisTray.length})</span>

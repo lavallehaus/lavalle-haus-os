@@ -1718,6 +1718,36 @@ export default async function handler(req, res) {
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
     } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
     if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray", bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+    // Write the arrangement back onto the Schedule 1-21 cards so the cover she
+    // placed (or reframed) in the grid IS the card's cover when it schedules:
+    // grid 1 K-tiles → Posts 1..15 (+C1..C6), grid 2 K-tiles → Posts 16..21 (+C7..C12).
+    try {
+      const rawW = await kvGet("lavalle_data");
+      const blobW = Array.isArray(rawW) ? rawW[0] : rawW;
+      const bdW = blobW && blobW.boards && blobW.boards["lavalle-sisters"];
+      if (bdW) {
+        const schedW = bdW.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+        const crtW = bdW.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+        const kStart = g === "1" ? 1 : 16, kEnd = g === "1" ? 15 : 21, cStart = g === "1" ? 1 : 7;
+        let kN = kStart, cN = cStart, wrote = 0;
+        for (const t of rec.tiles) {
+          if (t.tag === "K") {
+            if (kN <= kEnd && schedW) {
+              const card = bdW.cards.find((c) => c.listId === schedW.id && new RegExp("^post\\s*" + kN + "\\b", "i").test(c.name || ""));
+              if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
+            }
+            kN++;
+          } else {
+            if (crtW) {
+              const card = bdW.cards.find((c) => c.listId === crtW.id && new RegExp("^c\\s*" + cN + "\\b", "i").test(c.name || ""));
+              if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
+            }
+            cN++;
+          }
+        }
+        if (wrote) await kvSet("lavalle_data", blobW);
+      }
+    } catch (eW) {}
     // render montage: slot 1 bottom-right, chronological
     const Jimp = (await import("jimp")).default;
     const nT = rec.tiles.length, rowsT = Math.ceil(nT / 3);
