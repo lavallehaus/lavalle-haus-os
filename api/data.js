@@ -1648,12 +1648,17 @@ export default async function handler(req, res) {
     let startP = new Date();
     const mD = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec((kCards[0] || {}).name || "");
     if (mD) { startP = new Date(Date.UTC(new Date().getUTCFullYear(), MOP.indexOf(mD[1].toLowerCase()), Number(mD[2]))); }
+    // Courtney's Mon/Wed/Fri posts only begin once she's actually onboarded —
+    // before her start date the grid is Kiabeth's dailies alone.
+    if (b.courtneyStart) await kvSet("sisters_courtney_start", String(b.courtneyStart).slice(0, 10));
+    const cStartS = await kvGet("sisters_courtney_start");
+    const cStartT = cStartS ? Date.parse(cStartS + "T00:00:00Z") : 0;
     const seqP = [];
     let ciP = 0;
     for (let d = 0; d < kCards.length; d++) {
       const day = new Date(startP.getTime() + d * 86400000);
       seqP.push({ cover: kCards[d].cover, tag: "K" });
-      if ([1, 3, 5].includes(day.getUTCDay()) && ciP < cCards.length) { seqP.push({ cover: cCards[ciP].cover, tag: "C" }); ciP++; }
+      if ([1, 3, 5].includes(day.getUTCDay()) && day.getTime() >= cStartT && ciP < cCards.length) { seqP.push({ cover: cCards[ciP].cover, tag: "C" }); ciP++; }
     }
     const Jimp = (await import("jimp")).default;
     const rowsP = Math.max(1, Math.ceil(seqP.length / 3));
@@ -1787,6 +1792,8 @@ export default async function handler(req, res) {
         .sort((a, b) => Number((/(\d+)/.exec(a.name) || [])[1]) - Number((/(\d+)/.exec(b.name) || [])[1]));
       // cycle start = tomorrow (rotation moment); K post n on day n-1
       const start = new Date(Date.now() + 86400000);
+      const cStartR = await kvGet("sisters_courtney_start");
+      const cStartRT = cStartR ? Date.parse(cStartR + "T00:00:00Z") : 0;
       const seq = [];
       let ci = 0;
       const sorted = cardsS.filter((c) => numS(c) >= 1 && numS(c) <= 21).sort((a, b) => numS(a) - numS(b));
@@ -1794,7 +1801,7 @@ export default async function handler(req, res) {
         const day = new Date(start.getTime() + d * 86400000);
         const k = sorted[d];
         if (k) seq.push({ cover: k.cover, tag: "K" });
-        if ([1, 3, 5].includes(day.getUTCDay()) && ci < courtCards.length) { seq.push({ cover: courtCards[ci].cover, tag: "C" }); ci++; }
+        if ([1, 3, 5].includes(day.getUTCDay()) && day.getTime() >= cStartRT && ci < courtCards.length) { seq.push({ cover: courtCards[ci].cover, tag: "C" }); ci++; }
       }
       const rows = Math.ceil(seq.length / 3);
       const cv2 = await new Jimp(1080, rows * 480, 0xffffffff);
