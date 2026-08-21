@@ -29,6 +29,12 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=loft_sisters_sync" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
+      # File the Loft's monthly strategy PDF from Slack into Drive
+      # (sunsets with the Loft contract, Oct 2026).
+      - name: Slack strategy PDF watch
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=slack_strategy_watch" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       - name: Sisters cycle check
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \

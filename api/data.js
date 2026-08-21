@@ -1529,6 +1529,45 @@ export default async function handler(req, res) {
     res.json({ ok: true, ideas: ideas.length, added: addedT });
     return;
   }
+  // ── Slack strategy-PDF watch ─────────────────────────────────────────────
+  // Her rule (until the Loft contract ends Oct 2026): the Loft drops a monthly
+  // strategy PDF for Refillery Haus in Slack — file it automatically into
+  // Drive "Strategy & Reports/Strategy Outline" beside the previous months.
+  // KV ledger avoids re-saving; newest saved id is reported for follow-up work.
+  if (op === "slack_strategy_watch" && req.method === "POST") {
+    const okKeyW = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authW = okKeyW ? null : await getAuthEarly(req);
+    if (!okKeyW && !ownerRole(authW)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (Date.now() > Date.UTC(2026, 9, 31)) { res.json({ ok: true, skipped: "loft contract ended" }); return; }
+    const mapW = (await kvGet("slack_oauth")) || {};
+    const teams = Object.values(mapW).filter((t) => t && t.token);
+    if (!teams.length) { res.json({ ok: false, error: "no slack teams connected" }); return; }
+    const gtW = await googleToken();
+    if (!gtW) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const OUTLINE = "1DjnKiexU13hxWHLsVYTGwajrPToty0IH"; // Strategy & Reports/Strategy Outline
+    const ledW = (await kvGet("slack_pdf_saved")) || {};
+    let saved = 0, checked = 0, lastSaved = null, apiErr = null;
+    for (const team of teams) {
+      const fl = await (await fetch("https://slack.com/api/files.list?types=pdfs&count=20", { headers: { Authorization: "Bearer " + team.token } })).json();
+      if (!fl.ok) { apiErr = fl.error || "files.list failed"; continue; }
+      for (const f of fl.files || []) {
+        checked++;
+        if (ledW[f.id] || !/pdf/i.test(f.filetype || "")) continue;
+        const dl = await fetch(f.url_private_download || f.url_private, { headers: { Authorization: "Bearer " + team.token } });
+        if (!dl.ok) continue;
+        const buf = Buffer.from(await dl.arrayBuffer());
+        if (buf.length < 10000) continue;
+        const bdW = "lhw" + buf.length.toString(36);
+        const metaW = JSON.stringify({ name: f.name || "strategy.pdf", parents: [OUTLINE] });
+        const preW = `--${bdW}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaW}\r\n--${bdW}\r\nContent-Type: application/pdf\r\n\r\n`;
+        const upW = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtW, "Content-Type": `multipart/related; boundary=${bdW}` }, body: Buffer.concat([Buffer.from(preW, "utf8"), buf, Buffer.from(`\r\n--${bdW}--`, "utf8")]) })).json();
+        if (upW.id) { ledW[f.id] = upW.id; saved++; lastSaved = { name: f.name, driveId: upW.id }; }
+      }
+    }
+    await kvSet("slack_pdf_saved", ledW);
+    res.json({ ok: true, checked, saved, lastSaved, apiErr });
+    return;
+  }
   // ── Loft → Sisters "Courtney to edit" auto-copy ──────────────────────────
   // Her rule (until the Loft contract ends Oct 2026): every new file the Loft
   // delivers under RH "Content by The Loft" mirrors into Lavalle Sisters /
