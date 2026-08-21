@@ -1490,6 +1490,42 @@ export default async function handler(req, res) {
     res.json({ grids: out });
     return;
   }
+  // ── Trello → Courtney ideas sync ─────────────────────────────────────────
+  // Standing rule: the 12 ideas on the Lavalle Sisters Trello board's
+  // "COURTNEY CONTENT IDEAS" list mirror into the app board's "Courtney Posts
+  // 1-12" list. Numbering is stable; new Trello ideas append as the next C#.
+  // Needs TRELLO_KEY/TRELLO_TOKEN env (board is private); silently skips when
+  // absent so the pinger can call it unconditionally.
+  if (op === "trello_courtney_sync" && req.method === "POST") {
+    const okKeyT = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authT = okKeyT ? null : await getAuthEarly(req);
+    if (!okKeyT && !ownerRole(authT)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (!process.env.TRELLO_KEY || !process.env.TRELLO_TOKEN) { res.json({ ok: false, skipped: "trello_not_connected" }); return; }
+    const trUrl = "https://api.trello.com/1/boards/o5o07L33?lists=open&cards=open&card_fields=name,idList&list_fields=name&key=" + process.env.TRELLO_KEY + "&token=" + process.env.TRELLO_TOKEN;
+    const tb = await (await fetch(trUrl)).json();
+    const src = (tb.lists || []).find((l) => /courtney content ideas/i.test(l.name || ""));
+    if (!src) { res.json({ ok: false, error: "no COURTNEY CONTENT IDEAS list on Trello" }); return; }
+    const ideas = (tb.cards || []).filter((c) => c.idList === src.id).map((c) => (c.name || "").trim()).filter(Boolean);
+    const rawT = await kvGet("lavalle_data");
+    const blobT = Array.isArray(rawT) ? rawT[0] : rawT;
+    const bdT = blobT && blobT.boards && blobT.boards["lavalle-sisters"];
+    if (!bdT) { res.json({ ok: false, error: "no lavalle-sisters board" }); return; }
+    let crtT = bdT.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+    if (!crtT) { crtT = { id: "l" + Math.random().toString(36).slice(2, 9), name: "Courtney Posts 1-12" }; bdT.lists.push(crtT); }
+    const curT = bdT.cards.filter((c) => c.listId === crtT.id);
+    let maxN = 0;
+    for (const c of curT) { const mN = /^c\s*(\d+)/i.exec(c.name || ""); if (mN) maxN = Math.max(maxN, Number(mN[1])); }
+    let addedT = 0;
+    for (const idea of ideas) {
+      if (curT.some((c) => (c.name || "").includes(idea))) continue;
+      maxN++;
+      bdT.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: crtT.id, name: "C" + maxN + " — " + idea, desc: "From Trello: COURTNEY CONTENT IDEAS", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
+      addedT++;
+    }
+    if (addedT) await kvSet("lavalle_data", blobT);
+    res.json({ ok: true, ideas: ideas.length, added: addedT });
+    return;
+  }
   // ── Lavalle Sisters cycle automation ─────────────────────────────────────
   // Her planning rule: 21-post cycles (1/day = 3 weeks), never more on the
   // grid at once. When Post 10 is checked off, the next cycle spawns: snapshot
