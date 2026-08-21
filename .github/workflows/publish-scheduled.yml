@@ -27,9 +27,3 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
-      # Mirror Trello "COURTNEY CONTENT IDEAS" → app "Courtney Posts 1-12"
-      # (no-ops until TRELLO_KEY/TRELLO_TOKEN are configured on Vercel).
-      - name: Trello Courtney ideas sync
-        run: |
-          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=trello_courtney_sync" \
-            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 60 -o /dev/null || true

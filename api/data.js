@@ -1526,6 +1526,98 @@ export default async function handler(req, res) {
     res.json({ ok: true, ideas: ideas.length, added: addedT });
     return;
   }
+  // ── Lavalle Sisters pre-grid ─────────────────────────────────────────────
+  // Her hand-off rule: SHE doesn't wait on Courtney's 12-grid. The app renders
+  // a PRE-GRID — her current Schedule 1-21 with any covered Courtney cards
+  // woven in after the Mon/Wed/Fri dailies — that she hands over (or Courtney
+  // views in the app, then refines herself once she's onboarded in Sept).
+  // Montage → Drive archive folder + media store; KV "sisters_pregrid" holds
+  // the current pointer for the UI.
+  if (op === "sisters_pregrid" && req.method === "POST") {
+    const okKeyP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authP = okKeyP ? null : await getAuthEarly(req);
+    if (!okKeyP && !ownerRole(authP)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtP = await googleToken();
+    if (!gtP) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const rawP = await kvGet("lavalle_data");
+    const blobP = Array.isArray(rawP) ? rawP[0] : rawP;
+    const bdP = blobP && blobP.boards && blobP.boards["lavalle-sisters"];
+    if (!bdP) { res.json({ ok: false, error: "no board" }); return; }
+    const schedP = bdP.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+    const courtP = bdP.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+    if (!schedP) { res.json({ ok: false, error: "no Schedule 1-21 list" }); return; }
+    const numP = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
+    const kCards = bdP.cards.filter((c) => c.listId === schedP.id && numP(c) >= 1 && numP(c) <= 21).sort((a, b) => numP(a) - numP(b));
+    const cCards = courtP ? bdP.cards.filter((c) => c.listId === courtP.id && c.cover && /\d+/.test(c.name || "")).sort((a, b) => Number((/(\d+)/.exec(a.name) || [])[1]) - Number((/(\d+)/.exec(b.name) || [])[1])) : [];
+    // cycle start date from Post 1's title ("Post 1 July 30th"); daily cadence
+    const MOP = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+    let startP = new Date();
+    const mD = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec((kCards[0] || {}).name || "");
+    if (mD) { startP = new Date(Date.UTC(new Date().getUTCFullYear(), MOP.indexOf(mD[1].toLowerCase()), Number(mD[2]))); }
+    const seqP = [];
+    let ciP = 0;
+    for (let d = 0; d < kCards.length; d++) {
+      const day = new Date(startP.getTime() + d * 86400000);
+      seqP.push({ cover: kCards[d].cover, tag: "K" });
+      if ([1, 3, 5].includes(day.getUTCDay()) && ciP < cCards.length) { seqP.push({ cover: cCards[ciP].cover, tag: "C" }); ciP++; }
+    }
+    const Jimp = (await import("jimp")).default;
+    const rowsP = Math.max(1, Math.ceil(seqP.length / 3));
+    const cvP = await new Jimp(1080, rowsP * 480, 0xffffffff);
+    for (let i = 0; i < seqP.length; i++) {
+      if (!seqP[i].cover) continue;
+      try {
+        const full = /^https?:/.test(seqP[i].cover) ? seqP[i].cover : APP_ORIGIN + seqP[i].cover;
+        const rT = await fetch(full);
+        if (!rT.ok) continue;
+        const t = (await Jimp.read(Buffer.from(await rT.arrayBuffer()))).cover(360, 480);
+        if (seqP[i].tag === "C") t.scan(0, 0, t.getWidth(), 12, function (x2, y2, idx2) { this.bitmap.data[idx2] = 143; this.bitmap.data[idx2 + 1] = 134; this.bitmap.data[idx2 + 2] = 118; });
+        cvP.composite(t, (2 - (i % 3)) * 360, (rowsP - 1 - Math.floor(i / 3)) * 480);
+      } catch (eT) {}
+    }
+    cvP.quality(88);
+    const bufP = await cvP.getBufferAsync(Jimp.MIME_JPEG);
+    // media store copy for the in-app viewer
+    const midP = "sg" + createHash("sha256").update(bufP).digest("hex").slice(0, 14);
+    await kvSet("media_" + midP, { b64: bufP.toString("base64"), ct: "image/jpeg" });
+    // Drive copy, replacing the prior pre-grid
+    const q8 = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+    const f8 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q8 + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtP } })).json();
+    let arcP = f8.files && f8.files[0] && f8.files[0].id;
+    if (!arcP) arcP = (await (await fetch("https://www.googleapis.com/drive/v3/files", { method: "POST", headers: { Authorization: "Bearer " + gtP, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Sisters — Grid Archive", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
+    const qOld8 = encodeURIComponent("name contains 'Pre-grid' and '" + arcP + "' in parents and trashed=false");
+    const old8 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qOld8 + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtP } })).json();
+    for (const oF of old8.files || []) await fetch("https://www.googleapis.com/drive/v3/files/" + oF.id, { method: "PATCH", headers: { Authorization: "Bearer " + gtP, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+    const bd8 = "lhp" + bufP.length.toString(36);
+    const meta8 = JSON.stringify({ name: "Pre-grid (current cycle, taupe strip = Courtney).jpg", parents: [arcP] });
+    const pre8 = `--${bd8}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta8}\r\n--${bd8}\r\nContent-Type: image/jpeg\r\n\r\n`;
+    const up8 = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtP, "Content-Type": `multipart/related; boundary=${bd8}` }, body: Buffer.concat([Buffer.from(pre8, "utf8"), bufP, Buffer.from(`\r\n--${bd8}--`, "utf8")]) })).json();
+    await kvSet("sisters_pregrid", { mid: midP, fileId: up8.id || null, kTiles: kCards.filter((c) => c.cover).length, cTiles: ciP, at: Date.now() });
+    res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
+    return;
+  }
+  // Pre-grid pointer + Drive archive listing for the sisters dropdown.
+  if (op === "sisters_grid_list" && req.method === "GET") {
+    const authGL2 = await getAuthEarly(req);
+    if (!authGL2) { res.status(401).json({ error: "Locked." }); return; }
+    const pg = await kvGet("sisters_pregrid");
+    const out2 = [];
+    try {
+      const gtL = await googleToken();
+      if (gtL) {
+        const qL = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+        const fL = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qL + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL } })).json();
+        const arcL = fL.files && fL.files[0] && fL.files[0].id;
+        if (arcL) {
+          const kids = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + arcL + "' in parents and trashed=false") + "&fields=files(id,name,createdTime)&pageSize=50", { headers: { Authorization: "Bearer " + gtL } })).json();
+          for (const f of kids.files || []) if (/\.jpe?g$/i.test(f.name || "")) out2.push({ name: f.name.replace(/\.jpe?g$/i, ""), fileId: f.id, created: f.createdTime });
+          out2.sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+        }
+      }
+    } catch (eL2) {}
+    res.json({ pregrid: pg && pg.mid ? { view: "/cover/" + pg.mid + ".jpg", kTiles: pg.kTiles, cTiles: pg.cTiles, at: pg.at } : null, archive: out2 });
+    return;
+  }
   // ── Lavalle Sisters cycle automation ─────────────────────────────────────
   // Her planning rule: 21-post cycles (1/day = 3 weeks), never more on the
   // grid at once. When Post 10 is checked off, the next cycle spawns: snapshot
