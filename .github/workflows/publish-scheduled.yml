@@ -23,6 +23,12 @@ jobs:
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       # Lavalle Sisters: when Post 10 is checked off, archive montages to Drive
       # and rotate in the next 21-post cycle (staged; each tick resumes safely).
+      # Mirror new Loft deliveries into Sisters/<working month>/Courtney to edit
+      # (self-sunsets when the Loft contract ends Oct 2026).
+      - name: Loft to Sisters copy
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=loft_sisters_sync" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       - name: Sisters cycle check
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \

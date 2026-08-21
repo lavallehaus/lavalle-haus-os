@@ -1438,13 +1438,16 @@ export default async function handler(req, res) {
         const fb = blob.boards && blob.boards["the-fold"];
         if (fb && fb.bg !== bgUrl) { fb.bg = bgUrl; bgChanged++; }
       }
+      // Her rule: a board background is never a solo shot of either founder —
+      // both of them together, or an aesthetic clothing/beauty product image.
+      // Automation can't judge that from pixels, so these boards take a
+      // designated pick (KV bg_pick_<board>, set during art direction) and are
+      // left untouched when none exists.
       for (const bk of ["refillery-haus", "lavalle-sisters"]) {
         const bd = blob.boards && blob.boards[bk];
-        if (!bd || !Array.isArray(bd.cards)) continue;
-        const covered = bd.cards.filter((cd) => cd.cover && /^(\/api|https?:)/.test(cd.cover));
-        if (!covered.length) continue;
-        const newest = covered[covered.length - 1].cover;
-        if (bd.bg !== newest) { bd.bg = newest; bgChanged++; }
+        if (!bd) continue;
+        const pick = await kvGet("bg_pick_" + bk);
+        if (pick && bd.bg !== pick) { bd.bg = pick; bgChanged++; }
       }
     } catch (eBG) {}
     if (changed.length || fmt.relabeled || fmt.linked || bgChanged) await kvSet("lavalle_data", blob);
@@ -1524,6 +1527,58 @@ export default async function handler(req, res) {
     }
     if (addedT) await kvSet("lavalle_data", blobT);
     res.json({ ok: true, ideas: ideas.length, added: addedT });
+    return;
+  }
+  // ── Loft → Sisters "Courtney to edit" auto-copy ──────────────────────────
+  // Her rule (until the Loft contract ends Oct 2026): every new file the Loft
+  // delivers under RH "Content by The Loft" mirrors into Lavalle Sisters /
+  // <working month> / "Courtney to edit" / "From the Loft — <delivery folder>"
+  // so Courtney never has to ask for shares. KV ledger prevents re-copies;
+  // KV sisters_working_month picks the destination month (default September).
+  if (op === "loft_sisters_sync" && req.method === "POST") {
+    const okKeyL = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authL = okKeyL ? null : await getAuthEarly(req);
+    if (!okKeyL && !ownerRole(authL)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (Date.now() > Date.UTC(2026, 9, 31)) { res.json({ ok: true, skipped: "loft contract ended Oct 2026" }); return; }
+    const gtL2 = await googleToken();
+    if (!gtL2) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const gJ = async (u) => (await (await fetch(u, { headers: { Authorization: "Bearer " + gtL2 } })).json());
+    const lsL = async (fid) => (await gJ("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true")).files || [];
+    const mkL = async (name, parent) => {
+      const kids = await lsL(parent);
+      const hit = kids.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim() === name);
+      if (hit) return hit.id;
+      return (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtL2, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json()).id;
+    };
+    const CBL = "1jphvq5_W89utxArSnbV1sgIpp-ZJ_tCS"; // RH Content by The Loft
+    const SIS = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU"; // Lavalle Sisters folder
+    const wm = (await kvGet("sisters_working_month")) || "September";
+    const led = (await kvGet("loft_sisters_copied")) || {};
+    const monthL = await mkL(wm, SIS);
+    const cteL = await mkL("Courtney to edit", monthL);
+    let copied = 0, seen = 0;
+    const budget = Date.now() + 40000; // stay under the function limit; pinger resumes
+    const walkL = async (fid, destParent, label) => {
+      for (const f of await lsL(fid)) {
+        if (Date.now() > budget) return;
+        if (f.mimeType === "application/vnd.google-apps.folder") {
+          await walkL(f.id, destParent, label + " — " + (f.name || "").trim());
+        } else {
+          seen++;
+          if (led[f.id]) continue;
+          const dst = await mkL("From the Loft — " + label, cteL);
+          const cp2 = await (await fetch("https://www.googleapis.com/drive/v3/files/" + f.id + "/copy?supportsAllDrives=true&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtL2, "Content-Type": "application/json" }, body: JSON.stringify({ name: f.name, parents: [dst] }) })).json();
+          if (cp2.id) { led[f.id] = 1; copied++; }
+        }
+      }
+    };
+    for (const mf of await lsL(CBL)) {
+      if (Date.now() > budget) break;
+      if (mf.mimeType !== "application/vnd.google-apps.folder") continue;
+      await walkL(mf.id, cteL, (mf.name || "").trim());
+    }
+    await kvSet("loft_sisters_copied", led);
+    res.json({ ok: true, month: wm, copied, seen, more: Date.now() > budget });
     return;
   }
   // ── Lavalle Sisters pre-grid ─────────────────────────────────────────────
