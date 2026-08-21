@@ -1826,8 +1826,16 @@ export default async function handler(req, res) {
     if (st.stage === "rotate") {
       // delete finished cycle cards (her rule: Drive is the backup), spawn next 21
       const ids = new Set(cardsS.map((c) => c.id));
+      // next cycle starts the day AFTER the finishing cycle's last dated post,
+      // never mid-cycle (a shortened bridge cycle must still hand off cleanly)
+      const MOP2 = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+      let lastT = 0;
+      for (const c of cardsS) {
+        const mD2 = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec(c.name || "");
+        if (mD2) lastT = Math.max(lastT, Date.UTC(new Date().getUTCFullYear(), MOP2.indexOf(mD2[1].toLowerCase()), Number(mD2[2])));
+      }
       bdS.cards = bdS.cards.filter((c) => !ids.has(c.id));
-      const start = new Date(Date.now() + 86400000);
+      const start = new Date(Math.max(Date.now() + 86400000, lastT + 86400000));
       for (let n = 1; n <= 21; n++) {
         const day = new Date(start.getTime() + (n - 1) * 86400000);
         bdS.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: schedS.id, name: "Post " + n + " " + MOS[day.getUTCMonth()] + " " + day.getUTCDate(), desc: "", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
