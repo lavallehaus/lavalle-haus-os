@@ -698,17 +698,45 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
             return (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
                 {visual.map((i, v) => i == null ? <div key={v} style={{ aspectRatio: "3/4", background: "#F2EFE9" }} /> : (
-                  <div key={v} draggable onClick={() => {
-                    if (sisPick == null) setSisPick(i);
-                    else if (sisPick === i) setSisPick(null);
-                    else { const t = [...sisTiles]; [t[sisPick], t[i]] = [t[i], t[sisPick]]; setSisTiles(t); setSisPick(null); }
-                  }}
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setSisPick(i); }}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                    onDrop={(e) => { e.preventDefault(); if (sisPick != null && sisPick !== i) { const t = [...sisTiles]; [t[sisPick], t[i]] = [t[i], t[sisPick]]; setSisTiles(t); } setSisPick(null); }}
-                    onDragEnd={() => setSisPick(null)}
-                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
-                    <img src={sisTiles[i].cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <div key={v} data-sistile={i}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const fromI = i, startX = e.clientX, startY = e.clientY;
+                      let moved = false, overI = null;
+                      const el = e.currentTarget;
+                      try { el.setPointerCapture(e.pointerId); } catch {}
+                      const onMove = (ev) => {
+                        if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
+                        if (!moved) return;
+                        el.style.opacity = "0.45";
+                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+                        const cell = under && under.closest ? under.closest("[data-sistile]") : null;
+                        overI = cell && cell !== el ? Number(cell.dataset.sistile) : null;
+                        if (cell && cell !== el) cell.style.boxShadow = "inset 0 0 0 3px #8F8676";
+                      };
+                      const onUp = () => {
+                        el.style.opacity = "";
+                        document.querySelectorAll("[data-sistile]").forEach((n) => { n.style.boxShadow = ""; });
+                        window.removeEventListener("pointermove", onMove);
+                        window.removeEventListener("pointerup", onUp);
+                        if (moved && overI != null && overI !== fromI) {
+                          setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
+                          setSisPick(null);
+                        } else if (!moved) {
+                          setSisPick((p) => {
+                            if (p == null) return fromI;
+                            if (p === fromI) return null;
+                            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
+                            return null;
+                          });
+                        }
+                      };
+                      window.addEventListener("pointermove", onMove);
+                      window.addEventListener("pointerup", onUp);
+                    }}
+                    style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "none", userSelect: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3 }}>
+                    <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                     {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
                   </div>
                 ))}
