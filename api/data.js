@@ -1671,7 +1671,7 @@ export default async function handler(req, res) {
         const rT = await fetch(full);
         if (!rT.ok) continue;
         const t = (await Jimp.read(Buffer.from(await rT.arrayBuffer()))).cover(360, 480);
-        if (seqP[i].tag === "C") t.scan(0, 0, t.getWidth(), 12, function (x2, y2, idx2) { this.bitmap.data[idx2] = 143; this.bitmap.data[idx2 + 1] = 134; this.bitmap.data[idx2 + 2] = 118; });
+        if (seqP[i].tag === "C") { const cx = t.getWidth() - 26, cy = 26, r = 9; t.scan(cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= r * r) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } }); }
         cvP.composite(t, (2 - (i % 3)) * 360, (rowsP - 1 - Math.floor(i / 3)) * 480);
       } catch (eT) {}
     }
@@ -1812,7 +1812,7 @@ export default async function handler(req, res) {
         // chronological = slot 1 bottom-right, filling right-to-left upward
         const slot = i, row = rows - 1 - Math.floor(slot / 3), col = 2 - (slot % 3);
         if (t) {
-          if (seq[i].tag === "C") t.scan(0, 0, t.getWidth(), 12, function (x2, y2, idx2) { this.bitmap.data[idx2] = 143; this.bitmap.data[idx2 + 1] = 134; this.bitmap.data[idx2 + 2] = 118; });
+          if (seq[i].tag === "C") { const cx = t.getWidth() - 26, cy = 26, r = 9; t.scan(cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= r * r) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } }); }
           cv2.composite(t, col * 360, row * 480);
         }
       }
