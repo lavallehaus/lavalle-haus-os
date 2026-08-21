@@ -1680,18 +1680,7 @@ export default async function handler(req, res) {
     // media store copy for the in-app viewer
     const midP = "sg" + createHash("sha256").update(bufP).digest("hex").slice(0, 14);
     await kvSet("media_" + midP, { b64: bufP.toString("base64"), ct: "image/jpeg" });
-    // Drive copy, replacing the prior pre-grid
-    const q8 = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-    const f8 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q8 + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtP } })).json();
-    let arcP = f8.files && f8.files[0] && f8.files[0].id;
-    if (!arcP) arcP = (await (await fetch("https://www.googleapis.com/drive/v3/files", { method: "POST", headers: { Authorization: "Bearer " + gtP, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Sisters — Grid Archive", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
-    const qOld8 = encodeURIComponent("name contains 'Pre-grid' and '" + arcP + "' in parents and trashed=false");
-    const old8 = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qOld8 + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtP } })).json();
-    for (const oF of old8.files || []) await fetch("https://www.googleapis.com/drive/v3/files/" + oF.id, { method: "PATCH", headers: { Authorization: "Bearer " + gtP, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
-    const bd8 = "lhp" + bufP.length.toString(36);
-    const meta8 = JSON.stringify({ name: "Pre-grid (current cycle, taupe strip = Courtney).jpg", parents: [arcP] });
-    const pre8 = `--${bd8}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta8}\r\n--${bd8}\r\nContent-Type: image/jpeg\r\n\r\n`;
-    const up8 = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtP, "Content-Type": `multipart/related; boundary=${bd8}` }, body: Buffer.concat([Buffer.from(pre8, "utf8"), bufP, Buffer.from(`\r\n--${bd8}--`, "utf8")]) })).json();
+    const up8 = { id: null }; // Drive copy removed — the archive holds exactly the two named grids; the app reads the media-store render
     await kvSet("sisters_pregrid", { mid: midP, fileId: up8.id || null, kTiles: kCards.filter((c) => c.cover).length, cTiles: ciP, at: Date.now() });
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
     return;
