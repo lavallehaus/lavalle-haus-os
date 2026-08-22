@@ -232,19 +232,18 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
       clearTimeout(timer);
       const wasArmed = armed;
       cleanup();
-      if (!wasArmed) {
-        // a plain tap: keep the tap-two-tiles fallback for grid tiles
-        if (!isTray && Math.abs(lastX - startX) + Math.abs(lastY - startY) < 8) {
+      // A press-and-release on the same tile (short OR long, as long as it
+      // didn't land on another tile) is a TAP: first tap selects, tapping the
+      // selected tile again opens Reframe (Plann: tap a post to edit it).
+      if (!wasArmed || overI == null) {
+        if (!isTray && Math.abs(lastX - startX) + Math.abs(lastY - startY) < 12) {
           setSisPick((p) => {
-            if (p == null) return fromI;
-            if (p === fromI) return null;
-            setSisTiles((prev) => { const t = [...prev]; [t[p], t[fromI]] = [t[fromI], t[p]]; return t; });
-            return null;
+            if (p === fromI) { setSisReframe({ idx: fromI, z: { s: 1.3, x: 0, y: 0 } }); return p; }
+            return fromI;
           });
         }
         return;
       }
-      if (overI == null) return;
       if (isTray) {
         setSisTiles((prev) => {
           const t = [...prev];
@@ -808,7 +807,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
               <button onClick={() => setSisReframe({ idx: sisPick, z: { s: 1.3, x: 0, y: 0 } })}
                 style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Reframe selected</button>
             )}
-            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap · tap a tile to select it, then Reframe to zoom/crop</span>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap · tap a tile, then tap "Reframe / zoom" on it to crop</span>
           </div>
           {sisReframe && (() => {
             const tile = sisTiles[sisReframe.idx]; if (!tile) return null;
@@ -902,6 +901,12 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
                     style={{ position: "relative", aspectRatio: "3/4", cursor: "grab", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", outline: sisPick === i ? `3px solid ${c.taupe}` : "none", outlineOffset: -3, willChange: "transform" }}>
                     <img src={sisTiles[i].cover} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
                     {sisTiles[i].tag === "C" && <div style={{ position: "absolute", top: 5, right: 5, width: 12, height: 12, borderRadius: 6, background: "#fff", border: "1.5px solid #78726A" }} />}
+                    {sisPick === i && (
+                      <div onPointerDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setSisReframe({ idx: i, z: { s: 1.3, x: 0, y: 0 } }); }}
+                        style={{ position: "absolute", left: "50%", bottom: 8, transform: "translateX(-50%)", background: "rgba(26,26,26,0.82)", color: "#fff", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", padding: "6px 10px", borderRadius: 2, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        Reframe / zoom
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
