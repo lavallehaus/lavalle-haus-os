@@ -1353,7 +1353,7 @@ export default async function handler(req, res) {
             method: "POST", headers: { "x-api-key": akey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 300, messages: [{ role: "user", content: [
               { type: "image", source: { type: "url", url: APP_ORIGIN + ch.card.cover + "&fit=igfeed" } },
-              { type: "text", text: "This is a grid post for The Fold (thefoldlabel.com) — quiet-luxury womenswear, The Row/Toteme register. Catalog: " + catalog + ". Write ONE understated sentence describing what's pictured (name the product ONLY if clearly identifiable from the catalog), plus exactly 2 broad TikTok hashtags (never the brand name, no niche tags — think #quietluxury #ootd #minimalstyle #naturalfibers #knitwear #outfitideas #styleinspo). Return ONLY JSON: {\"caption\":\"…\",\"tags\":\"#a #b\"}" },
+              { type: "text", text: "This is a grid post for The Fold (thefoldlabel.com) — quiet-luxury womenswear, The Row/Toteme register. Catalog: " + catalog + ". Write ONE understated sentence describing what's pictured (name the product ONLY if clearly identifiable from the catalog; plain punctuation, never an em dash), plus exactly 2 broad TikTok hashtags (never the brand name, no niche tags — think #quietluxury #ootd #minimalstyle #naturalfibers #knitwear #outfitideas #styleinspo). Return ONLY JSON: {\"caption\":\"…\",\"tags\":\"#a #b\"}" },
             ] }] }),
           });
           const d4 = await r4.json();
@@ -1705,7 +1705,7 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card under “Grid & Shoot List” re-renders the four numbered windows (1–9, 1–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in by date. White dot = Courtney's post."],
-    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count)", "Builds the month's Strategy Outline (theme, grid 1–42, titles, captions, 2 TikTok hashtags), saves it to Drive → Lavalle Sisters → <Month> → Strategy outline, attaches it to the Grid card and posts a card in the Strategy Outline column."],
+    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag or the theme changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
     ["Next-month Theme card", "Monthly (1st) + whenever re-run", "Reads our top-performing Instagram posts (likes, comments, saves, reach) and proposes next month's theme in the Strategy Outline column — a starting point, edit freely."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
@@ -1713,7 +1713,7 @@ export default async function handler(req, res) {
     ["Reel / cover link-up (The Fold)", "Every 15 min", "A reel named “3” or “reel 3” dropped into a month's Reels folder links to Post 3; numbered cover photos dress their cards; board backgrounds follow designated picks."],
     ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in: the month folder, Cover photos, Courtney to edit, Reels, Carousels, Strategy outline, plus the Grid Archive."],
     ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above)."],
-    ["Save arrangement", "When you hit Save in the grid editor", "The saved order becomes the card covers (cropped 3:4) and the montage; Drive cover photos and the Grid card follow. Nothing touches your saved order unless you change it."],
+    ["Save arrangement", "When you hit Save in the grid editor", "The grid IS the sequence: tile 1 is Post 1 … tile 42 is Post 42 (grid 1 = Schedule 1-21, grid 2 = Schedule 22-42). Swapping two tiles swaps their cards too — caption, hashtags, approval and Courtney concept travel with the photo; a tray photo dropped in keeps the slot's caption. Dates re-flow from the slot (each of our posts advances a day, Courtney's share the day before it). The montage, the Grid card and the Strategy Outline follow."],
   ];
   if (op === "automations_card" && req.method === "POST") {
     const okKeyA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
@@ -1731,7 +1731,13 @@ export default async function handler(req, res) {
     res.json({ ok: true, automations: AUTOMATIONS.length });
     return;
   }
-  // ── Strategy Outline PDF (pdf-lib) ───────────────────────────────────────
+  // ── Strategy Outline PDF (pdf-lib) + page images (Jimp) ────────────────────
+  // The grid is the sequence of record: Courtney's posts are the C-dotted tiles,
+  // the grid windows come from the Grid card's cache, captions + 2 TikTok tags
+  // from the cards. Rebuilds whenever any of that changes (after the first build).
+  // Pages are ALSO rendered as images so the card carousel / present mode (⤢)
+  // can show the outline in-app without a PDF viewer. House rule: no em dashes
+  // in captions (sanitised here as a safety net; the caption bank is written without them).
   if (op === "sisters_strategy_pdf" && req.method === "POST") {
     const okKeyS2 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authS2 = okKeyS2 ? null : await getAuthEarly(req);
@@ -1740,54 +1746,93 @@ export default async function handler(req, res) {
     const rawS2 = await kvGet("lavalle_data"); const blobS2 = Array.isArray(rawS2) ? rawS2[0] : rawS2;
     const bdS2 = blobS2 && blobS2.boards && blobS2.boards[SBOARD.key];
     if (!bdS2) { res.json({ ok: false, error: "no board" }); return; }
+    const g1S = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
+    const g2S = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
+    const tilesS = [...(g1S.tiles || []), ...(g2S.tiles || [])];
+    const tagAt = (n) => (tilesS[n - 1] ? tilesS[n - 1].tag : null);
+    const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
     const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+ /.test(c.name || ""))
-      .map((c) => ({ n: Number(/^Post (\d+)/.exec(c.name)[1]), name: c.name, desc: c.desc || "", tags: c.tags || "", cover: c.cover, approved: !!c.approved, isC: / — /.test(c.name) && SBOARD.hasCourtney && /Courtney/i.test(c.desc || "") }))
+      .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+\s+([A-Za-z]+\s+\d+)(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: m[1] || "", concept: (m[2] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
-    const sig = createHash("sha256").update(JSON.stringify(postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover]))).digest("hex").slice(0, 12);
+    const tilesHashS = createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
+    const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
+    const views = (cacheS.views || {});
+    const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && [0, 1, 2, 3].every((i) => views[i]));
+    if (!viewsReady) { res.json({ ok: true, skipped: true, waiting: "grid windows still rendering for this arrangement" }); return; }
+    const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
+    theme.body = noDash(theme.body);
+    const sig = createHash("sha256").update(JSON.stringify([postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover, p.isC]), tilesHashS, views[0], views[1], views[2], views[3], theme.title, theme.body])).digest("hex").slice(0, 12);
     const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
-    const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid edits
+    const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid/theme edits
     if (!bS2.force && !staleRebuild && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
-    const views = ((await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {}).views || {};
-    const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering — cashmere cardigans, linen sets, eyelet — meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
+    // shared content
+    const SECTIONS = [["In-Feed: Posts 1 to 11", postCards.slice(0, 11), views[1]], ["In-Feed: Posts 12 to 21", postCards.slice(11, 21), views[1]], ["In-Feed: Posts 22 to 30", postCards.slice(21, 30), views[2]], ["In-Feed: Posts 31 to 42", postCards.slice(30, 42), views[3]]];
+    const titleOf = (p) => "Post " + p.n + (p.date ? " · " + p.date : "") + (p.isC ? (p.concept ? " · " + p.concept : "") + "  [Courtney: caption to come]" : "");
+    const imgBuf = {}; const getBuf = async (u) => { if (!u) return null; if (imgBuf[u]) return imgBuf[u]; try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; imgBuf[u] = Buffer.from(await r.arrayBuffer()); return imgBuf[u]; } catch (e) { return null; } };
+    // ── page images (Jimp, 1920×1080, Open Sans; fonts bundled via vercel.json includeFiles) ──
+    const pageUrls = []; let pageErr = null;
+    try {
+    const Jimp = (await import("jimp")).default;
+    const F16 = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK), F32 = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK), F64 = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK), F14 = await Jimp.loadFont(Jimp.FONT_SANS_14_BLACK);
+    const PW = 1920, PH = 1080, CREAM = 0xFDFCFAFF;
+    const inkLine = (pg, x, y, w, h) => pg.scan(x, y, w, h, function (xx, yy, idx) { this.bitmap.data[idx] = 26; this.bitmap.data[idx + 1] = 26; this.bitmap.data[idx + 2] = 26; this.bitmap.data[idx + 3] = 255; });
+    const soft = async (pg, font, x, y, text, maxW, opacity) => { const h = Jimp.measureTextHeight(font, text, maxW) + 6; const layer = await new Jimp(maxW, h, 0x00000000); layer.print(font, 0, 0, { text }, maxW); pg.composite(layer, x, y, { mode: Jimp.BLEND_SOURCE_OVER, opacitySource: opacity }); return h - 6; };
+    const newPage = async () => { const pg = await new Jimp(PW, PH, CREAM); pg.print(F32, 60, 40, SBOARD.label); const tw = Jimp.measureText(F32, theme.title); pg.print(F32, PW - 60 - tw, 40, theme.title); inkLine(pg, 60, 94, PW - 120, 1); const fw = Jimp.measureText(F14, "LAVALLE HAUS OS"); pg.print(F14, (PW - fw) / 2, PH - 44, "LAVALLE HAUS OS"); return pg; };
+    const pageImgs = [];
+    { const pg = await newPage(); pg.print(F64, 60, PH / 2 - 130, { text: "Strategy Outline: " + theme.title }, PW - 120); pg.print(F32, 60, PH / 2 - 30, { text: theme.body }, PW - 120); pageImgs.push(pg); }
+    for (const [title, items, viewUrl] of SECTIONS) {
+      const pg = await newPage(); pg.print(F32, 60, 126, title);
+      let textW = PW - 120; const vb = await getBuf(viewUrl);
+      if (vb) { try { const gi = await Jimp.read(vb); const maxH = PH - 250; let w = 540, h = Math.round(gi.bitmap.height * w / gi.bitmap.width); if (h > maxH) { h = maxH; w = Math.round(gi.bitmap.width * h / gi.bitmap.height); } gi.resize(w, h); pg.composite(gi, PW - 60 - w, 150); textW = PW - 120 - w - 50; } catch (e) {} }
+      let y = 190;
+      for (const p of items) {
+        if (y > PH - 90) break;
+        const t1 = titleOf(p); pg.print(F16, 60, y, { text: t1 }, textW); pg.print(F16, 61, y, { text: t1 }, textW); y += 24;
+        if (!p.isC) {
+          if (p.desc) { const h = Jimp.measureTextHeight(F16, "Caption: " + p.desc, textW); pg.print(F16, 60, y, { text: "Caption: " + p.desc }, textW); y += h + 2; }
+          if (p.tags) { y += await soft(pg, F16, 60, y, p.tags, textW, 0.55) + 2; }
+        }
+        y += 10;
+      }
+      pageImgs.push(pg);
+    }
+    for (const pg of pageImgs) { pg.quality(88); const b = await pg.getBufferAsync(Jimp.MIME_JPEG); const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
+    } catch (ePg) { pageErr = String(ePg && ePg.message || ePg).slice(0, 200); }
+    // ── PDF (vector, pdf-lib) ──
     const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
     const pdf = await PDFDocument.create();
     const serif = await pdf.embedFont(StandardFonts.TimesRoman);
     const sans = await pdf.embedFont(StandardFonts.Helvetica);
     const sansB = await pdf.embedFont(StandardFonts.HelveticaBold);
     const W = 1280, H = 720, ink = rgb(0.1, 0.1, 0.1), sub = rgb(0.44, 0.44, 0.42), cream = rgb(0.992, 0.988, 0.98);
+    const safe = (s) => String(s || "").replace(/[^\x00-\xFF]/g, (ch) => (ch === "·" ? "·" : ch === "’" ? "'" : ch === "“" || ch === "”" ? "\"" : "-"));
     const page0 = pdf.addPage([W, H]); page0.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream });
-    const header = (pg, right) => { pg.drawText(SBOARD.label, { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(right, { x: W - 40 - sans.widthOfTextAtSize(right, 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
+    const header = (pg, right) => { pg.drawText(SBOARD.label, { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(safe(right), { x: W - 40 - sans.widthOfTextAtSize(safe(right), 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
     header(page0, theme.title);
-    page0.drawText("Strategy Outline — " + theme.title, { x: 40, y: H / 2 + 60, size: 34, font: sans, color: ink });
-    const wrap = (text, font, size, maxW) => { const words = String(text).split(/\s+/); const lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (font.widthOfTextAtSize(t, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; };
+    page0.drawText(safe("Strategy Outline: " + theme.title), { x: 40, y: H / 2 + 60, size: 34, font: sans, color: ink });
+    const wrap = (text, font, size, maxW) => { const words = safe(text).split(/\s+/); const lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (font.widthOfTextAtSize(t, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; };
     let y0 = H / 2 + 10; for (const ln of wrap(theme.body, sans, 15, W - 80)) { page0.drawText(ln, { x: 40, y: y0, size: 15, font: sans, color: ink }); y0 -= 22; }
-    const fetchJpg = async (u) => { try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; return await pdf.embedJpg(new Uint8Array(await r.arrayBuffer())); } catch (e) { return null; } };
-    const addFeedPage = async (title, items, imgUrl) => {
+    const embedJpg = async (u) => { const b = await getBuf(u); if (!b) return null; try { return await pdf.embedJpg(new Uint8Array(b)); } catch (e) { return null; } };
+    for (const [title, items, viewUrl] of SECTIONS) {
       const pg = pdf.addPage([W, H]); pg.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream }); header(pg, theme.title);
-      pg.drawText(title, { x: 40, y: H - 110, size: 26, font: sans, color: ink });
-      const img = imgUrl ? await fetchJpg(imgUrl) : null;
+      pg.drawText(safe(title), { x: 40, y: H - 110, size: 26, font: sans, color: ink });
+      const img = await embedJpg(viewUrl);
       let textW = W - 80; if (img) { const iw = 360, ih = iw * img.height / img.width, maxH = H - 180; const sc = Math.min(1, maxH / ih); pg.drawImage(img, { x: W - 40 - iw * sc, y: H - 130 - ih * sc, width: iw * sc, height: ih * sc }); textW = W - 120 - iw * sc; }
       let y = H - 145;
       for (const p of items) {
         if (y < 60) { break; }
-        const t1 = p.name.replace(/^Post (\d+) /, "Post $1 · ") + (p.isC ? "  [Courtney — caption to come]" : "");
-        pg.drawText(t1.slice(0, 120), { x: 40, y, size: 10.5, font: sansB, color: ink }); y -= 14;
-        if (!p.isC) { for (const ln of wrap("Caption: " + p.desc, sans, 9.5, textW)) { pg.drawText(ln, { x: 40, y, size: 9.5, font: sans, color: ink }); y -= 12; if (y < 60) break; } if (p.tags) { pg.drawText(p.tags, { x: 40, y, size: 9.5, font: sans, color: sub }); y -= 12; } }
+        pg.drawText(safe(titleOf(p)).slice(0, 140), { x: 40, y, size: 10.5, font: sansB, color: ink }); y -= 14;
+        if (!p.isC) { for (const ln of wrap("Caption: " + p.desc, sans, 9.5, textW)) { pg.drawText(ln, { x: 40, y, size: 9.5, font: sans, color: ink }); y -= 12; if (y < 60) break; } if (p.tags) { pg.drawText(safe(p.tags), { x: 40, y, size: 9.5, font: sans, color: sub }); y -= 12; } }
         y -= 4;
       }
-      return pg;
-    };
-    await addFeedPage("In-Feed — Posts 1–11", postCards.slice(0, 11), views[1]);
-    await addFeedPage("In-Feed — Posts 12–21", postCards.slice(11, 21), views[1]);
-    await addFeedPage("In-Feed — Posts 22–30", postCards.slice(21, 30), views[2]);
-    await addFeedPage("In-Feed — Posts 31–42", postCards.slice(30, 42), views[3]);
+    }
     const bytes = await pdf.save();
     const pdfBuf = Buffer.from(bytes);
-    // Drive: Lavalle Sisters / <Month> / Strategy outline / <title> Strategy Outline.pdf
+    // Drive: <board root> / <Month> / Strategy outline / <title> Strategy Outline.pdf
     const gtS2 = await googleToken(); let driveId = null;
     if (gtS2) {
       const lsS = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtS2 } })).json()).files || [];
@@ -1803,8 +1848,10 @@ export default async function handler(req, res) {
       const up9 = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtS2, "Content-Type": `multipart/related; boundary=${bd9}` }, body: Buffer.concat([Buffer.from(pre9, "utf8"), pdfBuf, Buffer.from(`\r\n--${bd9}--`, "utf8")]) })).json();
       driveId = up9.id || null;
     }
-    const pdfUrl = driveId ? "https://drive.google.com/file/d/" + driveId + "/view" : null;
-    // attach to Grid card + Strategy Outline column card
+    const pdfUrl = driveId ? "https://drive.google.com/file/d/" + driveId + "/view" : (prev.pdfUrl || null);
+    // attach pages + PDF to the Strategy Outline column card (current month on top); PDF link on the Grid card too
+    const pageAtt = pageUrls.map((u, i) => ({ id: "sop" + i, name: "Page " + (i + 1), url: u, type: "image/jpeg" }));
+    const pdfAtt = pdfUrl ? [{ id: "sopdf", name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : [];
     const gridCard = bdS2.cards.find((c) => /^grid\b/i.test(c.name || ""));
     if (gridCard && pdfUrl) { gridCard.attachments = (gridCard.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
     const soList = bdS2.lists.find((l) => /strategy outline/i.test(l.name || ""));
@@ -1812,14 +1859,12 @@ export default async function handler(req, res) {
       let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
       if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
       bdS2.cards = bdS2.cards.filter((c) => c !== sc); bdS2.cards.unshift(sc); // current month always tops the column
-      sc.cover = views[1] || views[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "");
-      const winLabels = ["Grid 1\u20139", "Grid 1\u201321", "Grid 22\u201330", "Grid 31\u201342"];
-      const winAtt = [0, 1, 2, 3].filter((i) => views[i]).map((i) => ({ id: "sow" + i, name: winLabels[i], url: views[i], type: "image/jpeg" }));
-      sc.attachments = pdfUrl ? [...winAtt, { id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : sc.attachments;
+      sc.cover = pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nSwipe the pages on the card, or tap ⤢ (bottom-right of the pages) for present mode.";
+      sc.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
     }
     await kvSet("lavalle_data", blobS2);
-    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl });
-    res.json({ ok: true, built: true, pdfUrl, posts: postCards.length, allApproved });
+    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl, pages: pageUrls });
+    res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
   // ── Next-month theme from performance ────────────────────────────────────
@@ -2019,6 +2064,7 @@ export default async function handler(req, res) {
       return;
     }
     let rec = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
+    const prevTilesW = (rec.tiles || []).map((t) => ({ cover: t.cover, tag: t.tag })); // what the cards currently follow
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
       rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
     } else if (Array.isArray(bT.order) && bT.order.length === rec.tiles.length) {
@@ -2026,37 +2072,73 @@ export default async function handler(req, res) {
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
     } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
     if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray" + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
-    // Write the arrangement back onto the Schedule 1-21 cards so the cover she
-    // placed (or reframed) in the grid IS the card's cover when it schedules:
-    // grid 1 K-tiles → Posts 1..15 (+C1..C6), grid 2 K-tiles → Posts 16..21 (+C7..C12).
+    // Write the arrangement back onto the Schedule cards so the cover she
+    // placed (or reframed) in the grid IS the card's cover when it schedules.
     try {
       const rawW = await kvGet("lavalle_data");
       const blobW = Array.isArray(rawW) ? rawW[0] : rawW;
       const bdW = blobW && blobW.boards && blobW.boards[SBOARD.key];
-      if (bdW) {
-        const schedW = bdW.lists.find((l) => ((!SBOARD.hasCourtney && g === "2") ? /^schedule\s*22\s*[-\u2013]\s*42$/i : /^schedule\s*1\s*[-\u2013]\s*21$/i).test((l.name || "").trim()));
-        const crtW = bdW.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
-        // Fold (no Courtney): grid 1 = Posts 1..21; grid 2 = Posts 22..42 (Schedule 22-42 list).
-        const foldW = !SBOARD.hasCourtney;
-        const kStart = foldW ? (g === "1" ? 1 : 22) : (g === "1" ? 1 : 16);
-        const kEnd = foldW ? (g === "1" ? 21 : 42) : (g === "1" ? 15 : 21);
-        const cStart = g === "1" ? 1 : 7;
-        let kN = kStart, cN = cStart, wrote = 0;
+      if (bdW && !SBOARD.hasCourtney) {
+        // Fold (no Courtney): grid 1 = Posts 1..21 (Schedule 1-21); grid 2 = Posts 22..42 (Schedule 22-42).
+        const schedW = bdW.lists.find((l) => (g === "2" ? /^schedule\s*22\s*[-–]\s*42$/i : /^schedule\s*1\s*[-–]\s*21$/i).test((l.name || "").trim()));
+        let kN = g === "1" ? 1 : 22, wrote = 0;
         for (const t of rec.tiles) {
-          if (t.tag === "K") {
-            if (kN <= kEnd && schedW) {
-              const card = bdW.cards.find((c) => c.listId === schedW.id && new RegExp("^post\\s*" + kN + "\\b", "i").test(c.name || ""));
-              if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
-            }
-            kN++;
-          } else {
-            if (crtW) {
-              const card = bdW.cards.find((c) => c.listId === crtW.id && new RegExp("^c\\s*" + cN + "\\b", "i").test(c.name || ""));
-              if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
-            }
-            cN++;
+          if (t.tag !== "K") { kN++; continue; }
+          if (schedW) {
+            const card = bdW.cards.find((c) => c.listId === schedW.id && new RegExp("^post\\s*" + kN + "\\b", "i").test(c.name || ""));
+            if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
           }
+          kN++;
         }
+        if (wrote) await kvSet("lavalle_data", blobW);
+      } else if (bdW) {
+        // Sisters — ONE combined numbering: tile i of (grid 1 ⧺ grid 2) IS Post i+1
+        // (grid 1 = Posts 1–21 in Schedule 1-21, grid 2 = Posts 22–42 in Schedule
+        // 22-42; Courtney's posts are the C-dotted tiles, numbered inline). Her
+        // rule: the grid is the sequence. So content FOLLOWS THE PHOTO — when she
+        // swaps two tiles, the caption, hashtags, approval and Courtney concept
+        // swap with them (matched by cover, in order, so duplicate photos stay
+        // stable); a photo dragged in from the tray keeps the slot's content and
+        // takes the new cover. Post number + date come from the slot: each K
+        // advances a day, a C shares the day of the K before it.
+        const sched1 = bdW.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+        const sched2 = bdW.lists.find((l) => /^schedule\s*22\s*[-–]\s*42$/i.test((l.name || "").trim()));
+        const inSched = (c) => (sched1 && c.listId === sched1.id) || (sched2 && c.listId === sched2.id);
+        const cardAt = (n) => bdW.cards.find((c) => inSched(c) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
+        const NAME_RX = /^post\s*\d+\s+[A-Za-z]+\s+\d+(?:\s*[—–-]\s*(.+))?$/i;
+        const offsetW = g === "1" ? 0 : 21;
+        // permutation within this grid: new slot q ← previous slot p (by cover, greedy, dup-safe)
+        const usedP = new Set(); const srcOf = new Array(rec.tiles.length).fill(-1);
+        rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedP.has(i) && pt.cover === t.cover); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
+        rec.tiles.forEach((t, q) => { if (srcOf[q] >= 0) return; if (q < prevTilesW.length && !usedP.has(q)) { usedP.add(q); srcOf[q] = q; return; } const p = prevTilesW.findIndex((pt, i) => !usedP.has(i)); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
+        const snap = prevTilesW.map((pt, p) => { const c = cardAt(offsetW + p + 1); return c ? { desc: c.desc || "", tags: c.tags || "", approved: !!c.approved, labels: c.labels || [], attachments: c.attachments || [], links: c.links || [], done: !!c.done, coverUrl: c.coverUrl || "", pub: c.pub, tiktokCover: c.tiktokCover, concept: ((NAME_RX.exec(c.name || "") || [])[1] || "").trim() } : null; });
+        // the combined tag sequence (this grid's new tiles + the other grid as saved) → dates for all 42
+        const otherRec = (await kvGet("sisters_grid_tiles_" + (g === "1" ? "2" : "1") + SBOARD.kvSuffix)) || { tiles: [] };
+        const allTags = (g === "1" ? [...rec.tiles, ...(otherRec.tiles || [])] : [...(otherRec.tiles || []), ...rec.tiles]).map((t) => t.tag);
+        const startW = String((await kvGet("sisters_schedule_start" + SBOARD.kvSuffix)) || "2026-08-22");
+        const MOW = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const dates = []; let dW = new Date(new Date(startW + "T00:00:00Z").getTime() - 86400000);
+        for (const tg of allTags) { if (tg === "K" || dates.length === 0) dW = new Date(dW.getTime() + 86400000); dates.push(dW); }
+        const dateLabel = (i) => { const dt = dates[i]; return dt ? " " + MOW[dt.getUTCMonth()] + " " + dt.getUTCDate() : ""; };
+        let wrote = 0;
+        rec.tiles.forEach((t, q) => {
+          const n = offsetW + q + 1; const card = cardAt(n); if (!card) return;
+          const s = srcOf[q] >= 0 ? snap[srcOf[q]] : null;
+          if (s) { card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels; card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl; if (s.pub) card.pub = s.pub; else delete card.pub; if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover; }
+          if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
+          const base = "Post " + n + dateLabel(n - 1);
+          if (t.tag === "C") {
+            const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";
+            card.name = base + " — " + concept;
+            if (!/courtney/i.test(card.desc || "")) { card.desc = "Courtney's post — caption and hashtags to come from Courtney."; card.tags = ""; }
+          } else {
+            card.name = base;
+            if (/^courtney's post — caption and hashtags to come/i.test(card.desc || "")) { card.desc = ""; card.tags = ""; }
+          }
+          wrote++;
+        });
+        // re-date the other grid's slots too (a C moved into slot 2 shifts every day after it)
+        allTags.forEach((tg, i) => { const n = i + 1; if (n > offsetW && n <= offsetW + rec.tiles.length) return; const card = cardAt(n); if (!card) return; const m = NAME_RX.exec(card.name || ""); if (!m) return; const nm = "Post " + n + dateLabel(i) + (m[1] ? " — " + m[1].trim() : ""); if (nm !== card.name) { card.name = nm; wrote++; } });
         if (wrote) await kvSet("lavalle_data", blobW);
       }
     } catch (eW) {}

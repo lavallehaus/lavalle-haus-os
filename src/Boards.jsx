@@ -115,7 +115,7 @@ function CoverCarousel({ images, alt }) {
         {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setI(k); }} style={{ width: 5, height: 5, borderRadius: 3, background: k === i ? "#8F8676" : "rgba(143,134,118,0.35)", cursor: "pointer" }} />)}
       </div>
       <button aria-label="enlarge" title="Present" onClick={(e) => { e.stopPropagation(); setFull(true); }}
-        style={{ position: "absolute", bottom: 6, right: 6, width: 26, height: 26, border: "none", background: "rgba(255,255,255,0.78)", color: "#71716C", fontFamily: "Georgia, serif", fontSize: 14, lineHeight: "26px", cursor: "pointer", borderRadius: 2, padding: 0 }}>⤢</button>
+        style={{ position: "absolute", bottom: 6, right: 6, width: 28, height: 28, border: "1px solid rgba(143,134,118,0.55)", background: "rgba(255,255,255,0.92)", color: "#4F4B44", fontFamily: "Georgia, serif", fontSize: 15, lineHeight: "26px", cursor: "pointer", borderRadius: 2, padding: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>⤢</button>
       {full && <PresentOverlay images={images} index={i} setIndex={setI} onClose={() => setFull(false)} alt={alt} />}
     </div>
   );
