@@ -1685,6 +1685,21 @@ export default async function handler(req, res) {
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
     return;
   }
+  // Board-generic config for the automation suite: the same ops serve the
+  // Sisters board and The Fold (minus everything Courtney-specific).
+  const SBOARD = (() => {
+    const bkq = (req.query && req.query.board) || (req.body && req.body.board) || "";
+    if (bkq === "the-fold") return {
+      key: "the-fold", label: "THE FOLD", themeLabelBrand: "The Fold (thefoldlabel.com) — quiet-luxury womenswear",
+      kvSuffix: "_tf", igMatch: /thefold/i, driveRootId: "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC", // The Fold > Social Media (month folders)
+      monthDefaultKv: "fold_working_month", hasCourtney: false,
+    };
+    return {
+      key: "lavalle-sisters", label: "LAVALLE SISTERS", themeLabelBrand: "@lavallesisters — The Fold + Lavalle Haus, run by two sisters",
+      kvSuffix: "", igMatch: /sister/i, driveRootId: "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU",
+      monthDefaultKv: "sisters_working_month", hasCourtney: true,
+    };
+  })();
   // ── Automations card (plain-English registry) ────────────────────────────
   // Her rule: a card the whole team can read that says what runs on its own,
   // and what triggers it. Regenerated from this registry so it never drifts.
@@ -1705,7 +1720,7 @@ export default async function handler(req, res) {
     const authA = okKeyA ? null : await getAuthEarly(req);
     if (!okKeyA && !ownerRole(authA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const rawA = await kvGet("lavalle_data"); const blobA = Array.isArray(rawA) ? rawA[0] : rawA;
-    const bdA = blobA && blobA.boards && blobA.boards["lavalle-sisters"];
+    const bdA = blobA && blobA.boards && blobA.boards[SBOARD.key];
     if (!bdA) { res.json({ ok: false }); return; }
     const listA = bdA.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdA.lists[0];
     let cardA = bdA.cards.find((c) => /^automations\b/i.test(c.name || ""));
@@ -1723,20 +1738,20 @@ export default async function handler(req, res) {
     if (!okKeyS2 && !ownerRole(authS2)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const bS2 = req.body || {};
     const rawS2 = await kvGet("lavalle_data"); const blobS2 = Array.isArray(rawS2) ? rawS2[0] : rawS2;
-    const bdS2 = blobS2 && blobS2.boards && blobS2.boards["lavalle-sisters"];
+    const bdS2 = blobS2 && blobS2.boards && blobS2.boards[SBOARD.key];
     if (!bdS2) { res.json({ ok: false, error: "no board" }); return; }
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
     const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+ /.test(c.name || ""))
-      .map((c) => ({ n: Number(/^Post (\d+)/.exec(c.name)[1]), name: c.name, desc: c.desc || "", tags: c.tags || "", cover: c.cover, approved: !!c.approved, isC: / — /.test(c.name) && /Courtney/i.test(c.desc || "") }))
+      .map((c) => ({ n: Number(/^Post (\d+)/.exec(c.name)[1]), name: c.name, desc: c.desc || "", tags: c.tags || "", cover: c.cover, approved: !!c.approved, isC: / — /.test(c.name) && SBOARD.hasCourtney && /Courtney/i.test(c.desc || "") }))
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
     const sig = createHash("sha256").update(JSON.stringify(postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover]))).digest("hex").slice(0, 12);
-    const prev = (await kvGet("sisters_strategy_pdf_state")) || {};
+    const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
     if (!bS2.force && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
-    const views = ((await kvGet("sisters_grid_card_views")) || {}).views || {};
-    const theme = (await kvGet("sisters_strategy_theme")) || { title: "September 2026", body: "First chill. Transitional layering — cashmere cardigans, linen sets, eyelet — meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
+    const views = ((await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {}).views || {};
+    const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering — cashmere cardigans, linen sets, eyelet — meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
     const pdf = await PDFDocument.create();
     const serif = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -1744,7 +1759,7 @@ export default async function handler(req, res) {
     const sansB = await pdf.embedFont(StandardFonts.HelveticaBold);
     const W = 1280, H = 720, ink = rgb(0.1, 0.1, 0.1), sub = rgb(0.44, 0.44, 0.42), cream = rgb(0.992, 0.988, 0.98);
     const page0 = pdf.addPage([W, H]); page0.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream });
-    const header = (pg, right) => { pg.drawText("LAVALLE SISTERS", { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(right, { x: W - 40 - sans.widthOfTextAtSize(right, 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
+    const header = (pg, right) => { pg.drawText(SBOARD.label, { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(right, { x: W - 40 - sans.widthOfTextAtSize(right, 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
     header(page0, theme.title);
     page0.drawText("Strategy Outline — " + theme.title, { x: 40, y: H / 2 + 60, size: 34, font: sans, color: ink });
     const wrap = (text, font, size, maxW) => { const words = String(text).split(/\s+/); const lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (font.widthOfTextAtSize(t, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; };
@@ -1776,7 +1791,7 @@ export default async function handler(req, res) {
     if (gtS2) {
       const lsS = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtS2 } })).json()).files || [];
       const mkS = async (name, parent) => { const hit = (await lsS(parent)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim() === name); if (hit) return hit.id; return (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtS2, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json()).id; };
-      const SIS2 = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU";
+      const SIS2 = SBOARD.driveRootId;
       const monthName = (theme.title.split(/[\s+]+/)[0] || "September");
       const mF = await mkS(monthName, SIS2); const soF = await mkS("Strategy outline", mF);
       const fname = theme.title + " Strategy Outline.pdf";
@@ -1798,7 +1813,7 @@ export default async function handler(req, res) {
       sc.cover = views[1] || views[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : ""); sc.attachments = pdfUrl ? [{ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : sc.attachments;
     }
     await kvSet("lavalle_data", blobS2);
-    await kvSet("sisters_strategy_pdf_state", { sig, at: Date.now(), pdfUrl });
+    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl });
     res.json({ ok: true, built: true, pdfUrl, posts: postCards.length, allApproved });
     return;
   }
@@ -1811,7 +1826,7 @@ export default async function handler(req, res) {
     const base = "https://graph.instagram.com/v23.0";
     const rows = [];
     for (const t of accts) {
-      if (!/sister/i.test(t.username || "")) continue;
+      if (!SBOARD.igMatch.test(t.username || "")) continue;
       try {
         const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=30&access_token=${encodeURIComponent(t.access_token)}`)).json();
         for (const m of (media.data || [])) {
@@ -1835,7 +1850,7 @@ export default async function handler(req, res) {
       } catch (e) {}
     }
     const rawT3 = await kvGet("lavalle_data"); const blobT3 = Array.isArray(rawT3) ? rawT3[0] : rawT3;
-    const bdT3 = blobT3 && blobT3.boards && blobT3.boards["lavalle-sisters"];
+    const bdT3 = blobT3 && blobT3.boards && blobT3.boards[SBOARD.key];
     if (!bdT3) { res.json({ ok: false }); return; }
     const soL = bdT3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdT3.lists[0];
     let tc = bdT3.cards.find((c) => c.listId === soL.id && /^Theme — /i.test(c.name || "") && (c.name || "").includes(label));
@@ -1854,8 +1869,8 @@ export default async function handler(req, res) {
     if (!okKeyL3 && !ownerRole(authL3)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const gtL3 = await googleToken(); if (!gtL3) { res.json({ ok: false, error: "google_not_connected" }); return; }
     const lsL3 = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [];
-    const SIS3 = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU";
-    const wm3 = (await kvGet("sisters_working_month")) || "September";
+    const SIS3 = SBOARD.driveRootId;
+    const wm3 = (await kvGet(SBOARD.monthDefaultKv)) || "September";
     const top = await lsL3(SIS3);
     const mF = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === wm3.toLowerCase());
     if (!mF) { res.json({ ok: false, error: "month folder missing: " + wm3 }); return; }
@@ -1866,7 +1881,7 @@ export default async function handler(req, res) {
     links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
     links.push({ label: "Grid Archive", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
     const rawL3 = await kvGet("lavalle_data"); const blobL3 = Array.isArray(rawL3) ? rawL3[0] : rawL3;
-    const bdL3 = blobL3 && blobL3.boards && blobL3.boards["lavalle-sisters"];
+    const bdL3 = blobL3 && blobL3.boards && blobL3.boards[SBOARD.key];
     if (!bdL3) { res.json({ ok: false }); return; }
     const soL3 = bdL3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdL3.lists[0];
     let lc = bdL3.cards.find((c) => /^links\b/i.test((c.name || "").trim()));
@@ -1887,8 +1902,8 @@ export default async function handler(req, res) {
     const okKeyC = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authC = okKeyC ? null : await getAuthEarly(req);
     if (!okKeyC && !ownerRole(authC)) { res.status(403).json({ error: "Owner or key only." }); return; }
-    const g1 = (await kvGet("sisters_grid_tiles_1")) || { tiles: [] };
-    const g2 = (await kvGet("sisters_grid_tiles_2")) || { tiles: [] };
+    const g1 = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
+    const g2 = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
     const all = [...(g1.tiles || []), ...(g2.tiles || [])];
     if (all.length < 21) { res.json({ ok: false, error: "tiles not seeded" }); return; }
     const Jimp = (await import("jimp")).default;
@@ -1937,14 +1952,14 @@ export default async function handler(req, res) {
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
     const tilesHash = createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
-    let cacheW = (await kvGet("sisters_grid_card_views")) || {};
+    let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
     const views = [];
     let rendered = null;
     for (let wi = 0; wi < WINDOWS.length; wi++) {
       const [a, b] = WINDOWS[wi]; const label = "Grid " + a + "–" + b;
       if (!cacheW.views[wi]) {
-        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views", cacheW); }
+        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix + SBOARD.kvSuffix, cacheW); }
         else { res.json({ ok: true, partial: true, renderedWindow: rendered, next: wi }); return; }
       }
       views.push({ label, url: cacheW.views[wi] });
@@ -1957,7 +1972,7 @@ export default async function handler(req, res) {
     const cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
     const rawC = await kvGet("lavalle_data");
     const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
-    const bdC = blobC && blobC.boards && blobC.boards["lavalle-sisters"];
+    const bdC = blobC && blobC.boards && blobC.boards[SBOARD.key];
     if (bdC) {
       const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim()));
       if (todo) {
@@ -1984,8 +1999,8 @@ export default async function handler(req, res) {
     if (!authT2) { res.status(401).json({ error: "Locked." }); return; }
     if (req.method === "GET") {
       const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
-      const t = (await kvGet("sisters_grid_tiles_" + g)) || null;
-      const tray = (await kvGet("sisters_grid_tray")) || [];
+      const t = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || null;
+      const tray = (await kvGet("sisters_grid_tray" + SBOARD.kvSuffix)) || [];
       res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], tray, view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null });
       return;
     }
@@ -1994,18 +2009,18 @@ export default async function handler(req, res) {
     // the tray (her photo pool) is shared across both grids and can be saved
     // alone — deleting or adding pool photos shouldn't force a re-render
     if (Array.isArray(bT.tray) && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
-      await kvSet("sisters_grid_tray", bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+      await kvSet("sisters_grid_tray" + SBOARD.kvSuffix + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
       res.json({ ok: true, tray: true });
       return;
     }
-    let rec = (await kvGet("sisters_grid_tiles_" + g)) || { tiles: [], mid: null };
+    let rec = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
       rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
     } else if (Array.isArray(bT.order) && bT.order.length === rec.tiles.length) {
       const seen = new Set(bT.order.map(Number));
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
     } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
-    if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray", bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+    if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray" + SBOARD.kvSuffix + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
     // Write the arrangement back onto the Schedule 1-21 cards so the cover she
     // placed (or reframed) in the grid IS the card's cover when it schedules:
     // grid 1 K-tiles → Posts 1..15 (+C1..C6), grid 2 K-tiles → Posts 16..21 (+C7..C12).
@@ -2058,7 +2073,7 @@ export default async function handler(req, res) {
     const midT = "sg" + createHash("sha256").update(bufT).digest("hex").slice(0, 14);
     await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
     rec.mid = midT;
-    await kvSet("sisters_grid_tiles_" + g, rec);
+    await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, rec);
     // replace the Drive archive file for this grid
     try {
       const gtT = await googleToken();
