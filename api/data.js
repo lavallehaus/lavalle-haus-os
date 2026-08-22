@@ -1685,6 +1685,70 @@ export default async function handler(req, res) {
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
     return;
   }
+  // ── Sisters grid card (To Do column) ─────────────────────────────────────
+  // Her rule: a "Grid" card under To Do whose cover is ALWAYS the grid window
+  // we're in — 1-9 → 1-21 → 22-30 → 31-42 — rendered from the live tiles with
+  // small white post numbers (1-42) top-left; all four windows attached as a
+  // slideshow. Runs on the pinger; window = today's post number (start Aug 22).
+  if (op === "sisters_grid_card" && req.method === "POST") {
+    const okKeyC = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authC = okKeyC ? null : await getAuthEarly(req);
+    if (!okKeyC && !ownerRole(authC)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const g1 = (await kvGet("sisters_grid_tiles_1")) || { tiles: [] };
+    const g2 = (await kvGet("sisters_grid_tiles_2")) || { tiles: [] };
+    const all = [...(g1.tiles || []), ...(g2.tiles || [])];
+    if (all.length < 21) { res.json({ ok: false, error: "tiles not seeded" }); return; }
+    const Jimp = (await import("jimp")).default;
+    const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+    const render = async (from, to) => {
+      const slice = all.slice(from - 1, to);
+      const n = slice.length, rows = Math.ceil(n / 3);
+      const cv = await new Jimp(1080, rows * 480, 0xf2efe9ff);
+      for (let i = 0; i < n; i++) {
+        try {
+          const u = /^https?:/.test(slice[i].cover) ? slice[i].cover : APP_ORIGIN + slice[i].cover;
+          const r = await fetch(u); if (!r.ok) continue;
+          const t = (await Jimp.read(Buffer.from(await r.arrayBuffer()))).cover(360, 480);
+          // white post number, top-left, small shadow for legibility
+          const num = String(from + i);
+          t.print(font, 13, 9, num); t.print(font, 12, 8, num);
+          if (slice[i].tag === "C") { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
+          cv.composite(t, (2 - (i % 3)) * 360, (rows - 1 - Math.floor(i / 3)) * 480);
+        } catch (e1) {}
+      }
+      cv.quality(86);
+      const buf = await cv.getBufferAsync(Jimp.MIME_JPEG);
+      const mid = "gw" + createHash("sha256").update(buf).digest("hex").slice(0, 14);
+      await kvSet("media_" + mid, { b64: buf.toString("base64"), ct: "image/jpeg" });
+      return "/cover/" + mid + ".jpg";
+    };
+    const WINDOWS = [[1, 9], [1, 21], [22, 30], [31, 42]];
+    const views = [];
+    for (const [a, b] of WINDOWS) views.push({ label: "Grid " + a + "–" + b, url: await render(a, Math.min(b, all.length)) });
+    // which window are we in? post index from the Aug 22 start at daily cadence + MWF
+    const start = Date.UTC(2026, 7, 22);
+    const dayN = Math.max(0, Math.floor((Date.now() - start) / 86400000));
+    let postN = 0; let d = new Date(start);
+    for (let i = 0; i <= dayN && postN < 42; i++) { postN++; if ([1, 3, 5].includes(d.getUTCDay())) postN++; d = new Date(d.getTime() + 86400000); }
+    const cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
+    const rawC = await kvGet("lavalle_data");
+    const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
+    const bdC = blobC && blobC.boards && blobC.boards["lavalle-sisters"];
+    if (bdC) {
+      const todo = bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim()));
+      if (todo) {
+        let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
+        if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
+        card.name = "Grid — " + views[cur].label + " (auto)";
+        card.cover = views[cur].url;
+        card.attachments = views.map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
+        card.desc = "Auto-updating grid preview. Swipe the attachments to see each window: 1–9, 1–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
+        await kvSet("lavalle_data", blobC);
+      }
+    }
+    res.json({ ok: true, window: views[cur].label, postN, views });
+    return;
+  }
   // ── Sisters grid tiles: her hand-rearrange editor ────────────────────────
   // KV holds each named grid's tile list (cover URL + K/C tag). GET returns it;
   // POST {grid, tiles} seeds it; POST {grid, order} applies her tap-swap

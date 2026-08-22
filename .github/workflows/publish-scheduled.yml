@@ -35,6 +35,11 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=slack_strategy_watch" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
+      # Sisters "Grid" card under To Do: cover = current grid window (1-9/1-21/22-30/31-42), numbered
+      - name: Sisters grid card refresh
+        run: |
+          curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_grid_card" \
+            -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       - name: Sisters cycle check
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \
