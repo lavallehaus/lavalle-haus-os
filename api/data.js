@@ -1749,7 +1749,8 @@ export default async function handler(req, res) {
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
     const sig = createHash("sha256").update(JSON.stringify(postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover]))).digest("hex").slice(0, 12);
     const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
-    if (!bS2.force && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
+    const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid edits
+    if (!bS2.force && !staleRebuild && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
     const views = ((await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {}).views || {};
     const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering — cashmere cardigans, linen sets, eyelet — meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
@@ -1974,7 +1975,7 @@ export default async function handler(req, res) {
     const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
     const bdC = blobC && blobC.boards && blobC.boards[SBOARD.key];
     if (bdC) {
-      const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim()));
+      const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim())) || (!SBOARD.hasCourtney ? bdC.lists.find((l) => /strategy outline/i.test(l.name || "")) : null);
       if (todo) {
         let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
         if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
