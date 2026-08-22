@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ContentBrain from "./ContentBrain.jsx";
 import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM, composeOutreachEmail } from "./ugcOutreach.js";
 
@@ -96,6 +97,7 @@ const BG_PRESETS = [
 // drag sideways to move through them; tap still opens the card.
 function CoverCarousel({ images, alt }) {
   const [i, setI] = React.useState(0);
+  const [full, setFull] = React.useState(false);
   const startRef = React.useRef(null);
   const n = images.length;
   const go = (d) => setI((p) => (p + d + n) % n);
@@ -112,8 +114,42 @@ function CoverCarousel({ images, alt }) {
       <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6 }}>
         {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setI(k); }} style={{ width: 5, height: 5, borderRadius: 3, background: k === i ? "#8F8676" : "rgba(143,134,118,0.35)", cursor: "pointer" }} />)}
       </div>
+      <button aria-label="enlarge" title="Present" onClick={(e) => { e.stopPropagation(); setFull(true); }}
+        style={{ position: "absolute", bottom: 6, right: 6, width: 26, height: 26, border: "none", background: "rgba(255,255,255,0.78)", color: "#71716C", fontFamily: "Georgia, serif", fontSize: 14, lineHeight: "26px", cursor: "pointer", borderRadius: 2, padding: 0 }}>⤢</button>
+      {full && <PresentOverlay images={images} index={i} setIndex={setI} onClose={() => setFull(false)} alt={alt} />}
     </div>
   );
+}
+
+// Full-screen "present mode" for a card's image attachments — quiet-luxury:
+// deep cream backdrop, the page as large as the viewport allows, thin Georgia
+// chevrons, ESC / ✕ / backdrop-tap to leave. Rendered through a portal so no
+// ancestor transform can trap the fixed positioning.
+function PresentOverlay({ images, index, setIndex, onClose, alt }) {
+  const n = images.length;
+  const go = React.useCallback((d) => setIndex((p) => (p + d + n) % n), [n, setIndex]);
+  const startRef = React.useRef(null);
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); else if (e.key === "ArrowRight") go(1); else if (e.key === "ArrowLeft") go(-1); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow; document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [go, onClose]);
+  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 56, height: 80, border: "none", background: "transparent", color: "#8F8676", fontFamily: "Georgia, serif", fontSize: 44, lineHeight: "80px", cursor: "pointer", padding: 0, opacity: 0.9 };
+  return createPortal(
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(24,22,19,0.94)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", touchAction: "pan-y" }}
+      onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
+      onPointerUp={(e) => { const st = startRef.current; startRef.current = null; if (!st) return; const dx = e.clientX - st.x; if (Math.abs(dx) > 50) { e.stopPropagation(); go(dx < 0 ? 1 : -1); } }}>
+      <img src={images[index].url} alt={alt || ""} draggable={false} onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "94vw", maxHeight: "92vh", objectFit: "contain", display: "block", boxShadow: "0 8px 60px rgba(0,0,0,0.5)", background: "#F2EFE9" }} />
+      <div style={{ position: "absolute", top: 16, left: 20, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#C9C2B4" }}>{images[index].name || ((index + 1) + " / " + n)}</div>
+      <button aria-label="close" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ position: "absolute", top: 10, right: 14, width: 44, height: 44, border: "none", background: "transparent", color: "#C9C2B4", fontFamily: "Georgia, serif", fontSize: 26, cursor: "pointer", padding: 0 }}>✕</button>
+      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 8 }}>‹</button>
+      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 8 }}>›</button>
+      <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 8 }}>
+        {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setIndex(k); }} style={{ width: 6, height: 6, borderRadius: 3, background: k === index ? "#C9C2B4" : "rgba(201,194,180,0.35)", cursor: "pointer" }} />)}
+      </div>
+    </div>, document.body);
 }
 const boardBgStyle = (bg) => !bg ? {} : bg.startsWith("linear-gradient") || bg.startsWith("#")
   ? { background: bg }
