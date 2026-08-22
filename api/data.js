@@ -1766,7 +1766,7 @@ export default async function handler(req, res) {
     const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
     const bdC = blobC && blobC.boards && blobC.boards["lavalle-sisters"];
     if (bdC) {
-      const todo = bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim()));
+      const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim()));
       if (todo) {
         let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
         if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
