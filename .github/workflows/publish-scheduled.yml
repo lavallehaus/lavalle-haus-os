@@ -40,6 +40,13 @@ jobs:
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_grid_card" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
+      # Sisters board housekeeping: automations card, links card, strategy PDF (approval-gated), monthly theme
+      - name: Sisters board cards
+        run: |
+          for op in automations_card sisters_links_card sisters_strategy_pdf sisters_theme_card; do
+            curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=$op" \
+              -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 150 -o /dev/null || true
+          done
       - name: Sisters cycle check
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_cycle_check" \

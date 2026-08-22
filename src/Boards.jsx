@@ -99,17 +99,18 @@ function CoverCarousel({ images, alt }) {
   const startRef = React.useRef(null);
   const n = images.length;
   const go = (d) => setI((p) => (p + d + n) % n);
+  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 30, height: 44, border: "none", background: "transparent", color: "#8F8676", fontFamily: "Georgia, serif", fontSize: 26, lineHeight: "44px", cursor: "pointer", padding: 0, opacity: 0.9, textShadow: "0 0 6px rgba(255,255,255,0.9)" };
   return (
-    <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y" }}
-      onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; }}
+    <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y", aspectRatio: "4/5", background: "#F2EFE9", overflow: "hidden" }}
+      onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
       onPointerUp={(e) => { const st = startRef.current; startRef.current = null; if (!st) return; const dx = e.clientX - st.x, dy = e.clientY - st.y; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { e.stopPropagation(); e.preventDefault(); go(dx < 0 ? 1 : -1); } }}
       onClickCapture={(e) => { const st = startRef.current; if (st && Math.abs(e.clientX - st.x) > 40) { e.stopPropagation(); e.preventDefault(); } }}>
-      <img src={images[i].url} alt={alt || ""} style={{ display: "block", width: "100%", height: "auto" }} draggable={false} />
-      <div style={{ position: "absolute", top: 6, left: 8, background: "rgba(26,26,26,0.7)", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>{images[i].name || ("" + (i + 1) + "/" + n)}</div>
-      <button onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", width: 26, height: 26, borderRadius: 13, border: "none", background: "rgba(255,255,255,0.85)", cursor: "pointer", fontSize: 14, lineHeight: "26px", padding: 0 }}>‹</button>
-      <button onClick={(e) => { e.stopPropagation(); go(1); }} style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 26, height: 26, borderRadius: 13, border: "none", background: "rgba(255,255,255,0.85)", cursor: "pointer", fontSize: 14, lineHeight: "26px", padding: 0 }}>›</button>
-      <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 5 }}>
-        {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setI(k); }} style={{ width: 6, height: 6, borderRadius: 3, background: k === i ? "#fff" : "rgba(255,255,255,0.45)", boxShadow: "0 0 0 1px rgba(0,0,0,0.25)", cursor: "pointer" }} />)}
+      <img src={images[i].url} alt={alt || ""} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      <div style={{ position: "absolute", top: 8, left: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.6, textTransform: "uppercase", color: "#71716C", background: "rgba(255,255,255,0.75)", padding: "2px 6px", borderRadius: 1 }}>{images[i].name || ("" + (i + 1) + " / " + n)}</div>
+      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 2 }}>‹</button>
+      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 2 }}>›</button>
+      <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6 }}>
+        {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setI(k); }} style={{ width: 5, height: 5, borderRadius: 3, background: k === i ? "#8F8676" : "rgba(143,134,118,0.35)", cursor: "pointer" }} />)}
       </div>
     </div>
   );
@@ -1083,6 +1084,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
                         style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); return imgs.length >= 2 ? <CoverCarousel images={imgs} alt={card.name} /> : (card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />); })()}
+                        {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
                           {(card.labels || []).length > 0 && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
@@ -1308,6 +1310,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
+  const [approved, setApproved] = useState(!!card.approved);
   const [draft, setDraft] = useState(card.draft || {});
   const [draftNotes, setDraftNotes] = useState(card.draftNotes || {});
   const [showPoint3, setShowPoint3] = useState(!!(card.draft && card.draft.point3));
@@ -1424,7 +1427,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -1620,6 +1623,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           </div>
         )}
 
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: approved ? "#5a7a5a" : c.sub, cursor: "pointer" }}>
+          <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
+          Approve caption + hashtags {approved ? "— approved" : ""}
+        </label>
         {/* checklist — the film → edit → post steps live on the card */}
         <div style={label}>Checklist{checklist.length ? " · " + checklist.filter((x) => x.done).length + "/" + checklist.length : ""}</div>
         {checklist.length > 0 && (

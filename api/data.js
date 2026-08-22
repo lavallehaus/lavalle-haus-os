@@ -1685,6 +1685,199 @@ export default async function handler(req, res) {
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
     return;
   }
+  // ── Automations card (plain-English registry) ────────────────────────────
+  // Her rule: a card the whole team can read that says what runs on its own,
+  // and what triggers it. Regenerated from this registry so it never drifts.
+  const AUTOMATIONS = [
+    ["Grid card refresh", "Every 15 min", "The Grid card under “Grid & Shoot List” re-renders the four numbered windows (1–9, 1–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in by date. White dot = Courtney's post."],
+    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count)", "Builds the month's Strategy Outline (theme, grid 1–42, titles, captions, 2 TikTok hashtags), saves it to Drive → Lavalle Sisters → <Month> → Strategy outline, attaches it to the Grid card and posts a card in the Strategy Outline column."],
+    ["Next-month Theme card", "Monthly (1st) + whenever re-run", "Reads our top-performing Instagram posts (likes, comments, saves, reach) and proposes next month's theme in the Strategy Outline column — a starting point, edit freely."],
+    ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
+    ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
+    ["Loft strategy PDF from Slack", "Every 15 min until Oct 2026 (needs Slack files permission)", "Files the Loft's monthly strategy PDF into Drive → Strategy & Reports → Strategy Outline."],
+    ["Reel / cover link-up (The Fold)", "Every 15 min", "A reel named “3” or “reel 3” dropped into a month's Reels folder links to Post 3; numbered cover photos dress their cards; board backgrounds follow designated picks."],
+    ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in: the month folder, Cover photos, Courtney to edit, Reels, Carousels, Strategy outline, plus the Grid Archive."],
+    ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above)."],
+    ["Save arrangement", "When you hit Save in the grid editor", "The saved order becomes the card covers (cropped 3:4) and the montage; Drive cover photos and the Grid card follow. Nothing touches your saved order unless you change it."],
+  ];
+  if (op === "automations_card" && req.method === "POST") {
+    const okKeyA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authA = okKeyA ? null : await getAuthEarly(req);
+    if (!okKeyA && !ownerRole(authA)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawA = await kvGet("lavalle_data"); const blobA = Array.isArray(rawA) ? rawA[0] : rawA;
+    const bdA = blobA && blobA.boards && blobA.boards["lavalle-sisters"];
+    if (!bdA) { res.json({ ok: false }); return; }
+    const listA = bdA.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdA.lists[0];
+    let cardA = bdA.cards.find((c) => /^automations\b/i.test(c.name || ""));
+    if (!cardA) { cardA = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listA.id, name: "Automations — what runs on its own", labels: [], members: [], attachments: [], links: [], done: false }; bdA.cards.unshift(cardA); }
+    cardA.name = "Automations — what runs on its own";
+    cardA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + AUTOMATIONS.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
+    await kvSet("lavalle_data", blobA);
+    res.json({ ok: true, automations: AUTOMATIONS.length });
+    return;
+  }
+  // ── Strategy Outline PDF (pdf-lib) ───────────────────────────────────────
+  if (op === "sisters_strategy_pdf" && req.method === "POST") {
+    const okKeyS2 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authS2 = okKeyS2 ? null : await getAuthEarly(req);
+    if (!okKeyS2 && !ownerRole(authS2)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const bS2 = req.body || {};
+    const rawS2 = await kvGet("lavalle_data"); const blobS2 = Array.isArray(rawS2) ? rawS2[0] : rawS2;
+    const bdS2 = blobS2 && blobS2.boards && blobS2.boards["lavalle-sisters"];
+    if (!bdS2) { res.json({ ok: false, error: "no board" }); return; }
+    const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
+    const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+ /.test(c.name || ""))
+      .map((c) => ({ n: Number(/^Post (\d+)/.exec(c.name)[1]), name: c.name, desc: c.desc || "", tags: c.tags || "", cover: c.cover, approved: !!c.approved, isC: / — /.test(c.name) && /Courtney/i.test(c.desc || "") }))
+      .sort((a, b) => a.n - b.n);
+    if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
+    const ours = postCards.filter((p) => !p.isC);
+    const allApproved = ours.length > 0 && ours.every((p) => p.approved);
+    const sig = createHash("sha256").update(JSON.stringify(postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover]))).digest("hex").slice(0, 12);
+    const prev = (await kvGet("sisters_strategy_pdf_state")) || {};
+    if (!bS2.force && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
+    const views = ((await kvGet("sisters_grid_card_views")) || {}).views || {};
+    const theme = (await kvGet("sisters_strategy_theme")) || { title: "September 2026", body: "First chill. Transitional layering — cashmere cardigans, linen sets, eyelet — meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+    const pdf = await PDFDocument.create();
+    const serif = await pdf.embedFont(StandardFonts.TimesRoman);
+    const sans = await pdf.embedFont(StandardFonts.Helvetica);
+    const sansB = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const W = 1280, H = 720, ink = rgb(0.1, 0.1, 0.1), sub = rgb(0.44, 0.44, 0.42), cream = rgb(0.992, 0.988, 0.98);
+    const page0 = pdf.addPage([W, H]); page0.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream });
+    const header = (pg, right) => { pg.drawText("LAVALLE SISTERS", { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(right, { x: W - 40 - sans.widthOfTextAtSize(right, 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
+    header(page0, theme.title);
+    page0.drawText("Strategy Outline — " + theme.title, { x: 40, y: H / 2 + 60, size: 34, font: sans, color: ink });
+    const wrap = (text, font, size, maxW) => { const words = String(text).split(/\s+/); const lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (font.widthOfTextAtSize(t, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; };
+    let y0 = H / 2 + 10; for (const ln of wrap(theme.body, sans, 15, W - 80)) { page0.drawText(ln, { x: 40, y: y0, size: 15, font: sans, color: ink }); y0 -= 22; }
+    const fetchJpg = async (u) => { try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; return await pdf.embedJpg(new Uint8Array(await r.arrayBuffer())); } catch (e) { return null; } };
+    const addFeedPage = async (title, items, imgUrl) => {
+      const pg = pdf.addPage([W, H]); pg.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream }); header(pg, theme.title);
+      pg.drawText(title, { x: 40, y: H - 110, size: 26, font: sans, color: ink });
+      const img = imgUrl ? await fetchJpg(imgUrl) : null;
+      let textW = W - 80; if (img) { const iw = 360, ih = iw * img.height / img.width, maxH = H - 180; const sc = Math.min(1, maxH / ih); pg.drawImage(img, { x: W - 40 - iw * sc, y: H - 130 - ih * sc, width: iw * sc, height: ih * sc }); textW = W - 120 - iw * sc; }
+      let y = H - 145;
+      for (const p of items) {
+        if (y < 60) { break; }
+        const t1 = p.name.replace(/^Post (\d+) /, "Post $1 · ") + (p.isC ? "  [Courtney — caption to come]" : "");
+        pg.drawText(t1.slice(0, 120), { x: 40, y, size: 10.5, font: sansB, color: ink }); y -= 14;
+        if (!p.isC) { for (const ln of wrap("Caption: " + p.desc, sans, 9.5, textW)) { pg.drawText(ln, { x: 40, y, size: 9.5, font: sans, color: ink }); y -= 12; if (y < 60) break; } if (p.tags) { pg.drawText(p.tags, { x: 40, y, size: 9.5, font: sans, color: sub }); y -= 12; } }
+        y -= 4;
+      }
+      return pg;
+    };
+    await addFeedPage("In-Feed — Posts 1–11", postCards.slice(0, 11), views[1]);
+    await addFeedPage("In-Feed — Posts 12–21", postCards.slice(11, 21), views[1]);
+    await addFeedPage("In-Feed — Posts 22–30", postCards.slice(21, 30), views[2]);
+    await addFeedPage("In-Feed — Posts 31–42", postCards.slice(30, 42), views[3]);
+    const bytes = await pdf.save();
+    const pdfBuf = Buffer.from(bytes);
+    // Drive: Lavalle Sisters / <Month> / Strategy outline / <title> Strategy Outline.pdf
+    const gtS2 = await googleToken(); let driveId = null;
+    if (gtS2) {
+      const lsS = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtS2 } })).json()).files || [];
+      const mkS = async (name, parent) => { const hit = (await lsS(parent)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim() === name); if (hit) return hit.id; return (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtS2, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json()).id; };
+      const SIS2 = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU";
+      const monthName = (theme.title.split(/[\s+]+/)[0] || "September");
+      const mF = await mkS(monthName, SIS2); const soF = await mkS("Strategy outline", mF);
+      const fname = theme.title + " Strategy Outline.pdf";
+      for (const f of await lsS(soF)) if (f.name === fname) await fetch("https://www.googleapis.com/drive/v3/files/" + f.id, { method: "PATCH", headers: { Authorization: "Bearer " + gtS2, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+      const bd9 = "lhs" + pdfBuf.length.toString(36);
+      const meta9 = JSON.stringify({ name: fname, parents: [soF] });
+      const pre9 = `--${bd9}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta9}\r\n--${bd9}\r\nContent-Type: application/pdf\r\n\r\n`;
+      const up9 = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtS2, "Content-Type": `multipart/related; boundary=${bd9}` }, body: Buffer.concat([Buffer.from(pre9, "utf8"), pdfBuf, Buffer.from(`\r\n--${bd9}--`, "utf8")]) })).json();
+      driveId = up9.id || null;
+    }
+    const pdfUrl = driveId ? "https://drive.google.com/file/d/" + driveId + "/view" : null;
+    // attach to Grid card + Strategy Outline column card
+    const gridCard = bdS2.cards.find((c) => /^grid\b/i.test(c.name || ""));
+    if (gridCard && pdfUrl) { gridCard.attachments = (gridCard.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
+    const soList = bdS2.lists.find((l) => /strategy outline/i.test(l.name || ""));
+    if (soList) {
+      let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
+      if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; bdS2.cards.push(sc); }
+      sc.cover = views[1] || views[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : ""); sc.attachments = pdfUrl ? [{ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : sc.attachments;
+    }
+    await kvSet("lavalle_data", blobS2);
+    await kvSet("sisters_strategy_pdf_state", { sig, at: Date.now(), pdfUrl });
+    res.json({ ok: true, built: true, pdfUrl, posts: postCards.length, allApproved });
+    return;
+  }
+  // ── Next-month theme from performance ────────────────────────────────────
+  if (op === "sisters_theme_card" && req.method === "POST") {
+    const okKeyT2 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authT3 = okKeyT2 ? null : await getAuthEarly(req);
+    if (!okKeyT2 && !ownerRole(authT3)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
+    const base = "https://graph.instagram.com/v23.0";
+    const rows = [];
+    for (const t of accts) {
+      if (!/sister/i.test(t.username || "")) continue;
+      try {
+        const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=30&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        for (const m of (media.data || [])) {
+          let saved = null, reach = null;
+          try { const d = await (await fetch(`${base}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch {}
+          rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp });
+        }
+      } catch (e) {}
+    }
+    const nowT = new Date(); const nextM = new Date(Date.UTC(nowT.getUTCFullYear(), nowT.getUTCMonth() + 1, 1));
+    const MON2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const label = MON2[nextM.getUTCMonth()] + " " + nextM.getUTCFullYear();
+    let analysis = null;
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (key) {
+      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Here are recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => ((b.saved || 0) * 3 + b.likes + b.comments * 2) - ((a.saved || 0) * 3 + a.likes + a.comments * 2)).slice(0, 20).map((r) => `- [${r.kind}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + "\n\nIdentify the 3 top-performing TOPICS (not individual posts), then propose ONE theme for " + label + " that leans into them while staying in the brands' calm, considered register. Return ONLY JSON: {\"topTopics\":[\"…\",\"…\",\"…\"],\"theme\":\"3-6 word theme title\",\"rationale\":\"2 sentences\",\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"formatMix\":\"one sentence on reels/carousels/statics\"}";
+      try {
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }) });
+        const j = await r.json(); const txt = (j.content || []).map((c) => c.text || "").join("");
+        const m = txt.match(/\{[\s\S]*\}/); if (m) analysis = JSON.parse(m[0]);
+      } catch (e) {}
+    }
+    const rawT3 = await kvGet("lavalle_data"); const blobT3 = Array.isArray(rawT3) ? rawT3[0] : rawT3;
+    const bdT3 = blobT3 && blobT3.boards && blobT3.boards["lavalle-sisters"];
+    if (!bdT3) { res.json({ ok: false }); return; }
+    const soL = bdT3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdT3.lists[0];
+    let tc = bdT3.cards.find((c) => c.listId === soL.id && /^Theme — /i.test(c.name || "") && (c.name || "").includes(label));
+    if (!tc) { tc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soL.id, name: "Theme — " + label + " (proposed)", labels: [], members: [], attachments: [], links: [], done: false }; bdT3.cards.unshift(tc); }
+    tc.desc = analysis
+      ? "Proposed theme: " + analysis.theme + "\n\nWhy: " + analysis.rationale + "\n\nTop-performing topics right now:\n" + (analysis.topTopics || []).map((x) => "• " + x).join("\n") + "\n\nPillars for the month:\n" + (analysis.pillars || []).map((x) => "• " + x).join("\n") + "\n\nFormat mix: " + (analysis.formatMix || "") + "\n\n(Generated from Instagram performance — " + rows.length + " recent posts. Edit freely; this is a starting point.)"
+      : "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
+    await kvSet("lavalle_data", blobT3);
+    res.json({ ok: true, label, posts: rows.length, theme: analysis && analysis.theme });
+    return;
+  }
+  // ── Links card → current month's Drive folders ───────────────────────────
+  if (op === "sisters_links_card" && req.method === "POST") {
+    const okKeyL3 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authL3 = okKeyL3 ? null : await getAuthEarly(req);
+    if (!okKeyL3 && !ownerRole(authL3)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtL3 = await googleToken(); if (!gtL3) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const lsL3 = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [];
+    const SIS3 = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU";
+    const wm3 = (await kvGet("sisters_working_month")) || "September";
+    const top = await lsL3(SIS3);
+    const mF = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === wm3.toLowerCase());
+    if (!mF) { res.json({ ok: false, error: "month folder missing: " + wm3 }); return; }
+    const subs = (await lsL3(mF.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    const order = ["cover photos", "courtney to edit", "reels", "carousels", "strategy outline", "grid"];
+    subs.sort((a, b) => { const ia = order.indexOf((a.name || "").trim().toLowerCase()), ib = order.indexOf((b.name || "").trim().toLowerCase()); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+    const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => ({ label: wm3 + " → " + (f.name || "").trim(), url: "https://drive.google.com/drive/folders/" + f.id })));
+    links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
+    links.push({ label: "Grid Archive", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
+    const rawL3 = await kvGet("lavalle_data"); const blobL3 = Array.isArray(rawL3) ? rawL3[0] : rawL3;
+    const bdL3 = blobL3 && blobL3.boards && blobL3.boards["lavalle-sisters"];
+    if (!bdL3) { res.json({ ok: false }); return; }
+    const soL3 = bdL3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdL3.lists[0];
+    let lc = bdL3.cards.find((c) => /^links\b/i.test((c.name || "").trim()));
+    if (!lc) { lc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soL3.id, name: "Links", labels: [], members: [], attachments: [], done: false }; bdL3.cards.push(lc); }
+    lc.name = "Links — " + wm3 + " folders (auto)";
+    lc.links = links.map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), label: l.label, url: l.url }));
+    lc.desc = "Drive shortcuts for the month we're working in — updated automatically when the working month changes.\n\n" + links.map((l) => l.label + ": " + l.url).join("\n");
+    await kvSet("lavalle_data", blobL3);
+    res.json({ ok: true, month: wm3, links: links.length });
+    return;
+  }
   // ── Sisters grid card (To Do column) ─────────────────────────────────────
   // Her rule: a "Grid" card under To Do whose cover is ALWAYS the grid window
   // we're in — 1-9 → 1-21 → 22-30 → 31-42 — rendered from the live tiles with
