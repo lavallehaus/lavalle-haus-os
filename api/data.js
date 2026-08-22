@@ -1959,7 +1959,7 @@ export default async function handler(req, res) {
     for (let wi = 0; wi < WINDOWS.length; wi++) {
       const [a, b] = WINDOWS[wi]; const label = "Grid " + a + "–" + b;
       if (!cacheW.views[wi]) {
-        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix + SBOARD.kvSuffix, cacheW); }
+        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW); }
         else { res.json({ ok: true, partial: true, renderedWindow: rendered, next: wi }); return; }
       }
       views.push({ label, url: cacheW.views[wi] });
