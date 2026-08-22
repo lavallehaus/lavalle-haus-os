@@ -567,11 +567,15 @@ async function kvGet(key) {
   try { return JSON.parse(d.result); } catch { return null; }
 }
 async function kvSet(key, value) {
-  await fetch(`${KV_URL}/set/${key}`, {
+  const r = await fetch(`${KV_URL}/set/${key}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${KV_TOKEN}` },
     body: JSON.stringify(value),
   });
+  // Upstash answers 200 with {"error":"..."} when the store is full / the
+  // request is too large. Surface it instead of pretending the write landed.
+  let d = null; try { d = await r.json(); } catch {}
+  if (!r.ok || (d && d.error)) { const msg = "kvSet " + key + " failed: " + (d && d.error ? d.error : r.status); console.error(msg); throw new Error(msg); }
 }
 // Atomic publish claim (SET NX): only ONE runner in the whole fleet — cron,
 // app-level advancers on any number of open devices, manual "post now" — can
@@ -1060,6 +1064,50 @@ export default async function handler(req, res) {
   // so once enough covers were added, saves failed with 413 and an hour of work
   // vanished silently. Images now live in their own KV entries and the board
   // only keeps a short reference.
+  // ── KV health + media garbage collection (owner) ───────────────────────────
+  // The media store keeps images as base64 in Redis. When the database hits its
+  // storage cap, Upstash rejects every write while reads keep working — and
+  // because kvSet never checked the response, the app kept answering "saved".
+  // kv_health surfaces the raw SET response; media_gc deletes media_* keys no
+  // other key references (dry run unless {apply:true}; {keep:[ids]} protects ids).
+  if (op === "kv_health" && req.method === "POST") {
+    const authKH = await getAuthEarly(req);
+    if (!ownerRole(authKH)) { res.status(403).json({ error: "Owner only." }); return; }
+    const cmd = async (arr) => { const r = await fetch(KV_URL, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(arr) }); return { status: r.status, body: (await r.text()).slice(0, 300) }; };
+    const dbsize = await cmd(["DBSIZE"]);
+    const probe = await cmd(["SET", "lh_probe", String(Date.now()), "EX", "60"]);
+    const big = await cmd(["SET", "lh_probe_big", "x".repeat(200000), "EX", "60"]);
+    res.json({ ok: true, dbsize, probe, big });
+    return;
+  }
+  if (op === "media_gc" && req.method === "POST") {
+    const authGC = await getAuthEarly(req);
+    if (!ownerRole(authGC)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bGC = req.body || {};
+    const cmd = async (arr) => { const r = await fetch(KV_URL, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(arr) }); const d = await r.json().catch(() => ({})); return d.result; };
+    const pipe = async (cmds) => { const r = await fetch(KV_URL + "/pipeline", { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(cmds) }); return (await r.json().catch(() => [])) || []; };
+    const t0 = Date.now();
+    // 1. every key
+    let cursor = "0"; const keys = [];
+    do { const r = await cmd(["SCAN", cursor, "COUNT", "1000"]); if (!r) break; cursor = String(r[0]); keys.push(...(r[1] || [])); } while (cursor !== "0" && keys.length < 200000);
+    const mediaKeys = keys.filter((k) => k.startsWith("media_"));
+    const otherKeys = keys.filter((k) => !k.startsWith("media_") && !k.startsWith("lh_probe"));
+    // 2. tokens referenced anywhere outside the media store
+    const referenced = new Set((bGC.keep || []).map(String));
+    for (let i = 0; i < otherKeys.length; i += 20) {
+      const chunk = otherKeys.slice(i, i + 20);
+      const vals = await pipe(chunk.map((k) => ["GET", k]));
+      for (const v of vals) { const s = typeof (v && v.result) === "string" ? v.result : JSON.stringify((v && v.result) || ""); for (const m of s.matchAll(/[A-Za-z0-9]{14,}/g)) referenced.add(m[0]); }
+      if (Date.now() - t0 > 40000) { res.json({ ok: false, error: "timeout while scanning references", scanned: i, ofKeys: otherKeys.length, mediaKeys: mediaKeys.length }); return; }
+    }
+    const orphans = mediaKeys.filter((k) => !referenced.has(k.slice(6)));
+    let deleted = 0;
+    if (bGC.apply) {
+      for (let i = 0; i < orphans.length; i += 100) { const r = await cmd(["DEL", ...orphans.slice(i, i + 100)]); deleted += Number(r) || 0; if (Date.now() - t0 > 50000) break; }
+    }
+    res.json({ ok: true, keys: keys.length, mediaKeys: mediaKeys.length, otherKeys: otherKeys.length, referencedTokens: referenced.size, orphans: orphans.length, sample: orphans.slice(0, 8), deleted, applied: !!bGC.apply, ms: Date.now() - t0 });
+    return;
+  }
   if (op === "media_put" && req.method === "POST") {
     const b = req.body || {};
     const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(b.dataUrl || ""));
@@ -4025,11 +4073,13 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "Refusing to save: body doesn't look like the app state (no boards/products/gridPlanner)." });
       return;
     }
-    await fetch(`${url}/set/lavalle_data`, {
+    const rs = await fetch(`${url}/set/lavalle_data`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
+    let ds = null; try { ds = await rs.json(); } catch {}
+    if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
     res.json({ ok: true });
   }
 }
