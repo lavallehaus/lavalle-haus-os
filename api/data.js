@@ -1810,11 +1810,15 @@ export default async function handler(req, res) {
     const soList = bdS2.lists.find((l) => /strategy outline/i.test(l.name || ""));
     if (soList) {
       let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
-      if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; bdS2.cards.push(sc); }
-      sc.cover = views[1] || views[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : ""); sc.attachments = pdfUrl ? [{ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : sc.attachments;
+      if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
+      bdS2.cards = bdS2.cards.filter((c) => c !== sc); bdS2.cards.unshift(sc); // current month always tops the column
+      sc.cover = views[1] || views[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "");
+      const winLabels = ["Grid 1\u20139", "Grid 1\u201321", "Grid 22\u201330", "Grid 31\u201342"];
+      const winAtt = [0, 1, 2, 3].filter((i) => views[i]).map((i) => ({ id: "sow" + i, name: winLabels[i], url: views[i], type: "image/jpeg" }));
+      sc.attachments = pdfUrl ? [...winAtt, { id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : sc.attachments;
     }
     await kvSet("lavalle_data", blobS2);
-    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl });
+    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl });
     res.json({ ok: true, built: true, pdfUrl, posts: postCards.length, allApproved });
     return;
   }
