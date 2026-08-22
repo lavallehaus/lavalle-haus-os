@@ -1740,8 +1740,22 @@ export default async function handler(req, res) {
       return "/cover/" + mid + ".jpg";
     };
     const WINDOWS = [[1, 9], [1, 21], [22, 30], [31, 42]];
+    // one window per invocation (each render is ~10-20s on serverless); results
+    // cached against a hash of the tile set so a rearrangement re-renders and an
+    // unchanged grid costs nothing. The pinger's repeated calls converge.
+    const tilesHash = createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
+    let cacheW = (await kvGet("sisters_grid_card_views")) || {};
+    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
     const views = [];
-    for (const [a, b] of WINDOWS) views.push({ label: "Grid " + a + "–" + b, url: await render(a, Math.min(b, all.length)) });
+    let rendered = null;
+    for (let wi = 0; wi < WINDOWS.length; wi++) {
+      const [a, b] = WINDOWS[wi]; const label = "Grid " + a + "–" + b;
+      if (!cacheW.views[wi]) {
+        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views", cacheW); }
+        else { res.json({ ok: true, partial: true, renderedWindow: rendered, next: wi }); return; }
+      }
+      views.push({ label, url: cacheW.views[wi] });
+    }
     // which window are we in? post index from the Aug 22 start at daily cadence + MWF
     const start = Date.UTC(2026, 7, 22);
     const dayN = Math.max(0, Math.floor((Date.now() - start) / 86400000));
