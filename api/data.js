@@ -1699,19 +1699,36 @@ export default async function handler(req, res) {
     const all = [...(g1.tiles || []), ...(g2.tiles || [])];
     if (all.length < 21) { res.json({ ok: false, error: "tiles not seeded" }); return; }
     const Jimp = (await import("jimp")).default;
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+    // 3x5 pixel digits drawn by hand (no font files in the serverless bundle)
+    const DIG = { "0": ["111","101","101","101","111"], "1": ["010","110","010","010","111"], "2": ["111","001","111","100","111"], "3": ["111","001","111","001","111"], "4": ["101","101","111","001","001"], "5": ["111","100","111","001","111"], "6": ["111","100","111","101","111"], "7": ["111","001","001","001","001"], "8": ["111","101","111","101","111"], "9": ["111","101","111","001","111"] };
+    const drawNum = (img, text, x0, y0, px) => {
+      let x = x0;
+      for (const ch of String(text)) {
+        const g = DIG[ch]; if (!g) continue;
+        for (let r = 0; r < 5; r++) for (let c2 = 0; c2 < 3; c2++) if (g[r][c2] === "1") {
+          // shadow then white
+          img.scan(x + c2 * px + 2, y0 + r * px + 2, px, px, function (xx, yy, idx) { this.bitmap.data[idx] = 20; this.bitmap.data[idx + 1] = 20; this.bitmap.data[idx + 2] = 20; this.bitmap.data[idx + 3] = 140; });
+          img.scan(x + c2 * px, y0 + r * px, px, px, function (xx, yy, idx) { this.bitmap.data[idx] = 255; this.bitmap.data[idx + 1] = 255; this.bitmap.data[idx + 2] = 255; this.bitmap.data[idx + 3] = 255; });
+        }
+        x += 4 * px;
+      }
+    };
+    const tileCache = {};
+    const getTile = async (cover) => {
+      if (tileCache[cover]) return tileCache[cover].clone();
+      const u = /^https?:/.test(cover) ? cover : APP_ORIGIN + cover;
+      const r = await fetch(u); if (!r.ok) return null;
+      const t = (await Jimp.read(Buffer.from(await r.arrayBuffer()))).cover(360, 480);
+      tileCache[cover] = t; return t.clone();
+    };
     const render = async (from, to) => {
       const slice = all.slice(from - 1, to);
       const n = slice.length, rows = Math.ceil(n / 3);
       const cv = await new Jimp(1080, rows * 480, 0xf2efe9ff);
       for (let i = 0; i < n; i++) {
         try {
-          const u = /^https?:/.test(slice[i].cover) ? slice[i].cover : APP_ORIGIN + slice[i].cover;
-          const r = await fetch(u); if (!r.ok) continue;
-          const t = (await Jimp.read(Buffer.from(await r.arrayBuffer()))).cover(360, 480);
-          // white post number, top-left, small shadow for legibility
-          const num = String(from + i);
-          t.print(font, 13, 9, num); t.print(font, 12, 8, num);
+          const t = await getTile(slice[i].cover); if (!t) continue;
+          drawNum(t, from + i, 12, 12, 5);
           if (slice[i].tag === "C") { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
           cv.composite(t, (2 - (i % 3)) * 360, (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
