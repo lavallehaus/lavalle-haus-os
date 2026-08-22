@@ -2009,7 +2009,7 @@ export default async function handler(req, res) {
     // the tray (her photo pool) is shared across both grids and can be saved
     // alone — deleting or adding pool photos shouldn't force a re-render
     if (Array.isArray(bT.tray) && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
-      await kvSet("sisters_grid_tray" + SBOARD.kvSuffix + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+      await kvSet("sisters_grid_tray" + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
       res.json({ ok: true, tray: true });
       return;
     }
@@ -2020,18 +2020,22 @@ export default async function handler(req, res) {
       const seen = new Set(bT.order.map(Number));
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
     } else { res.status(400).json({ error: "expected tiles or a complete order" }); return; }
-    if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray" + SBOARD.kvSuffix + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
+    if (Array.isArray(bT.tray)) await kvSet("sisters_grid_tray" + SBOARD.kvSuffix, bT.tray.map((t) => String(t || "").slice(0, 300)).slice(0, 200));
     // Write the arrangement back onto the Schedule 1-21 cards so the cover she
     // placed (or reframed) in the grid IS the card's cover when it schedules:
     // grid 1 K-tiles → Posts 1..15 (+C1..C6), grid 2 K-tiles → Posts 16..21 (+C7..C12).
     try {
       const rawW = await kvGet("lavalle_data");
       const blobW = Array.isArray(rawW) ? rawW[0] : rawW;
-      const bdW = blobW && blobW.boards && blobW.boards["lavalle-sisters"];
+      const bdW = blobW && blobW.boards && blobW.boards[SBOARD.key];
       if (bdW) {
-        const schedW = bdW.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
+        const schedW = bdW.lists.find((l) => ((!SBOARD.hasCourtney && g === "2") ? /^schedule\s*22\s*[-\u2013]\s*42$/i : /^schedule\s*1\s*[-\u2013]\s*21$/i).test((l.name || "").trim()));
         const crtW = bdW.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
-        const kStart = g === "1" ? 1 : 16, kEnd = g === "1" ? 15 : 21, cStart = g === "1" ? 1 : 7;
+        // Fold (no Courtney): grid 1 = Posts 1..21; grid 2 = Posts 22..42 (Schedule 22-42 list).
+        const foldW = !SBOARD.hasCourtney;
+        const kStart = foldW ? (g === "1" ? 1 : 22) : (g === "1" ? 1 : 16);
+        const kEnd = foldW ? (g === "1" ? 21 : 42) : (g === "1" ? 15 : 21);
+        const cStart = g === "1" ? 1 : 7;
         let kN = kStart, cN = cStart, wrote = 0;
         for (const t of rec.tiles) {
           if (t.tag === "K") {
@@ -2074,9 +2078,9 @@ export default async function handler(req, res) {
     await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
     rec.mid = midT;
     await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, rec);
-    // replace the Drive archive file for this grid
+    // replace the Drive archive file for this grid (sisters-only; Fold archives live in Social Media/<Month>/grid)
     try {
-      const gtT = await googleToken();
+      const gtT = SBOARD.hasCourtney ? await googleToken() : null;
       if (gtT) {
         const qT = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
         const fT = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qT + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtT } })).json();
