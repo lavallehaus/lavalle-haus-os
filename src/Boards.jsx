@@ -1442,6 +1442,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // Two Drive-asset buttons — cover photo + reel/carousel — each editable inline.
   const coverLinkOf = (cd) => cd.coverUrl || ((cd.links || []).find((l) => /cover/i.test(l.n)) || {}).u || "";
   const [coverUrl, setCoverUrl] = useState(coverLinkOf(card));
+  const [presenting, setPresenting] = useState(false); // full-screen page viewer from inside the card
+  const [presentIdx, setPresentIdx] = useState(0);
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
@@ -1523,6 +1525,18 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <div style={{ fontFamily: sans, fontSize: 18, fontWeight: 300, color: c.ink }}>{isNew ? "New card" : "Card"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
         </div>
+        {/* Present mode from inside the card: any card carrying page/image
+            attachments (the Strategy Outline, the Grid card) opens full-screen,
+            swipeable, ESC to leave — the same viewer as the ⤢ on the board tile. */}
+        {(() => { const pres = (attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "")); if (!pres.length) return null; return (
+          <>
+            <button onClick={() => { setPresentIdx(0); setPresenting(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, width: "100%", background: c.ink, border: "none", borderRadius: 1, padding: "12px 14px", cursor: "pointer", color: c.bg, fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase" }}>
+              <span style={{ fontFamily: "Georgia, serif", fontSize: 16, lineHeight: "16px" }}>⤢</span> Present{pres.length > 1 ? " · " + pres.length + " pages" : ""} <span style={{ marginLeft: "auto", opacity: 0.7, letterSpacing: 1 }}>full screen</span>
+            </button>
+            {presenting && <PresentOverlay images={pres} index={presentIdx} setIndex={setPresentIdx} onClose={() => setPresenting(false)} alt={name} />}
+          </>
+        ); })()}
 
         <button onClick={() => setDone(!done)}
           style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, background: "transparent", border: `1px solid ${done ? c.green : c.line}`, borderRadius: 1, padding: "8px 12px", cursor: "pointer" }}>

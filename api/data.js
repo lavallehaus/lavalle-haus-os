@@ -1877,69 +1877,17 @@ export default async function handler(req, res) {
     const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
     const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid/theme edits
     if (!bS2.force && !staleRebuild && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
-    // shared content
-    const SECTIONS = [["In-Feed: Posts 1 to 11", postCards.slice(0, 11), views[1]], ["In-Feed: Posts 12 to 21", postCards.slice(11, 21), views[1]], ["In-Feed: Posts 22 to 30", postCards.slice(21, 30), views[2]], ["In-Feed: Posts 31 to 42", postCards.slice(30, 42), views[3]]];
-    const titleOf = (p) => "Post " + p.n + (p.date ? " · " + p.date : "") + (p.isC ? (p.concept ? " · " + p.concept : "") + "  [Courtney: caption to come]" : "");
-    const imgBuf = {}; const getBuf = async (u) => { if (!u) return null; if (imgBuf[u]) return imgBuf[u]; try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; imgBuf[u] = Buffer.from(await r.arrayBuffer()); return imgBuf[u]; } catch (e) { return null; } };
-    // ── page images (Jimp, 1920×1080, Open Sans; fonts bundled via vercel.json includeFiles) ──
-    const pageUrls = []; let pageErr = null;
-    try {
-    const Jimp = (await import("jimp")).default;
-    const F16 = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK), F32 = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK), F64 = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK), F14 = await Jimp.loadFont(Jimp.FONT_SANS_14_BLACK);
-    const PW = 1920, PH = 1080, CREAM = 0xFDFCFAFF;
-    const inkLine = (pg, x, y, w, h) => pg.scan(x, y, w, h, function (xx, yy, idx) { this.bitmap.data[idx] = 26; this.bitmap.data[idx + 1] = 26; this.bitmap.data[idx + 2] = 26; this.bitmap.data[idx + 3] = 255; });
-    const soft = async (pg, font, x, y, text, maxW, opacity) => { const h = Jimp.measureTextHeight(font, text, maxW) + 6; const layer = await new Jimp(maxW, h, 0x00000000); layer.print(font, 0, 0, { text }, maxW); pg.composite(layer, x, y, { mode: Jimp.BLEND_SOURCE_OVER, opacitySource: opacity }); return h - 6; };
-    const newPage = async () => { const pg = await new Jimp(PW, PH, CREAM); pg.print(F32, 60, 40, SBOARD.label); const tw = Jimp.measureText(F32, theme.title); pg.print(F32, PW - 60 - tw, 40, theme.title); inkLine(pg, 60, 94, PW - 120, 1); const fw = Jimp.measureText(F14, "LAVALLE HAUS OS"); pg.print(F14, (PW - fw) / 2, PH - 44, "LAVALLE HAUS OS"); return pg; };
-    const pageImgs = [];
-    { const pg = await newPage(); pg.print(F64, 60, PH / 2 - 130, { text: "Strategy Outline: " + theme.title }, PW - 120); pg.print(F32, 60, PH / 2 - 30, { text: theme.body }, PW - 120); pageImgs.push(pg); }
-    for (const [title, items, viewUrl] of SECTIONS) {
-      const pg = await newPage(); pg.print(F32, 60, 126, title);
-      let textW = PW - 120; const vb = await getBuf(viewUrl);
-      if (vb) { try { const gi = await Jimp.read(vb); const maxH = PH - 250; let w = 540, h = Math.round(gi.bitmap.height * w / gi.bitmap.width); if (h > maxH) { h = maxH; w = Math.round(gi.bitmap.width * h / gi.bitmap.height); } gi.resize(w, h); pg.composite(gi, PW - 60 - w, 150); textW = PW - 120 - w - 50; } catch (e) {} }
-      let y = 190;
-      for (const p of items) {
-        if (y > PH - 90) break;
-        const t1 = titleOf(p); pg.print(F16, 60, y, { text: t1 }, textW); pg.print(F16, 61, y, { text: t1 }, textW); y += 24;
-        if (!p.isC) {
-          if (p.desc) { const h = Jimp.measureTextHeight(F16, "Caption: " + p.desc, textW); pg.print(F16, 60, y, { text: "Caption: " + p.desc }, textW); y += h + 2; }
-          if (p.tags) { y += await soft(pg, F16, 60, y, p.tags, textW, 0.55) + 2; }
-        }
-        y += 10;
-      }
-      pageImgs.push(pg);
+    // shared renderer (lib/strategy-pages.mjs): Cormorant + Inter, cream pages,
+    // tracked cover, Loft-style in-feed pages with the numbered 3x3 grid crop.
+    // Same ops drive the page JPEGs (resvg-wasm) and the PDF (pdf-lib + fontkit).
+    const getBuf = async (u) => { if (!u) return null; try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer()); } catch (e) { return null; } };
+    const pageUrls = []; let pageErr = null; let pdfBuf = null;
+    {
+      const { renderStrategyPages } = await import("../lib/strategy-pages.mjs");
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, windows: { w121: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      pdfBuf = out.pdf;
+      for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
-    for (const pg of pageImgs) { pg.quality(88); const b = await pg.getBufferAsync(Jimp.MIME_JPEG); const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
-    } catch (ePg) { pageErr = String(ePg && ePg.message || ePg).slice(0, 200); }
-    // ── PDF (vector, pdf-lib) ──
-    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-    const pdf = await PDFDocument.create();
-    const serif = await pdf.embedFont(StandardFonts.TimesRoman);
-    const sans = await pdf.embedFont(StandardFonts.Helvetica);
-    const sansB = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const W = 1280, H = 720, ink = rgb(0.1, 0.1, 0.1), sub = rgb(0.44, 0.44, 0.42), cream = rgb(0.992, 0.988, 0.98);
-    const safe = (s) => String(s || "").replace(/[^\x00-\xFF]/g, (ch) => (ch === "·" ? "·" : ch === "’" ? "'" : ch === "“" || ch === "”" ? "\"" : "-"));
-    const page0 = pdf.addPage([W, H]); page0.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream });
-    const header = (pg, right) => { pg.drawText(SBOARD.label, { x: 40, y: H - 48, size: 22, font: serif, color: ink }); pg.drawText(safe(right), { x: W - 40 - sans.widthOfTextAtSize(safe(right), 18), y: H - 46, size: 18, font: sans, color: ink }); pg.drawLine({ start: { x: 40, y: H - 64 }, end: { x: W - 40, y: H - 64 }, thickness: 0.6, color: ink }); pg.drawText("LAVALLE HAUS OS", { x: W / 2 - sansB.widthOfTextAtSize("LAVALLE HAUS OS", 9) / 2, y: 28, size: 9, font: sansB, color: ink }); };
-    header(page0, theme.title);
-    page0.drawText(safe("Strategy Outline: " + theme.title), { x: 40, y: H / 2 + 60, size: 34, font: sans, color: ink });
-    const wrap = (text, font, size, maxW) => { const words = safe(text).split(/\s+/); const lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (font.widthOfTextAtSize(t, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; };
-    let y0 = H / 2 + 10; for (const ln of wrap(theme.body, sans, 15, W - 80)) { page0.drawText(ln, { x: 40, y: y0, size: 15, font: sans, color: ink }); y0 -= 22; }
-    const embedJpg = async (u) => { const b = await getBuf(u); if (!b) return null; try { return await pdf.embedJpg(new Uint8Array(b)); } catch (e) { return null; } };
-    for (const [title, items, viewUrl] of SECTIONS) {
-      const pg = pdf.addPage([W, H]); pg.drawRectangle({ x: 0, y: 0, width: W, height: H, color: cream }); header(pg, theme.title);
-      pg.drawText(safe(title), { x: 40, y: H - 110, size: 26, font: sans, color: ink });
-      const img = await embedJpg(viewUrl);
-      let textW = W - 80; if (img) { const iw = 360, ih = iw * img.height / img.width, maxH = H - 180; const sc = Math.min(1, maxH / ih); pg.drawImage(img, { x: W - 40 - iw * sc, y: H - 130 - ih * sc, width: iw * sc, height: ih * sc }); textW = W - 120 - iw * sc; }
-      let y = H - 145;
-      for (const p of items) {
-        if (y < 60) { break; }
-        pg.drawText(safe(titleOf(p)).slice(0, 140), { x: 40, y, size: 10.5, font: sansB, color: ink }); y -= 14;
-        if (!p.isC) { for (const ln of wrap("Caption: " + p.desc, sans, 9.5, textW)) { pg.drawText(ln, { x: 40, y, size: 9.5, font: sans, color: ink }); y -= 12; if (y < 60) break; } if (p.tags) { pg.drawText(safe(p.tags), { x: 40, y, size: 9.5, font: sans, color: sub }); y -= 12; } }
-        y -= 4;
-      }
-    }
-    const bytes = await pdf.save();
-    const pdfBuf = Buffer.from(bytes);
     // Drive: <board root> / <Month> / Strategy outline / <title> Strategy Outline.pdf
     const gtS2 = await googleToken(); let driveId = null;
     if (gtS2) {

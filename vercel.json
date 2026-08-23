@@ -2,7 +2,7 @@
   "functions": {
     "api/data.js": {
       "maxDuration": 60,
-      "includeFiles": "node_modules/@jimp/plugin-print/fonts/**"
+      "includeFiles": "{node_modules/@jimp/plugin-print/fonts/**,node_modules/@resvg/resvg-wasm/index_bg.wasm,assets/fonts/**,lib/**}"
     }
   },
   "crons": [
@@ -53,4 +53,4 @@
       "destination": "/api/data?op=slack_events"
     }
   ]
-}
+}\n
