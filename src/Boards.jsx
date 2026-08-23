@@ -121,6 +121,22 @@ function CoverCarousel({ images, alt }) {
   );
 }
 
+// An editorial cover photo on the tile + ⤢ that presents the card's pages
+// (the Strategy Outline: cover = the month's most editorial product shot, pages
+// = the outline). Tap the photo to open the card as usual.
+function CoverPresent({ cover, images, alt }) {
+  const [full, setFull] = React.useState(false);
+  const [i, setI] = React.useState(0);
+  return (
+    <div style={{ position: "relative" }}>
+      <img src={cover} alt={alt || ""} style={{ display: "block", width: "100%", height: "auto" }} />
+      <button aria-label="enlarge" title="Present" onClick={(e) => { e.stopPropagation(); setI(0); setFull(true); }}
+        style={{ position: "absolute", bottom: 6, right: 6, width: 28, height: 28, border: "1px solid rgba(143,134,118,0.55)", background: "rgba(255,255,255,0.92)", color: "#4F4B44", fontFamily: "Georgia, serif", fontSize: 15, lineHeight: "26px", cursor: "pointer", borderRadius: 2, padding: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>⤢</button>
+      {full && <PresentOverlay images={images} index={i} setIndex={setI} onClose={() => setFull(false)} alt={alt} />}
+    </div>
+  );
+}
+
 // Full-screen "present mode" for a card's image attachments — quiet-luxury:
 // deep cream backdrop, the page as large as the viewport allows, thin Georgia
 // chevrons, ESC / ✕ / backdrop-tap to leave. Rendered through a portal so no
@@ -1119,7 +1135,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         }}
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
                         style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
-                        {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); return imgs.length >= 2 ? <CoverCarousel images={imgs} alt={card.name} /> : (card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />); })()}
+                        {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
                           {(card.labels || []).length > 0 && (

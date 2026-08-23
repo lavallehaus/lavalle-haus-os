@@ -1813,7 +1813,8 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card under “Grid & Shoot List” re-renders the four numbered windows (1–9, 1–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in by date. White dot = Courtney's post."],
-    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag or the theme changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
+    ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
+    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
     ["Next-month Theme card", "Monthly (1st) + whenever re-run", "Reads our top-performing Instagram posts (likes, comments, saves, reach) and proposes next month's theme in the Strategy Outline column — a starting point, edit freely."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
@@ -1837,6 +1838,62 @@ export default async function handler(req, res) {
     cardA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + AUTOMATIONS.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
     await kvSet("lavalle_data", blobA);
     res.json({ ok: true, automations: AUTOMATIONS.length });
+    return;
+  }
+  // ── Editorial cover pick (vision) ──────────────────────────────────────────
+  // Her rule: the Strategy Outline card's cover is always the most editorial
+  // product photo of the CURRENT grid; the category alternates as grids switch
+  // (first grid = its majority category, e.g. fashion if 12 of 21 lean fashion;
+  // the next grid = the other category; and so on). Also ranks the grid's photos
+  // for the collage on the Strategy page. Cached per grid + tiles hash.
+  if (op === "sisters_cover_pick" && req.method === "POST") {
+    const okKeyP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authP = okKeyP ? null : await getAuthEarly(req);
+    if (!okKeyP && !ownerRole(authP)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const akeyP = process.env.ANTHROPIC_API_KEY;
+    if (!akeyP) { res.json({ ok: false, error: "ANTHROPIC_API_KEY not set" }); return; }
+    const startP = Date.UTC(2026, 7, 22); const dayP = Math.max(0, Math.floor((Date.now() - startP) / 86400000));
+    let postNP = 0; let dP = new Date(startP); for (let i = 0; i <= dayP && postNP < 42; i++) { postNP++; if ([1, 3, 5].includes(dP.getUTCDay())) postNP++; dP = new Date(dP.getTime() + 86400000); }
+    const gridNum = postNP <= 21 ? "1" : "2";
+    const recP = (await kvGet("sisters_grid_tiles_" + gridNum + SBOARD.kvSuffix)) || { tiles: [] };
+    const tilesP = (recP.tiles || []).slice(0, 21);
+    if (tilesP.length < 9) { res.json({ ok: false, error: "grid " + gridNum + " not seeded" }); return; }
+    const hashP = createHash("sha256").update(JSON.stringify(tilesP.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
+    const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026" };
+    const keyP = theme.title + ":" + gridNum;
+    const stateP = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
+    if (stateP && stateP.key === keyP && stateP.hash === hashP && !(req.body || {}).force) { res.json({ ok: true, cached: true, ...stateP }); return; }
+    // thumbnails (base64) — small enough to send 21 at once
+    const Jimp = (await import("jimp")).default;
+    const content = [];
+    for (let i = 0; i < tilesP.length; i++) {
+      try { const u = /^https?:/.test(tilesP[i].cover) ? tilesP[i].cover : APP_ORIGIN + tilesP[i].cover; const r = await fetch(u); if (!r.ok) continue; const im = await Jimp.read(Buffer.from(await r.arrayBuffer())); im.resize(300, Jimp.AUTO); im.quality(70); const b = await im.getBufferAsync(Jimp.MIME_JPEG); content.push({ type: "text", text: "Tile " + (i + 1) + ":" }); content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b.toString("base64") } }); } catch (e) {}
+    }
+    content.push({ type: "text", text: "These are the " + tilesP.length + " photos of this month's Instagram grid for " + SBOARD.themeLabelBrand + ". For EACH tile give: category = \"fashion\" (clothing, outfits, garments, styling) | \"beauty\" (body care, candles, skincare, home ritual) | \"lifestyle\" (the founders, behind the scenes, places), and an editorial score 1-10 for how much it reads like a quiet-luxury campaign image (composition, light, restraint; product or garment clearly the subject; not a phone snap, not a busy BTS shot, no screens, no visible text). Return ONLY JSON: {\"tiles\":[{\"i\":1,\"category\":\"fashion\",\"editorial\":8}, …]}" });
+    let parsedP = null;
+    try {
+      const rP = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": akeyP, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content }] }) });
+      const dP2 = await rP.json(); const txt = (dP2.content || []).map((c) => c.text || "").join("");
+      parsedP = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+    } catch (e) { res.json({ ok: false, error: "vision failed: " + String(e && e.message).slice(0, 200) }); return; }
+    const rows = (parsedP.tiles || []).map((t) => ({ i: Number(t.i), cat: String(t.category || "lifestyle").toLowerCase(), score: Number(t.editorial) || 0 })).filter((t) => t.i >= 1 && t.i <= tilesP.length);
+    const count = (c) => rows.filter((t) => t.cat === c).length;
+    const majority = count("fashion") >= count("beauty") ? "fashion" : "beauty";
+    const opposite = (c) => (c === "fashion" ? "beauty" : "fashion");
+    // alternate as grids switch: a different grid than last time flips the category
+    const cat = stateP && stateP.key && stateP.key !== keyP && stateP.cat ? opposite(stateP.cat) : majority;
+    const byScore = [...rows].sort((a, b) => b.score - a.score);
+    let best = byScore.find((t) => t.cat === cat && t.score >= 5) || byScore.find((t) => t.cat === cat) || byScore[0];
+    const pick = best ? tilesP[best.i - 1].cover : null;
+    const ranked = byScore.filter((t) => t.cat !== "lifestyle" || t.score >= 8).map((t) => tilesP[t.i - 1].cover).filter((u, k, arr) => arr.indexOf(u) === k);
+    const out = { key: keyP, hash: hashP, grid: gridNum, cat, majority, pick, pickTile: best ? best.i : null, ranked: ranked.slice(0, 8), at: Date.now() };
+    await kvSet("sisters_cover_pick" + SBOARD.kvSuffix, out);
+    // the Strategy Outline card wears it
+    try {
+      const rawPk = await kvGet("lavalle_data"); const blobPk = Array.isArray(rawPk) ? rawPk[0] : rawPk; const bdPk = blobPk && blobPk.boards && blobPk.boards[SBOARD.key];
+      if (bdPk && pick) { const so = bdPk.lists.find((l) => /strategy outline/i.test(l.name || "")); const sc = so && bdPk.cards.find((c) => c.listId === so.id && /^Strategy Outline — /.test(c.name || "")); if (sc && sc.cover !== pick) { sc.cover = pick; await kvSet("lavalle_data", blobPk); } }
+    } catch (e) {}
+    res.json({ ok: true, ...out });
     return;
   }
   // ── Strategy Outline PDF (pdf-lib) + page images (Jimp) ────────────────────
@@ -1873,7 +1930,8 @@ export default async function handler(req, res) {
     if (!viewsReady) { res.json({ ok: true, skipped: true, waiting: "grid windows still rendering for this arrangement" }); return; }
     const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     theme.body = noDash(theme.body);
-    const sig = createHash("sha256").update(JSON.stringify([postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover, p.isC]), tilesHashS, views[0], views[1], views[2], views[3], theme.title, theme.body])).digest("hex").slice(0, 12);
+    const pickSig = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || {};
+    const sig = createHash("sha256").update(JSON.stringify([postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover, p.isC]), tilesHashS, views[0], views[1], views[2], views[3], theme.title, theme.body, pickSig.pick, pickSig.ranked])).digest("hex").slice(0, 12);
     const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
     const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid/theme edits
     if (!bS2.force && !staleRebuild && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
@@ -1884,7 +1942,11 @@ export default async function handler(req, res) {
     const pageUrls = []; let pageErr = null; let pdfBuf = null;
     {
       const { renderStrategyPages } = await import("../lib/strategy-pages.mjs");
-      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, windows: { w121: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
+      const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesS.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
+      const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, windows: { w121: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      var coverPickS = pickS && pickS.pick ? pickS.pick : null;
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
@@ -1915,7 +1977,7 @@ export default async function handler(req, res) {
       let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
       if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
       bdS2.cards = bdS2.cards.filter((c) => c !== sc); bdS2.cards.unshift(sc); // current month always tops the column
-      sc.cover = pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nSwipe the pages on the card, or tap ⤢ (bottom-right of the pages) for present mode.";
+      sc.cover = coverPickS || pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
       sc.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
     }
     await kvSet("lavalle_data", blobS2);
