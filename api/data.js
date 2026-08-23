@@ -1154,6 +1154,66 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Download a card's cover at its best available resolution: the Drive
+  // original (card.coverUrl Drive link → drive_img ref → the board's
+  // <Month>/Cover photos/<n>.jpg), else the media-store copy. Streams as an
+  // attachment. Public by ids, like drive_img — <a download> can't send headers.
+  if (req.method === "GET" && op === "cover_download") {
+    const bkD = String(req.query.board || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const cidD = String(req.query.card || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const rawD = await kvGet("lavalle_data"); const blobD = Array.isArray(rawD) ? rawD[0] : rawD;
+    const bdD = blobD && blobD.boards && blobD.boards[bkD];
+    const cardD = bdD && (bdD.cards || []).find((c) => c.id === cidD);
+    if (!cardD) { res.status(404).send("no card"); return; }
+    const safeName = (String(cardD.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "cover").slice(0, 80);
+    const idFromLink = (s) => ((String(s || "").match(/[-\w]{25,}/) || [])[0]) || null;
+    let fidD = cardD.coverUrl ? idFromLink(cardD.coverUrl) : null;
+    if (!fidD && /op=drive_img/.test(cardD.cover || "")) fidD = (/[?&]id=([-\w]+)/.exec(cardD.cover) || [])[1] || null;
+    const tokenD = await googleToken();
+    if (!fidD && tokenD) {
+      const nD = (/^post\s*(\d+)/i.exec(cardD.name || "") || [])[1];
+      const cfgD = bkD === "the-fold" ? { root: "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC", mk: "fold_working_month" } : bkD === "lavalle-sisters" ? { root: "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU", mk: "sisters_working_month" } : null;
+      if (nD && cfgD) {
+        try {
+          const lsD = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + tokenD } })).json()).files || [];
+          const monthD = String((await kvGet(cfgD.mk)) || "September");
+          const mF = (await lsD(cfgD.root)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === monthD.toLowerCase());
+          const cpF = mF && (await lsD(mF.id)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && /^cover photos$/i.test((f.name || "").trim()));
+          const hit = cpF && (await lsD(cpF.id)).find((f) => new RegExp("^" + nD + "\\.(jpe?g|png|heic|webp)$", "i").test((f.name || "").trim()));
+          if (hit) fidD = hit.id;
+        } catch (eD) {}
+      }
+    }
+    try {
+      if (fidD && tokenD) {
+        const ir = await fetch(`https://www.googleapis.com/drive/v3/files/${fidD}?alt=media&supportsAllDrives=true`, { headers: { Authorization: "Bearer " + tokenD } });
+        if (ir.ok) {
+          const ct = ir.headers.get("content-type") || "image/jpeg";
+          const ext = /png/.test(ct) ? "png" : /heic/.test(ct) ? "heic" : /webp/.test(ct) ? "webp" : "jpg";
+          res.setHeader("Content-Type", ct);
+          res.setHeader("Content-Disposition", `attachment; filename="${safeName}.${ext}"`);
+          res.setHeader("Cache-Control", "private, max-age=0");
+          res.send(Buffer.from(await ir.arrayBuffer()));
+          return;
+        }
+      }
+      if (cardD.cover) {
+        const u = /^https?:/.test(cardD.cover) ? cardD.cover : APP_ORIGIN + cardD.cover;
+        const mr = await fetch(u);
+        if (mr.ok) {
+          const ct = mr.headers.get("content-type") || "image/jpeg";
+          res.setHeader("Content-Type", ct);
+          res.setHeader("Content-Disposition", `attachment; filename="${safeName}.${/png/.test(ct) ? "png" : "jpg"}"`);
+          res.setHeader("Cache-Control", "private, max-age=0");
+          res.send(Buffer.from(await mr.arrayBuffer()));
+          return;
+        }
+      }
+      res.status(404).send("no cover source");
+    } catch (eD2) { res.status(500).send("err"); }
+    return;
+  }
+
   // Stream a Drive video by id — the public video_url Instagram fetches when it
   // ingests a Reel. Streamed (not buffered) with Range passthrough so large
   // files don't blow the function's response limit. Uses the app's Google token

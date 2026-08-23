@@ -1609,6 +1609,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               ⤓ Download
             </a>
           )}
+          {cover && boardKey && (
+            <a href={"/api/data?op=cover_download&board=" + encodeURIComponent(boardKey) + "&card=" + encodeURIComponent(card.id)} title="Highest-resolution copy: the Drive original (cover link, or this month's Cover photos/<n>.jpg), else the stored cover"
+              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, textDecoration: "none" }}>
+              ⤓ Original (Drive)
+            </a>
+          )}
           {cover && <button onClick={() => applyCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
 
