@@ -1923,7 +1923,7 @@ export default async function handler(req, res) {
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
-    const tilesHashS = createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
+    const tilesHashS = "w4" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // must match sisters_grid_card's views-cache key
     const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     const views = (cacheS.views || {});
     const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && [0, 1, 2, 3].every((i) => views[i]));
