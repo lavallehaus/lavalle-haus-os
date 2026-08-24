@@ -2058,7 +2058,9 @@ export default async function handler(req, res) {
     lc.name = "Links — " + wm3 + " folders (auto)";
     // Clean hyperlinks only (her rule): the card shows just the word — "Carousels",
     // "Reels" — each a click straight into its Drive folder. No raw URLs anywhere.
-    lc.links = links.map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), n: l.label, u: l.url }));
+    // Deduped by label: Drive sometimes holds two folders with the same name.
+    const seenLb = new Set();
+    lc.links = links.filter((l) => { const k = String(l.label).toLowerCase(); if (seenLb.has(k)) return false; seenLb.add(k); return true; }).map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), n: l.label, u: l.url }));
     lc.desc = "Drive shortcuts for the month we're working in — tap a link below. Updates itself when the working month changes.";
     await kvSet("lavalle_data", blobL3);
     res.json({ ok: true, month: wm3, links: links.length });
