@@ -1538,6 +1538,34 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     } catch (e) { setPub({ ...(pub || {}), account, status: "failed", error: String(e).slice(0, 160) }); }
     setPostingNow(false);
   };
+  // The auto-built Links card is a set of doors, nothing more (her rule):
+  // just the month's folders as quiet hyperlinks — no cover, members, captions,
+  // dates, comments or any other card machinery.
+  if (/^links\b/i.test(card.name || "")) return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(400px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>Links</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
+        </div>
+        {card.desc && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: c.sub, marginBottom: 16 }}>{card.desc}</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(card.links || []).map((L, i) => (
+            <a key={L.id || i} href={L.u || L.url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 14px", textDecoration: "none" }}>
+              <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: c.ink }}>{L.n || L.label}</span>
+              <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe }}>↗</span>
+            </a>
+          ))}
+          {!(card.links || []).length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: c.sub }}>The month's folders appear here on the next automatic refresh.</div>}
+        </div>
+        <button onClick={onClose}
+          style={{ display: "block", width: "100%", marginTop: 24, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       {/* 100dvh, not 100% — Safari's 100% includes the strip under its bottom
