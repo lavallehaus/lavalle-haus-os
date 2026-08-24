@@ -2320,6 +2320,21 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </span>
           ))}
         </div>
+        {/* the house tag vocabulary — one tap adds it with its locked neutral;
+            free-typed tags below stay possible, but nobody has to invent names */}
+        <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>House tags — tap to add</div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+          {[
+            { n: "Courtney", c: "#FFFFFF" },
+            { n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" },
+            { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Reel · FTC", c: "#C6CCCF" }, { n: "TT · Reel · b-roll", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },
+          ].filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
+            <button key={pr.n} onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+              {/^#fff/i.test(pr.c) && <span style={{ width: 6, height: 6, background: "#1A1A1A", display: "inline-block" }} />}+ {pr.n}
+            </button>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
           {LABEL_PALETTE.map((p) => (
             <button key={p.c} onClick={() => setLabelColor(p.c)} title={p.name}
