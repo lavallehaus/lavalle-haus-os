@@ -1472,6 +1472,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [coverUrl, setCoverUrl] = useState(coverLinkOf(card));
   const [presenting, setPresenting] = useState(false); // full-screen page viewer from inside the card
   const [presentIdx, setPresentIdx] = useState(0);
+  const [themeFb, setThemeFb] = useState(""); // feedback draft on the Theme sheet
+  const [themeBusy, setThemeBusy] = useState(false);
+  const [themeLive, setThemeLive] = useState(null); // freshly re-evaluated Theme card
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
@@ -1544,26 +1547,22 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // The auto-built Links card is a set of doors, nothing more (her rule):
   // just the month's folders as quiet hyperlinks — no cover, members, captions,
   // dates, comments or any other card machinery.
-  // Hashtags + Theme cards are notes, not work items: show just the text, quiet.
-  if (/^(hashtags|theme)\b/i.test(card.name || "")) return (
+  // Hashtags card: just the hashtags, quiet.
+  if (/^hashtags\b/i.test(card.name || "")) return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>{/^hashtags/i.test(card.name) ? "Hashtags" : "Theme"}</div>
+          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>Hashtags</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
         </div>
-        {/^hashtags/i.test(card.name) ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(card.desc || "").split(/[\s,]+/).filter((w) => w.startsWith("#")).map((h, i) => (
-              <span key={i} style={{ border: `1px solid ${c.line}`, background: c.bg, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 12, color: c.ink }}>{h}</span>
-            ))}
-            {!(card.desc || "").split(/[\s,]+/).some((w) => w.startsWith("#")) && (
-              <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{card.desc || "Nothing here yet."}</div>
-            )}
-          </div>
-        ) : (
-          <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{card.desc || "Nothing here yet."}</div>
-        )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(card.desc || "").split(/[\s,]+/).filter((w) => w.startsWith("#")).map((h, i) => (
+            <span key={i} style={{ border: `1px solid ${c.line}`, background: c.bg, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 12, color: c.ink }}>{h}</span>
+          ))}
+          {!(card.desc || "").split(/[\s,]+/).some((w) => w.startsWith("#")) && (
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{card.desc || "Nothing here yet."}</div>
+          )}
+        </div>
         <button onClick={onClose}
           style={{ display: "block", width: "100%", marginTop: 24, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
           Close
@@ -1571,6 +1570,119 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       </div>
     </div>
   );
+  // Theme card: explains how it was built (with the numbers), takes feedback,
+  // and re-evaluates itself on the spot — adjustments credited in bold.
+  if (/^theme\b/i.test(card.name || "")) { const tCard = themeLive || card; const td = tCard.themeData || null; const lbl = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "18px 0 6px" };
+    const bar = (frac) => (
+      <div style={{ flex: 1, height: 3, background: c.line, borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ width: Math.round(Math.max(0.04, Math.min(1, frac)) * 100) + "%", height: "100%", background: c.ink }} />
+      </div>
+    );
+    const sendFb = async () => {
+      const text = themeFb.trim(); if (!text || themeBusy) return;
+      setThemeBusy(true);
+      try {
+        await fetch("/api/data?op=sisters_theme_card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedback: text }) });
+        const fresh = await (await fetch("/api/data", { cache: "no-store" })).json();
+        const nc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id);
+        if (nc) setThemeLive(nc);
+        setThemeFb("");
+      } catch (e) {}
+      setThemeBusy(false);
+    };
+    return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>{(tCard.name || "Theme").replace(/\s*\(proposed\)\s*$/i, "")}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={lbl}>How this theme is made</div>
+        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12.5, lineHeight: 1.6, color: c.sub }}>
+          Proposed automatically each month from our Instagram numbers: every recent post is scored on likes, comments, saves and reach, the strongest topics surface, and the theme is drafted from them. Leave feedback below and the system re-evaluates the theme on the spot to account for it; each adjustment appears in bold, credited to whoever asked. It refreshes again every month with the new numbers.
+        </div>
+        {td && td.analytics && (
+          <>
+            <div style={lbl}>The numbers behind it</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {[["Posts read", td.analytics.posts], ["Avg likes", td.analytics.avg.likes], ["Avg comments", td.analytics.avg.comments], td.analytics.avg.saved != null ? ["Avg saves", td.analytics.avg.saved] : null].filter(Boolean).map(([k, v]) => (
+                <div key={k} style={{ flex: 1, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 6px", textAlign: "center" }}>
+                  <div style={{ fontFamily: sans, fontSize: 16, color: c.ink }}>{v}</div>
+                  <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
+                </div>
+              ))}
+            </div>
+            {(td.topTopics || []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>Top-performing topics</div>
+                {td.topTopics.map((t, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontFamily: sans, fontSize: 11, color: c.ink, width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.topic}</span>
+                    {bar((t.strength || 5) / 10)}
+                    <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, width: 22, textAlign: "right" }}>{t.strength}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(td.analytics.formats || []).length > 0 && (
+              <div>
+                <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Formats · average engagement</div>
+                {(() => { const mx = Math.max(...td.analytics.formats.map((f) => f.avgEngagement || 1)); return td.analytics.formats.map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontFamily: sans, fontSize: 11, color: c.ink, width: 150, flexShrink: 0 }}>{f.kind} · {f.count}</span>
+                    {bar((f.avgEngagement || 0) / mx)}
+                    <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, width: 34, textAlign: "right" }}>{f.avgEngagement}</span>
+                  </div>
+                )); })()}
+              </div>
+            )}
+          </>
+        )}
+        <div style={lbl}>The proposed theme</div>
+        {td ? (
+          <>
+            <div style={{ fontFamily: sans, fontSize: 15, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, margin: "2px 0 8px" }}>{td.theme}</div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink }}>{td.rationale}</div>
+            {(td.pillars || []).length > 0 && (
+              <div style={{ margin: "10px 0 0" }}>
+                {td.pillars.map((pl, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.7, color: c.ink }}>· {pl}</div>)}
+              </div>
+            )}
+            {td.formatMix && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12.5, lineHeight: 1.6, color: c.sub, marginTop: 10 }}>{td.formatMix}</div>}
+            {(td.adjustments || []).length > 0 && (
+              <>
+                <div style={lbl}>Adjusted for the team</div>
+                {td.adjustments.map((a, i) => (
+                  <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: "#000000", fontWeight: 700, marginBottom: 6 }}>
+                    {a.note} <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, fontWeight: 400 }}>— {a.by}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        ) : (
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{tCard.desc || "Nothing here yet."}</div>
+        )}
+        <div style={lbl}>Feedback</div>
+        {(tCard.comments || []).filter((cm) => cm.text).map((cm) => (
+          <div key={cm.id} style={{ marginBottom: 8 }}>
+            <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.taupe }}>{cm.by}</div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.55, color: c.ink }}>{cm.text}</div>
+          </div>
+        ))}
+        <textarea rows={3} value={themeFb} onChange={(e) => setThemeFb(e.target.value)} placeholder="Your take on the theme — the system reads it and re-evaluates immediately…"
+          style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "10px 12px", fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical" }} />
+        <button onClick={sendFb} disabled={themeBusy || !themeFb.trim()}
+          style={{ display: "block", width: "100%", marginTop: 8, background: themeBusy || !themeFb.trim() ? "transparent" : c.ink, border: `1px solid ${themeBusy || !themeFb.trim() ? c.line : c.ink}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: themeBusy || !themeFb.trim() ? c.sub : c.bg, cursor: themeBusy ? "default" : "pointer" }}>
+          {themeBusy ? "Re-evaluating the theme…" : "Send — the theme re-evaluates itself"}
+        </button>
+        <button onClick={onClose}
+          style={{ display: "block", width: "100%", marginTop: 10, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          Close
+        </button>
+      </div>
+    </div>
+  ); }
   if (/^links\b/i.test(card.name || "")) return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(400px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>

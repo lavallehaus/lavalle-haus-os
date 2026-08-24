@@ -1815,7 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
-    ["Next-month Theme card", "Monthly (1st) + whenever re-run", "Reads our top-performing Instagram posts (likes, comments, saves, reach) and proposes next month's theme in the Strategy Outline column — a starting point, edit freely."],
+    ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
     ["Loft strategy PDF from Slack", "Every 15 min until Oct 2026 (needs Slack files permission)", "Files the Loft's monthly strategy PDF into Drive → Strategy & Reports → Strategy Outline."],
@@ -1986,11 +1986,37 @@ export default async function handler(req, res) {
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
-  // ── Next-month theme from performance ────────────────────────────────────
+  // ── Next-month theme: analytics-driven, feedback-adjusting ────────────────
+  // The Theme card explains itself (analytics factors + charts on the card),
+  // takes team feedback (Sarah), and RE-EVALUATES the theme the moment a
+  // comment lands: every adjustment is credited to its person and rendered
+  // bold in the card. Refreshes monthly with new numbers; skips the expensive
+  // pass when nothing changed. Any signed-in member may trigger it.
   if (op === "sisters_theme_card" && req.method === "POST") {
     const okKeyT2 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authT3 = okKeyT2 ? null : await getAuthEarly(req);
-    if (!okKeyT2 && !ownerRole(authT3)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (!okKeyT2 && !authT3) { res.status(401).json({ error: "Locked." }); return; }
+    const bT4 = req.body || {};
+    const noDashT = (x) => String(x || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").trim();
+    const nowT = new Date(); const nextM = new Date(Date.UTC(nowT.getUTCFullYear(), nowT.getUTCMonth() + 1, 1));
+    const MON2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const label = MON2[nextM.getUTCMonth()] + " " + nextM.getUTCFullYear();
+    const rawT3 = await kvGet("lavalle_data"); const blobT3 = Array.isArray(rawT3) ? rawT3[0] : rawT3;
+    const bdT3 = blobT3 && blobT3.boards && blobT3.boards[SBOARD.key];
+    if (!bdT3) { res.json({ ok: false }); return; }
+    const soL = bdT3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdT3.lists[0];
+    let tc = bdT3.cards.find((c) => c.listId === soL.id && /^Theme — /i.test(c.name || "") && (c.name || "").includes(label));
+    if (!tc) { tc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soL.id, name: "Theme — " + label + " (proposed)", labels: [], members: [], attachments: [], links: [], comments: [], done: false }; bdT3.cards.unshift(tc); }
+    tc.comments = tc.comments || [];
+    // feedback arrives here (not via autosave) so the re-evaluation can never race it
+    if (bT4.feedback && String(bT4.feedback).trim()) {
+      tc.comments.push({ id: "cm" + Math.random().toString(36).slice(2, 9), by: (authT3 && authT3.name) || "Team", text: String(bT4.feedback).trim().slice(0, 500), at: new Date().toISOString() });
+    }
+    const feedback = tc.comments.filter((c) => !c.sys && c.text).map((c) => ({ by: c.by || "Team", text: c.text }));
+    const stT = (await kvGet("sisters_theme_state" + SBOARD.kvSuffix)) || {};
+    const needT = !!bT4.force || !!bT4.feedback || stT.month !== label || !tc.themeData || (Date.now() - (stT.at || 0)) > 6 * 86400000 || (stT.feedbackCount || 0) !== feedback.length;
+    if (!needT) { await kvSet("lavalle_data", blobT3); res.json({ ok: true, skipped: true, label }); return; }
+    // analytics
     const accts = Object.values(igAccounts(await kvGet("instagram_oauth")));
     const base = "https://graph.instagram.com/v23.0";
     const rows = [];
@@ -2000,35 +2026,45 @@ export default async function handler(req, res) {
         const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=30&access_token=${encodeURIComponent(t.access_token)}`)).json();
         for (const m of (media.data || [])) {
           let saved = null, reach = null;
-          try { const d = await (await fetch(`${base}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch {}
+          try { const d = await (await fetch(`${base}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch (e0) {}
           rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp });
         }
       } catch (e) {}
     }
-    const nowT = new Date(); const nextM = new Date(Date.UTC(nowT.getUTCFullYear(), nowT.getUTCMonth() + 1, 1));
-    const MON2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    const label = MON2[nextM.getUTCMonth()] + " " + nextM.getUTCFullYear();
+    const score = (r) => (r.saved || 0) * 3 + r.likes + r.comments * 2;
+    const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    const agg = rows.length ? {
+      posts: rows.length,
+      avg: { likes: Math.round(mean(rows.map((r) => r.likes))), comments: Math.round(mean(rows.map((r) => r.comments)) * 10) / 10, saved: rows.some((r) => r.saved != null) ? Math.round(mean(rows.filter((r) => r.saved != null).map((r) => r.saved))) : null, reach: rows.some((r) => r.reach != null) ? Math.round(mean(rows.filter((r) => r.reach != null).map((r) => r.reach))) : null },
+      formats: ["Reel", "Carousel", "Static"].map((k) => { const r2 = rows.filter((r) => r.kind === k); return { kind: k, count: r2.length, avgEngagement: r2.length ? Math.round(mean(r2.map(score))) : 0 }; }).filter((f) => f.count > 0),
+    } : null;
     let analysis = null;
     const key = process.env.ANTHROPIC_API_KEY;
     if (key) {
-      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Here are recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => ((b.saved || 0) * 3 + b.likes + b.comments * 2) - ((a.saved || 0) * 3 + a.likes + a.comments * 2)).slice(0, 20).map((r) => `- [${r.kind}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + "\n\nIdentify the 3 top-performing TOPICS (not individual posts), then propose ONE theme for " + label + " that leans into them while staying in the brands' calm, considered register. Return ONLY JSON: {\"topTopics\":[\"…\",\"…\",\"…\"],\"theme\":\"3-6 word theme title\",\"rationale\":\"2 sentences\",\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"formatMix\":\"one sentence on reels/carousels/statics\"}";
+      const fbTxt = feedback.length ? "\n\nTEAM FEEDBACK TO HONOUR (each item must visibly shape the theme; answer each with ONE short adjustment line credited to that person):\n" + feedback.map((f) => "- " + f.by + ": " + f.text).join("\n") : "";
+      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => score(b) - score(a)).slice(0, 20).map((r) => `- [${r.kind}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + fbTxt + "\n\nIdentify the top-performing TOPICS (not individual posts) with a strength score, then propose ONE theme for " + label + " in the brands' calm, considered register. Plain punctuation only, never an em dash. Return ONLY JSON: {\"topTopics\":[{\"topic\":\"…\",\"strength\":1-10},{…},{…}],\"theme\":\"3-6 word theme title\",\"rationale\":\"2 sentences\",\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"formatMix\":\"one sentence on reels/carousels/statics\",\"adjustments\":[{\"by\":\"name\",\"note\":\"one sentence describing how their feedback changed the theme\"}]}";
       try {
-        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }) });
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }) });
         const j = await r.json(); const txt = (j.content || []).map((c) => c.text || "").join("");
         const m = txt.match(/\{[\s\S]*\}/); if (m) analysis = JSON.parse(m[0]);
       } catch (e) {}
     }
-    const rawT3 = await kvGet("lavalle_data"); const blobT3 = Array.isArray(rawT3) ? rawT3[0] : rawT3;
-    const bdT3 = blobT3 && blobT3.boards && blobT3.boards[SBOARD.key];
-    if (!bdT3) { res.json({ ok: false }); return; }
-    const soL = bdT3.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdT3.lists[0];
-    let tc = bdT3.cards.find((c) => c.listId === soL.id && /^Theme — /i.test(c.name || "") && (c.name || "").includes(label));
-    if (!tc) { tc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soL.id, name: "Theme — " + label + " (proposed)", labels: [], members: [], attachments: [], links: [], done: false }; bdT3.cards.unshift(tc); }
-    tc.desc = analysis
-      ? "Proposed theme: " + analysis.theme + "\n\nWhy: " + analysis.rationale + "\n\nTop-performing topics right now:\n" + (analysis.topTopics || []).map((x) => "• " + x).join("\n") + "\n\nPillars for the month:\n" + (analysis.pillars || []).map((x) => "• " + x).join("\n") + "\n\nFormat mix: " + (analysis.formatMix || "") + "\n\n(Generated from Instagram performance — " + rows.length + " recent posts. Edit freely; this is a starting point.)"
-      : "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
+    if (analysis) {
+      const adj = (analysis.adjustments || []).map((a) => ({ by: String(a.by || "Team").slice(0, 60), note: noDashT(a.note) })).filter((a) => a.note);
+      tc.themeData = {
+        month: label, generatedAt: new Date().toISOString(), analytics: agg,
+        topTopics: (analysis.topTopics || []).map((t) => (typeof t === "string" ? { topic: noDashT(t), strength: 7 } : { topic: noDashT(t.topic), strength: Math.max(1, Math.min(10, Number(t.strength) || 5)) })).slice(0, 5),
+        theme: noDashT(analysis.theme), rationale: noDashT(analysis.rationale),
+        pillars: (analysis.pillars || []).map(noDashT).filter(Boolean).slice(0, 6),
+        formatMix: noDashT(analysis.formatMix), adjustments: adj,
+      };
+      tc.desc = "Proposed theme: " + tc.themeData.theme + "\n\nWhy: " + tc.themeData.rationale + (tc.themeData.pillars.length ? "\n\nPillars:\n" + tc.themeData.pillars.map((x) => "• " + x).join("\n") : "") + (tc.themeData.formatMix ? "\n\nFormat mix: " + tc.themeData.formatMix : "") + (adj.length ? "\n\nAdjusted for the team:\n" + adj.map((a) => "• " + a.note + " (" + a.by + ")").join("\n") : "");
+    } else if (!tc.themeData) {
+      tc.desc = "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
+    }
     await kvSet("lavalle_data", blobT3);
-    res.json({ ok: true, label, posts: rows.length, theme: analysis && analysis.theme });
+    await kvSet("sisters_theme_state" + SBOARD.kvSuffix, { at: Date.now(), month: label, feedbackCount: feedback.length });
+    res.json({ ok: true, label, posts: rows.length, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
