@@ -3231,11 +3231,11 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 </button>
 <GlobalSearch nav={visibleNav} dbState={dbState} onGo={goSearch} />
 <div style={{ display: "flex", gap: 8 }}>
-{[
+{(iAmOwner || ["brain", "profit", "inventory", "ads"].some((t) => myPages.includes(t)) ? [
 { label: "SKUs", value: products.length, color: "#71716C" },
 { label: "Alerts", value: criticalCount + pauseCount + openHighActions, color: criticalCount + pauseCount + openHighActions > 0 ? "#9b5e5e" : "#5a7a5a" },
 { label: "Campaigns", value: campaigns.length, color: "#7a7a9a" },
-].map(s => (
+] : []).map(s => (
 <div key={s.label} style={{ textAlign: "center", padding: "7px 12px", background: "#F4F4F3", borderRadius: 1, border: "1px solid #E0E0DD" }}>
 <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{s.value}</div>
 <div style={{ fontSize: 9, color: "#9A9A95", letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
