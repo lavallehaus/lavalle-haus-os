@@ -1815,7 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
-    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly Reel · FTC (Sarah's daily face-to-camera rule; a few b-roll/carousel exceptions), while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
+    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
@@ -2078,7 +2078,7 @@ export default async function handler(req, res) {
     };
     // decide each post's IG + TT formats
     // Sarah's rule: TikTok wants mainly face-to-camera daily. Courtney covers 12
-    // of the 42 days, so OUR posts default to TT · Reel · FTC — with a few
+    // of the 42 days, so OUR posts default to TT · FTC — with a few
     // deliberate b-roll/carousel exceptions — while Instagram (where heavy FTC
     // underperforms) keeps the b-roll / carousel / static read of the same slot.
     const formats = {}; let staticCount = 0; let ourReelIdx = 0;
@@ -2100,7 +2100,7 @@ export default async function handler(req, res) {
       if (ig === "Static") tt = "Carousel";
       else if (carByN[n] && !reelByN[n]) tt = "Carousel"; // an actual carousel final with no reel
 
-      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "Reel · b-roll" : "Reel · FTC"; }
+      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "B-roll" : "FTC"; }
       formats[n] = { ig, tt, note };
     }
     // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)

@@ -2327,7 +2327,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           {[
             { n: "Courtney", c: "#FFFFFF" },
             { n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" },
-            { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Reel · FTC", c: "#C6CCCF" }, { n: "TT · Reel · b-roll", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },
+            { n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · B-roll", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },
           ].filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
             <button key={pr.n} onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
