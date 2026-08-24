@@ -11,7 +11,7 @@ function appToken() {
   return createHmac("sha256", process.env.APP_PASSWORD || "").update(SESSION_SALT).digest("hex");
 }
 function makeUserToken(user) {
-  const body = Buffer.from(JSON.stringify({ u: user.id, n: user.name, r: user.role, e: Date.now() + 30 * 86400000 })).toString("base64url");
+  const body = Buffer.from(JSON.stringify({ u: user.id, n: user.name, r: user.role, e: Date.now() + 365 * 86400000 })).toString("base64url");
   const sig = createHmac("sha256", process.env.APP_PASSWORD || "x").update(body).digest("hex");
   return "u." + body + "." + sig;
 }
@@ -1812,7 +1812,7 @@ export default async function handler(req, res) {
   // Her rule: a card the whole team can read that says what runs on its own,
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
-    ["Grid card refresh", "Every 15 min", "The Grid card under “Grid & Shoot List” re-renders the four numbered windows (1–9, 1–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in by date. White dot = Courtney's post."],
+    ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
     ["Next-month Theme card", "Monthly (1st) + whenever re-run", "Reads our top-performing Instagram posts (likes, comments, saves, reach) and proposes next month's theme in the Strategy Outline column — a starting point, edit freely."],
@@ -1918,7 +1918,7 @@ export default async function handler(req, res) {
     const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
     const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+ /.test(c.name || ""))
-      .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+\s+([A-Za-z]+\s+\d+)(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: m[1] || "", concept: (m[2] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
+      .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     const ours = postCards.filter((p) => !p.isC);
@@ -1945,7 +1945,7 @@ export default async function handler(req, res) {
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
       const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesS.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
       const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
-      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, windows: { w121: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       var coverPickS = pickS && pickS.pick ? pickS.pick : null;
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
@@ -2115,11 +2115,13 @@ export default async function handler(req, res) {
       await kvSet("media_" + mid, { b64: buf.toString("base64"), ct: "image/jpeg" });
       return "/cover/" + mid + ".jpg";
     };
-    const WINDOWS = [[1, 9], [1, 21], [22, 30], [31, 42]];
+    // HER RULE: the Grid card always scrolls through the grid in these four
+    // windows, in this order: 1-9, 10-21, 22-30, 31-42.
+    const WINDOWS = [[1, 9], [10, 21], [22, 30], [31, 42]];
     // one window per invocation (each render is ~10-20s on serverless); results
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
-    const tilesHash = createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12);
+    const tilesHash = "w4" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // w4 = the 1-9/10-21/22-30/31-42 window set
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
     const views = [];
@@ -2149,7 +2151,7 @@ export default async function handler(req, res) {
         card.name = "Grid — " + views[cur].label + " (auto)";
         card.cover = views[cur].url;
         card.attachments = views.map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
-        card.desc = "Auto-updating grid preview. Swipe the attachments to see each window: 1–9, 1–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
+        card.desc = "Auto-updating grid preview. Swipe through the grid in its four windows (the standing rule for this card): 1–9, 10–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
         await kvSet("lavalle_data", blobC);
       }
     }
@@ -2223,28 +2225,22 @@ export default async function handler(req, res) {
         const sched2 = bdW.lists.find((l) => /^schedule\s*22\s*[-–]\s*42$/i.test((l.name || "").trim()));
         const inSched = (c) => (sched1 && c.listId === sched1.id) || (sched2 && c.listId === sched2.id);
         const cardAt = (n) => bdW.cards.find((c) => inSched(c) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
-        const NAME_RX = /^post\s*\d+\s+[A-Za-z]+\s+\d+(?:\s*[—–-]\s*(.+))?$/i;
+        const NAME_RX = /^post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/i; // dates optional (legacy) — names are dateless now
         const offsetW = g === "1" ? 0 : 21;
         // permutation within this grid: new slot q ← previous slot p (by cover, greedy, dup-safe)
         const usedP = new Set(); const srcOf = new Array(rec.tiles.length).fill(-1);
         rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedP.has(i) && pt.cover === t.cover); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
         rec.tiles.forEach((t, q) => { if (srcOf[q] >= 0) return; if (q < prevTilesW.length && !usedP.has(q)) { usedP.add(q); srcOf[q] = q; return; } const p = prevTilesW.findIndex((pt, i) => !usedP.has(i)); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
         const snap = prevTilesW.map((pt, p) => { const c = cardAt(offsetW + p + 1); return c ? { desc: c.desc || "", tags: c.tags || "", approved: !!c.approved, labels: c.labels || [], attachments: c.attachments || [], links: c.links || [], done: !!c.done, coverUrl: c.coverUrl || "", pub: c.pub, tiktokCover: c.tiktokCover, concept: ((NAME_RX.exec(c.name || "") || [])[1] || "").trim() } : null; });
-        // the combined tag sequence (this grid's new tiles + the other grid as saved) → dates for all 42
-        const otherRec = (await kvGet("sisters_grid_tiles_" + (g === "1" ? "2" : "1") + SBOARD.kvSuffix)) || { tiles: [] };
-        const allTags = (g === "1" ? [...rec.tiles, ...(otherRec.tiles || [])] : [...(otherRec.tiles || []), ...rec.tiles]).map((t) => t.tag);
-        const startW = String((await kvGet("sisters_schedule_start" + SBOARD.kvSuffix)) || "2026-08-22");
-        const MOW = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        const dates = []; let dW = new Date(new Date(startW + "T00:00:00Z").getTime() - 86400000);
-        for (const tg of allTags) { if (tg === "K" || dates.length === 0) dW = new Date(dW.getTime() + 86400000); dates.push(dW); }
-        const dateLabel = (i) => { const dt = dates[i]; return dt ? " " + MOW[dt.getUTCMonth()] + " " + dt.getUTCDate() : ""; };
+        // No dates in card names (her call, Aug 24 2026): posting days move — Courtney
+        // starts when she starts — so the name is just the slot: "Post n" (+ concept).
         let wrote = 0;
         rec.tiles.forEach((t, q) => {
           const n = offsetW + q + 1; const card = cardAt(n); if (!card) return;
           const s = srcOf[q] >= 0 ? snap[srcOf[q]] : null;
           if (s) { card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels; card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl; if (s.pub) card.pub = s.pub; else delete card.pub; if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover; }
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
-          const base = "Post " + n + dateLabel(n - 1);
+          const base = "Post " + n;
           if (t.tag === "C") {
             const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";
             card.name = base + " — " + concept;
@@ -2255,8 +2251,6 @@ export default async function handler(req, res) {
           }
           wrote++;
         });
-        // re-date the other grid's slots too (a C moved into slot 2 shifts every day after it)
-        allTags.forEach((tg, i) => { const n = i + 1; if (n > offsetW && n <= offsetW + rec.tiles.length) return; const card = cardAt(n); if (!card) return; const m = NAME_RX.exec(card.name || ""); if (!m) return; const nm = "Post " + n + dateLabel(i) + (m[1] ? " — " + m[1].trim() : ""); if (nm !== card.name) { card.name = nm; wrote++; } });
         if (wrote) await kvSet("lavalle_data", blobW);
       }
     } catch (eW) {}
@@ -3629,7 +3623,7 @@ export default async function handler(req, res) {
   }
 
   // ── Team access (owner-only ops) ─────────────────────────────────────────────
-  if (op === "invite" || op === "reset" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role") {
+  if (op === "invite" || op === "reset" || op === "revoke" || op === "users" || op === "set_pages" || op === "set_role" || op === "set_password") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Only the owner can manage team access." }); return; }
     const users = (await kvGet("lavalle_users")) || [];
 
@@ -3737,6 +3731,23 @@ export default async function handler(req, res) {
       }
       await kvSet("lavalle_users", users);
       res.json({ ok: true, pages: u.pages, denySegs: u.denySegs || null });
+      return;
+    }
+
+    // Owner sets a member's password directly (no email round-trip): used when
+    // Kiabeth hands someone their login herself. Clears any pending invite link.
+    if (req.method === "POST" && op === "set_password") {
+      const b = req.body || {};
+      const u = users.find((x) => x.id === b.id);
+      if (!u) { res.status(404).json({ error: "No such member." }); return; }
+      const pw = String(b.password || "");
+      if (pw.length < 8) { res.status(400).json({ error: "Password must be at least 8 characters." }); return; }
+      u.salt = randomBytes(16).toString("hex");
+      u.hash = hashPassword(pw, u.salt);
+      u.revoked = false; u.inviteToken = null; u.inviteExp = null;
+      if (!u.acceptedAt) u.acceptedAt = new Date().toISOString();
+      await kvSet("lavalle_users", users);
+      res.json({ ok: true, email: u.email });
       return;
     }
 
