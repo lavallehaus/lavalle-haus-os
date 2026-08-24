@@ -1815,6 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
+    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, or the grid change)", "Reads each post's content (numbered finals first, otherwise vision on the grid tile: face to camera, b-roll, or still) and tags every card IG · … and TT · …. House cadence: at most 1-2 statics per cycle and only on Instagram (TikTok runs a carousel there); carousels are fine on IG but TikTok prefers a reel when one exists."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
@@ -1986,6 +1987,113 @@ export default async function handler(req, res) {
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
+  // ── Post formats: face to camera / b-roll / carousel / static ─────────────
+  // Recurring (pinger): watches the month's Reels + Carousels folders and the
+  // root "Blerina Videos To Edit" / "Courtney videos to edit" folders; when
+  // anything changes it re-reads every post's content (numbered final files
+  // first, vision on the grid tile otherwise) and re-tags every card with
+  // explicit IG · and TT · chips under her cadence rules:
+  //   max 1-2 statics per cycle, statics are Instagram-only;
+  //   where IG runs a static, TikTok runs a carousel;
+  //   carousels are fine on IG, but TikTok prefers a reel when one exists.
+  if (op === "sisters_formats" && req.method === "POST") {
+    const okKeyF = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authF = okKeyF ? null : await getAuthEarly(req);
+    if (!okKeyF && !ownerRole(authF)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const bF = req.body || {};
+    const gtF = await googleToken();
+    if (!gtF) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const lsF = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtF } })).json()).files || [];
+    const rootF = await lsF(SBOARD.driveRootId);
+    const monthF = String((await kvGet(SBOARD.monthDefaultKv)) || "September");
+    const mFold = rootF.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === monthF.toLowerCase());
+    const findSub = async (parent, rx) => parent ? (await lsF(parent.id || parent)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && rx.test((f.name || "").trim())) : null;
+    const reelsF = mFold ? await findSub(mFold, /^reels$/i) : null;
+    const carF = mFold ? await findSub(mFold, /^carousels$/i) : null;
+    const reelFiles = reelsF ? await lsF(reelsF.id) : [];
+    const carFiles = carF ? await lsF(carF.id) : [];
+    // the editors' delivery folders: any change re-triggers classification
+    const editNames = [];
+    for (const f of rootF) {
+      if (!/(blerina|courtney).*(edit)/i.test(f.name || "")) continue;
+      const l1 = await lsF(f.id);
+      for (const k of l1) { editNames.push(k.name); if (k.mimeType === "application/vnd.google-apps.folder") { (await lsF(k.id)).forEach((x) => editNames.push(k.name + "/" + x.name)); } }
+    }
+    const numOf = (n) => { const m = /^#?\s*(\d+)/.exec((n || "").trim()); return m ? parseInt(m[1], 10) : null; };
+    const reelByN = {}; reelFiles.forEach((f) => { const n = numOf(f.name); if (n) reelByN[n] = true; });
+    const carByN = {}; carFiles.forEach((f) => { const n = numOf(f.name); if (n) carByN[n] = true; });
+    const g1F = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
+    const g2F = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
+    const tilesF = [...(g1F.tiles || []), ...(g2F.tiles || [])];
+    const sigF = createHash("sha256").update(JSON.stringify([tilesF.map((t) => t.cover + t.tag), Object.keys(reelByN), Object.keys(carByN), editNames.sort()])).digest("hex").slice(0, 12);
+    const stF = (await kvGet("sisters_formats_state" + SBOARD.kvSuffix)) || {};
+    if (!bF.force && stF.sig === sigF) { res.json({ ok: true, skipped: true }); return; }
+    // vision: what is each tile — face to camera, b-roll, or a product/static still?
+    let tileStyle = stF.sig && stF.tileStyles && stF.tilesHash === createHash("sha256").update(JSON.stringify(tilesF.map((t) => t.cover))).digest("hex").slice(0, 12) ? stF.tileStyles : null;
+    const akeyF = process.env.ANTHROPIC_API_KEY;
+    if (!tileStyle && akeyF && tilesF.length) {
+      tileStyle = {};
+      try {
+        const JimpF = (await import("jimp")).default;
+        for (let batch = 0; batch < tilesF.length; batch += 14) {
+          const chunk = tilesF.slice(batch, batch + 14);
+          const contentF = [];
+          const idxs = [];
+          for (let i = 0; i < chunk.length; i++) {
+            try {
+              const u = /^https?:/.test(chunk[i].cover) ? chunk[i].cover : APP_ORIGIN + chunk[i].cover;
+              const rb = await fetch(u); if (!rb.ok) continue;
+              const im = await JimpF.read(Buffer.from(await rb.arrayBuffer())); im.resize(260, JimpF.AUTO); im.quality(68);
+              contentF.push({ type: "text", text: "Tile " + (batch + i + 1) + ":" });
+              contentF.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await im.getBufferAsync(JimpF.MIME_JPEG)).toString("base64") } });
+              idxs.push(batch + i + 1);
+            } catch (e1) {}
+          }
+          if (!idxs.length) continue;
+          contentF.push({ type: "text", text: 'These are Instagram grid tiles. Classify each: "face" (a person talking or looking to camera, face prominent), "broll" (lifestyle or scene moment, people incidental or partial), or "still" (product or garment photo that would run as a static image). Return ONLY JSON: {"tiles":[{"i":1,"style":"face"}]} covering every tile shown.' });
+          const rF = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": akeyF, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 900, messages: [{ role: "user", content: contentF }] }) });
+          const dF = await rF.json(); if (dF && dF.error) throw new Error(dF.error.message || "api error");
+          const tF = (dF.content || []).map((c) => c.text || "").join("");
+          const pF = JSON.parse(tF.slice(tF.indexOf("{"), tF.lastIndexOf("}") + 1));
+          (pF.tiles || []).forEach((x) => { if (["face", "broll", "still"].includes(x.style)) tileStyle[Number(x.i)] = x.style; });
+        }
+      } catch (eF) { if (!Object.keys(tileStyle || {}).length) tileStyle = null; }
+    }
+    // decide each post's IG + TT formats
+    const formats = {}; let staticCount = 0;
+    for (let n = 1; n <= tilesF.length; n++) {
+      const style = (tileStyle && tileStyle[n]) || null;
+      let ig, tt, note = style === "face" ? "face to camera" : style === "broll" ? "b-roll" : null;
+      if (reelByN[n]) { ig = "Reel"; tt = "Reel"; }
+      else if (carByN[n]) { ig = "Carousel"; tt = "Reel preferred"; }
+      else if (style === "still" && staticCount < 2) { staticCount++; ig = "Static"; tt = "Carousel"; }
+      else if (style === "still") { ig = "Carousel"; tt = "Carousel"; note = "static cap reached"; }
+      else if (style) { ig = "Reel"; tt = "Reel"; }
+      else continue; // nothing known yet — leave the card untagged
+      formats[n] = { ig, tt, note };
+    }
+    // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)
+    const rawF = await kvGet("lavalle_data"); const blobF = Array.isArray(rawF) ? rawF[0] : rawF;
+    const bdF = blobF && blobF.boards && blobF.boards[SBOARD.key];
+    let tagged = 0;
+    if (bdF) {
+      const schedF = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      for (const c of bdF.cards) {
+        if (!schedF.includes(c.listId)) continue;
+        const m = /^Post (\d+)\b/.exec(c.name || ""); if (!m) continue;
+        const f = formats[parseInt(m[1], 10)]; if (!f) continue;
+        const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); });
+        const add = [{ n: "IG · " + f.ig + (f.note && f.ig === "Reel" ? " · " + f.note : ""), c: "#E9E6DF" }, { n: "TT · " + f.tt, c: "#C6CCCF" }];
+        const next = [...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")];
+        if (JSON.stringify(next) !== JSON.stringify(c.labels || [])) { c.labels = next; tagged++; }
+      }
+      if (tagged) await kvSet("lavalle_data", blobF);
+    }
+    await kvSet("sisters_formats_state" + SBOARD.kvSuffix, { sig: sigF, at: Date.now(), tileStyles: tileStyle || undefined, tilesHash: createHash("sha256").update(JSON.stringify(tilesF.map((t) => t.cover))).digest("hex").slice(0, 12) });
+    res.json({ ok: true, month: monthF, reels: Object.keys(reelByN).length, carousels: Object.keys(carByN).length, classified: tileStyle ? Object.keys(tileStyle).length : 0, statics: staticCount, tagged });
+    return;
+  }
+
   // ── Next-month theme: analytics-driven, feedback-adjusting ────────────────
   // The Theme card explains itself (analytics factors + charts on the card),
   // takes team feedback (Sarah), and RE-EVALUATES the theme the moment a
