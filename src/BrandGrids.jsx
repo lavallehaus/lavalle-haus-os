@@ -120,7 +120,7 @@ async function storeImage(dataUrl) {
   } catch { return dataUrl; }
 }
 
-export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowedAccts = null }) {
+export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowedAccts = null, owner = false }) {
   // board-access scoping: only the brands whose boards this person can open
   const VISIBLE_BRANDS = BRANDS.filter((b) => !allowedAccts || allowedAccts.has(b.acct));
   const [acct, setAcct] = useState((VISIBLE_BRANDS[0] || BRANDS[0]).acct);
@@ -155,6 +155,12 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   const [sisPick, setSisPick] = useState(null);
   const [sisBusy, setSisBusy] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false); // photo pool folded by default
+  // Lock (server-enforced: a locked grid refuses every tile change for everyone;
+  // only the owner can lock/unlock) + undo/redo for accidental moves before saving.
+  const [sisLocked, setSisLocked] = useState(false);
+  const [sisHist, setSisHist] = useState([]);
+  const [sisFuture, setSisFuture] = useState([]);
+  const sisTilesRef = useRef([]);
   // Reframe (zoom + pan) a grid tile; saving renders the crop to a new cover
   // URL on the tile — Save arrangement then writes it onto the card itself.
   const [sisReframe, setSisReframe] = useState(null); // { idx, z:{s,x,y} }
@@ -165,7 +171,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     setSisBusy(true);
     try {
       const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
-      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); }
+      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); setSisLocked(!!d.locked); setSisHist([]); setSisFuture([]); }
       else { setSisTiles([]); setSisEdit(false); }
     } finally { setSisBusy(false); }
   };
@@ -176,12 +182,20 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     else setSisEdit(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acct, sisSel]);
+  useEffect(() => { sisTilesRef.current = sisTiles; }, [sisTiles]);
+  const pushSisHist = () => { setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture([]); };
+  const sisUndo = () => { if (!sisHist.length) return; const last = sisHist[sisHist.length - 1]; setSisFuture((f) => [sisTilesRef.current, ...f].slice(0, 30)); setSisHist(sisHist.slice(0, -1)); setSisTiles(last); setSisPick(null); };
+  const sisRedo = () => { if (!sisFuture.length) return; const nxt = sisFuture[0]; setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture(sisFuture.slice(1)); setSisTiles(nxt); setSisPick(null); };
+  const toggleSisLock = async () => {
+    try { const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, locked: !sisLocked }) })).json(); if (d && d.ok) { setSisLocked(!!d.locked); setSisPick(null); } } catch {}
+  };
   const sisDragRef = useRef(false);
   // Plann-style drag: PRESS AND HOLD (~220ms, finger still) lifts the tile into
   // a floating ghost that follows the pointer; other tiles highlight as drop
   // targets; release swaps. A quick touch or any movement before the hold
   // fires is treated as a normal scroll — the page stays scrollable.
   const startSisDrag = (kind, fromI, startX, startY, el, isTray, trayUrl, trayIdx) => {
+    if (sisLocked) return; // locked grid: nothing lifts, nothing swaps
     // self-healing lock: a stale lock (ghost gone, no active drag) must never
     // block the next press — that's what made the grid feel "dead"
     if (sisDragRef.current && document.querySelector(".lh-drag-ghost")) return;
@@ -248,6 +262,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
         return;
       }
       if (isTray) {
+        pushSisHist();
         setSisTiles((prev) => {
           const t = [...prev];
           const benched = t[overI].cover;
@@ -256,6 +271,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           return t;
         });
       } else if (overI !== fromI) {
+        pushSisHist();
         setSisTiles((prev) => { const t = [...prev]; [t[fromI], t[overI]] = [t[overI], t[fromI]]; return t; });
         setSisPick(null);
       }
@@ -800,12 +816,27 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
       )}
       {acct === "lavallesisters" && sisSel && sisEdit && (
         <div style={{ margin: "0 auto 40px", maxWidth: 468, padding: "0 24px 48px", boxSizing: "border-box" }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <button onClick={saveSisEdit} disabled={sisBusy}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {sisLocked && (
+              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", background: c.card }}>
+                ◈ Grid locked{owner ? "" : " — ask Kiabeth to unlock"}
+              </span>
+            )}
+            {owner && (
+              <button onClick={toggleSisLock}
+                style={{ border: `1px solid ${sisLocked ? c.green : c.line}`, background: sisLocked ? c.green : "transparent", color: sisLocked ? "#fff" : c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
+                {sisLocked ? "Unlock grid" : "Lock grid"}
+              </button>
+            )}
+            {!sisLocked && <button onClick={sisUndo} disabled={!sisHist.length}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: sisHist.length ? c.ink : c.line, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: sisHist.length ? "pointer" : "default" }}>Undo</button>}
+            {!sisLocked && <button onClick={sisRedo} disabled={!sisFuture.length}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: sisFuture.length ? c.ink : c.line, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: sisFuture.length ? "pointer" : "default" }}>Redo</button>}
+            {!sisLocked && <button onClick={saveSisEdit} disabled={sisBusy}
               style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", opacity: sisBusy ? 0.5 : 1 }}>
-              {sisBusy ? "Saving…" : "Save arrangement"}</button>
-            <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
-              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>
+              {sisBusy ? "Saving…" : "Save arrangement"}</button>}
+            {!sisLocked && <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>}
             {sisPick != null && (
               <button onClick={() => setSisReframe({ idx: sisPick, z: { s: 1.3, x: 0, y: 0 } })}
                 style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Reframe selected</button>
@@ -833,6 +864,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
                       try {
                         const cv = await renderCoverCrop(tile.cover, z, 1080);
                         const url = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+                        pushSisHist();
                         setSisTiles((prev) => { const t = [...prev]; t[sisReframe.idx] = { ...t[sisReframe.idx], cover: url }; return t; });
                         setSisReframe(null); setSisPick(null);
                       } catch (e2) { alert("Couldn't render that crop — try again."); }

@@ -2177,7 +2177,7 @@ export default async function handler(req, res) {
       const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
       const t = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || null;
       const tray = (await kvGet("sisters_grid_tray" + SBOARD.kvSuffix)) || [];
-      res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], tray, view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null });
+      res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], tray, view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null, locked: !!(t && t.locked) });
       return;
     }
     const bT = req.body || {};
@@ -2189,7 +2189,16 @@ export default async function handler(req, res) {
       res.json({ ok: true, tray: true });
       return;
     }
+    if (typeof bT.locked === "boolean" && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
+      if (!ownerRole(authT2)) { res.status(403).json({ error: "Only the owner can lock or unlock the grid." }); return; }
+      const recL = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
+      recL.locked = bT.locked;
+      await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, recL);
+      res.json({ ok: true, grid: g, locked: !!recL.locked });
+      return;
+    }
     let rec = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
+    if (rec.locked) { res.status(409).json({ error: "This grid is locked — unlock it before moving tiles." }); return; }
     const prevTilesW = (rec.tiles || []).map((t) => ({ cover: t.cover, tag: t.tag })); // what the cards currently follow
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
       rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
