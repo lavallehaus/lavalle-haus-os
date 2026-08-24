@@ -1359,6 +1359,12 @@ const arrowBtn = (side) => ({ position: "absolute", [side]: 10, top: "50%", tran
 const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) return k; return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }); };
 
 function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
+  // click the board (backdrop) or press ESC to leave the card — the × is not the only way out
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose && onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const [name, setName] = useState(card.name);
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
@@ -2050,6 +2056,11 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </div>
           </div>
         )}
+
+        <button onClick={onClose}
+          style={{ display: "block", width: "100%", marginTop: 24, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          Close
+        </button>
       </div>
     </div>
   );

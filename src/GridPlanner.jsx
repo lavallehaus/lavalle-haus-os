@@ -660,6 +660,10 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
             <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
               Dates and posted-marks save straight onto the board card — the Boards view stays in step.
             </div>
+            <button onClick={() => setOpenItem(null)}
+              style={{ display: "block", width: "100%", marginTop: 18, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+              Close
+            </button>
           </div>
         </div>
       )}
