@@ -1465,6 +1465,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [done, setDone] = useState(!!card.done);
   const [commentText, setCommentText] = useState("");
   const [links, setLinks] = useState(card.links || []);
+  const [fmt, setFmt] = useState(card.fmt || null); // Courtney's format pick (Reel/Carousel), same on IG + TT
   const [linkName, setLinkName] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   // Two Drive-asset buttons — cover photo + reel/carousel — each editable inline.
@@ -1499,7 +1500,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -2294,6 +2295,22 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         </div>
 
         {/* tags — neutral palette */}
+        {(labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
+          <>
+            <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {["Reel", "Carousel"].map((F) => { const on = (fmt || (labels.find((L) => /^IG ·/.test((L && L.n) || ""))?.n || "").includes("Carousel") ? "Carousel" : "Reel") === F; return (
+                <button key={F} onClick={() => {
+                  setFmt(F);
+                  // rewrite the platform chips in place — neutral colors are locked
+                  // to the platform (ivory = IG, slate = TT) and never editable.
+                  setLabels((cur) => { const keep = cur.filter((L) => !/^(IG|TT)\s*·/i.test((typeof L === "string" ? L : (L && L.n)) || "")); return [...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() === "courtney"), { n: "IG · " + F, c: "#E9E6DF" }, { n: "TT · " + F, c: "#C6CCCF" }, ...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() !== "courtney")]; });
+                }}
+                  style={{ flex: 1, border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? c.bg : c.sub, borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{F}</button>
+              ); })}
+            </div>
+          </>
+        )}
         <div style={label}>Tags</div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
           {labels.map((L, i) => (
@@ -2337,7 +2354,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
+          onSave({ fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}

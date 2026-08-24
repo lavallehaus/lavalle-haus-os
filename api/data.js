@@ -1815,7 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
-    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, or the grid change)", "Reads each post's content (numbered finals first, otherwise vision on the grid tile: face to camera, b-roll, or still) and tags every card IG · … and TT · …. House cadence: at most 1-2 statics per cycle and only on Instagram (TikTok runs a carousel there); carousels are fine on IG but TikTok prefers a reel when one exists."],
+    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly Reel · FTC (Sarah's daily face-to-camera rule; a few b-roll/carousel exceptions), while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
@@ -2059,22 +2059,50 @@ export default async function handler(req, res) {
         }
       } catch (eF) { if (!Object.keys(tileStyle || {}).length) tileStyle = null; }
     }
+    // Courtney's 12: her pick rules the format, SAME on both channels. She may
+    // have named it already (reel/carousel in the concept) and can switch it on
+    // the card any time (card.fmt) — colors stay locked to the platform chips.
+    const rawF = await kvGet("lavalle_data"); const blobF = Array.isArray(rawF) ? rawF[0] : rawF;
+    const bdF = blobF && blobF.boards && blobF.boards[SBOARD.key];
+    const cardByN = {};
+    if (bdF) {
+      const schedF0 = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      bdF.cards.forEach((c) => { if (schedF0.includes(c.listId)) { const m = /^Post (\d+)\b/.exec(c.name || ""); if (m) cardByN[parseInt(m[1], 10)] = c; } });
+    }
+    const cFmtOf = (c) => {
+      if (!c) return "Reel";
+      if (c.fmt === "Carousel" || c.fmt === "Reel") return c.fmt;
+      const t = ((c.name || "") + " " + (c.desc || "")).toLowerCase();
+      if (/carousel/.test(t)) return "Carousel";
+      return "Reel";
+    };
     // decide each post's IG + TT formats
-    const formats = {}; let staticCount = 0;
+    // Sarah's rule: TikTok wants mainly face-to-camera daily. Courtney covers 12
+    // of the 42 days, so OUR posts default to TT · Reel · FTC — with a few
+    // deliberate b-roll/carousel exceptions — while Instagram (where heavy FTC
+    // underperforms) keeps the b-roll / carousel / static read of the same slot.
+    const formats = {}; let staticCount = 0; let ourReelIdx = 0;
     for (let n = 1; n <= tilesF.length; n++) {
       const style = (tileStyle && tileStyle[n]) || null;
+      const isC = tilesF[n - 1] && tilesF[n - 1].tag === "C";
+      if (isC) {
+        const F = cFmtOf(cardByN[n]);
+        formats[n] = { ig: F, tt: F, note: "Courtney's pick" };
+        continue;
+      }
       let ig, tt, note = style === "face" ? "face to camera" : style === "broll" ? "b-roll" : null;
-      if (reelByN[n]) { ig = "Reel"; tt = "Reel"; }
-      else if (carByN[n]) { ig = "Carousel"; tt = "Reel preferred"; }
-      else if (style === "still" && staticCount < 2) { staticCount++; ig = "Static"; tt = "Carousel"; }
-      else if (style === "still") { ig = "Carousel"; tt = "Carousel"; note = "static cap reached"; }
-      else if (style) { ig = "Reel"; tt = "Reel"; }
+      if (reelByN[n]) { ig = "Reel"; }
+      else if (carByN[n]) { ig = "Carousel"; }
+      else if (style === "still" && staticCount < 2) { staticCount++; ig = "Static"; }
+      else if (style === "still") { ig = "Carousel"; note = "static cap reached"; }
+      else if (style) { ig = "Reel"; }
       else continue; // nothing known yet — leave the card untagged
+      if (ig === "Static") tt = "Carousel";
+      else if (ig === "Carousel" && !reelByN[n]) tt = "Carousel";
+      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "Reel · b-roll" : "Reel · FTC"; }
       formats[n] = { ig, tt, note };
     }
     // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)
-    const rawF = await kvGet("lavalle_data"); const blobF = Array.isArray(rawF) ? rawF[0] : rawF;
-    const bdF = blobF && blobF.boards && blobF.boards[SBOARD.key];
     let tagged = 0;
     if (bdF) {
       const schedF = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
@@ -2083,7 +2111,7 @@ export default async function handler(req, res) {
         const m = /^Post (\d+)\b/.exec(c.name || ""); if (!m) continue;
         const f = formats[parseInt(m[1], 10)]; if (!f) continue;
         const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); });
-        const add = [{ n: "IG · " + f.ig + (f.note && f.ig === "Reel" ? " · " + f.note : ""), c: "#E9E6DF" }, { n: "TT · " + f.tt, c: "#C6CCCF" }];
+        const add = [{ n: "IG · " + f.ig + (f.note && f.note !== "Courtney's pick" && f.ig === "Reel" ? " · " + f.note : ""), c: "#E9E6DF" }, { n: "TT · " + f.tt, c: "#C6CCCF" }];
         const next = [...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")];
         if (JSON.stringify(next) !== JSON.stringify(c.labels || [])) { c.labels = next; tagged++; }
       }
