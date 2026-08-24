@@ -2098,7 +2098,8 @@ export default async function handler(req, res) {
       else if (style) { ig = "Reel"; }
       else continue; // nothing known yet — leave the card untagged
       if (ig === "Static") tt = "Carousel";
-      else if (ig === "Carousel" && !reelByN[n]) tt = "Carousel";
+      else if (carByN[n] && !reelByN[n]) tt = "Carousel"; // an actual carousel final with no reel
+
       else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "Reel · b-roll" : "Reel · FTC"; }
       formats[n] = { ig, tt, note };
     }
