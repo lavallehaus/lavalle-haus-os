@@ -1476,6 +1476,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [themeBusy, setThemeBusy] = useState(false);
   const [themeLive, setThemeLive] = useState(null); // freshly re-evaluated Theme card
   const [themeFull, setThemeFull] = useState(false); // theme present mode (full screen)
+  const [themePage, setThemePage] = useState(0); // which section the present view shows
+  const [themePosts, setThemePosts] = useState(null); // which stat group's posts are unfolded
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
@@ -1571,16 +1573,55 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       </div>
     </div>
   );
-  // Theme card: explains itself in bullets, charts the numbers (incl. face to
-  // camera vs b-roll), takes named feedback, re-evaluates on the spot, and walks
-  // the review flow Sarah -> Kiabeth + Kiaredza -> approved.
+  // Theme card: bullets, charts, the actual posts behind every stat (captions
+  // link to the exact Instagram post), named feedback that re-evaluates the
+  // theme, the Sarah -> Kiabeth + Kiaredza review flow, and a swipeable
+  // present view (one section at a time, never overwhelming).
   if (/^theme\b/i.test(card.name || "")) { const tCard = themeLive || card; const td = tCard.themeData || null; const lbl = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "18px 0 6px" };
     const meU = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "null") || {}; } catch { return {}; } })();
     const canApprove = /^owner/i.test(meU.role || "Owner / Admin") || /kiaredza/i.test(meU.name || "");
     const stage = (td && td.stage) || "sarah";
+    const ex = (td && td.analytics && td.analytics.examples) || [];
+    const exByN = {}; ex.forEach((p2) => { exByN[p2.n] = p2; });
     const bar = (frac) => (
       <div style={{ flex: 1, height: 3, background: c.line, borderRadius: 2, overflow: "hidden" }}>
         <div style={{ width: Math.round(Math.max(0.04, Math.min(1, frac)) * 100) + "%", height: "100%", background: c.ink }} />
+      </div>
+    );
+    // one stat row: label + bar + a quiet "posts" fold with clickable captions
+    const statRow = (key, label, frac, value, posts, f) => (
+      <div key={key} style={{ marginBottom: 9 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, flex: 1, minWidth: 0 }}>{label}</span>
+          {posts && posts.length > 0 && (
+            <button onClick={() => setThemePosts(themePosts === key ? null : key)}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: sans, fontSize: f(9), letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe }}>
+              {themePosts === key ? "hide" : "posts"} {themePosts === key ? "—" : "+"}
+            </button>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+          {bar(frac)}
+          <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 30, textAlign: "right" }}>{value}</span>
+        </div>
+        {themePosts === key && posts && posts.length > 0 && (
+          <div style={{ margin: "7px 0 4px", borderLeft: `1px solid ${c.line}`, paddingLeft: 10 }}>
+            {posts.map((p2, i) => (
+              <div key={i} style={{ marginBottom: 7 }}>
+                {p2.url ? (
+                  <a href={p2.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "Georgia, serif", fontSize: f(12), lineHeight: 1.5, color: c.ink, textDecoration: "underline", textDecorationColor: c.line, textUnderlineOffset: 3 }}>
+                    {p2.caption}
+                  </a>
+                ) : (
+                  <span style={{ fontFamily: "Georgia, serif", fontSize: f(12), lineHeight: 1.5, color: c.ink }}>{p2.caption}</span>
+                )}
+                <div style={{ fontFamily: sans, fontSize: f(9.5), color: c.sub, marginTop: 1 }}>
+                  {p2.kind}{p2.style ? " · " + (p2.style === "face" ? "face to camera" : p2.style === "broll" ? "b-roll" : "product still") : ""} · {p2.likes} likes · {p2.comments} comments{p2.saved != null ? " · " + p2.saved + " saves" : ""}{p2.reach != null ? " · " + p2.reach + " reach" : ""}{p2.url ? " · opens on Instagram" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
     const refreshCard = async () => {
@@ -1599,72 +1640,73 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       try { await fetch("/api/data?op=sisters_theme_card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve: true }) }); await refreshCard(); } catch (e) {}
       setThemeBusy(false);
     };
-    const body = (big) => { const f = (x) => Math.round(x * (big ? 1.35 : 1)); return (
+    // ── sections (shared by the sheet and the swipeable present view) ──
+    const secMade = (f) => (
       <>
-        <div style={{ ...lbl, marginTop: big ? 26 : 18, fontSize: f(9) }}>How this theme is made</div>
-        {["Every recent post is scored on likes, comments, saves and reach.", "Vision also reads each post: face to camera, b-roll, or product still.", "The strongest topics and styles shape the proposed theme below.", "Your feedback re-evaluates the theme immediately; adjustments show in bold with your name.", "It refreshes monthly with the new numbers, then goes to Sarah, then Kiabeth and Kiaredza to approve."].map((t, i) => (
+        <div style={{ ...lbl, fontSize: f(9) }}>How this theme is made</div>
+        {["Every recent post is scored on likes, comments, saves and reach.", "Vision also reads each post: face to camera, b-roll, or product still.", "The strongest topics and styles shape the proposed theme.", "Your feedback re-evaluates the theme immediately; adjustments show in bold with your name.", "It refreshes monthly, then goes to Sarah, then Kiabeth and Kiaredza to approve."].map((t, i) => (
           <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(12.5), lineHeight: 1.6, color: c.sub }}>· {t}</div>
         ))}
-        {td && td.analytics && (
-          <>
-            <div style={{ ...lbl, fontSize: f(9) }}>The numbers behind it</div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {[["Posts read", td.analytics.posts], ["Avg likes", td.analytics.avg.likes], ["Avg comments", td.analytics.avg.comments], td.analytics.avg.saved != null ? ["Avg saves", td.analytics.avg.saved] : null].filter(Boolean).map(([k, v]) => (
-                <div key={k} style={{ flex: 1, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 6px", textAlign: "center" }}>
-                  <div style={{ fontFamily: sans, fontSize: f(16), color: c.ink }}>{v}</div>
-                  <div style={{ fontFamily: sans, fontSize: f(8), letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
-                </div>
-              ))}
+      </>
+    );
+    const secNumbers = (f) => td && td.analytics ? (
+      <>
+        <div style={{ ...lbl, fontSize: f(9) }}>The numbers behind it</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {[["Posts read", td.analytics.posts], ["Avg likes", td.analytics.avg.likes], ["Avg comments", td.analytics.avg.comments], td.analytics.avg.saved != null ? ["Avg saves", td.analytics.avg.saved] : null].filter(Boolean).map(([k, v]) => (
+            <div key={k} style={{ flex: 1, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 6px", textAlign: "center" }}>
+              <div style={{ fontFamily: sans, fontSize: f(16), color: c.ink }}>{v}</div>
+              <div style={{ fontFamily: sans, fontSize: f(8), letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
             </div>
-            {(td.topTopics || []).length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>Top-performing topics</div>
-                {td.topTopics.map((t, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{t.topic}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {bar((t.strength || 5) / 10)}
-                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 22, textAlign: "right" }}>{t.strength}</span>
-                    </div>
+          ))}
+        </div>
+        {ex.length > 0 && (
+          <>
+            <button onClick={() => setThemePosts(themePosts === "top" ? null : "top")}
+              style={{ background: "none", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 12px", cursor: "pointer", fontFamily: sans, fontSize: f(9), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>
+              {themePosts === "top" ? "Hide the posts —" : "See the posts behind these numbers +"}
+            </button>
+            {themePosts === "top" && (
+              <div style={{ margin: "8px 0 0", borderLeft: `1px solid ${c.line}`, paddingLeft: 10 }}>
+                {ex.map((p2, i) => (
+                  <div key={i} style={{ marginBottom: 7 }}>
+                    {p2.url ? (
+                      <a href={p2.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "Georgia, serif", fontSize: f(12), lineHeight: 1.5, color: c.ink, textDecoration: "underline", textDecorationColor: c.line, textUnderlineOffset: 3 }}>{p2.caption}</a>
+                    ) : <span style={{ fontFamily: "Georgia, serif", fontSize: f(12), color: c.ink }}>{p2.caption}</span>}
+                    <div style={{ fontFamily: sans, fontSize: f(9.5), color: c.sub, marginTop: 1 }}>{p2.kind} · {p2.likes} likes · {p2.comments} comments{p2.reach != null ? " · " + p2.reach + " reach" : ""}</div>
                   </div>
                 ))}
               </div>
             )}
-            {(td.analytics.styles || []).length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Face to camera vs b-roll · average engagement</div>
-                {(() => { const mx = Math.max(...td.analytics.styles.map((x) => x.avgEngagement || 1)); return td.analytics.styles.map((x, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{x.style} · {x.count} post{x.count === 1 ? "" : "s"}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {bar((x.avgEngagement || 0) / mx)}
-                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 30, textAlign: "right" }}>{x.avgEngagement}</span>
-                    </div>
-                  </div>
-                )); })()}
-              </div>
-            )}
-            {(td.analytics.formats || []).length > 0 && (
-              <div>
-                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Formats · average engagement</div>
-                {(() => { const mx = Math.max(...td.analytics.formats.map((x) => x.avgEngagement || 1)); return td.analytics.formats.map((x, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{x.kind} · {x.count}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {bar((x.avgEngagement || 0) / mx)}
-                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 30, textAlign: "right" }}>{x.avgEngagement}</span>
-                    </div>
-                  </div>
-                )); })()}
-              </div>
-            )}
           </>
         )}
+      </>
+    ) : null;
+    const secTopics = (f) => td && (td.topTopics || []).length ? (
+      <>
+        <div style={{ ...lbl, fontSize: f(9) }}>Top-performing topics</div>
+        {td.topTopics.map((t, i) => statRow("topic" + i, t.topic, (t.strength || 5) / 10, t.strength, (t.examples || []).map((n) => exByN[n]).filter(Boolean), f))}
+      </>
+    ) : null;
+    const secStyles = (f) => { const st2 = td && td.analytics && td.analytics.styles; if (!st2 || !st2.length) return null; const mx = Math.max(...st2.map((x) => x.avgEngagement || 1)); return (
+      <>
+        <div style={{ ...lbl, fontSize: f(9) }}>Face to camera vs b-roll · average engagement</div>
+        {st2.map((x, i) => statRow("style" + i, x.style + " · " + x.count + " post" + (x.count === 1 ? "" : "s"), (x.avgEngagement || 0) / mx, x.avgEngagement, x.examples || [], f))}
+      </>
+    ); };
+    const secFormats = (f) => { const fm = td && td.analytics && td.analytics.formats; if (!fm || !fm.length) return null; const mx = Math.max(...fm.map((x) => x.avgEngagement || 1)); return (
+      <>
+        <div style={{ ...lbl, fontSize: f(9) }}>Formats · average engagement</div>
+        {fm.map((x, i) => statRow("fmt" + i, x.kind + " · " + x.count, (x.avgEngagement || 0) / mx, x.avgEngagement, x.examples || [], f))}
+      </>
+    ); };
+    const secTheme = (f) => (
+      <>
         <div style={{ ...lbl, fontSize: f(9) }}>The proposed theme</div>
         {td ? (
           <>
             <div style={{ fontFamily: sans, fontSize: f(15), letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, margin: "2px 0 8px" }}>{td.theme}</div>
-            {(td.why || []).length > 0 && (td.why || []).map((w, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13), lineHeight: 1.65, color: c.ink }}>· {w}</div>)}
+            {(td.why || []).map((w, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13), lineHeight: 1.65, color: c.ink }}>· {w}</div>)}
             {(td.pillars || []).length > 0 && (
               <>
                 <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "12px 0 4px" }}>Pillars</div>
@@ -1678,22 +1720,32 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               </>
             )}
             {td.formatMix && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: f(12.5), lineHeight: 1.6, color: c.sub, marginTop: 10 }}>{td.formatMix}</div>}
-            {(td.adjustments || []).length > 0 && (
-              <>
-                <div style={{ ...lbl, fontSize: f(9) }}>Adjusted for the team</div>
-                {td.adjustments.map((a, i) => (
-                  <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13.5), lineHeight: 1.65, color: "#000000", fontWeight: 700, marginBottom: 6 }}>
-                    {a.note} <span style={{ fontFamily: sans, fontSize: f(10), letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, fontWeight: 400 }}>— {a.by}</span>
-                  </div>
-                ))}
-              </>
-            )}
           </>
         ) : (
           <div style={{ fontFamily: "Georgia, serif", fontSize: f(13.5), lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{tCard.desc || "Nothing here yet."}</div>
         )}
       </>
-    ); };
+    );
+    const secAdjust = (f) => td && (td.adjustments || []).length ? (
+      <>
+        <div style={{ ...lbl, fontSize: f(9) }}>Adjusted for the team</div>
+        {td.adjustments.map((a, i) => (
+          <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13.5), lineHeight: 1.65, color: "#000000", fontWeight: 700, marginBottom: 6 }}>
+            {a.note} <span style={{ fontFamily: sans, fontSize: f(10), letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, fontWeight: 400 }}>— {a.by}</span>
+          </div>
+        ))}
+      </>
+    ) : null;
+    const sections = [
+      { id: "made", label: "How it works", render: secMade },
+      td && td.analytics ? { id: "numbers", label: "The numbers", render: secNumbers } : null,
+      td && (td.topTopics || []).length ? { id: "topics", label: "Topics", render: secTopics } : null,
+      td && td.analytics && (td.analytics.styles || []).length ? { id: "styles", label: "Face vs b-roll", render: secStyles } : null,
+      td && td.analytics && (td.analytics.formats || []).length ? { id: "formats", label: "Formats", render: secFormats } : null,
+      { id: "theme", label: "The theme", render: secTheme },
+      td && (td.adjustments || []).length ? { id: "adjust", label: "Adjustments", render: secAdjust } : null,
+    ].filter(Boolean);
+    const pageI = Math.min(themePage, sections.length - 1);
     return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
@@ -1709,12 +1761,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </span>
           )}
           {stage === "approved" && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.green }}>Approved</span>}
-          <button onClick={() => setThemeFull(true)}
+          <button onClick={() => { setThemePage(0); setThemeFull(true); }}
             style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, background: c.ink, border: "none", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.bg, cursor: "pointer" }}>
             <span style={{ fontFamily: "Georgia, serif", fontSize: 13 }}>⤢</span> Present
           </button>
         </div>
-        {body(false)}
+        {sections.map((sec) => <div key={sec.id}>{sec.render((x) => x)}</div>)}
         <div style={lbl}>Feedback</div>
         {(tCard.comments || []).filter((cm) => cm.text).map((cm) => (
           <div key={cm.id} style={{ marginBottom: 10 }}>
@@ -1741,17 +1793,27 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           Close
         </button>
       </div>
-      {themeFull && (
-        <div onClick={(e) => { e.stopPropagation(); setThemeFull(false); }} style={{ position: "fixed", inset: 0, zIndex: 400, background: "#FBFAF7", overflowY: "auto" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 880, margin: "0 auto", padding: "48px 34px 90px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <div style={{ fontFamily: sans, fontSize: 14, letterSpacing: 3, textTransform: "uppercase", color: c.ink }}>{(tCard.name || "Theme").replace(/\s*\(proposed\)\s*$/i, "")}</div>
-              <button onClick={() => setThemeFull(false)} style={{ background: "none", border: `1px solid ${c.line}`, borderRadius: 2, width: 36, height: 36, fontSize: 17, color: c.sub, cursor: "pointer" }}>×</button>
+      {themeFull && (() => { const goSec = (d) => { setThemePosts(null); setThemePage((p) => (p + d + sections.length) % sections.length); }; return (
+        <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", inset: 0, zIndex: 400, background: "#FBFAF7", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 34px 0", maxWidth: 940, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
+            <div style={{ fontFamily: sans, fontSize: 13, letterSpacing: 3, textTransform: "uppercase", color: c.ink }}>{(tCard.name || "Theme").replace(/\s*\(proposed\)\s*$/i, "")}</div>
+            <button onClick={() => setThemeFull(false)} style={{ background: "none", border: `1px solid ${c.line}`, borderRadius: 2, width: 36, height: 36, fontSize: 17, color: c.sub, cursor: "pointer" }}>×</button>
+          </div>
+          <div style={{ textAlign: "center", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.taupe, marginTop: 10 }}>{sections[pageI].label} · {pageI + 1} of {sections.length}</div>
+          <div style={{ flex: 1, overflowY: "auto", width: "100%" }}
+            onTouchStart={(e) => { window.__thx = e.touches[0].clientX; }}
+            onTouchEnd={(e) => { if (window.__thx == null) return; const dx = e.changedTouches[0].clientX - window.__thx; window.__thx = null; if (Math.abs(dx) > 55) goSec(dx < 0 ? 1 : -1); }}>
+            <div style={{ maxWidth: 860, margin: "0 auto", padding: "8px 74px 60px" }}>
+              {sections[pageI].render((x) => Math.round(x * 1.35))}
             </div>
-            {body(true)}
+          </div>
+          <button onClick={() => goSec(-1)} style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: 22, border: "1px solid rgba(143,134,118,0.5)", background: "rgba(255,255,255,0.94)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 24, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}>‹</button>
+          <button onClick={() => goSec(1)} style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: 22, border: "1px solid rgba(143,134,118,0.5)", background: "rgba(255,255,255,0.94)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 24, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}>›</button>
+          <div style={{ display: "flex", justifyContent: "center", gap: 7, padding: "0 0 22px" }}>
+            {sections.map((sec, i) => <span key={sec.id} onClick={() => { setThemePosts(null); setThemePage(i); }} style={{ width: 6, height: 6, borderRadius: 3, background: i === pageI ? c.ink : c.line, cursor: "pointer" }} />)}
           </div>
         </div>
-      )}
+      ); })()}
     </div>
   ); }
   if (/^links\b/i.test(card.name || "")) return (

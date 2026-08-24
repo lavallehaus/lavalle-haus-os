@@ -2047,7 +2047,7 @@ export default async function handler(req, res) {
         for (const m of (media.data || [])) {
           let saved = null, reach = null;
           try { const d = await (await fetch(`${base}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch (e0) {}
-          rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp, thumb: m.thumbnail_url || m.media_url || null });
+          rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp, thumb: m.thumbnail_url || m.media_url || null, url: m.permalink || null });
         }
       } catch (e) {}
     }
@@ -2090,13 +2090,22 @@ export default async function handler(req, res) {
       } catch (eS) { var styleErr0 = String((eS && eS.message) || eS).slice(0, 200); }
     }
     const styleDbg = { thumbs: rows.filter((r) => r.thumb).length, classified: rows.filter((r) => r.style).length, err: typeof styleErr0 !== "undefined" ? styleErr0 : null };
+    // The posts behind the stats: numbered, linkable examples for every group
+    // so the team can open the exact Instagram post a number came from.
+    const rowsRanked = [...rows].sort((a, b) => score(b) - score(a));
+    rowsRanked.forEach((r, i) => { r.n = i + 1; });
+    const exampleOf = (r) => ({ n: r.n, kind: r.kind, style: r.style || null, likes: r.likes, comments: r.comments, saved: r.saved, reach: r.reach, caption: (r.caption || "").slice(0, 90) || "(no caption)", url: r.url || null });
     const STYLE_LABEL = { face: "Face to camera", broll: "B-roll", product: "Product still" };
-    const styles = ["face", "broll", "product"].map((k) => { const r2 = rows.filter((r) => r.style === k); return { style: STYLE_LABEL[k], count: r2.length, avgEngagement: r2.length ? Math.round(r2.map(score).reduce((a, b) => a + b, 0) / r2.length) : 0 }; }).filter((x) => x.count > 0);
+    const styles = ["face", "broll", "product"].map((k) => { const r2 = rowsRanked.filter((r) => r.style === k); return { style: STYLE_LABEL[k], count: r2.length, avgEngagement: r2.length ? Math.round(r2.map(score).reduce((a, b) => a + b, 0) / r2.length) : 0, examples: r2.slice(0, 4).map(exampleOf) }; }).filter((x) => x.count > 0);
     if (agg && styles.length) agg.styles = styles;
+    if (agg) {
+      agg.examples = rowsRanked.slice(0, 12).map(exampleOf);
+      agg.formats = (agg.formats || []).map((f) => ({ ...f, examples: rowsRanked.filter((r) => r.kind === f.kind).slice(0, 4).map(exampleOf) }));
+    }
     let analysis = null;
     if (key) {
       const fbTxt = feedback.length ? "\n\nTEAM FEEDBACK TO HONOUR (each item must visibly shape the theme; answer each with ONE short adjustment line credited to that person):\n" + feedback.map((f) => "- " + f.by + ": " + f.text).join("\n") : "";
-      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => score(b) - score(a)).slice(0, 20).map((r) => `- [${r.kind}${r.style ? " (" + (r.style === "face" ? "face to camera" : r.style === "broll" ? "b-roll" : "product still") + ")" : ""}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + fbTxt + "\n\nIdentify the top-performing TOPICS (not individual posts) with a strength score, then propose ONE theme for " + label + " in the brands' calm, considered register. Everything SHORT and bullet-ready: no sentence longer than about 15 words. Plain punctuation only, never an em dash. Credit adjustments using each person's exact name from the feedback list. If face to camera vs b-roll performance differs, say so in the why bullets with numbers. Return ONLY JSON: {\"topTopics\":[{\"topic\":\"…\",\"strength\":1-10},{…},{…}],\"theme\":\"3-6 word theme title\",\"why\":[\"short bullet\",\"short bullet\",\"short bullet\"],\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"actions\":[\"short action item to discuss\",\"…\",\"…\"],\"formatMix\":\"one short sentence on reels/carousels/statics\",\"adjustments\":[{\"by\":\"exact name\",\"note\":\"one short sentence: how their feedback changed the theme\"}]}";
+      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => score(b) - score(a)).slice(0, 20).map((r) => `${r.n}) [${r.kind}${r.style ? " (" + (r.style === "face" ? "face to camera" : r.style === "broll" ? "b-roll" : "product still") + ")" : ""}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + fbTxt + "\n\nIdentify the top-performing TOPICS (not individual posts) with a strength score, then propose ONE theme for " + label + " in the brands' calm, considered register. Everything SHORT and bullet-ready: no sentence longer than about 15 words. Plain punctuation only, never an em dash. Credit adjustments using each person's exact name from the feedback list. If face to camera vs b-roll performance differs, say so in the why bullets with numbers. Return ONLY JSON: {\"topTopics\":[{\"topic\":\"…\",\"strength\":1-10,\"examples\":[postNumbers]},{…},{…}],\"theme\":\"3-6 word theme title\",\"why\":[\"short bullet\",\"short bullet\",\"short bullet\"],\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"actions\":[\"short action item to discuss\",\"…\",\"…\"],\"formatMix\":\"one short sentence on reels/carousels/statics\",\"adjustments\":[{\"by\":\"exact name\",\"note\":\"one short sentence: how their feedback changed the theme\"}]}";
       try {
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }) });
         const j = await r.json(); const txt = (j.content || []).map((c) => c.text || "").join("");
@@ -2107,7 +2116,7 @@ export default async function handler(req, res) {
       const adj = (analysis.adjustments || []).map((a) => ({ by: String(a.by || "Team").slice(0, 60), note: noDashT(a.note) })).filter((a) => a.note);
       tc.themeData = {
         month: label, generatedAt: new Date().toISOString(), analytics: agg,
-        topTopics: (analysis.topTopics || []).map((t) => (typeof t === "string" ? { topic: noDashT(t), strength: 7 } : { topic: noDashT(t.topic), strength: Math.max(1, Math.min(10, Number(t.strength) || 5)) })).slice(0, 5),
+        topTopics: (analysis.topTopics || []).map((t) => (typeof t === "string" ? { topic: noDashT(t), strength: 7, examples: [] } : { topic: noDashT(t.topic), strength: Math.max(1, Math.min(10, Number(t.strength) || 5)), examples: (Array.isArray(t.examples) ? t.examples : []).map(Number).filter((x) => x >= 1).slice(0, 4) })).slice(0, 5),
         theme: noDashT(analysis.theme),
         why: (analysis.why || (analysis.rationale ? [analysis.rationale] : [])).map(noDashT).filter(Boolean).slice(0, 4),
         pillars: (analysis.pillars || []).map(noDashT).filter(Boolean).slice(0, 6),
