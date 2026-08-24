@@ -10,7 +10,7 @@ const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 const fmt = (n) => (n == null ? "—" : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n));
 
-export default function ContentAnalytics() {
+export default function ContentAnalytics({ allowedAccts = null }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [acct, setAcct] = useState(0);
@@ -26,7 +26,8 @@ export default function ContentAnalytics() {
       .catch((e) => setErr(String(e.message || e)));
   }, []);
 
-  const a = data && data.accounts && data.accounts[acct];
+  const visAccounts = data && data.accounts ? data.accounts.filter((x) => !allowedAccts || allowedAccts.has(String(x.username || "").toLowerCase().replace(/^@/, ""))) : null;
+  const a = visAccounts && visAccounts[acct];
   const stats = useMemo(() => {
     if (!a || !a.items || !a.items.length) return null;
     const n = a.items.length;
@@ -79,7 +80,7 @@ export default function ContentAnalytics() {
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
-        {data.accounts.map((x, i) => (
+        {(visAccounts || []).map((x, i) => (
           <button key={x.username || i} onClick={() => setAcct(i)}
             style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${i === acct ? c.ink : c.line}`, background: i === acct ? c.ink : "transparent", color: i === acct ? "#FFFFFF" : c.sub }}>
             ◉ @{x.username}

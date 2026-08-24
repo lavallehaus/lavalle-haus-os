@@ -2928,6 +2928,11 @@ const myPages = (!iAmOwner && me && Array.isArray(me.pages) && me.pages.length)
 // Sub-tab denials: "content:pr" hides just the PR segment for this person while
 // the rest of the Marketing page stays open. Owners are never gated.
 const myDenySegs = (!iAmOwner && me && Array.isArray(me.denySegs)) ? me.denySegs : [];
+// Brand scoping (board-access driven): every brand-keyed Marketing surface —
+// Grids, Schedule planner, Analytics — only shows the brands whose boards this
+// person's session received from the server. Owner sees every brand.
+const BOARD_BRAND = { "lavalle-sisters": "lavallesisters", "refillery-haus": "refilleryhaus", "rh-operations": "refilleryhaus", "rd": "refilleryhaus", "the-fold": "thefoldlabel", "the-fold-operations": "thefoldlabel", "the-fold-rd": "thefoldlabel", "pr-refillery-haus": "refilleryhaus", "pr-the-fold": "thefoldlabel", "refillery-haus-ugc": "refilleryhaus", "archives-lavalle-sisters": "lavallesisters", "master-projects": "lavallesisters" };
+const allowedAccts = iAmOwner ? null : (() => { const set = new Set(); Object.keys(dbState.boards || {}).forEach((k) => { if (BOARD_BRAND[k]) set.add(BOARD_BRAND[k]); const b = (dbState.boards || {})[k]; const nm = ((b && b.name) || "").toLowerCase(); if (/sister/.test(nm)) set.add("lavallesisters"); else if (/fold/.test(nm)) set.add("thefoldlabel"); else if (/lavalle haus|refillery/.test(nm)) set.add("refilleryhaus"); }); return set; })();
 const segAllowed = (pageId, segId) => !myDenySegs.includes(pageId + ":" + segId);
 
 // The full signal set for the brain; staff get it through their lens so the
@@ -3118,9 +3123,9 @@ return profitNode;
 if (tab === "content") return (
 <SegTabs id="content" segments={[
 { id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} gridPlanner={dbState.gridPlanner || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
-{ id: "brandgrids", label: "Grids", render: () => <BrandGrids boards={dbState.boards || null} data={dbState.brandGrids || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, brandGrids: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
-{ id: "grid", label: "Schedule", render: () => <GridPlanner data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
-{ id: "analytics", label: "Analytics", render: () => <ContentAnalytics /> },
+{ id: "brandgrids", label: "Grids", render: () => <BrandGrids allowedAccts={allowedAccts} boards={dbState.boards || null} data={dbState.brandGrids || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, brandGrids: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
+{ id: "grid", label: "Schedule", render: () => <GridPlanner allowedAccts={allowedAccts} data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
+{ id: "analytics", label: "Analytics", render: () => <ContentAnalytics allowedAccts={allowedAccts} /> },
 { id: "pr", label: "PR", render: () => <PRHub data={dbState.prHub || null} onSave={(pv) => setDbState((prev) => { const next = { ...prev, prHub: pv }; dbSave(next); return next; })} /> },
 { id: "comms", label: "Comms", render: () => <CommsHub data={dbState.comms || null} team={(dbState.actionsBoard || {}).team || []} onSave={(cv) => setDbState((prev) => { const next = { ...prev, comms: cv }; dbSave(next); return next; })} /> },
 { id: "meetings", label: "Meetings", render: () => <TeamMeetings data={dbState.teamMeetings || null} iAmOwner={iAmOwner} onSave={(mv) => setDbState((prev) => { const next = { ...prev, teamMeetings: mv }; dbSave(next); return next; })} /> },

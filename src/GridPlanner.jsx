@@ -31,7 +31,7 @@ const ghost = { border: `1px solid ${c.line}`, background: "transparent", border
 
 import { NotesLinks } from "./Boards.jsx";
 
-export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
+export default function GridPlanner({ allowedAccts = null, data, boards, onSave, onSaveBoards }) {
   const [state, setState] = useState(data || null);
   const [feedId, setFeedId] = useState(null);
   const [aspect, setAspect] = useState("3 / 4"); // Instagram's current portrait grid; toggle to 1:1
@@ -100,7 +100,10 @@ export default function GridPlanner({ data, boards, onSave, onSaveBoards }) {
 
   const save = (next) => { setState(next); onSave && onSave(next); };
 
-  const feeds = (state && state.feeds) || [];
+  const feedsAll = (state && state.feeds) || [];
+  // board-access scoping: a feed is visible only if its board came through the
+  // server (access allows it) or its account is one of the person's brands.
+  const feeds = feedsAll.filter((f) => !allowedAccts || (f.boardKey && boards && boards[f.boardKey]) || (f.account && allowedAccts.has(String(f.account).toLowerCase())));
   const feed = feeds.find((f) => f.id === feedId) || feeds[0] || null;
   const board = feed && boards ? boards[feed.boardKey] : null;
   const cardById = useMemo(() => {

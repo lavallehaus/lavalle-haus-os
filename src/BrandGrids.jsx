@@ -120,8 +120,10 @@ async function storeImage(dataUrl) {
   } catch { return dataUrl; }
 }
 
-export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
-  const [acct, setAcct] = useState(BRANDS[0].acct);
+export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowedAccts = null }) {
+  // board-access scoping: only the brands whose boards this person can open
+  const VISIBLE_BRANDS = BRANDS.filter((b) => !allowedAccts || allowedAccts.has(b.acct));
+  const [acct, setAcct] = useState((VISIBLE_BRANDS[0] || BRANDS[0]).acct);
   // Lavalle Sisters runs TWO grids: Instagram and TikTok. Same 21 cards, but
   // the TikTok side keeps its own covers (card.tiktokCover, falling back to the
   // IG cover), its own order, its own zoom crops and its own lock — all stored
@@ -760,7 +762,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards }) {
   return (
     <div style={{ fontFamily: sans, maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-        {BRANDS.map((b) => (
+        {VISIBLE_BRANDS.map((b) => (
           <button key={b.acct} onClick={() => { setAcct(b.acct); setPlatform("ig"); setMsg(null); setPickIdx(null); setEditKey(null); }}
             style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
             {b.label}
