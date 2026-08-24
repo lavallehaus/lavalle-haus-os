@@ -154,6 +154,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   const [sisTray, setSisTray] = useState([]);
   const [sisPick, setSisPick] = useState(null);
   const [sisBusy, setSisBusy] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false); // photo pool folded by default
   // Reframe (zoom + pan) a grid tile; saving renders the crop to a new cover
   // URL on the tile — Save arrangement then writes it onto the card itself.
   const [sisReframe, setSisReframe] = useState(null); // { idx, z:{s,x,y} }
@@ -793,7 +794,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Grids</span>
           <select value={sisSel} onChange={(e) => setSisSel(e.target.value)}
             style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
-            {sisGrids.archive.map((g) => <option key={g.fileId} value={g.fileId}>{g.name.slice(0, 44)}</option>)}
+            {sisGrids.archive.map((g) => <option key={g.fileId} value={g.fileId}>{g.name.replace(/\s*\(.*?\)\s*$/, "").slice(0, 44)}</option>)}
           </select>
         </div>
       )}
@@ -841,9 +842,16 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
               </div>
             );
           })()}
-          <div style={{ margin: "4px 0 16px", border: `1px solid ${c.line}`, background: c.card, padding: 10 }}>
+          <div style={{ margin: "4px 0 16px" }}>
+            {/* quiet-luxury disclosure: the pool stays folded away until asked for */}
+            <button onClick={() => setTrayOpen((v) => !v)}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "transparent", border: "none", borderTop: `1px solid ${c.line}`, borderBottom: `1px solid ${c.line}`, padding: "11px 2px", cursor: "pointer" }}>
+              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub }}>Photo pool · {sisTray.length}</span>
+              <span style={{ fontFamily: "Georgia, serif", fontSize: 12, color: c.taupe }}>{trayOpen ? "—" : "+"}</span>
+            </button>
+            {trayOpen && (
+            <div style={{ border: `1px solid ${c.line}`, borderTop: "none", background: c.card, padding: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Photo pool — not on the grid ({sisTray.length})</span>
               <label style={{ border: `1px dashed ${c.line}`, borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
                 Add photos
                 <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
@@ -883,6 +891,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
               ))}
               {!sisTray.length && <div style={{ gridColumn: "1 / -1", fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>No spare photos yet — add some above.</div>}
             </div>
+            </div>
+            )}
           </div>
           <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "2px 0 6px" }}>The grid — 21 tiles, Post 1 bottom-right</div>
           {(() => {

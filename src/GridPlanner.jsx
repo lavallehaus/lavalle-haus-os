@@ -168,7 +168,8 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   };
 
   const patchItem = (cardId, patch) => {
-    patchFeed({ items: feed.items.map((x) => (x.cardId === cardId ? { ...x, ...patch } : x)) });
+    const cur = feed.items || [];
+    patchFeed({ items: cur.some((x) => x.cardId === cardId) ? cur.map((x) => (x.cardId === cardId ? { ...x, ...patch } : x)) : [...cur, { cardId, ...patch }] });
   };
 
   // Auto-publish helpers: pub.at is a real instant (ISO); inputs speak local time.
@@ -223,7 +224,20 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
 
   if (!feed) return <div style={{ fontFamily: sans, fontSize: 12, letterSpacing: 2, color: c.sub, textAlign: "center", padding: 50 }}>PREPARING THE GRID…</div>;
 
-  const items = feed.items || [];
+  const storedItems = feed.items || [];
+  // Live board view (her rule): a board-backed feed's tiles ARE the board's
+  // "Post n" cards — always-current covers, captions, hashtags — newest slot
+  // first, exactly like the grid. Stored items only lend their scheduling
+  // (pub) by cardId; stale copies of old cards can never show again.
+  const items = useMemo(() => {
+    if (!board || !board.cards) return storedItems;
+    const postCards = board.cards.filter((cd) => cd.cover && /^post\s*\d+/i.test(cd.name || ""));
+    if (!postCards.length) return storedItems;
+    const stored = {}; storedItems.forEach((x) => { stored[x.cardId] = x; });
+    return postCards
+      .map((cd) => { const n = Number((cd.name.match(/^post\s*(\d+)/i) || [])[1]); return { ...(stored[cd.id] || {}), cardId: cd.id, n, src: null, driveId: (stored[cd.id] || {}).driveId || null }; })
+      .sort((a, b) => b.n - a.n);
+  }, [board, storedItems]);
   // Once a post is live (published), it drops out of the Planning grid — it now
   // lives in the "Live" view, pulled from the real IG feed. A post goes live when
   // it's marked it.live (set by the publish sweep, or when it's detected on IG).
@@ -545,6 +559,9 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
               <div style={{ fontFamily: sans, fontSize: 15, color: c.ink }}>{openCard.name}</div>
               <button onClick={() => setOpenItem(null)} style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 15 }}>×</button>
             </div>
+            {(() => { const st = openCard.done || (open.pub && open.pub.status === "published") ? "Posted" : open.pub && open.pub.auto && open.pub.status === "scheduled" ? "Scheduled · " + new Date(open.pub.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : openCard.due ? "Planned · " + new Date(String(openCard.due).slice(0, 10) + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "Not scheduled yet"; return (
+              <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: /posted/i.test(st) ? c.green : /not/i.test(st) ? c.sub : c.taupe, margin: "4px 0 8px" }}>{st}</div>
+            ); })()}
             <img src={imgOf(open, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
 
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Hook</div>
@@ -554,6 +571,9 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
             <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
               style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 4 }} />
             <div style={{ marginBottom: 10 }}><NotesLinks text={openCard.desc} /></div>
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Hashtags</div>
+            <input value={openCard.tags || ""} onChange={(e) => patchCard(open.cardId, { tags: e.target.value })} placeholder="#two #tags"
+              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, color: c.ink, outline: "none", marginBottom: 10 }} />
 
             {(open.pieces || []).length > 0 && (
               <div style={{ marginBottom: 10 }}>
@@ -634,7 +654,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
               <button onClick={() => patchCard(open.cardId, { done: !openCard.done })} style={{ ...ghost, color: openCard.done ? c.sub : c.green, borderColor: openCard.done ? c.line : c.green }}>
                 {openCard.done ? "Mark not posted" : "✓ Mark posted"}
               </button>
-              <a href={`https://drive.google.com/file/d/${open.driveId}/view`} target="_blank" rel="noopener noreferrer" style={{ ...ghost, textDecoration: "none", display: "inline-block" }}>Open photo in Drive</a>
+              {open.driveId && <a href={`https://drive.google.com/file/d/${open.driveId}/view`} target="_blank" rel="noopener noreferrer" style={{ ...ghost, textDecoration: "none", display: "inline-block" }}>Open photo in Drive</a>}
             </div>
             {formatOf(openCard.name) && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 12 }}>Format: {formatOf(openCard.name)}</div>}
             <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 10 }}>
