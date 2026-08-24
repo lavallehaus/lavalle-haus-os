@@ -2765,7 +2765,7 @@ useEffect(() => {
       const r = await fetch("/api/data?op=me");
       if (!r.ok) return;
       const d = await r.json();
-      const next = { ...cur, name: d.name, role: d.role, email: d.email, pages: d.pages || null };
+      const next = { ...cur, name: d.name, role: d.role, email: d.email, pages: d.pages || null, denySegs: d.denySegs || null };
       if (JSON.stringify(next) !== JSON.stringify(cur)) {
         localStorage.setItem("lh_user", JSON.stringify(next));
         setMeVersion(v => v + 1);
