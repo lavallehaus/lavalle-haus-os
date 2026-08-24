@@ -2335,6 +2335,7 @@ function InstallAppNudge() {
   const [deferred, setDeferred] = useState(null);
   const [show, setShow] = useState(false);
   const [guide, setGuide] = useState(false); // full-screen iOS how-to
+  const [min, setMin] = useState(() => { try { return localStorage.getItem("lh_install_min") === "1"; } catch { return false; } }); // folded to a small Download app button
   const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   useEffect(() => {
@@ -2347,23 +2348,35 @@ function InstallAppNudge() {
   }, []); // eslint-disable-line
   if (!show || standalone) return null;
   const snooze = (e) => { if (e) e.stopPropagation(); try { localStorage.setItem("lh_install_snooze", String(Date.now() + 7 * 86400000)); } catch {} setShow(false); setGuide(false); };
+  const minimize = (e) => { if (e) e.stopPropagation(); try { localStorage.setItem("lh_install_min", "1"); } catch {} setMin(true); };
+  const unminimize = () => { try { localStorage.removeItem("lh_install_min"); } catch {} setMin(false); };
   const activate = async () => {
     if (deferred) { try { deferred.prompt(); await deferred.userChoice; } catch {} setShow(false); return; }
     setGuide(true); // iOS: show the big visual guide
   };
   return (
     <>
-      {/* Banner rides at the TOP — Safari's floating bottom bar was swallowing
-          taps when it sat at the bottom. The whole banner is one big button. */}
+      {min ? (
+        /* folded: one minimal chip — white box, black trim, black text */
+        <button onClick={unminimize}
+          style={{ position: "fixed", right: 10, top: "calc(env(safe-area-inset-top, 0px) + 10px)", zIndex: 400, background: "#FFFFFF", color: "#1A1A1A", border: "1px solid #1A1A1A", borderRadius: 2, padding: "8px 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", boxShadow: "0 4px 14px rgba(26,26,26,0.12)" }}>
+          Download app
+        </button>
+      ) : (
+      /* Banner rides at the TOP — Safari's floating bottom bar was swallowing
+          taps when it sat at the bottom. White, quiet, with a fold-away dash. */
       <div onClick={activate} role="button"
-        style={{ position: "fixed", left: 10, right: 10, top: "calc(env(safe-area-inset-top, 0px) + 10px)", zIndex: 400, background: "#1A1A1A", color: "#F4F2EC", borderRadius: 6, padding: "13px 14px", boxShadow: "0 12px 40px rgba(0,0,0,0.4)", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+        style={{ position: "fixed", left: 10, right: 10, top: "calc(env(safe-area-inset-top, 0px) + 10px)", zIndex: 400, background: "#FFFFFF", color: "#1A1A1A", border: "1px solid #1A1A1A", borderRadius: 2, padding: "12px 14px", boxShadow: "0 12px 40px rgba(26,26,26,0.18)", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
         <img src="/icons/icon-192.png" alt="" style={{ width: 38, height: 38, borderRadius: 8, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase" }}>Put Lavalle Haus on your phone</div>
-          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, opacity: 0.85 }}>{deferred ? "Tap here to install it like a normal app." : "Tap here — 2 quick steps."}</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.8, textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>Put Lavalle Haus on your phone</div>
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: "#71716C" }}>{deferred ? "Tap here to install it like a normal app." : "Tap here — 2 quick steps."}</div>
         </div>
-        <button onClick={snooze} style={{ border: "1px solid rgba(244,242,236,0.4)", background: "transparent", color: "#F4F2EC", borderRadius: 2, padding: "9px 11px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", flexShrink: 0 }}>Later</button>
+        <button onClick={minimize} title="Fold away — keeps a small Download app button"
+          style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 2, width: 34, height: 34, fontFamily: "Georgia, serif", fontSize: 15, cursor: "pointer", padding: 0 }}>—</button>
+        <button onClick={snooze} style={{ border: "1px solid #E0E0DD", background: "transparent", color: "#71716C", borderRadius: 2, padding: "9px 11px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Later</button>
       </div>
+      )}
       {guide && (
         <div onClick={() => setGuide(false)} style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#F4F2EC", color: "#1A1A1A", borderRadius: 8, padding: "26px 22px", maxWidth: 330, width: "100%", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", textAlign: "center" }}>

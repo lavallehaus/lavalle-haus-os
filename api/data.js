@@ -1869,7 +1869,7 @@ export default async function handler(req, res) {
     for (let i = 0; i < tilesP.length; i++) {
       try { const u = /^https?:/.test(tilesP[i].cover) ? tilesP[i].cover : APP_ORIGIN + tilesP[i].cover; const r = await fetch(u); if (!r.ok) continue; const im = await Jimp.read(Buffer.from(await r.arrayBuffer())); im.resize(300, Jimp.AUTO); im.quality(70); const b = await im.getBufferAsync(Jimp.MIME_JPEG); content.push({ type: "text", text: "Tile " + (i + 1) + ":" }); content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b.toString("base64") } }); } catch (e) {}
     }
-    content.push({ type: "text", text: "These are the " + tilesP.length + " photos of this month's Instagram grid for " + SBOARD.themeLabelBrand + ". For EACH tile give: category = \"fashion\" (clothing, outfits, garments, styling) | \"beauty\" (body care, candles, skincare, home ritual) | \"lifestyle\" (the founders, behind the scenes, places), and an editorial score 1-10 for how much it reads like a quiet-luxury campaign image (composition, light, restraint; the PRODUCT or GARMENT is the subject: still lifes, styled details, hands at most). Any photo where a person, face or founder is prominent scores 3 or less, no matter how beautiful; phone snaps, busy BTS shots, screens and visible text also score low. Return ONLY JSON: {\"tiles\":[{\"i\":1,\"category\":\"fashion\",\"editorial\":8}, …]}" });
+    content.push({ type: "text", text: "These are the " + tilesP.length + " photos of this month's Instagram grid for " + SBOARD.themeLabelBrand + ". For EACH tile give: category = \"fashion\" (clothing, outfits, garments, styling) | \"beauty\" (body care, candles, skincare, home ritual) | \"lifestyle\" (the founders, behind the scenes, places), and an editorial score 1-10 for how much it reads like a quiet-luxury campaign image (composition, light, restraint; the PRODUCT or GARMENT is the subject: still lifes, styled details, hands at most). Any photo where a person, face or founder is prominent scores 3 or less, no matter how beautiful; the same for any photo showing bare feet, toes or tattoos; phone snaps, busy BTS shots, screens and visible text also score low. Return ONLY JSON: {\"tiles\":[{\"i\":1,\"category\":\"fashion\",\"editorial\":8}, …]}" });
     let parsedP = null;
     try {
       const rP = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": akeyP, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content }] }) });
@@ -1925,7 +1925,7 @@ export default async function handler(req, res) {
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
-    const tilesHashS = "w4" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // must match sisters_grid_card's views-cache key
+    const tilesHashS = "w5" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // must match sisters_grid_card's views-cache key
     const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     const views = (cacheS.views || {});
     const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && [0, 1, 2, 3].every((i) => views[i]));
@@ -2076,20 +2076,21 @@ export default async function handler(req, res) {
     const all = [...(g1.tiles || []), ...(g2.tiles || [])];
     if (all.length < 21) { res.json({ ok: false, error: "tiles not seeded" }); return; }
     const Jimp = (await import("jimp")).default;
-    // 3x5 pixel digits drawn by hand (no font files in the serverless bundle)
-    const DIG = { "0": ["111","101","101","101","111"], "1": ["010","110","010","010","111"], "2": ["111","001","111","100","111"], "3": ["111","001","111","001","111"], "4": ["101","101","111","001","001"], "5": ["111","100","111","001","111"], "6": ["111","100","111","101","111"], "7": ["111","001","001","001","001"], "8": ["111","101","111","101","111"], "9": ["111","101","111","001","111"] };
-    const drawNum = (img, text, x0, y0, px) => {
-      let x = x0;
-      for (const ch of String(text)) {
-        const g = DIG[ch]; if (!g) continue;
-        for (let r = 0; r < 5; r++) for (let c2 = 0; c2 < 3; c2++) if (g[r][c2] === "1") {
-          // shadow then white
-          img.scan(x + c2 * px + 2, y0 + r * px + 2, px, px, function (xx, yy, idx) { this.bitmap.data[idx] = 20; this.bitmap.data[idx + 1] = 20; this.bitmap.data[idx + 2] = 20; this.bitmap.data[idx + 3] = 140; });
-          img.scan(x + c2 * px, y0 + r * px, px, px, function (xx, yy, idx) { this.bitmap.data[idx] = 255; this.bitmap.data[idx + 1] = 255; this.bitmap.data[idx + 2] = 255; this.bitmap.data[idx + 3] = 255; });
-        }
-        x += 4 * px;
-      }
+    // Quiet numerals (her note: the pixel digits read too techy): thin Inter
+    // numbers rendered by resvg from the bundled font, soft shadow, small.
+    const { initWasm: initW, Resvg: ResvgN } = await import("@resvg/resvg-wasm");
+    const fsN = await import("node:fs"); const pathN = await import("node:path");
+    try { await initW(fsN.readFileSync(pathN.join(process.cwd(), "assets", "resvg.wasm"))); } catch (eW0) { if (!/already/i.test(String(eW0 && eW0.message))) throw eW0; }
+    const interN = new Uint8Array(fsN.readFileSync(pathN.join(process.cwd(), "assets", "fonts", "Inter-Regular.ttf")));
+    const chipCache = {};
+    const numChip = async (n) => {
+      if (chipCache[n]) return chipCache[n];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="110" height="56" viewBox="0 0 110 56"><text x="11" y="41" font-family="Inter" font-size="30" fill="rgba(26,26,26,0.5)">${n}</text><text x="10" y="40" font-family="Inter" font-size="30" fill="#FFFFFF">${n}</text></svg>`;
+      const png = Buffer.from(new ResvgN(svg, { fitTo: { mode: "original" }, font: { fontBuffers: [interN], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng());
+      chipCache[n] = await Jimp.read(png);
+      return chipCache[n];
     };
+    const drawNum = async (img, text) => { img.composite(await numChip(text), 4, 2); };
     const tileCache = {};
     const getTile = async (cover) => {
       if (tileCache[cover]) return tileCache[cover].clone();
@@ -2105,7 +2106,7 @@ export default async function handler(req, res) {
       for (let i = 0; i < n; i++) {
         try {
           const t = await getTile(slice[i].cover); if (!t) continue;
-          drawNum(t, from + i, 12, 12, 5);
+          await drawNum(t, from + i);
           if (slice[i].tag === "C") { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
           cv.composite(t, (2 - (i % 3)) * 360, (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
@@ -2122,7 +2123,7 @@ export default async function handler(req, res) {
     // one window per invocation (each render is ~10-20s on serverless); results
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
-    const tilesHash = "w4" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // w4 = the 1-9/10-21/22-30/31-42 window set
+    const tilesHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // w4 = the 1-9/10-21/22-30/31-42 window set
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
     const views = [];
