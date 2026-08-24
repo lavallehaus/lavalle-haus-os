@@ -831,7 +831,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             </div>
           )}
-          {WORKSPACES.map((w) => (
+          {WORKSPACES.filter((w) => viewer.owner || [...w.boards, ...Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].ws === w.id)].some((key) => boards[key] && boards[key].lists && canSee(boards[key]))).map((w) => (
             <div key={w.id} style={{ marginBottom: 30 }}>
               <div style={{ marginBottom: 10 }}>
                 <span style={{ fontFamily: sans, fontSize: 12.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink, fontWeight: 500 }}>{w.label}</span>
@@ -846,12 +846,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               <div key={key} onClick={() => openBoard(key)}
                 style={{ position: "relative", textAlign: "left", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.05)", zIndex: accessMenu === key ? 90 : "auto" }}>
                 <div style={{ height: 190, position: "relative", borderRadius: "7px 7px 0 0", overflow: "hidden", ...tileBg(b) }}>
-                  <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4 }}>
+                  {viewer.owner && <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4 }}>
                     <button title="Rename board" onClick={(e) => { e.stopPropagation(); const name = prompt("Rename board", b.name); if (name && name.trim()) commit({ ...boards, [key]: { ...b, name: name.trim() } }); }}
                       style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 11, padding: "3px 7px" }}>✎</button>
                     <button title="Delete board" onClick={(e) => { e.stopPropagation(); if (!confirm(`Delete the board "${b.name}"${b.cards.length ? " and its " + b.cards.length + " cards" : ""}?`)) return; const next = { ...boards }; delete next[key]; commit(next); }}
                       style={{ background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 5, cursor: "pointer", color: c.sub, fontSize: 12, padding: "3px 7px" }}>×</button>
-                  </div>
+                  </div>}
                 </div>
                 <div style={{ padding: "10px 14px 12px" }}>
                 <div style={{ fontFamily: sans, fontSize: 14.5, color: c.ink }}>{b.name}</div>
@@ -887,10 +887,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             );
           })}
-          <button onClick={() => { const name = prompt("New board name"); if (!name || !name.trim()) return; const key = "b" + uid(); commit({ ...boards, [key]: { name: name.trim(), ws: w.id, lists: [{ id: uid(), name: "To do" }], cards: [] } }); }}
+          {viewer.owner && (<button onClick={() => { const name = prompt("New board name"); if (!name || !name.trim()) return; const key = "b" + uid(); commit({ ...boards, [key]: { name: name.trim(), ws: w.id, lists: [{ id: uid(), name: "To do" }], cards: [] } }); }}
             style={{ background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, minHeight: 92, cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>
             + Board
-          </button>
+          </button>)}
               </div>
             </div>
           ))}
