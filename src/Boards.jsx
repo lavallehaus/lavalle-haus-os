@@ -1542,7 +1542,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           untappable, with no way to scroll it into reach. dvh tracks the
           VISIBLE viewport. The extra bottom padding keeps the last button clear
           of the home-indicator area once you do scroll down. */}
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 94vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, padding: "24px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box", WebkitOverflowScrolling: "touch" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "24px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box", WebkitOverflowScrolling: "touch" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ fontFamily: sans, fontSize: 18, fontWeight: 300, color: c.ink }}>{isNew ? "New card" : "Card"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
@@ -1656,17 +1656,30 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
 
         {/* Card photos — up to 5 (an Instagram carousel's worth). First one
             doubles as the cover unless she taps a different one. */}
-        <div style={label}>Photos ({attachments.length}/5) — tap one to set as cover</div>
+        {(() => { const files = attachments.filter((a) => a && typeof a === "object" && a.url && !/^image\//.test(a.type || "")); return files.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Files</div>
+            {files.map((a, i) => (
+              <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${c.line}`, borderRadius: 1, padding: "10px 12px", marginBottom: 6, textDecoration: "none", background: c.bg }}>
+                <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>{/pdf/i.test(a.type || "") ? "⎙" : "↗"}</span>
+                <span style={{ fontFamily: sans, fontSize: 12, color: c.ink, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name || a.url}</span>
+                <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>Open</span>
+              </a>
+            ))}
+          </div>
+        ); })()}
+        <div style={label}>Photos ({attachments.filter((a) => !(a && typeof a === "object" && a.url && !/^image\//.test(a.type || ""))).length}/5) — tap one to set as cover</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5, marginBottom: 10 }}>
-          {attachments.map((a, i) => (
+          {attachments.map((a, i) => { const u = a && typeof a === "object" ? a.url : a; if (a && typeof a === "object" && a.url && !/^image\//.test(a.type || "")) return null; return (
             <div key={i} style={{ position: "relative" }}>
-              <img src={a} alt="" onClick={() => applyCover(a)}
-                style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === a ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
+              <img src={u} alt="" onClick={() => applyCover(u)}
+                style={{ width: "100%", height: 64, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: cover === u ? `2px solid ${c.ink}` : `1px solid ${c.line}` }} />
               <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} title="Remove photo"
                 style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: `1px solid ${c.line}`, background: "#fff", color: c.sub, fontSize: 11, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
             </div>
-          ))}
-          {attachments.length < 5 && (
+          ); })}
+          {attachments.filter((a) => !(a && typeof a === "object" && a.url && !/^image\//.test(a.type || ""))).length < 5 && (
             <label style={{ height: 64, border: `1px dashed ${c.line}`, borderRadius: 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
               ⇪ Add
               <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
