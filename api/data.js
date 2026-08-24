@@ -2247,13 +2247,16 @@ export default async function handler(req, res) {
           if (s) { card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels; card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl; if (s.pub) card.pub = s.pub; else delete card.pub; if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover; }
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
           const base = "Post " + n;
+          const hasCTag = (card.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
           if (t.tag === "C") {
             const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";
             card.name = base + " — " + concept;
             if (!/courtney/i.test(card.desc || "")) { card.desc = "Courtney's post — caption and hashtags to come from Courtney."; card.tags = ""; }
+            if (!hasCTag) card.labels = [{ n: "Courtney", c: "#FFFFFF" }, ...(card.labels || [])]; // her tag: white box, black square, "Courtney"
           } else {
             card.name = base;
             if (/^courtney's post — caption and hashtags to come/i.test(card.desc || "")) { card.desc = ""; card.tags = ""; }
+            if (hasCTag) card.labels = (card.labels || []).filter((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() !== "courtney");
           }
           wrote++;
         });

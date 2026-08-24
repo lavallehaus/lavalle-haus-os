@@ -1144,7 +1144,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           {(card.labels || []).length > 0 && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
                               {(card.labels || []).slice(0, 6).map((lb, i) => { const L = normLabel(lb); return (
-                                <span key={i} style={{ fontFamily: sans, fontSize: 9.5, fontWeight: 500, letterSpacing: 0.5, color: labelText(L.c), background: L.c, borderRadius: 4, padding: "3px 8px" }}>{L.n}</span>
+                                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: sans, fontSize: 9.5, fontWeight: 500, letterSpacing: 0.5, color: labelText(L.c), background: L.c, borderRadius: 4, padding: "3px 8px", border: /^#fff/i.test(L.c) ? "1px solid #1A1A1A" : "none" }}>{/^#fff/i.test(L.c) && <span style={{ width: 7, height: 7, background: "#1A1A1A", display: "inline-block" }} />}{L.n}</span>
                               ); })}
                             </div>
                           )}
@@ -2014,8 +2014,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <div style={label}>Tags</div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
           {labels.map((L, i) => (
-            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: L.c, color: labelText(L.c), borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" }}>
-              {L.n}
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: L.c, color: labelText(L.c), borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", border: /^#fff/i.test(L.c) ? "1px solid #1A1A1A" : "none" }}>
+              {/^#fff/i.test(L.c) && <span style={{ width: 7, height: 7, background: "#1A1A1A", display: "inline-block" }} />}{L.n}
               <button onClick={() => setLabels(labels.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: labelText(L.c), cursor: "pointer", padding: 0, fontSize: 11 }}>×</button>
             </span>
           ))}
