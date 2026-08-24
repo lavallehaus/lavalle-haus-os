@@ -1917,7 +1917,7 @@ export default async function handler(req, res) {
     const tagAt = (n) => (tilesS[n - 1] ? tilesS[n - 1].tag : null);
     const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
-    const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+ /.test(c.name || ""))
+    const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+\b/.test(c.name || ""))
       .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
