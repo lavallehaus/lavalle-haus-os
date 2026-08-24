@@ -1057,6 +1057,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
             {board.lists.map((l) => {
               let cards = board.cards.filter((x) => x.listId === l.id);
+              // The Automations card is the owner's plain-English map of what runs
+              // on its own — admin reference, not something the team works from.
+              if (!viewer.owner) cards = cards.filter((x) => !/^automations\b/i.test(x.name || ""));
               if (touchDrag && previewAt) {
                 const dragged = board.cards.find((x) => x.id === touchDrag);
                 cards = cards.filter((x) => x.id !== touchDrag);
