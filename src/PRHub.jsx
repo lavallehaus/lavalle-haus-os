@@ -29,7 +29,7 @@ const chipColor = (v) => /ready for review/i.test(v) ? "#a8842c"
 const socialLinks = (raw, row = {}) => {
   const v = String(raw || "").replace(/\(.*?\)/g, "").trim();
   if (!v) return [];
-  if (/^https?:\/\//i.test(v)) return [{ key: "url", label: "↗", href: v }];
+  if (/^https?:\/\//i.test(v)) return [{ key: "url", label: "↗︎", href: v }];
   const h = v.replace(/^@+/, "").trim();
   if (!h) return [];
   if (/tiktok\.com/i.test(v)) return [{ key: "tt", label: "TT", href: "https://" + v.replace(/^\/+/, "") }];

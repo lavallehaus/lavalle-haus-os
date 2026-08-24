@@ -183,7 +183,7 @@ export default function Pricing({ products = [] }) {
             <div key={x.asin} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap", marginTop: i === 0 ? 8 : 0 }}>
               <div style={{ minWidth: 0, flex: "1 1 200px" }}>
                 <span style={{ fontFamily: serif, fontSize: 14, color: c.ink }}>{x.label || x.asin}</span>
-                <a href={`https://www.amazon.com/dp/${x.asin}`} target="_blank" rel="noreferrer" style={{ fontFamily: sans, fontSize: 9, color: c.clay, marginLeft: 8, textDecoration: "none" }}>{x.asin} ↗</a>
+                <a href={`https://www.amazon.com/dp/${x.asin}`} target="_blank" rel="noreferrer" style={{ fontFamily: sans, fontSize: 9, color: c.clay, marginLeft: 8, textDecoration: "none" }}>{x.asin} ↗︎</a>
               </div>
               <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontFamily: sans, fontSize: 11 }}>
                 <span style={{ color: c.ink }}>{p.error ? "no data" : money(p.buyBox ?? p.lowest)}</span>

@@ -278,7 +278,7 @@ export default function ReorderList({
       ? <span style={{ fontFamily: mono, fontSize: 9.5, color: c.green }}>✓ sent · <button onClick={() => unsend(row)} style={{ background: "none", border: "none", color: c.clay, cursor: "pointer", fontFamily: mono, fontSize: 9.5, textDecoration: "underline", padding: 0 }}>undo</button></span>
       : <button onClick={() => send(row, item)} style={S.btn}>→ Action Item</button>;
   };
-  const LinkBtn = ({ href }) => href ? <a href={href} target="_blank" rel="noreferrer" style={{ ...S.ghost, textDecoration: "none", display: "inline-block" }}>↗ Buy</a> : null;
+  const LinkBtn = ({ href }) => href ? <a href={href} target="_blank" rel="noreferrer" style={{ ...S.ghost, textDecoration: "none", display: "inline-block" }}>↗︎ Buy</a> : null;
 
   // Obvious freshness stamp — green if recent, amber/red as it ages.
   const Fresh = ({ at, pending }) => {

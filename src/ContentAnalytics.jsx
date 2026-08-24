@@ -134,7 +134,7 @@ export default function ContentAnalytics({ allowedAccts = null }) {
                       <tr style={{ background: openId === m.id ? c.card : "transparent" }}>
                         <td style={{ ...td, whiteSpace: "nowrap" }}>
                           {m.permalink
-                            ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" title="Open this post on Instagram" style={{ color: c.taupe, textDecoration: "underline", textUnderlineOffset: 2, fontWeight: 500 }}>{new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ↗</a>
+                            ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" title="Open this post on Instagram" style={{ color: c.taupe, textDecoration: "underline", textUnderlineOffset: 2, fontWeight: 500 }}>{new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ↗︎</a>
                             : new Date(m.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </td>
                         <td style={{ ...td, color: c.taupe }}>{m.kind}</td>

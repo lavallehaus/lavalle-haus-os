@@ -1087,7 +1087,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
                 <tr style={{ cursor:"pointer", background:open===p.id?c.bg:"transparent" }} onClick={()=>setOpen(open===p.id?null:p.id)}>
                   <td style={{ ...S.td, ...S.tdL }}>
                     <div style={{ fontSize:14 }}>{p.name}</div>
-                    <div style={{ fontSize:11, color:c.sub, fontFamily:sans }}>{p.sku}{p.reorderLink?" · ":""}{p.reorderLink&&<a href={p.reorderLink} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} style={{ color:c.clay }}>reorder ↗</a>} · <a onClick={(e)=>{e.stopPropagation();openEdit(p);}} style={{ color:c.clay, cursor:"pointer" }}>edit</a></div>
+                    <div style={{ fontSize:11, color:c.sub, fontFamily:sans }}>{p.sku}{p.reorderLink?" · ":""}{p.reorderLink&&<a href={p.reorderLink} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} style={{ color:c.clay }}>reorder ↗︎</a>} · <a onClick={(e)=>{e.stopPropagation();openEdit(p);}} style={{ color:c.clay, cursor:"pointer" }}>edit</a></div>
                   </td>
                   <td style={S.td}>{m.units.toFixed(0)}</td>
                   <td style={S.td}>{money(m.revenue)}</td>

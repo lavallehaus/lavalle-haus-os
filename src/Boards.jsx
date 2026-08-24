@@ -42,8 +42,8 @@ export const linkMeta = (u) => {
     if (h.includes("pinterest.")) return { icon: "◌", label: "Pinterest" };
     if (h.includes("thefoldlabel.com")) return { icon: "⌂", label: "The Fold site" };
     if (h.includes("refilleryhaus.com")) return { icon: "⌂", label: "Refillery site" };
-    return { icon: "↗", label: h };
-  } catch { return { icon: "↗", label: String(u).slice(0, 30) }; }
+    return { icon: "↗︎", label: h };
+  } catch { return { icon: "↗︎", label: String(u).slice(0, 30) }; }
 };
 export function NotesLinks({ text }) {
   const urls = [...new Set(String(text || "").match(URL_RX) || [])];
@@ -55,7 +55,7 @@ export function NotesLinks({ text }) {
         return (
           <a key={i} href={u} target="_blank" rel="noopener noreferrer" title={u}
             style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "5px 11px", fontFamily: sans, fontSize: 10.5, letterSpacing: 0.5, color: c.ink, textDecoration: "none", background: c.bg, display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: c.taupe }}>{m.icon}</span> {m.label} ↗
+            <span style={{ color: c.taupe }}>{m.icon}</span> {m.label} ↗︎
           </a>
         );
       })}
@@ -1195,7 +1195,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               )}
                               {card.pub && card.pub.status === "failed" && <span title={card.pub.error} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.red }}>✗ publish failed</span>}
                               {(card.comments || []).filter((x) => !x.sys).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>✎ {(card.comments || []).filter((x) => !x.sys).length}</span>}
-                              {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>↗ {(card.links || []).length}</span>}
+                              {(card.links || []).length > 0 && <span style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>↗︎ {(card.links || []).length}</span>}
                               {(card.attachments || []).length > 0 && <span title={(card.attachments || []).length + " photos"} style={{ fontFamily: sans, fontSize: 9, color: c.sub }}>⊞ {(card.attachments || []).length}</span>}
                               {(card.members || []).map((m, i) => (
                                 <span key={"m" + i} style={{ display: "inline-flex" }}><Avatar member={teamByName[m] || { name: m }} size={20} ring="#FFFFFF" /></span>
@@ -1544,6 +1544,33 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // The auto-built Links card is a set of doors, nothing more (her rule):
   // just the month's folders as quiet hyperlinks — no cover, members, captions,
   // dates, comments or any other card machinery.
+  // Hashtags + Theme cards are notes, not work items: show just the text, quiet.
+  if (/^(hashtags|theme)\b/i.test(card.name || "")) return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>{/^hashtags/i.test(card.name) ? "Hashtags" : "Theme"}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
+        </div>
+        {/^hashtags/i.test(card.name) ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(card.desc || "").split(/[\s,]+/).filter((w) => w.startsWith("#")).map((h, i) => (
+              <span key={i} style={{ border: `1px solid ${c.line}`, background: c.bg, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 12, color: c.ink }}>{h}</span>
+            ))}
+            {!(card.desc || "").split(/[\s,]+/).some((w) => w.startsWith("#")) && (
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{card.desc || "Nothing here yet."}</div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{card.desc || "Nothing here yet."}</div>
+        )}
+        <button onClick={onClose}
+          style={{ display: "block", width: "100%", marginTop: 24, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
   if (/^links\b/i.test(card.name || "")) return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(400px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
@@ -1557,7 +1584,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             <a key={L.id || i} href={L.u || L.url} target="_blank" rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 14px", textDecoration: "none" }}>
               <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: c.ink }}>{L.n || L.label}</span>
-              <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe }}>↗</span>
+              <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>›</span>
             </a>
           ))}
           {!(card.links || []).length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: c.sub }}>The month's folders appear here on the next automatic refresh.</div>}
@@ -1704,7 +1731,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             {files.map((a, i) => (
               <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
                 style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${c.line}`, borderRadius: 1, padding: "10px 12px", marginBottom: 6, textDecoration: "none", background: c.bg }}>
-                <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>{/pdf/i.test(a.type || "") ? "⎙" : "↗"}</span>
+                <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>{/pdf/i.test(a.type || "") ? "⎙" : "↗︎"}</span>
                 <span style={{ fontFamily: sans, fontSize: 12, color: c.ink, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name || a.url}</span>
                 <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub }}>Open</span>
               </a>
@@ -2006,7 +2033,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             return (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 10px" }}>
                 <a href={L.u} target="_blank" rel="noopener noreferrer" title={L.u} style={{ flex: 1, fontFamily: sans, fontSize: 12, color: c.ink, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  <span style={{ color: c.taupe }}>{m.icon}</span> {L.n && L.n !== L.u ? L.n : m.label} <span style={{ color: c.taupe }}>↗</span>
+                  <span style={{ color: c.taupe }}>{m.icon}</span> {L.n && L.n !== L.u ? L.n : m.label} <span style={{ color: c.taupe }}>↗︎</span>
                 </a>
                 <button onClick={() => setLinks(links.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
               </div>

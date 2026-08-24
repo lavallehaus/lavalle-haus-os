@@ -110,8 +110,8 @@ export default function Wholesale({ data = [], onSave }) {
         </div>
         {/* The standalone bilingual wholesale workspaces, served with the app */}
         <div style={{ display: "flex", gap: 8 }}>
-          <a href="/wholesale.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Wholesale Page ↗</a>
-          <a href="/wholesale-outreach.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Outreach Timeline ↗</a>
+          <a href="/wholesale.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Wholesale Page ↗︎</a>
+          <a href="/wholesale-outreach.html" target="_blank" rel="noopener noreferrer" style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "7px 14px", color: c.sub, fontSize: 10, fontFamily: sans, letterSpacing: 1, textTransform: "uppercase", textDecoration: "none" }}>Outreach Timeline ↗︎</a>
         </div>
       </div>
 

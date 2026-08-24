@@ -79,7 +79,7 @@ export default function Tracker({ title, titleEs, intro, columns = [], data = []
                     ) : col.type === "url" ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <input style={cellInput} placeholder="https://" value={r[col.key] || ""} onChange={(e) => setCell(r.id, col.key, e.target.value)} />
-                        {r[col.key] && <a href={r[col.key]} target="_blank" rel="noreferrer" style={{ color: c.clay, textDecoration: "none", fontSize: 14 }} title="open">↗</a>}
+                        {r[col.key] && <a href={r[col.key]} target="_blank" rel="noreferrer" style={{ color: c.clay, textDecoration: "none", fontSize: 14 }} title="open">↗︎</a>}
                       </div>
                     ) : (
                       <input style={{ ...cellInput, textAlign: col.type === "number" ? "right" : "left", fontFamily: col.type === "number" ? sans : serif }} value={r[col.key] || ""} onChange={(e) => setCell(r.id, col.key, col.type === "number" ? e.target.value.replace(/[^0-9.\-]/g, "") : e.target.value)} />

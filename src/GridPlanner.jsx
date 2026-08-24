@@ -582,7 +582,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
                   {open.pieces.map((p, i) => (
                     <a key={i} href={"https://thefoldlabel.com/products/" + p.h} target="_blank" rel="noopener noreferrer"
                       style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "4px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, color: c.ink, textDecoration: "none", background: c.bg }}>
-                      {p.t} ↗
+                      {p.t} ↗︎
                     </a>
                   ))}
                 </div>

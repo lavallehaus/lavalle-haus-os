@@ -87,7 +87,7 @@ export default function ContentScheduler() {
           ))}
           <a href={SCHEDULER_URL} target="_blank" rel="noopener noreferrer"
             style={{ alignSelf: "center", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap" }}>
-            Open full window ↗
+            Open full window ↗︎
           </a>
         </div>
       )}

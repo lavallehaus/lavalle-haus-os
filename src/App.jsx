@@ -484,7 +484,7 @@ return (
 <span style={{ fontSize: 10, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginLeft: 8 }}>{stock} on hand{min > 0 ? ` · min ${min}` : " · set a min in Edit"}{need ? ` · suggest +${need}` : ""}</span>
 </div>
 {p.reorderLink && p.reorderLink.trim() !== "" ? (
-<a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#b06a2e", textDecoration: "none", border: "1px solid #b06a2e40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>
+<a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#b06a2e", textDecoration: "none", border: "1px solid #b06a2e40", borderRadius: 1, padding: "3px 10px" }}>↗︎ REORDER</a>
 ) : (
 <span style={{ fontSize: 9, color: "#9A9A95", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>add link in Edit</span>
 )}
@@ -528,7 +528,7 @@ return (
 ))}
 </div>
 {p.notes && <div style={{ fontSize: 12, color: "#71716C", fontStyle: "italic", marginBottom: 8 }}>{p.notes}</div>}
-{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗ REORDER</a>}
+{p.reorderLink && p.reorderLink.trim() !== "" && <a href={p.reorderLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, color: "#5a7a5a", textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "3px 10px" }}>↗︎ REORDER</a>}
 {(() => {
 const sv = shopify && shopify.variantDetail && shopify.variantDetail[p.id] && shopify.variantDetail[p.id].length > 0 ? shopify.variantDetail[p.id] : null;
 const ak = amazon && amazon.skuDetail && amazon.skuDetail[p.id] && amazon.skuDetail[p.id].length > 0 ? amazon.skuDetail[p.id] : null;
@@ -1141,7 +1141,7 @@ style={{ width: "100%", background: "#F0F0EE", border: "1px solid #E0E0DD", padd
 ) : (
 <span style={{ fontSize: 14, color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>{m.name}</span>
 )}
-{hasLink && <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "2px 8px" }}>↗ OPEN LINK</a>}
+{hasLink && <a href={m.buyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#5a7a5a", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", letterSpacing: 1, textDecoration: "none", border: "1px solid #5a7a5a40", borderRadius: 1, padding: "2px 8px" }}>↗︎ OPEN LINK</a>}
 </div>
 {m.note && <div style={{ fontSize: 11, color: "#8A8A85", fontStyle: "italic" }}>{m.note}</div>}
 </div>
@@ -1472,7 +1472,7 @@ function EmbeddedPage({ src, title, openLabel = "Open full window" }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 12, color: "#71716C" }}>{title}</div>
-        <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 3 }}>{openLabel} ↗</a>
+        <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#8F8676", textDecoration: "underline", textUnderlineOffset: 3 }}>{openLabel} ↗︎</a>
       </div>
       <iframe title={title} src={src} style={{ width: "100%", height: "calc(100vh - 250px)", minHeight: 560, border: "1px solid #E0E0DD", borderRadius: 1, background: "#FFFFFF" }} />
     </div>
