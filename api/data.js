@@ -4140,6 +4140,24 @@ export default async function handler(req, res) {
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
 
+  // Role-aware data boundary. Hiding tabs client-side is presentation; THIS is
+  // the lock: a non-owner session never receives the financial keys (and a
+  // Manager never receives bank/cash), never receives boards their access list
+  // excludes, and their saves can never overwrite what they never received.
+  const FIN_KEYS = ["pnl", "bankCash", "margins", "cogs", "profitMatrix", "wholesale", "googleAds", "metaAds", "b2bAds", "emailRetention", "weekly", "competitors", "retail"];
+  const protectedKeysFor = (a) => (ownerRole(a) ? [] : /^manager/i.test(a.role || "") ? ["bankCash"] : FIN_KEYS.slice());
+  const segDenied = (a, seg) => Array.isArray(a && a.denySegs) && a.denySegs.includes(seg);
+  const canSeeBoard = (a, bd) => { if (ownerRole(a)) return true; const acc = bd && bd.access; if (!acc || !acc.length) return true; return acc.some((n) => n === a.name || (a.email && String(n).toLowerCase() === a.email.toLowerCase())); };
+  const scopeBlob = (a, blob) => {
+    if (!blob || ownerRole(a)) return blob;
+    const out = { ...blob };
+    for (const k of protectedKeysFor(a)) delete out[k];
+    if (segDenied(a, "content:pr")) delete out.prHub;
+    if (segDenied(a, "content:comms")) delete out.comms;
+    if (segDenied(a, "content:meetings")) delete out.teamMeetings;
+    if (out.boards) { const bs = {}; for (const [k, bd] of Object.entries(out.boards)) { if (k.startsWith("_") || canSeeBoard(a, bd)) bs[k] = bd; } out.boards = bs; }
+    return out;
+  };
   if (req.method === "GET") {
     const r = await fetch(`${url}/get/lavalle_data`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -4148,7 +4166,7 @@ export default async function handler(req, res) {
     let data = d.result ? JSON.parse(d.result) : null;
     // Fix: if data is an array (old bug), unwrap it
     if (Array.isArray(data)) data = data[0];
-    res.json(data || { products: [], materials: [], weekly: [] });
+    res.json(scopeBlob(auth, data) || { products: [], materials: [], weekly: [] });
   } else if (req.method === "POST") {
     // GUARDRAIL. This branch replaces the ENTIRE dataset, and it used to catch
     // any POST that fell through — so a request to an op that didn't exist yet
@@ -4167,10 +4185,32 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "Refusing to save: body doesn't look like the app state (no boards/products/gridPlanner)." });
       return;
     }
+    // Non-owner saves are MERGED over the stored state: protected keys and
+    // boards outside the sender's access keep their stored values, so a member
+    // client that never received them can't blank them out on save.
+    let toStore = body;
+    if (!ownerRole(auth)) {
+      const r0 = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
+      const d0 = await r0.json();
+      let stored = d0.result ? JSON.parse(d0.result) : null;
+      if (Array.isArray(stored)) stored = stored[0];
+      if (stored) {
+        toStore = { ...stored };
+        const prot = new Set([...protectedKeysFor(auth), ...(segDenied(auth, "content:pr") ? ["prHub"] : []), ...(segDenied(auth, "content:comms") ? ["comms"] : []), ...(segDenied(auth, "content:meetings") ? ["teamMeetings"] : [])]);
+        for (const [k, v] of Object.entries(body)) {
+          if (prot.has(k)) continue;
+          if (k === "boards" && v && typeof v === "object") {
+            const bs = { ...(stored.boards || {}) };
+            for (const [bk, bd] of Object.entries(v)) { if (bk.startsWith("_") || canSeeBoard(auth, (stored.boards || {})[bk] || bd)) bs[bk] = bd; }
+            toStore.boards = bs;
+          } else toStore[k] = v;
+        }
+      }
+    }
     const rs = await fetch(`${url}/set/lavalle_data`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(toStore)
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
