@@ -2073,8 +2073,9 @@ export default async function handler(req, res) {
           const pS = JSON.parse(tS.slice(tS.indexOf("{"), tS.lastIndexOf("}") + 1));
           (pS.posts || []).forEach((x) => { const r = withThumb[Number(x.i) - 1]; if (r && ["face", "broll", "product"].includes(x.style)) r.style = x.style; });
         }
-      } catch (eS) {}
+      } catch (eS) { var styleErr0 = String((eS && eS.message) || eS).slice(0, 200); }
     }
+    const styleDbg = { thumbs: rows.filter((r) => r.thumb).length, classified: rows.filter((r) => r.style).length, err: typeof styleErr0 !== "undefined" ? styleErr0 : null };
     const STYLE_LABEL = { face: "Face to camera", broll: "B-roll", product: "Product still" };
     const styles = ["face", "broll", "product"].map((k) => { const r2 = rows.filter((r) => r.style === k); return { style: STYLE_LABEL[k], count: r2.length, avgEngagement: r2.length ? Math.round(r2.map(score).reduce((a, b) => a + b, 0) / r2.length) : 0 }; }).filter((x) => x.count > 0);
     if (agg && styles.length) agg.styles = styles;
@@ -2106,7 +2107,7 @@ export default async function handler(req, res) {
     if (!(tc.themeData && (tc.themeData.stage === "owners" || tc.themeData.stage === "approved"))) setStage("sarah");
     await kvSet("lavalle_data", blobT3);
     await kvSet("sisters_theme_state" + SBOARD.kvSuffix, { at: Date.now(), month: label, feedbackCount: feedback.length });
-    res.json({ ok: true, label, posts: rows.length, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });
+    res.json({ ok: true, label, posts: rows.length, styleDbg, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
