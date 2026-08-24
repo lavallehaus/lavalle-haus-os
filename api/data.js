@@ -1888,10 +1888,12 @@ export default async function handler(req, res) {
     const ranked = byScore.filter((t) => t.cat !== "lifestyle" || t.score >= 8).map((t) => tilesP[t.i - 1].cover).filter((u, k, arr) => arr.indexOf(u) === k);
     const out = { key: keyP, hash: hashP, grid: gridNum, cat, majority, pick, pickTile: best ? best.i : null, ranked: ranked.slice(0, 8), at: Date.now() };
     await kvSet("sisters_cover_pick" + SBOARD.kvSuffix, out);
-    // the Strategy Outline card wears it
+    // the BOARD BACKGROUND wears it (her rule): the board is dressed in the
+    // current grid's most editorial product shot, alternating fashion/beauty
+    // as the grids switch. The Strategy Outline card keeps its cover page.
     try {
       const rawPk = await kvGet("lavalle_data"); const blobPk = Array.isArray(rawPk) ? rawPk[0] : rawPk; const bdPk = blobPk && blobPk.boards && blobPk.boards[SBOARD.key];
-      if (bdPk && pick) { const so = bdPk.lists.find((l) => /strategy outline/i.test(l.name || "")); const sc = so && bdPk.cards.find((c) => c.listId === so.id && /^Strategy Outline — /.test(c.name || "")); if (sc && sc.cover !== pick) { sc.cover = pick; await kvSet("lavalle_data", blobPk); } }
+      if (bdPk && pick && bdPk.bg !== pick) { bdPk.bg = pick; await kvSet("lavalle_data", blobPk); }
     } catch (e) {}
     res.json({ ok: true, ...out });
     return;
@@ -1946,7 +1948,6 @@ export default async function handler(req, res) {
       const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesS.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
       const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
       const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
-      var coverPickS = pickS && pickS.pick ? pickS.pick : null;
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
@@ -1977,7 +1978,7 @@ export default async function handler(req, res) {
       let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
       if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
       bdS2.cards = bdS2.cards.filter((c) => c !== sc); bdS2.cards.unshift(sc); // current month always tops the column
-      sc.cover = coverPickS || pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
+      sc.cover = pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
       sc.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
     }
     await kvSet("lavalle_data", blobS2);

@@ -101,7 +101,7 @@ function CoverCarousel({ images, alt }) {
   const startRef = React.useRef(null);
   const n = images.length;
   const go = (d) => setI((p) => (p + d + n) % n);
-  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 30, height: 44, border: "none", background: "transparent", color: "#8F8676", fontFamily: "Georgia, serif", fontSize: 26, lineHeight: "44px", cursor: "pointer", padding: 0, opacity: 0.9, textShadow: "0 0 6px rgba(255,255,255,0.9)" };
+  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 28, height: 28, border: "1px solid rgba(143,134,118,0.5)", borderRadius: 14, background: "rgba(255,255,255,0.92)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 17, lineHeight: "26px", cursor: "pointer", padding: 0, boxShadow: "0 1px 5px rgba(0,0,0,0.18)" };
   return (
     <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y", aspectRatio: "4/5", background: "#F2EFE9", overflow: "hidden" }}
       onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
@@ -109,8 +109,8 @@ function CoverCarousel({ images, alt }) {
       onClickCapture={(e) => { const st = startRef.current; if (st && Math.abs(e.clientX - st.x) > 40) { e.stopPropagation(); e.preventDefault(); } }}>
       <img src={images[i].url} alt={alt || ""} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
       <div style={{ position: "absolute", top: 8, left: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.6, textTransform: "uppercase", color: "#71716C", background: "rgba(255,255,255,0.75)", padding: "2px 6px", borderRadius: 1 }}>{images[i].name || ("" + (i + 1) + " / " + n)}</div>
-      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 2 }}>‹</button>
-      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 2 }}>›</button>
+      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 6 }}>‹</button>
+      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 6 }}>›</button>
       <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6 }}>
         {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setI(k); }} style={{ width: 5, height: 5, borderRadius: 3, background: k === i ? "#8F8676" : "rgba(143,134,118,0.35)", cursor: "pointer" }} />)}
       </div>
@@ -151,7 +151,7 @@ function PresentOverlay({ images, index, setIndex, onClose, alt }) {
     const prev = document.body.style.overflow; document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [go, onClose]);
-  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 56, height: 80, border: "none", background: "transparent", color: "#8F8676", fontFamily: "Georgia, serif", fontSize: 44, lineHeight: "80px", cursor: "pointer", padding: 0, opacity: 0.9 };
+  const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 46, height: 46, border: "1px solid rgba(255,255,255,0.35)", borderRadius: 23, background: "rgba(255,255,255,0.92)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 26, lineHeight: "44px", cursor: "pointer", padding: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" };
   return createPortal(
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(24,22,19,0.94)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", touchAction: "pan-y" }}
       onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
@@ -160,8 +160,8 @@ function PresentOverlay({ images, index, setIndex, onClose, alt }) {
         style={{ maxWidth: "94vw", maxHeight: "92vh", objectFit: "contain", display: "block", boxShadow: "0 8px 60px rgba(0,0,0,0.5)", background: "#F2EFE9" }} />
       <div style={{ position: "absolute", top: 16, left: 20, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#C9C2B4" }}>{images[index].name || ((index + 1) + " / " + n)}</div>
       <button aria-label="close" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ position: "absolute", top: 10, right: 14, width: 44, height: 44, border: "none", background: "transparent", color: "#C9C2B4", fontFamily: "Georgia, serif", fontSize: 26, cursor: "pointer", padding: 0 }}>✕</button>
-      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 8 }}>‹</button>
-      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 8 }}>›</button>
+      <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 14 }}>‹</button>
+      <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 14 }}>›</button>
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 8 }}>
         {images.map((_, k) => <span key={k} onClick={(e) => { e.stopPropagation(); setIndex(k); }} style={{ width: 6, height: 6, borderRadius: 3, background: k === index ? "#C9C2B4" : "rgba(201,194,180,0.35)", cursor: "pointer" }} />)}
       </div>
