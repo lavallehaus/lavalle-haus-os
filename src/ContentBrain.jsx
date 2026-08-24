@@ -17,6 +17,8 @@ const BRANDS = [
   { ws: "the-fold", label: "The Fold", ig: "thefoldlabel" },
 ];
 
+import { WORKSPACES } from "./Boards.jsx";
+
 const goSeg = (seg) => {
   try { localStorage.setItem("lh_seg_content", seg); } catch {}
   window.dispatchEvent(new CustomEvent("lh-seg", { detail: { id: "content", seg } }));
@@ -30,6 +32,9 @@ const CONTENT_PURPOSE = {
 };
 
 export default function ContentBrain({ boards, gridPlanner }) {
+  // board-access scoping: brand chips only for brands with a visible board
+  // (the server already strips boards the viewer can't open).
+  const visBrands = BRANDS.filter((b) => { if (!boards) return true; const keys = Object.keys(boards); const w = (typeof WORKSPACES !== "undefined" ? WORKSPACES : []).find((x) => x.id === b.ws); return (w && w.boards.some((k) => boards[k])) || keys.some((k) => boards[k] && boards[k].ws === b.ws); });
   const [view, setView] = useState("all"); // "all" | ws id
   const [live, setLive] = useState(null); // op=ig_insights&light=1 — owner only
   const [themeId, setThemeId] = useState(() => { try { return localStorage.getItem("lh_cb_theme") || "day"; } catch { return "day"; } });
@@ -117,7 +122,7 @@ export default function ContentBrain({ boards, gridPlanner }) {
     <div style={{ marginBottom: 30 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: t.accent }}>Content brain</span>
-        {[{ ws: "all", label: "All accounts" }, ...BRANDS].map((b) => (
+        {(visBrands.length > 1 ? [{ ws: "all", label: "All accounts" }, ...visBrands] : []).map((b) => (
           <button key={b.ws} onClick={() => setView(b.ws)}
             style={{ padding: "6px 13px", borderRadius: 1, cursor: "pointer", fontFamily: sans, fontSize: 9.5, letterSpacing: 1.5, textTransform: "uppercase", border: `1px solid ${view === b.ws ? t.brass : t.line}`, background: "transparent", color: view === b.ws ? t.ink : t.sub, fontWeight: view === b.ws ? 500 : 400 }}>
             {b.label}

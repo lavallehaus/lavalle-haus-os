@@ -3026,11 +3026,14 @@ const CHIEF_VIEWS = {
 };
 const chiefTabs = iAmOwner && CHIEF_VIEWS[viewMode] ? CHIEF_VIEWS[viewMode].tabs : null;
 const visibleNav = NAV
-  // the Business Brain home is for everyone — its bubbles, insights and the
-  // health percentage itself already pass through the person's lens
-  .filter(n => iAmOwner || n.id === "brain" || myPages.includes(n.id))
+  // gated strictly by the person's pages/role — Business Brain included
+  // (a member whose pages exclude "brain" never sees the business signals).
+  .filter(n => iAmOwner || myPages.includes(n.id))
   .filter(n => !chiefTabs || chiefTabs.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
+// Never land on a page you can't see (e.g. the saved tab or the "brain"
+// default when Business Brain isn't in this person's pages).
+useEffect(() => { if (visibleNav.length && !visibleNav.some(n => n.id === tab)) setTab(visibleNav[0].id); }, [tab, visibleNav.map(n => n.id).join(",")]); // eslint-disable-line
 
 if (!visibleNav.some(n => n.id === tab)) { setTab(visibleNav[0].id); return null; }
 
