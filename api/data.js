@@ -2010,9 +2010,29 @@ export default async function handler(req, res) {
     tc.comments = tc.comments || [];
     // feedback arrives here (not via autosave) so the re-evaluation can never race it
     if (bT4.feedback && String(bT4.feedback).trim()) {
-      tc.comments.push({ id: "cm" + Math.random().toString(36).slice(2, 9), by: (authT3 && authT3.name) || "Team", text: String(bT4.feedback).trim().slice(0, 500), at: new Date().toISOString() });
+      tc.comments.push({ id: "cm" + Math.random().toString(36).slice(2, 9), by: (authT3 && authT3.name) || (ownerRole(authT3) ? "Kiabeth Cook" : "Team"), text: String(bT4.feedback).trim().slice(0, 500), at: new Date().toISOString() });
     }
     const feedback = tc.comments.filter((c) => !c.sys && c.text).map((c) => ({ by: c.by || "Team", text: c.text }));
+    // Review flow: proposed -> Sarah reviews -> her comment hands it to Kiabeth +
+    // Kiaredza -> approval drops "(proposed)" so the card is simply the month's
+    // Theme. The stage rides as a quiet white chip on the card face.
+    const setStage = (stage) => {
+      tc.themeData = tc.themeData || {};
+      tc.themeData.stage = stage;
+      const chip = stage === "sarah" ? "Sarah · ready for review" : stage === "owners" ? "Kiabeth + Kiaredza · ready for review" : null;
+      tc.labels = (tc.labels || []).filter((lb) => !/ready for review/i.test((typeof lb === "string" ? lb : (lb && lb.n)) || ""));
+      if (chip) tc.labels = [{ n: chip, c: "#FFFFFF" }, ...tc.labels];
+      tc.name = (stage === "approved" ? "Theme — " + label : "Theme — " + label + " (proposed)");
+    };
+    if (bT4.approve) {
+      const canApprove = ownerRole(authT3) || /kiaredza/i.test((authT3 && authT3.name) || "");
+      if (!canApprove) { res.status(403).json({ error: "Only Kiabeth or Kiaredza can approve the theme." }); return; }
+      setStage("approved");
+      await kvSet("lavalle_data", blobT3);
+      res.json({ ok: true, approved: true, label });
+      return;
+    }
+    if (bT4.feedback) setStage("owners");
     const stT = (await kvGet("sisters_theme_state" + SBOARD.kvSuffix)) || {};
     const needT = !!bT4.force || !!bT4.feedback || stT.month !== label || !tc.themeData || (Date.now() - (stT.at || 0)) > 6 * 86400000 || (stT.feedbackCount || 0) !== feedback.length;
     if (!needT) { await kvSet("lavalle_data", blobT3); res.json({ ok: true, skipped: true, label }); return; }
@@ -2023,11 +2043,11 @@ export default async function handler(req, res) {
     for (const t of accts) {
       if (!SBOARD.igMatch.test(t.username || "")) continue;
       try {
-        const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=30&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        const media = await (await fetch(`${base}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink,thumbnail_url,media_url&limit=30&access_token=${encodeURIComponent(t.access_token)}`)).json();
         for (const m of (media.data || [])) {
           let saved = null, reach = null;
           try { const d = await (await fetch(`${base}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch (e0) {}
-          rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp });
+          rows.push({ caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 160), kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, at: m.timestamp, thumb: m.thumbnail_url || m.media_url || null });
         }
       } catch (e) {}
     }
@@ -2038,11 +2058,30 @@ export default async function handler(req, res) {
       avg: { likes: Math.round(mean(rows.map((r) => r.likes))), comments: Math.round(mean(rows.map((r) => r.comments)) * 10) / 10, saved: rows.some((r) => r.saved != null) ? Math.round(mean(rows.filter((r) => r.saved != null).map((r) => r.saved))) : null, reach: rows.some((r) => r.reach != null) ? Math.round(mean(rows.filter((r) => r.reach != null).map((r) => r.reach))) : null },
       formats: ["Reel", "Carousel", "Static"].map((k) => { const r2 = rows.filter((r) => r.kind === k); return { kind: k, count: r2.length, avgEngagement: r2.length ? Math.round(mean(r2.map(score))) : 0 }; }).filter((f) => f.count > 0),
     } : null;
-    let analysis = null;
+    // Style read (her question: face to camera vs b-roll): classify each post's
+    // thumbnail with vision, then compare performance by style.
     const key = process.env.ANTHROPIC_API_KEY;
+    if (key && rows.length) {
+      try {
+        const withThumb = rows.filter((r) => r.thumb).slice(0, 18);
+        if (withThumb.length >= 4) {
+          const contentS = [];
+          withThumb.forEach((r, i) => { contentS.push({ type: "text", text: "Post " + (i + 1) + ":" }); contentS.push({ type: "image", source: { type: "url", url: r.thumb } }); });
+          contentS.push({ type: "text", text: 'Classify each post: "face" (person talking or looking to camera, face prominent), "broll" (lifestyle or scene footage, people incidental or partial), or "product" (product or garment still, no people). Return ONLY JSON: {"posts":[{"i":1,"style":"face"}]} covering every post.' });
+          const rS = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: contentS }] }) });
+          const dS = await rS.json(); const tS = (dS.content || []).map((c) => c.text || "").join("");
+          const pS = JSON.parse(tS.slice(tS.indexOf("{"), tS.lastIndexOf("}") + 1));
+          (pS.posts || []).forEach((x) => { const r = withThumb[Number(x.i) - 1]; if (r && ["face", "broll", "product"].includes(x.style)) r.style = x.style; });
+        }
+      } catch (eS) {}
+    }
+    const STYLE_LABEL = { face: "Face to camera", broll: "B-roll", product: "Product still" };
+    const styles = ["face", "broll", "product"].map((k) => { const r2 = rows.filter((r) => r.style === k); return { style: STYLE_LABEL[k], count: r2.length, avgEngagement: r2.length ? Math.round(r2.map(score).reduce((a, b) => a + b, 0) / r2.length) : 0 }; }).filter((x) => x.count > 0);
+    if (agg && styles.length) agg.styles = styles;
+    let analysis = null;
     if (key) {
       const fbTxt = feedback.length ? "\n\nTEAM FEEDBACK TO HONOUR (each item must visibly shape the theme; answer each with ONE short adjustment line credited to that person):\n" + feedback.map((f) => "- " + f.by + ": " + f.text).join("\n") : "";
-      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => score(b) - score(a)).slice(0, 20).map((r) => `- [${r.kind}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + fbTxt + "\n\nIdentify the top-performing TOPICS (not individual posts) with a strength score, then propose ONE theme for " + label + " in the brands' calm, considered register. Plain punctuation only, never an em dash. Return ONLY JSON: {\"topTopics\":[{\"topic\":\"…\",\"strength\":1-10},{…},{…}],\"theme\":\"3-6 word theme title\",\"rationale\":\"2 sentences\",\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"formatMix\":\"one sentence on reels/carousels/statics\",\"adjustments\":[{\"by\":\"name\",\"note\":\"one sentence describing how their feedback changed the theme\"}]}";
+      const prompt = "You are the content strategist for @lavallesisters (two sisters running a quiet-luxury womenswear brand, The Fold, and a clean refillable body-care/candle brand, Lavalle Haus). Recent Instagram posts with performance (likes, comments, saves, reach):\n" + (rows.length ? rows.sort((a, b) => score(b) - score(a)).slice(0, 20).map((r) => `- [${r.kind}${r.style ? " (" + (r.style === "face" ? "face to camera" : r.style === "broll" ? "b-roll" : "product still") + ")" : ""}] likes ${r.likes}, comments ${r.comments}, saved ${r.saved ?? "?"}, reach ${r.reach ?? "?"}: ${r.caption}`).join("\n") : "(no analytics available yet)") + fbTxt + "\n\nIdentify the top-performing TOPICS (not individual posts) with a strength score, then propose ONE theme for " + label + " in the brands' calm, considered register. Everything SHORT and bullet-ready: no sentence longer than about 15 words. Plain punctuation only, never an em dash. Credit adjustments using each person's exact name from the feedback list. If face to camera vs b-roll performance differs, say so in the why bullets with numbers. Return ONLY JSON: {\"topTopics\":[{\"topic\":\"…\",\"strength\":1-10},{…},{…}],\"theme\":\"3-6 word theme title\",\"why\":[\"short bullet\",\"short bullet\",\"short bullet\"],\"pillars\":[\"…\",\"…\",\"…\",\"…\"],\"actions\":[\"short action item to discuss\",\"…\",\"…\"],\"formatMix\":\"one short sentence on reels/carousels/statics\",\"adjustments\":[{\"by\":\"exact name\",\"note\":\"one short sentence: how their feedback changed the theme\"}]}";
       try {
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }) });
         const j = await r.json(); const txt = (j.content || []).map((c) => c.text || "").join("");
@@ -2054,14 +2093,17 @@ export default async function handler(req, res) {
       tc.themeData = {
         month: label, generatedAt: new Date().toISOString(), analytics: agg,
         topTopics: (analysis.topTopics || []).map((t) => (typeof t === "string" ? { topic: noDashT(t), strength: 7 } : { topic: noDashT(t.topic), strength: Math.max(1, Math.min(10, Number(t.strength) || 5)) })).slice(0, 5),
-        theme: noDashT(analysis.theme), rationale: noDashT(analysis.rationale),
+        theme: noDashT(analysis.theme),
+        why: (analysis.why || (analysis.rationale ? [analysis.rationale] : [])).map(noDashT).filter(Boolean).slice(0, 4),
         pillars: (analysis.pillars || []).map(noDashT).filter(Boolean).slice(0, 6),
+        actions: (analysis.actions || []).map(noDashT).filter(Boolean).slice(0, 5),
         formatMix: noDashT(analysis.formatMix), adjustments: adj,
       };
-      tc.desc = "Proposed theme: " + tc.themeData.theme + "\n\nWhy: " + tc.themeData.rationale + (tc.themeData.pillars.length ? "\n\nPillars:\n" + tc.themeData.pillars.map((x) => "• " + x).join("\n") : "") + (tc.themeData.formatMix ? "\n\nFormat mix: " + tc.themeData.formatMix : "") + (adj.length ? "\n\nAdjusted for the team:\n" + adj.map((a) => "• " + a.note + " (" + a.by + ")").join("\n") : "");
+      tc.desc = "Proposed theme: " + tc.themeData.theme + (tc.themeData.why.length ? "\n\nWhy:\n" + tc.themeData.why.map((x) => "• " + x).join("\n") : "") + (tc.themeData.actions.length ? "\n\nTo discuss:\n" + tc.themeData.actions.map((x) => "• " + x).join("\n") : "") + (tc.themeData.pillars.length ? "\n\nPillars:\n" + tc.themeData.pillars.map((x) => "• " + x).join("\n") : "") + (tc.themeData.formatMix ? "\n\nFormat mix: " + tc.themeData.formatMix : "") + (adj.length ? "\n\nAdjusted for the team:\n" + adj.map((a) => "• " + a.note + " (" + a.by + ")").join("\n") : "");
     } else if (!tc.themeData) {
       tc.desc = "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
     }
+    if (!(tc.themeData && (tc.themeData.stage === "owners" || tc.themeData.stage === "approved"))) setStage("sarah");
     await kvSet("lavalle_data", blobT3);
     await kvSet("sisters_theme_state" + SBOARD.kvSuffix, { at: Date.now(), month: label, feedbackCount: feedback.length });
     res.json({ ok: true, label, posts: rows.length, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });

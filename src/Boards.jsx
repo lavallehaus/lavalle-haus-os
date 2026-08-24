@@ -1475,6 +1475,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [themeFb, setThemeFb] = useState(""); // feedback draft on the Theme sheet
   const [themeBusy, setThemeBusy] = useState(false);
   const [themeLive, setThemeLive] = useState(null); // freshly re-evaluated Theme card
+  const [themeFull, setThemeFull] = useState(false); // theme present mode (full screen)
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
@@ -1570,26 +1571,129 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       </div>
     </div>
   );
-  // Theme card: explains how it was built (with the numbers), takes feedback,
-  // and re-evaluates itself on the spot — adjustments credited in bold.
+  // Theme card: explains itself in bullets, charts the numbers (incl. face to
+  // camera vs b-roll), takes named feedback, re-evaluates on the spot, and walks
+  // the review flow Sarah -> Kiabeth + Kiaredza -> approved.
   if (/^theme\b/i.test(card.name || "")) { const tCard = themeLive || card; const td = tCard.themeData || null; const lbl = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "18px 0 6px" };
+    const meU = (() => { try { return JSON.parse(localStorage.getItem("lh_user") || "null") || {}; } catch { return {}; } })();
+    const canApprove = /^owner/i.test(meU.role || "Owner / Admin") || /kiaredza/i.test(meU.name || "");
+    const stage = (td && td.stage) || "sarah";
     const bar = (frac) => (
       <div style={{ flex: 1, height: 3, background: c.line, borderRadius: 2, overflow: "hidden" }}>
         <div style={{ width: Math.round(Math.max(0.04, Math.min(1, frac)) * 100) + "%", height: "100%", background: c.ink }} />
       </div>
     );
+    const refreshCard = async () => {
+      const fresh = await (await fetch("/api/data", { cache: "no-store" })).json();
+      const nc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id);
+      if (nc) setThemeLive(nc);
+    };
     const sendFb = async () => {
       const text = themeFb.trim(); if (!text || themeBusy) return;
       setThemeBusy(true);
-      try {
-        await fetch("/api/data?op=sisters_theme_card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedback: text }) });
-        const fresh = await (await fetch("/api/data", { cache: "no-store" })).json();
-        const nc = (((fresh.boards || {})[boardKey] || {}).cards || []).find((x) => x.id === card.id);
-        if (nc) setThemeLive(nc);
-        setThemeFb("");
-      } catch (e) {}
+      try { await fetch("/api/data?op=sisters_theme_card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedback: text }) }); await refreshCard(); setThemeFb(""); } catch (e) {}
       setThemeBusy(false);
     };
+    const approve = async () => {
+      if (themeBusy) return; setThemeBusy(true);
+      try { await fetch("/api/data?op=sisters_theme_card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve: true }) }); await refreshCard(); } catch (e) {}
+      setThemeBusy(false);
+    };
+    const body = (big) => { const f = (x) => Math.round(x * (big ? 1.35 : 1)); return (
+      <>
+        <div style={{ ...lbl, marginTop: big ? 26 : 18, fontSize: f(9) }}>How this theme is made</div>
+        {["Every recent post is scored on likes, comments, saves and reach.", "Vision also reads each post: face to camera, b-roll, or product still.", "The strongest topics and styles shape the proposed theme below.", "Your feedback re-evaluates the theme immediately; adjustments show in bold with your name.", "It refreshes monthly with the new numbers, then goes to Sarah, then Kiabeth and Kiaredza to approve."].map((t, i) => (
+          <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(12.5), lineHeight: 1.6, color: c.sub }}>· {t}</div>
+        ))}
+        {td && td.analytics && (
+          <>
+            <div style={{ ...lbl, fontSize: f(9) }}>The numbers behind it</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {[["Posts read", td.analytics.posts], ["Avg likes", td.analytics.avg.likes], ["Avg comments", td.analytics.avg.comments], td.analytics.avg.saved != null ? ["Avg saves", td.analytics.avg.saved] : null].filter(Boolean).map(([k, v]) => (
+                <div key={k} style={{ flex: 1, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 6px", textAlign: "center" }}>
+                  <div style={{ fontFamily: sans, fontSize: f(16), color: c.ink }}>{v}</div>
+                  <div style={{ fontFamily: sans, fontSize: f(8), letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
+                </div>
+              ))}
+            </div>
+            {(td.topTopics || []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>Top-performing topics</div>
+                {td.topTopics.map((t, i) => (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{t.topic}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {bar((t.strength || 5) / 10)}
+                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 22, textAlign: "right" }}>{t.strength}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(td.analytics.styles || []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Face to camera vs b-roll · average engagement</div>
+                {(() => { const mx = Math.max(...td.analytics.styles.map((x) => x.avgEngagement || 1)); return td.analytics.styles.map((x, i) => (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{x.style} · {x.count} post{x.count === 1 ? "" : "s"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {bar((x.avgEngagement || 0) / mx)}
+                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 30, textAlign: "right" }}>{x.avgEngagement}</span>
+                    </div>
+                  </div>
+                )); })()}
+              </div>
+            )}
+            {(td.analytics.formats || []).length > 0 && (
+              <div>
+                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Formats · average engagement</div>
+                {(() => { const mx = Math.max(...td.analytics.formats.map((x) => x.avgEngagement || 1)); return td.analytics.formats.map((x, i) => (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ fontFamily: sans, fontSize: f(11.5), color: c.ink, marginBottom: 3 }}>{x.kind} · {x.count}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {bar((x.avgEngagement || 0) / mx)}
+                      <span style={{ fontFamily: sans, fontSize: f(10), color: c.sub, width: 30, textAlign: "right" }}>{x.avgEngagement}</span>
+                    </div>
+                  </div>
+                )); })()}
+              </div>
+            )}
+          </>
+        )}
+        <div style={{ ...lbl, fontSize: f(9) }}>The proposed theme</div>
+        {td ? (
+          <>
+            <div style={{ fontFamily: sans, fontSize: f(15), letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, margin: "2px 0 8px" }}>{td.theme}</div>
+            {(td.why || []).length > 0 && (td.why || []).map((w, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13), lineHeight: 1.65, color: c.ink }}>· {w}</div>)}
+            {(td.pillars || []).length > 0 && (
+              <>
+                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "12px 0 4px" }}>Pillars</div>
+                {td.pillars.map((pl, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13), lineHeight: 1.7, color: c.ink }}>· {pl}</div>)}
+              </>
+            )}
+            {(td.actions || []).length > 0 && (
+              <>
+                <div style={{ fontFamily: sans, fontSize: f(8.5), letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "12px 0 4px" }}>To discuss</div>
+                {td.actions.map((a, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13), lineHeight: 1.7, color: c.ink }}>· {a}</div>)}
+              </>
+            )}
+            {td.formatMix && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: f(12.5), lineHeight: 1.6, color: c.sub, marginTop: 10 }}>{td.formatMix}</div>}
+            {(td.adjustments || []).length > 0 && (
+              <>
+                <div style={{ ...lbl, fontSize: f(9) }}>Adjusted for the team</div>
+                {td.adjustments.map((a, i) => (
+                  <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: f(13.5), lineHeight: 1.65, color: "#000000", fontWeight: 700, marginBottom: 6 }}>
+                    {a.note} <span style={{ fontFamily: sans, fontSize: f(10), letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, fontWeight: 400 }}>— {a.by}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        ) : (
+          <div style={{ fontFamily: "Georgia, serif", fontSize: f(13.5), lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{tCard.desc || "Nothing here yet."}</div>
+        )}
+      </>
+    ); };
     return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(26,26,26,0.35)", zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 86vw)", height: "100dvh", background: c.card, borderLeft: `1px solid ${c.line}`, boxShadow: "-14px 0 34px rgba(26,26,26,0.18)", padding: "26px 26px calc(56px + env(safe-area-inset-bottom, 0px))", overflowY: "auto", boxSizing: "border-box" }}>
@@ -1597,90 +1701,57 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>{(tCard.name || "Theme").replace(/\s*\(proposed\)\s*$/i, "")}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: c.sub, cursor: "pointer" }}>×</button>
         </div>
-        <div style={lbl}>How this theme is made</div>
-        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12.5, lineHeight: 1.6, color: c.sub }}>
-          Proposed automatically each month from our Instagram numbers: every recent post is scored on likes, comments, saves and reach, the strongest topics surface, and the theme is drafted from them. Leave feedback below and the system re-evaluates the theme on the spot to account for it; each adjustment appears in bold, credited to whoever asked. It refreshes again every month with the new numbers.
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+          {stage !== "approved" && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#FFFFFF", border: "1px solid #1A1A1A", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A" }}>
+              <span style={{ width: 7, height: 7, background: "#1A1A1A", display: "inline-block" }} />
+              {stage === "sarah" ? "Sarah · ready for review" : "Kiabeth + Kiaredza · ready for review"}
+            </span>
+          )}
+          {stage === "approved" && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.green }}>Approved</span>}
+          <button onClick={() => setThemeFull(true)}
+            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, background: c.ink, border: "none", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.bg, cursor: "pointer" }}>
+            <span style={{ fontFamily: "Georgia, serif", fontSize: 13 }}>⤢</span> Present
+          </button>
         </div>
-        {td && td.analytics && (
-          <>
-            <div style={lbl}>The numbers behind it</div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {[["Posts read", td.analytics.posts], ["Avg likes", td.analytics.avg.likes], ["Avg comments", td.analytics.avg.comments], td.analytics.avg.saved != null ? ["Avg saves", td.analytics.avg.saved] : null].filter(Boolean).map(([k, v]) => (
-                <div key={k} style={{ flex: 1, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 6px", textAlign: "center" }}>
-                  <div style={{ fontFamily: sans, fontSize: 16, color: c.ink }}>{v}</div>
-                  <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
-                </div>
-              ))}
-            </div>
-            {(td.topTopics || []).length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 6 }}>Top-performing topics</div>
-                {td.topTopics.map((t, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <span style={{ fontFamily: sans, fontSize: 11, color: c.ink, width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.topic}</span>
-                    {bar((t.strength || 5) / 10)}
-                    <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, width: 22, textAlign: "right" }}>{t.strength}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {(td.analytics.formats || []).length > 0 && (
-              <div>
-                <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "8px 0 6px" }}>Formats · average engagement</div>
-                {(() => { const mx = Math.max(...td.analytics.formats.map((f) => f.avgEngagement || 1)); return td.analytics.formats.map((f, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <span style={{ fontFamily: sans, fontSize: 11, color: c.ink, width: 150, flexShrink: 0 }}>{f.kind} · {f.count}</span>
-                    {bar((f.avgEngagement || 0) / mx)}
-                    <span style={{ fontFamily: sans, fontSize: 10, color: c.sub, width: 34, textAlign: "right" }}>{f.avgEngagement}</span>
-                  </div>
-                )); })()}
-              </div>
-            )}
-          </>
-        )}
-        <div style={lbl}>The proposed theme</div>
-        {td ? (
-          <>
-            <div style={{ fontFamily: sans, fontSize: 15, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, margin: "2px 0 8px" }}>{td.theme}</div>
-            <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink }}>{td.rationale}</div>
-            {(td.pillars || []).length > 0 && (
-              <div style={{ margin: "10px 0 0" }}>
-                {td.pillars.map((pl, i) => <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.7, color: c.ink }}>· {pl}</div>)}
-              </div>
-            )}
-            {td.formatMix && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12.5, lineHeight: 1.6, color: c.sub, marginTop: 10 }}>{td.formatMix}</div>}
-            {(td.adjustments || []).length > 0 && (
-              <>
-                <div style={lbl}>Adjusted for the team</div>
-                {td.adjustments.map((a, i) => (
-                  <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: "#000000", fontWeight: 700, marginBottom: 6 }}>
-                    {a.note} <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: c.taupe, fontWeight: 400 }}>— {a.by}</span>
-                  </div>
-                ))}
-              </>
-            )}
-          </>
-        ) : (
-          <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{tCard.desc || "Nothing here yet."}</div>
-        )}
+        {body(false)}
         <div style={lbl}>Feedback</div>
         {(tCard.comments || []).filter((cm) => cm.text).map((cm) => (
-          <div key={cm.id} style={{ marginBottom: 8 }}>
-            <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.taupe }}>{cm.by}</div>
-            <div style={{ fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.55, color: c.ink }}>{cm.text}</div>
+          <div key={cm.id} style={{ marginBottom: 10 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.55, color: c.ink }}>
+              <span style={{ fontFamily: sans, fontSize: 12, fontWeight: 600, color: c.ink }}>{cm.by}</span>{"  "}{cm.text}
+            </div>
+            {cm.at && <div style={{ fontFamily: sans, fontSize: 9, color: c.sub, marginTop: 1 }}>{new Date(cm.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
           </div>
         ))}
-        <textarea rows={3} value={themeFb} onChange={(e) => setThemeFb(e.target.value)} placeholder="Your take on the theme — the system reads it and re-evaluates immediately…"
+        <textarea rows={3} value={themeFb} onChange={(e) => setThemeFb(e.target.value)} placeholder="Your take on the theme. The system reads it and re-evaluates immediately."
           style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "10px 12px", fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical" }} />
         <button onClick={sendFb} disabled={themeBusy || !themeFb.trim()}
           style={{ display: "block", width: "100%", marginTop: 8, background: themeBusy || !themeFb.trim() ? "transparent" : c.ink, border: `1px solid ${themeBusy || !themeFb.trim() ? c.line : c.ink}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: themeBusy || !themeFb.trim() ? c.sub : c.bg, cursor: themeBusy ? "default" : "pointer" }}>
           {themeBusy ? "Re-evaluating the theme…" : "Send — the theme re-evaluates itself"}
         </button>
+        {canApprove && stage !== "approved" && (
+          <button onClick={approve} disabled={themeBusy}
+            style={{ display: "block", width: "100%", marginTop: 8, background: "transparent", border: `1px solid ${c.green}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.green, cursor: "pointer" }}>
+            Approve — this becomes the month's theme
+          </button>
+        )}
         <button onClick={onClose}
           style={{ display: "block", width: "100%", marginTop: 10, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
           Close
         </button>
       </div>
+      {themeFull && (
+        <div onClick={(e) => { e.stopPropagation(); setThemeFull(false); }} style={{ position: "fixed", inset: 0, zIndex: 400, background: "#FBFAF7", overflowY: "auto" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 880, margin: "0 auto", padding: "48px 34px 90px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ fontFamily: sans, fontSize: 14, letterSpacing: 3, textTransform: "uppercase", color: c.ink }}>{(tCard.name || "Theme").replace(/\s*\(proposed\)\s*$/i, "")}</div>
+              <button onClick={() => setThemeFull(false)} style={{ background: "none", border: `1px solid ${c.line}`, borderRadius: 2, width: 36, height: 36, fontSize: 17, color: c.sub, cursor: "pointer" }}>×</button>
+            </div>
+            {body(true)}
+          </div>
+        </div>
+      )}
     </div>
   ); }
   if (/^links\b/i.test(card.name || "")) return (
