@@ -2251,6 +2251,19 @@ export default async function handler(req, res) {
           }
           wrote++;
         });
+        // Courtney's own list ("Courtney Posts 1-12") keeps her 12 topic cards —
+        // they are NOT part of the 42 and never get merged away. Here we only
+        // keep them in step: same photo + a note of which slot each topic
+        // occupies now (matched by topic name, since slots move with the grid).
+        const crtW2 = bdW.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+        if (crtW2) {
+          rec.tiles.forEach((t, q) => {
+            if (t.tag !== "C") return; const n = offsetW + q + 1; const card = cardAt(n); if (!card) return;
+            const concept = ((NAME_RX.exec(card.name || "") || [])[1] || "").trim(); if (!concept) return;
+            const cc = bdW.cards.find((c) => c.listId === crtW2.id && (c.name || "").toLowerCase().includes(concept.toLowerCase()));
+            if (cc) { if (cc.cover !== card.cover) { cc.cover = card.cover; wrote++; } const d2 = "From Trello: COURTNEY CONTENT IDEAS · scheduled as Post " + n + ". Caption + hashtags: Courtney."; if (cc.desc !== d2) { cc.desc = d2; wrote++; } }
+          });
+        }
         if (wrote) await kvSet("lavalle_data", blobW);
       }
     } catch (eW) {}
