@@ -338,6 +338,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [shoots, setShoots] = useState(null); // photoshoot dates from the connected calendar ([{month:"YYYY-MM", label, date}])
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
   const [accessMenu, setAccessMenu] = useState(null); // boardKey whose access editor is open
+  // phones: one column at a time, centered — swiping can never strand you on half a column
+  const [narrowB, setNarrowB] = useState(typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => { const onR = () => setNarrowB(window.innerWidth < 640); window.addEventListener("resize", onR); return () => window.removeEventListener("resize", onR); }, []);
   const [membersMenu, setMembersMenu] = useState(false); // open-board header member panel
   const [profileMember, setProfileMember] = useState(null); // member name whose Trello-style profile card is open
   const [profileActivity, setProfileActivity] = useState(false);
@@ -1054,7 +1057,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               )}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
             {board.lists.map((l) => {
               let cards = board.cards.filter((x) => x.listId === l.id);
               // The Automations card is the owner's plain-English map of what runs
@@ -1073,7 +1076,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } else if (dragList && dragList !== l.id) { e.preventDefault(); moveList(dragList, l.id); } setDragCard(null); setDragList(null); setDropHint(null); }}
-                  style={{ flex: "0 0 min(82vw, 276px)", scrollSnapAlign: "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
+                  style={{ flex: narrowB ? "0 0 88vw" : "0 0 276px", scrollSnapAlign: narrowB ? "center" : "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
                   <div
                     draggable
                     onDragStart={(e) => { e.stopPropagation(); setDragList(l.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -1581,13 +1584,13 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {/* Present mode from inside the card: any card carrying page/image
             attachments (the Strategy Outline, the Grid card) opens full-screen,
             swipeable, ESC to leave — the same viewer as the ⤢ on the board tile. */}
-        {(() => { const pres = (attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "")); if (!pres.length) return null; return (
+        {(() => { const att = (attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "")); const pres = att.length ? att : (cover ? [{ url: cover, name: card.name }] : []); if (!pres.length) return null; return (
           <>
             <button onClick={() => { setPresentIdx(0); setPresenting(true); }}
               style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, width: "100%", background: c.ink, border: "none", borderRadius: 1, padding: "12px 14px", cursor: "pointer", color: c.bg, fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase" }}>
-              <span style={{ fontFamily: "Georgia, serif", fontSize: 16, lineHeight: "16px" }}>⤢</span> Present{pres.length > 1 ? " · " + pres.length + " pages" : ""} <span style={{ marginLeft: "auto", opacity: 0.7, letterSpacing: 1 }}>full screen</span>
+              <span style={{ fontFamily: "Georgia, serif", fontSize: 16, lineHeight: "16px" }}>⤢</span> {att.length > 1 ? "Present · " + att.length + " pages" : "Enlarge"} <span style={{ marginLeft: "auto", opacity: 0.7, letterSpacing: 1 }}>full screen</span>
             </button>
-            {presenting && <PresentOverlay images={pres} index={presentIdx} setIndex={setPresentIdx} onClose={() => setPresenting(false)} alt={name} />}
+            {presenting && <PresentOverlay images={pres} index={Math.min(presentIdx, pres.length - 1)} setIndex={setPresentIdx} onClose={() => setPresenting(false)} alt={name} />}
           </>
         ); })()}
 
@@ -1664,7 +1667,15 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         )}
 
         <div style={label}>Cover photo</div>
-        {cover && <img src={cover} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain", background: c.bg, borderRadius: 1, border: `1px solid ${c.line}`, marginBottom: 6 }} />}
+        {cover && (
+          <div style={{ position: "relative", marginBottom: 6 }}>
+            <img src={cover} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain", background: c.bg, borderRadius: 1, border: `1px solid ${c.line}` }} />
+            {/* the same ⤢ she knows from the board tiles, inside the opened card too */}
+            <button aria-label="enlarge" title="Enlarge"
+              onClick={() => { const att = (attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "")); const idx = att.findIndex((a) => a.url === cover); setPresentIdx(idx >= 0 ? idx : 0); setPresenting(true); }}
+              style={{ position: "absolute", bottom: 8, right: 8, width: 30, height: 30, border: "1px solid rgba(143,134,118,0.55)", background: "rgba(255,255,255,0.94)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 16, lineHeight: "28px", cursor: "pointer", borderRadius: 2, padding: 0, boxShadow: "0 1px 5px rgba(0,0,0,0.16)" }}>⤢</button>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <label style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
             Upload
