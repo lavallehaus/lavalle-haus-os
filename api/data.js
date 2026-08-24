@@ -2063,13 +2063,27 @@ export default async function handler(req, res) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (key && rows.length) {
       try {
-        const withThumb = rows.filter((r) => r.thumb).slice(0, 18);
+        const withThumb = rows.filter((r) => r.thumb).slice(0, 14);
         if (withThumb.length >= 4) {
+          // base64 thumbnails: Anthropic's fetcher can't always reach the signed
+          // Instagram CDN URLs, so we fetch + shrink them server-side instead.
+          const JimpT = (await import("jimp")).default;
           const contentS = [];
-          withThumb.forEach((r, i) => { contentS.push({ type: "text", text: "Post " + (i + 1) + ":" }); contentS.push({ type: "image", source: { type: "url", url: r.thumb } }); });
+          for (let i = 0; i < withThumb.length; i++) {
+            try {
+              const rb = await fetch(withThumb[i].thumb); if (!rb.ok) continue;
+              const im = await JimpT.read(Buffer.from(await rb.arrayBuffer()));
+              im.resize(280, JimpT.AUTO); im.quality(70);
+              const b64 = (await im.getBufferAsync(JimpT.MIME_JPEG)).toString("base64");
+              contentS.push({ type: "text", text: "Post " + (i + 1) + ":" });
+              contentS.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } });
+            } catch (eT) {}
+          }
           contentS.push({ type: "text", text: 'Classify each post: "face" (person talking or looking to camera, face prominent), "broll" (lifestyle or scene footage, people incidental or partial), or "product" (product or garment still, no people). Return ONLY JSON: {"posts":[{"i":1,"style":"face"}]} covering every post.' });
-          const rS = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: contentS }] }) });
-          const dS = await rS.json(); const tS = (dS.content || []).map((c) => c.text || "").join("");
+          const rS = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 900, messages: [{ role: "user", content: contentS }] }) });
+          const dS = await rS.json();
+          if (dS && dS.error) throw new Error("api: " + (dS.error.message || dS.error.type || "error"));
+          const tS = (dS.content || []).map((c) => c.text || "").join("");
           const pS = JSON.parse(tS.slice(tS.indexOf("{"), tS.lastIndexOf("}") + 1));
           (pS.posts || []).forEach((x) => { const r = withThumb[Number(x.i) - 1]; if (r && ["face", "broll", "product"].includes(x.style)) r.style = x.style; });
         }
