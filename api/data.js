@@ -2056,8 +2056,10 @@ export default async function handler(req, res) {
     let lc = bdL3.cards.find((c) => /^links\b/i.test((c.name || "").trim()));
     if (!lc) { lc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soL3.id, name: "Links", labels: [], members: [], attachments: [], done: false }; bdL3.cards.push(lc); }
     lc.name = "Links — " + wm3 + " folders (auto)";
-    lc.links = links.map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), label: l.label, url: l.url }));
-    lc.desc = "Drive shortcuts for the month we're working in — updated automatically when the working month changes.\n\n" + links.map((l) => l.label + ": " + l.url).join("\n");
+    // Clean hyperlinks only (her rule): the card shows just the word — "Carousels",
+    // "Reels" — each a click straight into its Drive folder. No raw URLs anywhere.
+    lc.links = links.map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), n: l.label, u: l.url }));
+    lc.desc = "Drive shortcuts for the month we're working in — tap a link below. Updates itself when the working month changes.";
     await kvSet("lavalle_data", blobL3);
     res.json({ ok: true, month: wm3, links: links.length });
     return;
