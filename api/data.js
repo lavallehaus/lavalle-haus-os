@@ -3452,7 +3452,56 @@ export default async function handler(req, res) {
 
   // Who am I — restores name/role on the client after a reload.
   if (req.method === "GET" && op === "me") {
-    res.json({ name: auth.name, role: auth.role, email: auth.email, pages: auth.pages || null, denySegs: auth.denySegs || null });
+    let photoMe = null;
+    try {
+      if (auth.userId) { const us = (await kvGet("lavalle_users")) || []; const u0 = us.find((x) => x.id === auth.userId); photoMe = (u0 && u0.photo) || null; }
+      else { photoMe = (await kvGet("owner_photo")) || null; }
+    } catch (eMe) {}
+    res.json({ name: auth.name, role: auth.role, email: auth.email, pages: auth.pages || null, denySegs: auth.denySegs || null, photo: photoMe });
+    return;
+  }
+
+  // ── Account settings (everyone signed in): own photo + own password ────────
+  // The photo lands on the user record AND the team roster entry, so every
+  // Avatar chip in the app picks it up. Passwords are one-way hashes — they can
+  // never be shown back — so this sets a new one for the signed-in person only.
+  if (op === "account" && req.method === "POST") {
+    if (!auth) { res.status(401).json({ error: "Locked." }); return; }
+    const bA = req.body || {};
+    const out = { ok: true };
+    if (bA.photo) {
+      const mA = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(bA.photo));
+      if (!mA) { res.status(400).json({ error: "Expected an image." }); return; }
+      const idA = "m" + randomBytes(10).toString("hex");
+      await kvSet("media_" + idA, { type: mA[1], b64: mA[2], at: new Date().toISOString() });
+      const urlA = "/cover/" + idA + ".jpg";
+      if (auth.userId) {
+        const usersA = (await kvGet("lavalle_users")) || [];
+        const uA = usersA.find((x) => x.id === auth.userId);
+        if (uA) { uA.photo = urlA; await kvSet("lavalle_users", usersA); }
+      } else { await kvSet("owner_photo", urlA); }
+      try {
+        const rawA = await kvGet("lavalle_data"); const blobA2 = Array.isArray(rawA) ? rawA[0] : rawA;
+        const teamA = ((blobA2 || {}).actionsBoard || {}).team || [];
+        const nameA = auth.name || "Kiabeth Cook";
+        const tA = teamA.find((x) => (x.email && auth.email && x.email.toLowerCase() === auth.email.toLowerCase()) || (x.name || "").toLowerCase() === nameA.toLowerCase());
+        if (tA) { tA.avatar = urlA; await kvSet("lavalle_data", blobA2); }
+      } catch (eA) {}
+      out.photo = urlA;
+    }
+    if (bA.password) {
+      const pwA = String(bA.password);
+      if (pwA.length < 8) { res.status(400).json({ error: "Password must be at least 8 characters." }); return; }
+      if (!auth.userId) { res.status(400).json({ error: "The house/admin password lives in the server settings — ask Claude to rotate APP_PASSWORD in Vercel." }); return; }
+      const usersP = (await kvGet("lavalle_users")) || [];
+      const uP = usersP.find((x) => x.id === auth.userId);
+      if (!uP) { res.status(404).json({ error: "No account record." }); return; }
+      uP.salt = randomBytes(16).toString("hex");
+      uP.hash = hashPassword(pwA, uP.salt);
+      await kvSet("lavalle_users", usersP);
+      out.password = true;
+    }
+    res.json(out);
     return;
   }
 

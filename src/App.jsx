@@ -2327,6 +2327,100 @@ function RetentionModal({ onClose }) {
   );
 }
 
+// ── Account menu — everyone: their photo + their password ─────────────────────
+function AccountMenu({ me }) {
+  const [open, setOpen] = useState(false);
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState((me && me.photo) || null);
+  const name = (me && me.name) || "Kiabeth";
+  const ini = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const sansA = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const uploadPhoto = (file) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = async () => {
+        const scale = Math.min(1, 640 / img.width);
+        const cv = document.createElement("canvas");
+        const side = Math.min(img.width, img.height);
+        cv.width = cv.height = Math.round(Math.min(640, side));
+        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        cv.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, cv.width, cv.height);
+        setBusy(true); setMsg(null);
+        try {
+          const r = await fetch("/api/data?op=account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo: cv.toDataURL("image/jpeg", 0.88) }) });
+          const d = await r.json();
+          if (r.ok && d.photo) { setPhoto(d.photo); setMsg({ t: "Photo saved — it shows on your chips across the app." }); try { const cur = JSON.parse(localStorage.getItem("lh_user") || "{}"); cur.photo = d.photo; localStorage.setItem("lh_user", JSON.stringify(cur)); } catch (e) {} }
+          else setMsg({ t: d.error || "Couldn't save the photo.", bad: true });
+        } catch (e) { setMsg({ t: "Couldn't reach the server.", bad: true }); }
+        setBusy(false);
+        void scale;
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  };
+  const changePw = async () => {
+    if (busy) return;
+    if (pw1.length < 8) { setMsg({ t: "Password must be at least 8 characters.", bad: true }); return; }
+    if (pw1 !== pw2) { setMsg({ t: "The two passwords don't match.", bad: true }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/data?op=account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw1 }) });
+      const d = await r.json();
+      if (r.ok && d.password) { setMsg({ t: "Password changed — use it from your next sign-in." }); setPw1(""); setPw2(""); }
+      else setMsg({ t: d.error || "Couldn't change the password.", bad: true });
+    } catch (e) { setMsg({ t: "Couldn't reach the server.", bad: true }); }
+    setBusy(false);
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={() => { setOpen(!open); setMsg(null); }} title="Account settings"
+        style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #E0E0DD", background: "#FFFFFF", padding: 0, cursor: "pointer", overflow: "hidden" }}>
+        {photo
+          ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : <span style={{ fontFamily: sansA, fontSize: 11, letterSpacing: 1, color: "#8F8676" }}>{ini}</span>}
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 480 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 490, width: 280, background: "#FFFFFF", border: "1px solid #1A1A1A", borderRadius: 2, boxShadow: "0 14px 44px rgba(26,26,26,0.16)", padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", overflow: "hidden", border: "1px solid #E0E0DD", background: "#F4F4F3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {photo ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontFamily: sansA, fontSize: 13, color: "#8F8676" }}>{ini}</span>}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: sansA, fontSize: 13, color: "#1A1A1A" }}>{name}</div>
+                <div style={{ fontFamily: sansA, fontSize: 10, color: "#71716C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(me && me.email) || "House admin"} · {(me && me.role) || "Owner / Admin"}</div>
+              </div>
+            </div>
+            <label style={{ display: "block", textAlign: "center", border: "1px solid #E0E0DD", borderRadius: 1, padding: "10px 0", fontFamily: sansA, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#71716C", cursor: "pointer", marginBottom: 14 }}>
+              {busy ? "Saving…" : photo ? "Change team photo" : "Upload team photo"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) uploadPhoto(f); }} />
+            </label>
+            <div style={{ fontFamily: sansA, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B", marginBottom: 6 }}>Password</div>
+            <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, lineHeight: 1.5, color: "#71716C", marginBottom: 8 }}>
+              Passwords are stored encrypted and can't be shown back. Set a new one here any time.
+            </div>
+            <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="New password"
+              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: "9px 11px", fontFamily: sansA, fontSize: 12, color: "#1A1A1A", outline: "none", marginBottom: 6 }} />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="New password again"
+              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #E0E0DD", borderRadius: 1, padding: "9px 11px", fontFamily: sansA, fontSize: 12, color: "#1A1A1A", outline: "none", marginBottom: 8 }} />
+            <button onClick={changePw} disabled={busy || !pw1 || !pw2}
+              style={{ display: "block", width: "100%", border: "1px solid #1A1A1A", background: busy || !pw1 || !pw2 ? "transparent" : "#1A1A1A", color: busy || !pw1 || !pw2 ? "#71716C" : "#FFFFFF", borderRadius: 1, padding: "10px 0", fontFamily: sansA, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
+              Change password
+            </button>
+            {msg && <div style={{ fontFamily: sansA, fontSize: 10.5, color: msg.bad ? "#9b5e5e" : "#5a7a5a", marginTop: 8, lineHeight: 1.45 }}>{msg.t}</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // One-time "get it on your phone" banner. Androids/desktops get a real
 // Install button (beforeinstallprompt); iPhones get the two-tap Share →
 // Add to Home Screen guide. Hidden forever once the app runs installed
@@ -2778,7 +2872,7 @@ useEffect(() => {
       const r = await fetch("/api/data?op=me");
       if (!r.ok) return;
       const d = await r.json();
-      const next = { ...cur, name: d.name, role: d.role, email: d.email, pages: d.pages || null, denySegs: d.denySegs || null };
+      const next = { ...cur, name: d.name, role: d.role, email: d.email, pages: d.pages || null, denySegs: d.denySegs || null, photo: d.photo || null };
       if (JSON.stringify(next) !== JSON.stringify(cur)) {
         localStorage.setItem("lh_user", JSON.stringify(next));
         setMeVersion(v => v + 1);
@@ -3260,6 +3354,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
   ⌘ Command View
 </button>}
+<AccountMenu me={me} />
 <button onClick={() => { localStorage.removeItem("lh_token"); localStorage.removeItem("lh_user"); window.location.reload(); }}
   title="Lock the app — cerrar con llave"
   style={{ padding: "7px 12px", background: "transparent", border: "1px solid #E0E0DD", borderRadius: 1, color: "#71716C", fontSize: 9, letterSpacing: 2, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer", textTransform: "uppercase" }}>
