@@ -708,7 +708,20 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const workspace = WORKSPACES.find((w) => w.id === ws) || WORKSPACES[0];
   const _openBoard = open && boards ? boards[open] : null;
   const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
-  useEffect(() => { try { if (open) localStorage.setItem("lh_boards_open", open); else localStorage.removeItem("lh_boards_open"); } catch {} }, [open]);
+  useEffect(() => {
+    try {
+      if (open) {
+        localStorage.setItem("lh_boards_open", open);
+        // The board you are IN defines the brand context: switching to Grids /
+        // Schedule / Analytics follows this board's brand without re-picking.
+        const wOp = WORKSPACES.find((w0) => (w0.boards || []).includes(open));
+        if (wOp && ["lavalle-sisters", "lavalle-haus", "the-fold"].includes(wOp.id)) {
+          localStorage.setItem("lh_brand_view", wOp.id);
+          window.dispatchEvent(new CustomEvent("lh-brand-view", { detail: wOp.id }));
+        }
+      } else localStorage.removeItem("lh_boards_open");
+    } catch {}
+  }, [open]);
   useEffect(() => { if (open && boards && Object.keys(boards).length > 1 && (!boards[open] || !canSee(boards[open]))) setOpen(null); }, [open, boards]); // restored board gone or not allowed → boards home (never while data is still loading)
 
   const memberPool = useMemo(() => {

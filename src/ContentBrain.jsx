@@ -36,7 +36,8 @@ export default function ContentBrain({ boards, gridPlanner }) {
   // (the server already strips boards the viewer can't open).
   const visBrands = BRANDS.filter((b) => { if (!boards) return true; const keys = Object.keys(boards); const w = (typeof WORKSPACES !== "undefined" ? WORKSPACES : []).find((x) => x.id === b.ws); return (w && w.boards.some((k) => boards[k])) || keys.some((k) => boards[k] && boards[k].ws === b.ws); });
   const [view, setView] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } }); // "all" | ws id — picking a brand here filters EVERY content sub-tab and sticks
-  useEffect(() => { try { localStorage.setItem("lh_brand_view", view); } catch {} window.dispatchEvent(new CustomEvent("lh-brand-view", { detail: view })); }, [view]);
+  useEffect(() => { try { if (localStorage.getItem("lh_brand_view") !== view) { localStorage.setItem("lh_brand_view", view); window.dispatchEvent(new CustomEvent("lh-brand-view", { detail: view })); } } catch {} }, [view]);
+  useEffect(() => { const h = (e) => { if (e.detail && e.detail !== view) setView(e.detail); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, [view]);
   const [live, setLive] = useState(null); // op=ig_insights&light=1 — owner only
   const [themeId, setThemeId] = useState(() => { try { return localStorage.getItem("lh_cb_theme") || "day"; } catch { return "day"; } });
   useEffect(() => { try { localStorage.setItem("lh_cb_theme", themeId); } catch {} }, [themeId]);
