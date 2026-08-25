@@ -1227,19 +1227,21 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             </div>
           )}
           {folderMode && !opsFocus && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12, padding: "0 14px 16px", position: "relative", zIndex: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 88vw), 1fr))", gap: 16, padding: "0 14px 20px", maxWidth: 1140, position: "relative", zIndex: 20 }}>
               {board.lists.map((l) => {
                 const csF = board.cards.filter((x) => x.listId === l.id && (viewer.owner || !/^automations\b/i.test(x.name || "")));
                 const covF = (csF.find((x) => x.cover) || {}).cover;
                 return (
                   <button key={l.id} onClick={() => setOpsFocus(l.id)}
-                    style={{ textAlign: "left", background: "rgba(255,255,255,0.95)", border: "1px solid #E0E0DD", borderRadius: 8, padding: 0, overflow: "hidden", cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.06)" }}>
-                    <div style={{ height: 84, background: "#EFEDE7", overflow: "hidden" }}>
-                      {covF && <img src={covF} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                    style={{ textAlign: "left", background: "rgba(255,255,255,0.97)", border: "1px solid #E0E0DD", borderRadius: 8, padding: 0, overflow: "hidden", cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.06)" }}>
+                    <div style={{ height: 200, background: "linear-gradient(150deg,#EDE9E2,#DDD5C8)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {covF
+                        ? <img src={covF} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        : <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 15, color: "#A39B8B" }}>{l.name}</span>}
                     </div>
-                    <div style={{ padding: "10px 12px" }}>
-                      <div style={{ fontFamily: sans, fontSize: 12.5, fontWeight: 600, color: c.ink }}>{l.name}</div>
-                      <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676", marginTop: 3 }}>{csF.length} card{csF.length === 1 ? "" : "s"}</div>
+                    <div style={{ padding: "14px 16px 15px" }}>
+                      <div style={{ fontFamily: sans, fontSize: 15.5, fontWeight: 500, color: c.ink }}>{l.name}</div>
+                      <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "#8F8676", marginTop: 5 }}>{csF.length} card{csF.length === 1 ? "" : "s"}</div>
                     </div>
                   </button>
                 );
