@@ -2086,6 +2086,15 @@ export default async function handler(req, res) {
     const bCP = req.body || {};
     const rawCP = await kvGet("lavalle_data"); const blobCP = Array.isArray(rawCP) ? rawCP[0] : rawCP;
     const bdCP = blobCP && blobCP.boards && blobCP.boards[String(bCP.board || "")];
+    if (bCP.create && bdCP) {
+      const listCP = (bdCP.lists || []).find((l) => (bCP.create.listName ? new RegExp(bCP.create.listName, "i").test(l.name || "") : l.id === bCP.create.listId));
+      if (!listCP) { res.status(404).json({ error: "No such list." }); return; }
+      const cNew = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listCP.id, name: String(bCP.create.name || "New card").slice(0, 140), desc: String(bCP.create.desc || ""), due: null, labels: Array.isArray(bCP.create.labels) ? bCP.create.labels : [], members: Array.isArray(bCP.create.members) ? bCP.create.members : [], attachments: [], links: [], done: false };
+      bdCP.cards.push(cNew);
+      await kvSet("lavalle_data", blobCP);
+      res.json({ ok: true, created: { id: cNew.id, name: cNew.name, list: listCP.name } });
+      return;
+    }
     const cCP = bdCP && (bdCP.cards || []).find((c) => c.id === bCP.cardId);
     if (!cCP) { res.status(404).json({ error: "No such card." }); return; }
     const FIELDS_CP = ["name", "desc", "labels", "members", "cover", "due", "links", "listId"];
