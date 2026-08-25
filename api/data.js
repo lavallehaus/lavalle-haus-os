@@ -1866,13 +1866,17 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags featuredImage { url(transform: { maxWidth: 720 }) } totalInventory variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
     });
     const dOI = await rOI.json().catch(() => ({}));
-    const prodsOI = (((dOI.data || {}).products || {}).edges || []).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
+    // HER RULE (Aug 25): only SKUs LIVE ON THE WEBSITE sync to the Inventory
+    // column — active-but-unpublished products don't get cards, counts, or a
+    // Pre-Orders line. onlineStoreUrl is null when a product isn't published
+    // to the Online Store channel.
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
     if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
     const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
     const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
@@ -1887,6 +1891,24 @@ export default async function handler(req, res) {
     for (const cAl of cardsOI) { const al = ALIAS_OI[normOI(cAl.name)]; if (al && cAl.name !== al) { cAl.name = al; renamedOI++; } }
     // Self-healing: every active Shopify product (gift cards aside) gets a card
     // in the Inventory column, so new launches appear here on their own.
+    // Self-cleanup for the same rule: a card this sync auto-created (sync line
+    // only — no human notes, tags, members, or links) whose product is no
+    // longer live comes back off the board. Human-touched cards always stay.
+    let removedOI = 0;
+    const liveSetOI = new Set(prodsOI.map((pp) => normOI(pp.title)));
+    const untouchedOI = (c) => {
+      const body = String(c.desc || "").split("\n").filter((l) => l.trim() && !l.startsWith("⟳")).join("");
+      return !body && !(c.labels || []).length && !(c.members || []).length && !(c.links || []).length && !(c.attachments || []).length && !(c.checklist || []).length;
+    };
+    for (const cRm of [...cardsOI]) {
+      if (/^pre-?orders/i.test(cRm.name || "")) continue;
+      const cn = normOI(cRm.name);
+      if (!cn || liveSetOI.has(cn) || [...liveSetOI].some((tn) => tn.includes(cn) || cn.includes(tn))) continue;
+      if (!untouchedOI(cRm)) continue;
+      bdOI.cards.splice(bdOI.cards.indexOf(cRm), 1);
+      cardsOI = cardsOI.filter((x) => x !== cRm);
+      removedOI++;
+    }
     let createdOI = 0;
     for (const pEn of prodsOI) {
       if (/gift card/i.test(pEn.title)) continue;
@@ -1897,7 +1919,7 @@ export default async function handler(req, res) {
     }
     const sigOI = createHash("sha256").update(JSON.stringify([prodsOI, cardsOI.map((c) => c.id + (c.name || ""))])).digest("hex").slice(0, 12);
     const stOI = (await kvGet("ops_inventory_state")) || {};
-    if (!(req.body || {}).force && !renamedOI && !createdOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
+    if (!(req.body || {}).force && !renamedOI && !createdOI && !removedOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
     let syncedOI = 0;
     for (const cOI of cardsOI) {
       if (/^pre-?orders/i.test(cOI.name || "")) continue;
@@ -1929,9 +1951,9 @@ export default async function handler(req, res) {
       : "• nothing on pre-order right now";
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
-    if (syncedOI || renamedOI || createdOI) await kvSet("lavalle_data", blobOI);
+    if (syncedOI || renamedOI || createdOI || removedOI) await kvSet("lavalle_data", blobOI);
     await kvSet("ops_inventory_state", { sig: sigOI, at: Date.now() });
-    res.json({ ok: true, synced: syncedOI, renamed: renamedOI, created: createdOI, products: prodsOI.length });
+    res.json({ ok: true, synced: syncedOI, renamed: renamedOI, created: createdOI, removed: removedOI, products: prodsOI.length });
     return;
   }
 
@@ -1942,7 +1964,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the Shopify catalog: every active product gets a card automatically (gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
