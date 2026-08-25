@@ -1222,6 +1222,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
+                          {/* live unit counts on the card face (from the sync's ⟳ lines) */}
+                          {(() => {
+                            const mS = /^⟳ Shopify · (≈?\d+)/.exec(card.desc || "");
+                            const mA = /⟳ Amazon · (\d+) available(?: · (\d+) inbound)?/.exec(card.desc || "");
+                            if (!mS && !mA) return null;
+                            const chipC = { display: "inline-flex", alignItems: "center", gap: 4, fontFamily: sans, fontSize: 9.5, fontWeight: 600, letterSpacing: 0.5, color: c.ink, background: "#EFEDE7", borderRadius: 4, padding: "3px 8px" };
+                            return (
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
+                                {mS && <span style={chipC} title="Live Shopify on-hand count">{mS[1]} units</span>}
+                                {mA && <span style={{ ...chipC, background: "#E9E6DF" }} title="Amazon FBA availability">AMZ {mA[1]}{mA[2] ? " +" + mA[2] + " in" : ""}</span>}
+                              </div>
+                            );
+                          })()}
                           {(card.labels || []).length > 0 && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
                               {(card.labels || []).slice(0, 6).map((lb, i) => { const L = normLabel(lb); return (
