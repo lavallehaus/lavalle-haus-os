@@ -1920,6 +1920,20 @@ export default async function handler(req, res) {
     const sigOI = createHash("sha256").update(JSON.stringify([prodsOI, cardsOI.map((c) => c.id + (c.name || ""))])).digest("hex").slice(0, 12);
     const stOI = (await kvGet("ops_inventory_state")) || {};
     if (!(req.body || {}).force && !renamedOI && !createdOI && !removedOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
+    // Cards no longer live on Shopify lose the auto "Shopify" chip; Amazon
+    // chips (human-flagged) stay untouched. {setAmazon:[names]} flags cards.
+    const cleanupChip = () => {
+      for (const cCh of cardsOI) {
+        if (cCh._matchedOI) { delete cCh._matchedOI; continue; }
+        if (/^pre-?orders/i.test(cCh.name || "") || /^—/.test((cCh.name || "").trim())) continue;
+        const kept = (cCh.labels || []).filter((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() !== "shopify"));
+        if (kept.length !== (cCh.labels || []).length) { cCh.labels = kept; syncedOI++; }
+      }
+      for (const nmAz of (Array.isArray((req.body || {}).setAmazon) ? req.body.setAmazon : [])) {
+        const cAz = cardsOI.find((c) => normOI(c.name) === normOI(nmAz));
+        if (cAz && !(cAz.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() === "amazon"))) { cAz.labels = [...(cAz.labels || []), { n: "Amazon", c: "#E9E6DF" }]; syncedOI++; }
+      }
+    };
     // Pre-order detection shared by the status tags and the Pre-Orders card.
     const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
     let syncedOI = 0;
@@ -1933,8 +1947,11 @@ export default async function handler(req, res) {
       // HER RULE: every synced SKU carries an auto status tag — "Pre-Order" when
       // the product is on pre-order, "Live" otherwise — and it flips on its own.
       const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : { n: "Live", c: "#DCE3DC" };
-      const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder"; });
-      cOI.labels = [statusOI, ...otherLb];
+      // Channel tags: "Shopify" is automatic (product is live on the site);
+      // "Amazon" is a human flag the sync keeps but never adds or removes.
+      const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder" && nmLb !== "shopify"; });
+      cOI.labels = [statusOI, { n: "Shopify", c: "#C6CCCF" }, ...otherLb];
+      cOI._matchedOI = true;
       const lineOI = "⟳ Shopify · " + (hit.inv == null ? "—" : hit.inv) + " on hand · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify")).join("\n").replace(/^\n+/, "");
       cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
@@ -1958,6 +1975,7 @@ export default async function handler(req, res) {
       : "• nothing on pre-order right now";
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
+    cleanupChip();
     // HER RULE: the Inventory column reads clearly divided — BODY CARE first,
     // then HOME — with divider cards, regrouped automatically every sync.
     const bodyRx = /scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i;
@@ -2001,7 +2019,7 @@ export default async function handler(req, res) {
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag — Live or Pre-Order — that flips by itself, and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live or Pre-Order) plus channel tags — Shopify automatic, Amazon flagged by you and never touched — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
