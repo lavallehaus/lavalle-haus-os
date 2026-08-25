@@ -1976,6 +1976,9 @@ export default async function handler(req, res) {
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
     cleanupChip();
+    // {setBg:"url"} — owner swaps the board background (rebrand: no Refillery
+    // Haus imagery after the Lavalle Haus name change).
+    if ((req.body || {}).setBg) { bdOI.bg = String(req.body.setBg).slice(0, 500); syncedOI++; }
     // HER RULE: the Inventory column reads clearly divided — BODY CARE first,
     // then HOME — with divider cards, regrouped automatically every sync.
     const bodyRx = /scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i;
