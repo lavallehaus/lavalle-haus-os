@@ -1948,7 +1948,6 @@ export default async function handler(req, res) {
       [/candle sand|sand ?wax refill/i, "sandwax refill pouch"],
       [/small apple|mini.*apple/i, "mini spiced apple botanical candle"],
       [/large apple/i, "large spiced apple botanical candle"],
-      [/sugar scrub|body scrub/i, "vanilla cashmere body scrub"],
       [/bath salt/i, "bath salts"],
       [/dough bowl/i, "dark dough bowl"],
     ];

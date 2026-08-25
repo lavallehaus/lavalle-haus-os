@@ -1231,7 +1231,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             return (
                               <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
                                 {mS && <span style={chipC} title="Live Shopify on-hand count">{mS[1]} units</span>}
-                                {mA && <span style={{ ...chipC, background: "#E9E6DF" }} title="Amazon FBA availability">AMZ {mA[1]}{mA[2] ? " +" + mA[2] + " in" : ""}</span>}
+                                {mA && <span style={{ ...chipC, background: "#E9E6DF" }} title="Amazon FBA availability">AMZ {mA[1]}{mA[2] ? " · " + mA[2] + " inbound" : ""}</span>}
                               </div>
                             );
                           })()}
