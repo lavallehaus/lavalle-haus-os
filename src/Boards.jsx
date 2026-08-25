@@ -294,7 +294,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [future, setFuture] = useState([]);
   const [ws, setWs] = useState(() => { try { return localStorage.getItem("lh_boards_ws") || "lavalle-haus"; } catch { return "lavalle-haus"; } });
   useEffect(() => { try { localStorage.setItem("lh_boards_ws", ws); } catch {} }, [ws]);
-  const [open, setOpen] = useState(null);
+  // Refresh keeps you on the board you were in (per browser, so it works for
+  // every team member too). Validated below once boards load.
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem("lh_boards_open") || null; } catch { return null; } });
   const [editCard, setEditCard] = useState(null);
   // Comment/activity attribution follows the login; localStorage only backs up
   // house-password sessions that have no personal name.
@@ -666,6 +668,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const workspace = WORKSPACES.find((w) => w.id === ws) || WORKSPACES[0];
   const _openBoard = open && boards ? boards[open] : null;
   const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
+  useEffect(() => { try { if (open) localStorage.setItem("lh_boards_open", open); else localStorage.removeItem("lh_boards_open"); } catch {} }, [open]);
+  useEffect(() => { if (open && boards && (!boards[open] || !canSee(boards[open]))) setOpen(null); }, [open, boards]); // restored board gone or not allowed → boards home
 
   const memberPool = useMemo(() => {
     const set = new Set(team.map((t) => t.name).filter(Boolean));

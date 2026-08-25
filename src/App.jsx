@@ -2724,6 +2724,7 @@ const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab
 // Owner "chief" views — the whole app at once is overwhelming, so a view
 // narrows the tab bar to one department. Purely visual: no permissions change.
 const [viewMode, setViewMode] = useState(() => { try { return localStorage.getItem("lh_view") || "all"; } catch { return "all"; } });
+useEffect(() => { try { localStorage.setItem("lh_tab", tab); } catch {} }, [tab]); // refresh lands you back on the tab you were on
 useEffect(() => { try { localStorage.setItem("lh_view", viewMode); } catch {} }, [viewMode]);
 // App-level reel finisher: on ANY screen, every ~12s, nudge any post still
 // converting/processing so reels finish without babysitting the board. Reads
