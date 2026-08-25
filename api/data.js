@@ -2150,6 +2150,7 @@ export default async function handler(req, res) {
     const lbOf = (c, pre) => ((c.labels || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => x.toUpperCase().startsWith(pre)) || "");
     const shapeOf = (lab) => /reel|ftc|b-?roll/i.test(lab) ? "V" : /carousel|static/i.test(lab) ? "F" : null; // V = 1080x1920, F = 1080x1350
     const stCS = (await kvGet("sisters_cover_sizes_state")) || { done: {} };
+    for (const nRe of (Array.isArray((req.body || {}).redo) ? req.body.redo : [])) delete stCS.done[Number(nRe)];
     const JimpCS = (await import("jimp")).default;
     let madeCS = 0, budgetCS = 6;
     for (let n = 1; n <= tilesCS.length && budgetCS > 0; n++) {
