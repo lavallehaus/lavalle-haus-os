@@ -1868,7 +1868,7 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy inventoryItem { tracked } } } } } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy inventoryQuantity inventoryItem { tracked } } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
@@ -1878,7 +1878,7 @@ export default async function handler(req, res) {
     // column — active-but-unpublished products don't get cards, counts, or a
     // Pre-Orders line. onlineStoreUrl is null when a product isn't published
     // to the Online Store channel.
-    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], ptype: e.node.productType || "", oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE"), tracked: ((e.node.variants || {}).edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false) }));
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], ptype: e.node.productType || "", oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE"), tracked: ((e.node.variants || {}).edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false), approxInv: ((e.node.variants || {}).edges || []).reduce((a, v) => a + (Number(v.node.inventoryQuantity) || 0), 0) }));
     if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
     const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
     const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
@@ -1942,6 +1942,20 @@ export default async function handler(req, res) {
         }
       })();
     };
+    // Amazon restock sync (daily) → which listing(s) belong to which card.
+    const amzItemsOI = Object.values(((blobOI.amazonRestock || {}).items) || {});
+    const AMZ_MAP_OI = [
+      [/candle sand|sand ?wax refill/i, "sandwax refill pouch"],
+      [/small apple|mini.*apple/i, "mini spiced apple botanical candle"],
+      [/large apple/i, "large spiced apple botanical candle"],
+      [/sugar scrub|body scrub/i, "vanilla cashmere body scrub"],
+      [/bath salt/i, "bath salts"],
+      [/dough bowl/i, "dark dough bowl"],
+    ];
+    const amzFor = (cardName) => {
+      const cn = normOI(cardName);
+      return amzItemsOI.filter((it) => { const m = AMZ_MAP_OI.find(([rx]) => rx.test(it.name || "")); return m && m[1] === cn; });
+    };
     // Pre-order detection shared by the status tags and the Pre-Orders card.
     const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
     let syncedOI = 0;
@@ -1962,9 +1976,19 @@ export default async function handler(req, res) {
       const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder" && nmLb !== "sold out" && nmLb !== "shopify"; });
       cOI.labels = [statusOI, { n: "Shopify", c: "#C6CCCF" }, ...otherLb];
       cOI._matchedOI = true;
-      const lineOI = "⟳ Shopify · " + (!hit.tracked ? "not tracked" : hit.inv == null ? "—" : hit.inv) + (hit.tracked ? " on hand" : "") + " · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify")).join("\n").replace(/^\n+/, "");
-      cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
+      const lineOI = "⟳ Shopify · " + (!hit.tracked ? (hit.approxInv > 0 ? "≈" + hit.approxInv + " (not tracked by Shopify)" : "not tracked by Shopify") : (hit.inv == null ? "—" : hit.inv) + " on hand") + " · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      // Amazon channel: matched against the daily Amazon restock sync — auto
+      // "Amazon" chip + a second ⟳ line with FBA availability.
+      const amzOI = amzFor(cOI.name);
+      let amzLineOI = "";
+      if (amzOI.length) {
+        const avA = amzOI.reduce((a, x) => a + (Number(x.available) || 0), 0);
+        const inA = amzOI.reduce((a, x) => a + (Number(x.inbound) || 0), 0);
+        amzLineOI = "\n⟳ Amazon · " + avA + " available" + (inA ? " · " + inA + " inbound" : "") + (amzOI.some((x) => x.alert === "out_of_stock") ? " · OUT OF STOCK" : "");
+        if (!(cOI.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() === "amazon"))) cOI.labels = [...cOI.labels, { n: "Amazon", c: "#E9E6DF" }];
+      }
+      const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify") && !l.startsWith("⟳ Amazon")).join("\n").replace(/^\n+/, "");
+      cOI.desc = lineOI + amzLineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
       syncedOI++;
     }
     // Pre-Orders card: one auto-maintained card listing everything currently on
@@ -2035,7 +2059,7 @@ export default async function handler(req, res) {
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic, Amazon flagged by you and never touched — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
