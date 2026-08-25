@@ -4120,7 +4120,7 @@ export default async function handler(req, res) {
       const wantAll = !!(req.body || {}).all; // asset linking needs folders + videos too
       const files = (fd.files || [])
         .filter((f) => wantAll || (f.mimeType || "").startsWith("image/"))
-        .map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder" }));
+        .map((f) => ({ id: f.id, name: f.name, folder: (f.mimeType || "") === "application/vnd.google-apps.folder", mime: f.mimeType || null }));
       res.json({ files });
     } catch (e) {
       res.status(500).json({ error: String(e).slice(0, 200) });
@@ -4184,7 +4184,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_search" || op === "drive_shortcut" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
+  if (op === "drive_meta" || op === "drive_search" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -4226,6 +4226,17 @@ export default async function handler(req, res) {
         const dC = await rC.json();
         if (!rC.ok) { res.status(400).json({ error: (dC.error && dC.error.message) || "drive_error" }); return; }
         res.json(dC); return;
+      }
+      if (op === "drive_move") {
+        const idM = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const toM = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        if (!idM || !toM) { res.status(400).json({ error: "id and parentId required." }); return; }
+        const mM = await (await fetch(`https://www.googleapis.com/drive/v3/files/${idM}?fields=parents&supportsAllDrives=true`, { headers: AUTH })).json();
+        const fromM = (mM.parents || []).join(",");
+        const rM = await fetch(`https://www.googleapis.com/drive/v3/files/${idM}?addParents=${toM}${fromM ? "&removeParents=" + fromM : ""}&supportsAllDrives=true&fields=id,name,parents`, { method: "PATCH", headers: { ...AUTH, "Content-Type": "application/json" }, body: "{}" });
+        const dM = await rM.json();
+        if (!rM.ok) { res.status(400).json({ error: (dM.error && dM.error.message) || "drive_error" }); return; }
+        res.json(dM); return;
       }
       if (op === "drive_mkdir") {
         const name = String(b.name || "").slice(0, 120);
