@@ -3016,6 +3016,16 @@ export default async function handler(req, res) {
         }
       }
     } catch (eDR) {}
+    // Her rule (Aug 25): the Grid card under "Grid and Contributions" updates
+    // the moment the grid changes — kick its re-render now (one window; the
+    // pinger finishes the remaining windows within its next ticks).
+    try {
+      if (process.env.PUBLISH_KEY) {
+        const acGC = new AbortController(); const tmGC = setTimeout(() => acGC.abort(), 25000);
+        await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (req.query.board ? "&board=" + encodeURIComponent(req.query.board) : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acGC.signal }).catch(() => {});
+        clearTimeout(tmGC);
+      }
+    } catch (eGC) {}
     res.json({ ok: true, grid: g, view: "/cover/" + midT + ".jpg", tiles: rec.tiles.length });
     return;
   }
