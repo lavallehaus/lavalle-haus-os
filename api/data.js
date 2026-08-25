@@ -1866,7 +1866,7 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
@@ -1876,7 +1876,7 @@ export default async function handler(req, res) {
     // column — active-but-unpublished products don't get cards, counts, or a
     // Pre-Orders line. onlineStoreUrl is null when a product isn't published
     // to the Online Store channel.
-    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], ptype: e.node.productType || "", oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
     if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
     const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
     const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
@@ -1958,6 +1958,35 @@ export default async function handler(req, res) {
       : "• nothing on pre-order right now";
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
+    // HER RULE: the Inventory column reads clearly divided — BODY CARE first,
+    // then HOME — with divider cards, regrouped automatically every sync.
+    const bodyRx = /scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i;
+    const kindOf = (cK) => {
+      const cn = normOI(cK.name);
+      const hitK = prodsOI.find((pp) => normOI(pp.title) === cn) || prodsOI.find((pp) => normOI(pp.title).includes(cn) || cn.includes(normOI(pp.title)));
+      const basis = ((hitK && (hitK.ptype + " " + hitK.title)) || cK.name || "");
+      return bodyRx.test(basis) ? "body" : "home";
+    };
+    const ensureDivOI = (nmD) => {
+      let dv = bdOI.cards.find((c) => c.listId === invListOI.id && (c.name || "").trim().toLowerCase() === nmD.toLowerCase());
+      if (!dv) { dv = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invListOI.id, name: nmD, desc: "", labels: [], members: [], attachments: [], links: [], done: false }; bdOI.cards.push(dv); }
+      return dv;
+    };
+    const divBody = ensureDivOI("— BODY CARE —");
+    const divHome = ensureDivOI("— HOME —");
+    const invCardsAll = bdOI.cards.filter((c) => c.listId === invListOI.id);
+    const headOI = invCardsAll.filter((c) => /^automations\b/i.test(c.name || "") || /^pre-?orders/i.test(c.name || ""));
+    const restInv = invCardsAll.filter((c) => !headOI.includes(c) && c !== divBody && c !== divHome);
+    const bodyCards = restInv.filter((c) => kindOf(c) === "body");
+    const homeCards = restInv.filter((c) => !bodyCards.includes(c));
+    const desiredOI = [...headOI, divBody, ...bodyCards, divHome, ...homeCards];
+    const curOrder = invCardsAll.map((c) => c.id).join(",");
+    if (desiredOI.map((c) => c.id).join(",") !== curOrder) {
+      const othersOI = bdOI.cards.filter((c) => c.listId !== invListOI.id);
+      const firstIx = bdOI.cards.findIndex((c) => c.listId === invListOI.id);
+      bdOI.cards = [...othersOI.slice(0, firstIx), ...desiredOI, ...othersOI.slice(firstIx)];
+      syncedOI++;
+    }
     if (syncedOI || renamedOI || createdOI || removedOI) await kvSet("lavalle_data", blobOI);
     await kvSet("ops_inventory_state", { sig: sigOI, at: Date.now() });
     res.json({ ok: true, synced: syncedOI, renamed: renamedOI, created: createdOI, removed: removedOI, products: prodsOI.length });
@@ -1971,7 +2000,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), and each SKU carries an auto status tag — Live or Pre-Order — that flips by itself. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag — Live or Pre-Order — that flips by itself, and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
