@@ -2850,37 +2850,47 @@ export default async function handler(req, res) {
     const tilesHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // w4 = the 1-9/10-21/22-30/31-42 window set
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
-    const views = [];
-    let rendered = null;
-    for (let wi = 0; wi < WINDOWS.length; wi++) {
-      const [a, b] = WINDOWS[wi]; const label = "Grid " + a + "–" + b;
-      if (!cacheW.views[wi]) {
-        if (rendered == null) { cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi; await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW); }
-        else { res.json({ ok: true, partial: true, renderedWindow: rendered, next: wi }); return; }
-      }
-      views.push({ label, url: cacheW.views[wi] });
-    }
-    // which window are we in? post index from the Aug 22 start at daily cadence + MWF
+    // which window are we in? computed FIRST so the window the card DISPLAYS
+    // renders first — a tile change shows on the card after ONE render call.
     const start = Date.UTC(2026, 7, 26); // posting cycle starts Wed Aug 26
     const dayN = Math.max(0, Math.floor((Date.now() - start) / 86400000));
     let postN = 0; let d = new Date(start);
     for (let i = 0; i <= dayN && postN < 42; i++) { postN++; if ([1, 3, 5].includes(d.getUTCDay())) postN++; d = new Date(d.getTime() + 86400000); }
     const cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
-    const rawC = await kvGet("lavalle_data");
-    const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
-    const bdC = blobC && blobC.boards && blobC.boards[SBOARD.key];
-    if (bdC) {
-      const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim())) || (!SBOARD.hasCourtney ? bdC.lists.find((l) => /strategy outline/i.test(l.name || "")) : null);
-      if (todo) {
-        let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
-        if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
-        card.name = "Grid — " + views[cur].label + " (auto)";
-        card.cover = views[cur].url;
-        card.attachments = views.map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
-        card.desc = "Auto-updating grid preview. Swipe through the grid in its four windows (the standing rule for this card): 1–9, 10–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
-        await kvSet("lavalle_data", blobC);
+    let rendered = null;
+    for (const wi of [cur, ...[0, 1, 2, 3].filter((x) => x !== cur)]) {
+      if (cacheW.views[wi] || rendered != null) continue;
+      const [a, b] = WINDOWS[wi];
+      cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi;
+      await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW);
+    }
+    const missingW = [0, 1, 2, 3].filter((wi) => !cacheW.views[wi]);
+    const views = WINDOWS.map(([a, b], wi) => ({ label: "Grid " + a + "–" + b, url: cacheW.views[wi] || null }));
+    // The card updates on EVERY call that has the current window — even while
+    // the other windows are still rendering — so it never shows a stale grid.
+    if (views[cur].url) {
+      const rawC = await kvGet("lavalle_data");
+      const blobC = Array.isArray(rawC) ? rawC[0] : rawC;
+      const bdC = blobC && blobC.boards && blobC.boards[SBOARD.key];
+      if (bdC) {
+        const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim())) || (!SBOARD.hasCourtney ? bdC.lists.find((l) => /strategy outline/i.test(l.name || "")) : null);
+        if (todo) {
+          let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
+          if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
+          const wantName = "Grid — " + views[cur].label + " (auto)";
+          const atts = views.filter((v) => v.url).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
+          const changedC = card.name !== wantName || card.cover !== views[cur].url || JSON.stringify((card.attachments || []).map((x) => x.url)) !== JSON.stringify(atts.map((x) => x.url));
+          if (changedC) {
+            card.name = wantName;
+            card.cover = views[cur].url;
+            card.attachments = atts;
+            card.desc = "Auto-updating grid preview. Swipe through the grid in its four windows (the standing rule for this card): 1–9, 10–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
+            await kvSet("lavalle_data", blobC);
+          }
+        }
       }
     }
+    if (missingW.length) { res.json({ ok: true, partial: true, renderedWindow: rendered, next: missingW[0] }); return; }
     res.json({ ok: true, window: views[cur].label, postN, views });
     return;
   }
@@ -3059,9 +3069,16 @@ export default async function handler(req, res) {
     // pinger finishes the remaining windows within its next ticks).
     try {
       if (process.env.PUBLISH_KEY) {
-        const acGC = new AbortController(); const tmGC = setTimeout(() => acGC.abort(), 25000);
-        await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (req.query.board ? "&board=" + encodeURIComponent(req.query.board) : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acGC.signal }).catch(() => {});
-        clearTimeout(tmGC);
+        // loop until the render set converges (current window lands on call 1;
+        // the rest follow while time allows — pinger covers any remainder)
+        const t0GC = Date.now();
+        for (let iGC = 0; iGC < 4 && Date.now() - t0GC < 32000; iGC++) {
+          const acGC = new AbortController(); const tmGC = setTimeout(() => acGC.abort(), 25000);
+          const rGC = await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (req.query.board ? "&board=" + encodeURIComponent(req.query.board) : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acGC.signal }).catch(() => null);
+          clearTimeout(tmGC);
+          let dGC = null; try { dGC = rGC && await rGC.json(); } catch (eJ2) {}
+          if (!dGC || !dGC.partial) break;
+        }
       }
     } catch (eGC) {}
     res.json({ ok: true, grid: g, view: "/cover/" + midT + ".jpg", tiles: rec.tiles.length });
