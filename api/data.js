@@ -1954,10 +1954,12 @@ export default async function handler(req, res) {
       if (hit.image) cOI.cover = hit.image;
       // HER RULE: every synced SKU carries an auto status tag — "Pre-Order" when
       // the product is on pre-order, "Live" otherwise — and it flips on its own.
-      const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : { n: "Live", c: "#DCE3DC" };
+      // Status: Pre-Order beats Sold Out beats Live. Sold Out = zero on hand
+      // with overselling off and no pre-order tag (her rule, Aug 25).
+      const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : (hit.inv != null && hit.inv <= 0) ? { n: "Sold Out", c: "#F3E6E3" } : { n: "Live", c: "#DCE3DC" };
       // Channel tags: "Shopify" is automatic (product is live on the site);
       // "Amazon" is a human flag the sync keeps but never adds or removes.
-      const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder" && nmLb !== "shopify"; });
+      const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder" && nmLb !== "sold out" && nmLb !== "shopify"; });
       cOI.labels = [statusOI, { n: "Shopify", c: "#C6CCCF" }, ...otherLb];
       cOI._matchedOI = true;
       const lineOI = "⟳ Shopify · " + (hit.inv == null ? "—" : hit.inv) + " on hand · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -2033,7 +2035,7 @@ export default async function handler(req, res) {
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live or Pre-Order) plus channel tags — Shopify automatic, Amazon flagged by you and never touched — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic, Amazon flagged by you and never touched — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
