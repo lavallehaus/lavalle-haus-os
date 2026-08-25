@@ -287,6 +287,40 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
     : <span title={(member && member.name) || ""} style={{ ...s, background: "#CDBBA7", color: "#FFFFFF", fontFamily: sans, fontSize: size * 0.34, letterSpacing: 0.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(member && member.name)}</span>;
 }
 
+// ── Launch Timeline — renders as a month-by-month calendar ────────────────────
+// Cards with a launch month group into month panels (click opens the card);
+// Pending web-development pages show in their own strip so upcoming site work
+// is visible next to the launches it unblocks.
+function LaunchCalendar({ items, pending, onOpen }) {
+  const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const byM = {};
+  items.forEach(({ card, ym }) => { (byM[ym] = byM[ym] || []).push(card); });
+  const yms = Object.keys(byM).sort();
+  const fmt = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
+  const row = (cd) => (
+    <div key={cd.id} onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", cursor: "pointer" }}>
+      {cd.cover ? <img src={cd.cover} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} /> : <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#A39B8B", flexShrink: 0, marginLeft: 4, marginRight: 4 }} />}
+      <span style={{ fontFamily: sans, fontSize: 11.5, lineHeight: 1.35, color: "#1A1A1A" }}>{cd.name}</span>
+    </div>
+  );
+  return (
+    <div style={{ marginBottom: 10 }}>
+      {yms.map((ym) => (
+        <div key={ym} style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+          <div style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A", marginBottom: 4 }}>{fmt(ym)}</div>
+          {byM[ym].map(row)}
+        </div>
+      ))}
+      {pending.length > 0 && (
+        <div style={{ background: "#FFFFFF", border: "1px dashed #C9C4BA", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+          <div style={{ fontFamily: sans, fontSize: 9, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#A39B8B", marginBottom: 4 }}>Pending · Web Development</div>
+          {pending.map(row)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── UGC / PR Schedule — the column renders as a Sept–Dec 2026 calendar ───────
 // Each month: a mini date grid (the 15th marked — UGC to creators), the PR
 // shipment list from the month card underneath; click opens the month card.
@@ -1137,6 +1171,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               const calMonthsL = isCalL ? cards.filter((x) => /^(september|october|november|december)$/i.test((x.name || "").trim())) : [];
               const calNoteL = isCalL ? cards.find((x) => /ugc\/?\s*pr\s*schedule/i.test((x.name || "").trim())) : null;
               if (isCalL) cards = cards.filter((x) => !calMonthsL.includes(x) && x !== calNoteL);
+              // Launch Timeline renders as a month calendar; dated cards move
+              // into the panels, undated ones stay as a normal stack below.
+              const isLaunchL = /^launch timeline$/i.test((l.name || "").trim());
+              const launchItemsL = isLaunchL ? cards.filter((x) => x.launchMonth).map((x) => ({ card: x, ym: String(x.launchMonth).slice(0, 7) })) : [];
+              const webPendL = isLaunchL ? (() => { const wd = board.lists.find((l2) => /^web development/i.test((l2.name || "").trim())); return wd ? board.cards.filter((x) => x.listId === wd.id && (x.labels || []).some((lb) => (((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()) === "pending")) : []; })() : [];
+              if (isLaunchL) cards = cards.filter((x) => !x.launchMonth);
               // The Automations card is the owner's plain-English map of what runs
               // on its own — admin reference, not something the team works from.
               if (!viewer.owner) cards = cards.filter((x) => !/^automations\b/i.test(x.name || ""));
@@ -1195,6 +1235,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
                     {isCalL && <PrCalendar monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} />}
+                    {isLaunchL && <LaunchCalendar items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} />}
                     {cards.map((card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
                         onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
