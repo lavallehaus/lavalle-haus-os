@@ -420,6 +420,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // Refresh keeps you on the board you were in (per browser, so it works for
   // every team member too). Validated below once boards load.
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("lh_boards_open") || null; } catch { return null; } });
+  // LH Operations folder mode (her ask: too many mixed columns) — the board
+  // shows its sections as clickable files; opening one focuses that column.
+  const [opsFocus, setOpsFocus] = useState(() => { try { return localStorage.getItem("lh_ops_focus") || null; } catch { return null; } });
+  useEffect(() => { try { if (opsFocus) localStorage.setItem("lh_ops_focus", opsFocus); else localStorage.removeItem("lh_ops_focus"); } catch {} }, [opsFocus]);
   const [editCard, setEditCard] = useState(null);
   // Comment/activity attribution follows the login; localStorage only backs up
   // house-password sessions that have no personal name.
@@ -791,6 +795,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const workspace = WORKSPACES.find((w) => w.id === ws) || WORKSPACES[0];
   const _openBoard = open && boards ? boards[open] : null;
   const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
+  const folderMode = open === "rh-operations";
+  useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
     try {
       if (open) {
@@ -1210,8 +1216,38 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               )}
             </div>
           </div>
+          {folderMode && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px", position: "relative", zIndex: 25 }}>
+              {opsFocus ? (
+                <button onClick={() => setOpsFocus(null)}
+                  style={{ border: "1px solid #E0E0DD", background: "rgba(255,255,255,0.94)", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>← All sections</button>
+              ) : (
+                <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: "#FFFFFF", textShadow: "0 1px 8px rgba(26,26,26,0.5)" }}>Tap a section to open it</div>
+              )}
+            </div>
+          )}
+          {folderMode && !opsFocus && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12, paddingBottom: 16, position: "relative", zIndex: 20 }}>
+              {board.lists.map((l) => {
+                const csF = board.cards.filter((x) => x.listId === l.id && (viewer.owner || !/^automations\b/i.test(x.name || "")));
+                const covF = (csF.find((x) => x.cover) || {}).cover;
+                return (
+                  <button key={l.id} onClick={() => setOpsFocus(l.id)}
+                    style={{ textAlign: "left", background: "rgba(255,255,255,0.95)", border: "1px solid #E0E0DD", borderRadius: 8, padding: 0, overflow: "hidden", cursor: "pointer", boxShadow: "0 1px 3px rgba(26,26,26,0.06)" }}>
+                    <div style={{ height: 84, background: "#EFEDE7", overflow: "hidden" }}>
+                      {covF && <img src={covF} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                    </div>
+                    <div style={{ padding: "10px 12px" }}>
+                      <div style={{ fontFamily: sans, fontSize: 12.5, fontWeight: 600, color: c.ink }}>{l.name}</div>
+                      <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: "#8F8676", marginTop: 3 }}>{csF.length} card{csF.length === 1 ? "" : "s"}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
-            {board.lists.map((l) => {
+            {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : board.lists).map((l) => {
               let cards = board.cards.filter((x) => x.listId === l.id);
               // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
               // its month cards + schedule note feed the calendar instead of
@@ -1242,7 +1278,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } else if (dragList && dragList !== l.id) { e.preventDefault(); moveList(dragList, l.id); } setDragCard(null); setDragList(null); setDropHint(null); }}
-                  style={{ flex: narrowB ? "0 0 88vw" : "0 0 276px", scrollSnapAlign: narrowB ? "center" : "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
+                  style={{ flex: folderMode && opsFocus ? "0 0 min(640px, 94vw)" : narrowB ? "0 0 88vw" : "0 0 276px", scrollSnapAlign: narrowB ? "center" : "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
                   <div
                     draggable
                     onDragStart={(e) => { e.stopPropagation(); setDragList(l.id); e.dataTransfer.effectAllowed = "move"; }}
