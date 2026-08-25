@@ -1868,7 +1868,7 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy inventoryItem { tracked } } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
@@ -1878,7 +1878,7 @@ export default async function handler(req, res) {
     // column — active-but-unpublished products don't get cards, counts, or a
     // Pre-Orders line. onlineStoreUrl is null when a product isn't published
     // to the Online Store channel.
-    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], ptype: e.node.productType || "", oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).filter((e) => e.node.onlineStoreUrl).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], ptype: e.node.productType || "", oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE"), tracked: ((e.node.variants || {}).edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false) }));
     if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
     const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
     const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
@@ -1956,13 +1956,13 @@ export default async function handler(req, res) {
       // the product is on pre-order, "Live" otherwise — and it flips on its own.
       // Status: Pre-Order beats Sold Out beats Live. Sold Out = zero on hand
       // with overselling off and no pre-order tag (her rule, Aug 25).
-      const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : (hit.inv != null && hit.inv <= 0) ? { n: "Sold Out", c: "#F3E6E3" } : { n: "Live", c: "#DCE3DC" };
+      const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : (hit.tracked && hit.inv != null && hit.inv <= 0) ? { n: "Sold Out", c: "#F3E6E3" } : { n: "Live", c: "#DCE3DC" };
       // Channel tags: "Shopify" is automatic (product is live on the site);
       // "Amazon" is a human flag the sync keeps but never adds or removes.
       const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder" && nmLb !== "sold out" && nmLb !== "shopify"; });
       cOI.labels = [statusOI, { n: "Shopify", c: "#C6CCCF" }, ...otherLb];
       cOI._matchedOI = true;
-      const lineOI = "⟳ Shopify · " + (hit.inv == null ? "—" : hit.inv) + " on hand · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const lineOI = "⟳ Shopify · " + (!hit.tracked ? "not tracked" : hit.inv == null ? "—" : hit.inv) + (hit.tracked ? " on hand" : "") + " · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify")).join("\n").replace(/^\n+/, "");
       cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
       syncedOI++;
@@ -2193,9 +2193,20 @@ export default async function handler(req, res) {
         stCS.done[n] = sigN; madeCS++; budgetCS--;
       } catch (eCS) {}
     }
+    // Non-split posts: the classic numbered file in Cover photos becomes the
+    // card's cover photo link, so EVERY card links its Drive cover.
+    let linkedCS = 0;
+    for (let n = 1; n <= tilesCS.length; n++) {
+      const c = cardCS(n); if (!c) continue;
+      if ((c.coverUrl || "").trim()) continue;
+      const fC = existCS.find((f) => new RegExp("^" + n + "\\.(jpe?g|png|heic|webp)$", "i").test((f.name || "").trim()));
+      if (!fC) continue;
+      c.coverUrl = "https://drive.google.com/file/d/" + fC.id + "/view";
+      linkedCS++; madeCS++;
+    }
     if (madeCS) await kvSet("lavalle_data", blobCS);
     await kvSet("sisters_cover_sizes_state", stCS);
-    res.json({ ok: true, made: madeCS, month: monthCS });
+    res.json({ ok: true, made: madeCS, linked: linkedCS, month: monthCS });
     return;
   }
 
