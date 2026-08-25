@@ -1866,13 +1866,13 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status featuredImage { url(transform: { maxWidth: 720 }) } totalInventory } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags featuredImage { url(transform: { maxWidth: 720 }) } totalInventory variants(first: 5) { edges { node { inventoryPolicy } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
     });
     const dOI = await rOI.json().catch(() => ({}));
-    const prodsOI = (((dOI.data || {}).products || {}).edges || []).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory }));
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory, tags: e.node.tags || [], oversell: ((e.node.variants || {}).edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE") }));
     if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
     const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
     const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
@@ -1900,6 +1900,7 @@ export default async function handler(req, res) {
     if (!(req.body || {}).force && !renamedOI && !createdOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
     let syncedOI = 0;
     for (const cOI of cardsOI) {
+      if (/^pre-?orders/i.test(cOI.name || "")) continue;
       const cn = normOI(cOI.name);
       if (!cn) continue;
       const hit = prodsOI.find((pp) => normOI(pp.title) === cn) || prodsOI.find((pp) => normOI(pp.title).includes(cn) || cn.includes(normOI(pp.title)));
@@ -1910,6 +1911,24 @@ export default async function handler(req, res) {
       cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
       syncedOI++;
     }
+    // Pre-Orders card: one auto-maintained card listing everything currently on
+    // pre-order — tagged pre-order in Shopify, selling with no stock (oversell
+    // on), or oversold (negative on-hand = units already pre-sold). The card's
+    // "Notes:" section is human-owned and survives every sync.
+    const preOI = prodsOI.filter((pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1)));
+    let preCard = bdOI.cards.find((c) => c.listId === invListOI.id && /^pre-?orders/i.test(c.name || ""));
+    if (!preCard) {
+      preCard = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invListOI.id, name: "Pre-Orders — autosync", desc: "", due: null, labels: [{ n: "Ordered", c: "#D9CFC1" }], members: [], attachments: [], links: [], done: false };
+      const firstInv = bdOI.cards.findIndex((c) => c.listId === invListOI.id);
+      if (firstInv >= 0) bdOI.cards.splice(firstInv, 0, preCard); else bdOI.cards.push(preCard);
+    }
+    const noteIx = String(preCard.desc || "").indexOf("Notes:");
+    const humanOI = noteIx >= 0 ? String(preCard.desc).slice(noteIx) : "Notes:\n- Onyx Arched Refillable Candle Set: 20 units coming.";
+    const preLines = preOI.length
+      ? preOI.map((pp) => "• " + pp.title + (pp.inv != null && pp.inv < 0 ? " — " + (-pp.inv) + " pre-sold beyond stock" : " — on hand " + (pp.inv == null ? "—" : pp.inv))).join("\n")
+      : "• nothing on pre-order right now";
+    const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
+    if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
     if (syncedOI || renamedOI || createdOI) await kvSet("lavalle_data", blobOI);
     await kvSet("ops_inventory_state", { sig: sigOI, at: Date.now() });
     res.json({ ok: true, synced: syncedOI, renamed: renamedOI, created: createdOI, products: prodsOI.length });
@@ -1923,7 +1942,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the Shopify catalog: every active product gets a card automatically (gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the Shopify catalog: every active product gets a card automatically (gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
