@@ -1866,7 +1866,7 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150) { edges { node { title status featuredImage { url(transform: { maxWidth: 720 }) } totalInventory } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status featuredImage { url(transform: { maxWidth: 720 }) } totalInventory } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
@@ -1879,11 +1879,25 @@ export default async function handler(req, res) {
     if (!bdOI) { res.json({ ok: false }); return; }
     const invListOI = bdOI.lists.find((l) => /^inventory$/i.test((l.name || "").trim()));
     if (!invListOI) { res.json({ ok: false, error: "no_inventory_column" }); return; }
-    const cardsOI = bdOI.cards.filter((c) => c.listId === invListOI.id);
+    let cardsOI = bdOI.cards.filter((c) => c.listId === invListOI.id);
+    // Confirmed pairings: these cards carry the product's Shopify name from now on.
+    const ALIAS_OI = { "candle sand": "Sandwax Refill Pouch", "raised arched onyx": "Onyx Arched Refillable Candle Set", "calcatta marble square": "Italian Viola Calcatta Refillable Candle Set" };
+    const normOI = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    let renamedOI = 0;
+    for (const cAl of cardsOI) { const al = ALIAS_OI[normOI(cAl.name)]; if (al && cAl.name !== al) { cAl.name = al; renamedOI++; } }
+    // Self-healing: every active Shopify product (gift cards aside) gets a card
+    // in the Inventory column, so new launches appear here on their own.
+    let createdOI = 0;
+    for (const pEn of prodsOI) {
+      if (/gift card/i.test(pEn.title)) continue;
+      const tn = normOI(pEn.title);
+      if (cardsOI.some((c) => { const cn = normOI(c.name); return cn === tn || cn.includes(tn) || tn.includes(cn); })) continue;
+      const cNew = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invListOI.id, name: pEn.title, desc: "", due: null, labels: [], members: [], attachments: [], links: [], done: false };
+      bdOI.cards.push(cNew); cardsOI.push(cNew); createdOI++;
+    }
     const sigOI = createHash("sha256").update(JSON.stringify([prodsOI, cardsOI.map((c) => c.id + (c.name || ""))])).digest("hex").slice(0, 12);
     const stOI = (await kvGet("ops_inventory_state")) || {};
-    if (!(req.body || {}).force && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
-    const normOI = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!(req.body || {}).force && !renamedOI && !createdOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
     let syncedOI = 0;
     for (const cOI of cardsOI) {
       const cn = normOI(cOI.name);
@@ -1896,9 +1910,9 @@ export default async function handler(req, res) {
       cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
       syncedOI++;
     }
-    if (syncedOI) await kvSet("lavalle_data", blobOI);
+    if (syncedOI || renamedOI || createdOI) await kvSet("lavalle_data", blobOI);
     await kvSet("ops_inventory_state", { sig: sigOI, at: Date.now() });
-    res.json({ ok: true, synced: syncedOI, products: prodsOI.length });
+    res.json({ ok: true, synced: syncedOI, renamed: renamedOI, created: createdOI, products: prodsOI.length });
     return;
   }
 
@@ -1909,7 +1923,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Matches each Inventory card to its Shopify product by name, sets the card photo to the product's current Shopify photo, and writes the live on-hand count as the first line of the notes — your own notes stay underneath. Cards without a Shopify match (Amazon-only stock, limited pieces) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the Shopify catalog: every active product gets a card automatically (gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
