@@ -1230,8 +1230,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             const chipC = { display: "inline-flex", alignItems: "center", gap: 4, fontFamily: sans, fontSize: 9.5, fontWeight: 600, letterSpacing: 0.5, color: c.ink, background: "#EFEDE7", borderRadius: 4, padding: "3px 8px" };
                             return (
                               <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 7 }}>
-                                {mS && <span style={chipC} title="Live Shopify on-hand count">{mS[1]} units</span>}
-                                {mA && <span style={{ ...chipC, background: "#E9E6DF" }} title="Amazon FBA availability">AMZ {mA[1]}{mA[2] ? " · " + mA[2] + " inbound" : ""}</span>}
+                                {mS && <span style={{ ...chipC, background: "#C6CCCF" }} title="Units in stock on the Shopify site">Shopify {mS[1]}</span>}
+                                {mA && <span style={{ ...chipC, background: "#E9E6DF" }} title="Units available in Amazon FBA">Amazon {mA[1]}{mA[2] ? " · " + mA[2] + " inbound" : ""}</span>}
                               </div>
                             );
                           })()}
