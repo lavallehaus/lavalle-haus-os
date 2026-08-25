@@ -2059,6 +2059,24 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Generic list patch (owner): rename a column / remove an EMPTY column ──
+  if (op === "list_patch" && req.method === "POST") {
+    const authLP = await getAuthEarly(req);
+    if (!ownerRole(authLP)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bLP = req.body || {};
+    const rawLP = await kvGet("lavalle_data"); const blobLP = Array.isArray(rawLP) ? rawLP[0] : rawLP;
+    const bdLP = blobLP && blobLP.boards && blobLP.boards[String(bLP.board || "")];
+    const lLP = bdLP && (bdLP.lists || []).find((l) => l.id === bLP.listId);
+    if (!lLP) { res.status(404).json({ error: "No such list." }); return; }
+    if (bLP.remove) {
+      if ((bdLP.cards || []).some((c) => c.listId === lLP.id)) { res.status(400).json({ error: "List not empty." }); return; }
+      bdLP.lists = bdLP.lists.filter((l) => l.id !== lLP.id);
+    } else if (bLP.patch && bLP.patch.name) { lLP.name = String(bLP.patch.name).slice(0, 80); }
+    await kvSet("lavalle_data", blobLP);
+    res.json({ ok: true });
+    return;
+  }
+
   if (op === "ops_film_pr_sync" && req.method === "POST") {
     const okKeyFP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authFP = okKeyFP ? null : await getAuthEarly(req);
@@ -2067,7 +2085,7 @@ export default async function handler(req, res) {
     const bdFP = blobFP && blobFP.boards && blobFP.boards["rh-operations"];
     if (!bdFP) { res.json({ ok: false }); return; }
     const filmFP = bdFP.lists.find((l) => /^to be filmed/i.test((l.name || "").trim()));
-    const prFP = bdFP.lists.find((l) => /^pr$/i.test((l.name || "").trim()));
+    const prFP = bdFP.lists.find((l) => /^pr$/i.test((l.name || "").trim()) || /ugc.*pr.*schedule|pr.*ugc.*schedule|^ugc\s*\/\s*pr/i.test((l.name || "").trim()));
     if (!filmFP || !prFP) { res.json({ ok: false, error: "columns missing" }); return; }
     const normFP = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const mkFP = (listId, name, desc) => ({ id: "c" + Math.random().toString(36).slice(2, 10), listId, name, desc: desc || "", due: null, labels: [], members: [], attachments: [], links: [], done: false });
