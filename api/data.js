@@ -2042,6 +2042,23 @@ export default async function handler(req, res) {
   // card in the PR column (name-matched, created once, never deleted) so PR
   // always mirrors what's being filmed. Optional {add:"Name"} drops a new card
   // into To be filmed first — it pairs into PR on the same run.
+  // ── Generic card patch (owner) — small targeted edits without a full-state
+  // save: {board, cardId, patch:{name,desc,labels,members,cover,due,links}}.
+  if (op === "card_patch" && req.method === "POST") {
+    const authCP = await getAuthEarly(req);
+    if (!ownerRole(authCP)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bCP = req.body || {};
+    const rawCP = await kvGet("lavalle_data"); const blobCP = Array.isArray(rawCP) ? rawCP[0] : rawCP;
+    const bdCP = blobCP && blobCP.boards && blobCP.boards[String(bCP.board || "")];
+    const cCP = bdCP && (bdCP.cards || []).find((c) => c.id === bCP.cardId);
+    if (!cCP) { res.status(404).json({ error: "No such card." }); return; }
+    const FIELDS_CP = ["name", "desc", "labels", "members", "cover", "due", "links", "listId"];
+    for (const k of FIELDS_CP) if (bCP.patch && Object.prototype.hasOwnProperty.call(bCP.patch, k)) cCP[k] = bCP.patch[k];
+    await kvSet("lavalle_data", blobCP);
+    res.json({ ok: true, card: { id: cCP.id, name: cCP.name } });
+    return;
+  }
+
   if (op === "ops_film_pr_sync" && req.method === "POST") {
     const okKeyFP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authFP = okKeyFP ? null : await getAuthEarly(req);
