@@ -62,7 +62,7 @@ jobs:
       # LH Operations: Shopify inventory autosync + the admin-only Automations card
       - name: Ops board sync
         run: |
-          for op in ops_inventory_sync ops_automations_card; do
+          for op in ops_inventory_sync ops_film_pr_sync ops_automations_card; do
             curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=$op" \
               -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
           done

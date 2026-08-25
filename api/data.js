@@ -2000,6 +2000,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
+      ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
       ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag — Live or Pre-Order — that flips by itself, and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
@@ -2012,6 +2013,41 @@ export default async function handler(req, res) {
     cardOA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + OPS_AUTOMATIONS.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
     await kvSet("lavalle_data", blobOA);
     res.json({ ok: true, automations: OPS_AUTOMATIONS.length });
+    return;
+  }
+
+  // ── LH Operations: "To be filmed" ⟷ PR pairing ────────────────────────────
+  // Recurring (pinger). Every card in "To be filmed (4 per Q)" gets a matching
+  // card in the PR column (name-matched, created once, never deleted) so PR
+  // always mirrors what's being filmed. Optional {add:"Name"} drops a new card
+  // into To be filmed first — it pairs into PR on the same run.
+  if (op === "ops_film_pr_sync" && req.method === "POST") {
+    const okKeyFP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authFP = okKeyFP ? null : await getAuthEarly(req);
+    if (!okKeyFP && !ownerRole(authFP)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawFP = await kvGet("lavalle_data"); const blobFP = Array.isArray(rawFP) ? rawFP[0] : rawFP;
+    const bdFP = blobFP && blobFP.boards && blobFP.boards["rh-operations"];
+    if (!bdFP) { res.json({ ok: false }); return; }
+    const filmFP = bdFP.lists.find((l) => /^to be filmed/i.test((l.name || "").trim()));
+    const prFP = bdFP.lists.find((l) => /^pr$/i.test((l.name || "").trim()));
+    if (!filmFP || !prFP) { res.json({ ok: false, error: "columns missing" }); return; }
+    const normFP = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const mkFP = (listId, name, desc) => ({ id: "c" + Math.random().toString(36).slice(2, 10), listId, name, desc: desc || "", due: null, labels: [], members: [], attachments: [], links: [], done: false });
+    let addedFP = 0, pairedFP = 0;
+    const bFP = req.body || {};
+    if (bFP.add) {
+      const nmFP = String(bFP.add).slice(0, 120);
+      if (!bdFP.cards.some((c) => c.listId === filmFP.id && normFP(c.name) === normFP(nmFP))) { bdFP.cards.push(mkFP(filmFP.id, nmFP)); addedFP++; }
+    }
+    const skipFP = (c) => /^notes?$/i.test((c.name || "").trim()) || /^automations\b/i.test(c.name || "") || /^—/.test((c.name || "").trim());
+    const prNamesFP = new Set(bdFP.cards.filter((c) => c.listId === prFP.id).map((c) => normFP(c.name)));
+    for (const fcFP of bdFP.cards.filter((c) => c.listId === filmFP.id && !skipFP(c))) {
+      if (prNamesFP.has(normFP(fcFP.name))) continue;
+      bdFP.cards.push(mkFP(prFP.id, fcFP.name, "Paired automatically from To be filmed (4 per Q)."));
+      prNamesFP.add(normFP(fcFP.name)); pairedFP++;
+    }
+    if (addedFP || pairedFP) await kvSet("lavalle_data", blobFP);
+    res.json({ ok: true, added: addedFP, paired: pairedFP });
     return;
   }
 
