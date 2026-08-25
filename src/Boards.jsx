@@ -287,6 +287,44 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
     : <span title={(member && member.name) || ""} style={{ ...s, background: "#CDBBA7", color: "#FFFFFF", fontFamily: sans, fontSize: size * 0.34, letterSpacing: 0.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{initials(member && member.name)}</span>;
 }
 
+// ── UGC / PR Schedule — the column renders as a Sept–Dec 2026 calendar ───────
+// Each month: a mini date grid (the 15th marked — UGC to creators), the PR
+// shipment list from the month card underneath; click opens the month card.
+function PrCalendar({ monthCards, ugcNote, onOpen }) {
+  const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const MONTHS = [["September", 8], ["October", 9], ["November", 10], ["December", 11]];
+  const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B", padding: "2px 6px 8px" }}>2026 · {ugcNote}</div>
+      {MONTHS.map(([nm, mi]) => {
+        const card = monthCards.find((x) => (x.name || "").trim().toLowerCase() === nm.toLowerCase());
+        const first = new Date(2026, mi, 1).getDay();
+        const days = new Date(2026, mi + 1, 0).getDate();
+        const bullets = card ? String(card.desc || "").split("\n").map((t) => t.replace(/^[-•]\s*/, "").trim()).filter(Boolean) : [];
+        return (
+          <div key={nm} onClick={() => card && onOpen(card.id)} title={card ? "Open " + nm : undefined}
+            style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8, cursor: card ? "pointer" : "default" }}>
+            <div style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A", marginBottom: 6 }}>{nm} <span style={{ color: "#A39B8B", fontWeight: 400 }}>2026</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: bullets.length ? 8 : 0 }}>
+              {DOW.map((d, i) => <div key={"d" + i} style={{ fontFamily: sans, fontSize: 7.5, textAlign: "center", color: "#A39B8B" }}>{d}</div>)}
+              {Array.from({ length: first }).map((_, i) => <div key={"e" + i} />)}
+              {Array.from({ length: days }).map((_, i) => {
+                const d = i + 1; const isUgc = d === 15;
+                return (
+                  <div key={d} title={isUgc ? "UGC delivered to creators no later than the 15th" : undefined}
+                    style={{ fontFamily: sans, fontSize: 8.5, textAlign: "center", padding: "2px 0", borderRadius: 3, color: isUgc ? "#FFFFFF" : "#71716C", background: isUgc ? "#1A1A1A" : "transparent", fontWeight: isUgc ? 600 : 400 }}>{d}</div>
+                );
+              })}
+            </div>
+            {bullets.map((b, i) => <div key={i} style={{ fontFamily: sans, fontSize: 10.5, lineHeight: 1.5, color: "#444", padding: "1px 0" }}>• {b}</div>)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam, gridPlanner = null }) {
   const [boards, setBoards] = useState(data || null);
   const [loading, setLoading] = useState(!data);
@@ -1077,6 +1115,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
             {board.lists.map((l) => {
               let cards = board.cards.filter((x) => x.listId === l.id);
+              // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
+              // its month cards + schedule note feed the calendar instead of
+              // the normal stack. Anything else (paired film items…) stays a card.
+              const isCalL = /^ugc\s*\/\s*pr\s*schedule$/i.test((l.name || "").trim());
+              const calMonthsL = isCalL ? cards.filter((x) => /^(september|october|november|december)$/i.test((x.name || "").trim())) : [];
+              const calNoteL = isCalL ? cards.find((x) => /ugc\/?\s*pr\s*schedule/i.test((x.name || "").trim())) : null;
+              if (isCalL) cards = cards.filter((x) => !calMonthsL.includes(x) && x !== calNoteL);
               // The Automations card is the owner's plain-English map of what runs
               // on its own — admin reference, not something the team works from.
               if (!viewer.owner) cards = cards.filter((x) => !/^automations\b/i.test(x.name || ""));
@@ -1134,6 +1179,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
+                    {isCalL && <PrCalendar monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} />}
                     {cards.map((card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
                         onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
