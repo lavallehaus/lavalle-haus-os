@@ -995,6 +995,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, (u) => setAvatar(t.name, u), 200, 0.8); }} />
                           </label>
                         )}
+                        {viewer.owner && (
+                          <button title="Remove from the team list (their name comes off every card too)"
+                            onClick={() => {
+                              if (!window.confirm("Remove " + t.name + " from the team list? Their name comes off every card too.")) return;
+                              const bs = {};
+                              Object.entries(boards).forEach(([bk2, b2]) => {
+                                bs[bk2] = b2 && b2.cards ? { ...b2, cards: b2.cards.map((cd2) => ((cd2.members || []).includes(t.name) ? { ...cd2, members: cd2.members.filter((m2) => m2 !== t.name) } : cd2)) } : b2;
+                              });
+                              commit(bs);
+                              if (onSaveTeam) onSaveTeam(team.filter((x2) => x2.name !== t.name));
+                            }}
+                            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 6, padding: "3px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>
+                        )}
                         {viewer.owner && <input type="checkbox" title="Can open this board" checked={inBoard}
                           onChange={() => {
                             const startFrom = board.access && board.access.length ? board.access : team.map((x) => x.name);
@@ -1372,6 +1385,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const [name, setName] = useState(card.name);
+  // Internal ops board (LH Operations): cards are data entry — status, notes,
+  // owner, dates, photos — with every posting/Instagram feature switched off.
+  const opsMode = boardKey === "rh-operations";
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
   const [approved, setApproved] = useState(!!card.approved);
@@ -1430,7 +1446,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [dmCopied, setDmCopied] = useState(false);
   const [emailState, setEmailState] = useState("");
   const isOutreach = !!(autoTag && autoTag.active && autoTag.label === "UGC"); // UGC → full DM/email/PDF automation
-  const isPrUgc = !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
+  const isPrUgc = !opsMode && !!(autoTag && autoTag.active); // PR or UGC → the "3 videos we loved" suggestions only
   const brandAcct = igForBoardName((boardsIndex[boardKey] || {}).name); // locked IG handle for this board's brand
   const [postingNow, setPostingNow] = useState(false);
   const [plannCopied, setPlannCopied] = useState(false);
@@ -2013,8 +2029,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
+        {!opsMode && (<>
         <div style={label}>On-screen hook</div>
         <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
+        </>)}
         <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>
         <div style={label}>Caption</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
@@ -2055,6 +2073,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         </div>
 
         {/* the two standing buttons: reference video + this post's Drive asset */}
+        {!opsMode && (<>
         <div style={label}>Example video</div>
         <div style={{ display: "flex", gap: 6 }}>
           <input style={{ ...input, flex: 1 }} placeholder="https://www.tiktok.com/…" value={exampleUrl} onChange={(e) => setExampleUrl(e.target.value)} />
@@ -2160,9 +2179,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </div>
           );
         })()}
+        </>)}
 
         {/* publish straight from the card — same engine as the Grid */}
-        {pubAccounts && pubAccounts.length > 0 && !isNew && (
+        {!opsMode && pubAccounts && pubAccounts.length > 0 && !isNew && (
           <>
             <div style={label}>Where does this post go?</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -2295,7 +2315,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         </div>
 
         {/* tags — neutral palette */}
-        {(labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
+        {!opsMode && (labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
           <>
             <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
             <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -2324,11 +2344,11 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             free-typed tags below stay possible, but nobody has to invent names */}
         <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>House tags — tap to add</div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-          {[
+          {(opsMode ? [{ n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "Live", c: "#DCE3DC" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }] : [
             { n: "Courtney", c: "#FFFFFF" },
             { n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" },
             { n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · B-roll", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },
-          ].filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
+          ]).filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
             <button key={pr.n} onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
               {/^#fff/i.test(pr.c) && <span style={{ width: 6, height: 6, background: "#1A1A1A", display: "inline-block" }} />}+ {pr.n}
