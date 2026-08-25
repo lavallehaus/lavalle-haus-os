@@ -1929,10 +1929,16 @@ export default async function handler(req, res) {
         const kept = (cCh.labels || []).filter((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() !== "shopify"));
         if (kept.length !== (cCh.labels || []).length) { cCh.labels = kept; syncedOI++; }
       }
-      for (const nmAz of (Array.isArray((req.body || {}).setAmazon) ? req.body.setAmazon : [])) {
-        const cAz = cardsOI.find((c) => normOI(c.name) === normOI(nmAz));
-        if (cAz && !(cAz.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() === "amazon"))) { cAz.labels = [...(cAz.labels || []), { n: "Amazon", c: "#E9E6DF" }]; syncedOI++; }
-      }
+      // Amazon flags persist in KV and re-assert every run (stale-save proof).
+      return (async () => {
+        const flagsAz = new Set(((await kvGet("ops_amazon_flags")) || []).map(normOI));
+        for (const nmAz of (Array.isArray((req.body || {}).setAmazon) ? req.body.setAmazon : [])) flagsAz.add(normOI(nmAz));
+        await kvSet("ops_amazon_flags", [...flagsAz]);
+        for (const cAz of cardsOI) {
+          if (!flagsAz.has(normOI(cAz.name))) continue;
+          if (!(cAz.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() === "amazon"))) { cAz.labels = [...(cAz.labels || []), { n: "Amazon", c: "#E9E6DF" }]; syncedOI++; }
+        }
+      })();
     };
     // Pre-order detection shared by the status tags and the Pre-Orders card.
     const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
@@ -1975,10 +1981,13 @@ export default async function handler(req, res) {
       : "• nothing on pre-order right now";
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
-    cleanupChip();
-    // {setBg:"url"} — owner swaps the board background (rebrand: no Refillery
-    // Haus imagery after the Lavalle Haus name change).
-    if ((req.body || {}).setBg) { bdOI.bg = String(req.body.setBg).slice(0, 500); syncedOI++; }
+    await cleanupChip();
+    // {setBg:"url"} persists to KV and is RE-ASSERTED every run — a stale
+    // browser tab saving old state can no longer bring the Refillery Haus
+    // background back (rebrand: no old-name imagery).
+    if ((req.body || {}).setBg) await kvSet("ops_board_bg", String(req.body.setBg).slice(0, 500));
+    const wantBgOI = await kvGet("ops_board_bg");
+    if (wantBgOI && bdOI.bg !== wantBgOI) { bdOI.bg = wantBgOI; syncedOI++; }
     // HER RULE: the Inventory column reads clearly divided — BODY CARE first,
     // then HOME — with divider cards, regrouped automatically every sync.
     const bodyRx = /scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i;
@@ -2091,8 +2100,12 @@ export default async function handler(req, res) {
     const mkFP = (listId, name, desc) => ({ id: "c" + Math.random().toString(36).slice(2, 10), listId, name, desc: desc || "", due: null, labels: [], members: [], attachments: [], links: [], done: false });
     let addedFP = 0, pairedFP = 0;
     const bFP = req.body || {};
-    if (bFP.add) {
-      const nmFP = String(bFP.add).slice(0, 120);
+    // Seeded film cards persist in KV and are re-ensured every run, so a
+    // stale-tab save can't erase them.
+    const seedsFP = ((await kvGet("ops_film_seeds")) || []);
+    if (bFP.add) { const nmFP = String(bFP.add).slice(0, 120); if (!seedsFP.some((x) => normFP(x) === normFP(nmFP))) seedsFP.push(nmFP); await kvSet("ops_film_seeds", seedsFP); }
+    if (Array.isArray(bFP.removeSeed)) { const keep = seedsFP.filter((x) => !bFP.removeSeed.some((r) => normFP(r) === normFP(x))); await kvSet("ops_film_seeds", keep); seedsFP.length = 0; seedsFP.push(...keep); }
+    for (const nmFP of seedsFP) {
       if (!bdFP.cards.some((c) => c.listId === filmFP.id && normFP(c.name) === normFP(nmFP))) { bdFP.cards.push(mkFP(filmFP.id, nmFP)); addedFP++; }
     }
     const skipFP = (c) => /^notes?$/i.test((c.name || "").trim()) || /^automations\b/i.test(c.name || "") || /^—/.test((c.name || "").trim());
