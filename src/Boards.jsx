@@ -2348,7 +2348,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             free-typed tags below stay possible, but nobody has to invent names */}
         <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>House tags — tap to add</div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-          {(opsMode ? [{ n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "Live", c: "#DCE3DC" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }] : [
+          {(opsMode ? [{ n: "Live", c: "#DCE3DC" }, { n: "Pre-Order", c: "#D9CFC1" }, { n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }] : [
             { n: "Courtney", c: "#FFFFFF" },
             { n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" },
             { n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · B-roll", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },

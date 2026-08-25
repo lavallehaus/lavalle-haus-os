@@ -1920,6 +1920,8 @@ export default async function handler(req, res) {
     const sigOI = createHash("sha256").update(JSON.stringify([prodsOI, cardsOI.map((c) => c.id + (c.name || ""))])).digest("hex").slice(0, 12);
     const stOI = (await kvGet("ops_inventory_state")) || {};
     if (!(req.body || {}).force && !renamedOI && !createdOI && !removedOI && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
+    // Pre-order detection shared by the status tags and the Pre-Orders card.
+    const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
     let syncedOI = 0;
     for (const cOI of cardsOI) {
       if (/^pre-?orders/i.test(cOI.name || "")) continue;
@@ -1928,6 +1930,11 @@ export default async function handler(req, res) {
       const hit = prodsOI.find((pp) => normOI(pp.title) === cn) || prodsOI.find((pp) => normOI(pp.title).includes(cn) || cn.includes(normOI(pp.title)));
       if (!hit) continue;
       if (hit.image) cOI.cover = hit.image;
+      // HER RULE: every synced SKU carries an auto status tag — "Pre-Order" when
+      // the product is on pre-order, "Live" otherwise — and it flips on its own.
+      const statusOI = isPreOI(hit) ? { n: "Pre-Order", c: "#D9CFC1" } : { n: "Live", c: "#DCE3DC" };
+      const otherLb = (cOI.labels || []).filter((lb) => { const nmLb = ((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase(); return nmLb !== "live" && nmLb !== "pre-order" && nmLb !== "preorder"; });
+      cOI.labels = [statusOI, ...otherLb];
       const lineOI = "⟳ Shopify · " + (hit.inv == null ? "—" : hit.inv) + " on hand · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify")).join("\n").replace(/^\n+/, "");
       cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
@@ -1937,7 +1944,7 @@ export default async function handler(req, res) {
     // pre-order — tagged pre-order in Shopify, selling with no stock (oversell
     // on), or oversold (negative on-hand = units already pre-sold). The card's
     // "Notes:" section is human-owned and survives every sync.
-    const preOI = prodsOI.filter((pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1)));
+    const preOI = prodsOI.filter(isPreOI);
     let preCard = bdOI.cards.find((c) => c.listId === invListOI.id && /^pre-?orders/i.test(c.name || ""));
     if (!preCard) {
       preCard = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invListOI.id, name: "Pre-Orders — autosync", desc: "", due: null, labels: [{ n: "Ordered", c: "#D9CFC1" }], members: [], attachments: [], links: [], done: false };
@@ -1964,7 +1971,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, and the live on-hand count is written as the first line of the notes — your own notes stay underneath. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), and each SKU carries an auto status tag — Live or Pre-Order — that flips by itself. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
