@@ -1825,6 +1825,105 @@ export default async function handler(req, res) {
     ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above)."],
     ["Save arrangement", "When you hit Save in the grid editor", "The grid IS the sequence: tile 1 is Post 1 … tile 42 is Post 42 (grid 1 = Schedule 1-21, grid 2 = Schedule 22-42). Swapping two tiles swaps their cards too — caption, hashtags, approval and Courtney concept travel with the photo; a tray photo dropped in keeps the slot's caption. Dates re-flow from the slot (each of our posts advances a day, Courtney's share the day before it). The montage, the Grid card and the Strategy Outline follow."],
   ];
+  // ── Team roster: remove a member everywhere (admin) ───────────────────────
+  // Pulls the name off the roster AND off every card's member list, so the
+  // assign dropdown (which unions roster + names already on cards) forgets
+  // them too. Login revoke stays separate on the Action Items roster.
+  if (op === "team_remove_member" && req.method === "POST") {
+    const authTR = await getAuthEarly(req);
+    if (!ownerRole(authTR)) { res.status(403).json({ error: "Owner only." }); return; }
+    const nmTR = String((req.body || {}).name || "").trim().toLowerCase();
+    if (!nmTR) { res.status(400).json({ error: "name required" }); return; }
+    const rawTR = await kvGet("lavalle_data"); const blobTR = Array.isArray(rawTR) ? rawTR[0] : rawTR;
+    if (!blobTR) { res.json({ ok: false }); return; }
+    let rosterHits = 0, cardHits = 0;
+    const abTR = blobTR.actionsBoard || {};
+    if (Array.isArray(abTR.team)) { const b4 = abTR.team.length; abTR.team = abTR.team.filter((t) => ((t && t.name) || "").trim().toLowerCase() !== nmTR); rosterHits = b4 - abTR.team.length; }
+    for (const [bkTR, bdTR] of Object.entries(blobTR.boards || {})) {
+      if (bkTR.startsWith("_") || !bdTR || !bdTR.cards) continue;
+      for (const cdTR of bdTR.cards) {
+        const msTR = cdTR.members || [];
+        const keepTR = msTR.filter((m) => String(m).trim().toLowerCase() !== nmTR);
+        if (keepTR.length !== msTR.length) { cdTR.members = keepTR; cardHits++; }
+      }
+    }
+    await kvSet("lavalle_data", blobTR);
+    res.json({ ok: true, roster: rosterHits, cards: cardHits });
+    return;
+  }
+
+  // ── LH Operations: Inventory column ⟷ Shopify autosync ────────────────────
+  // Recurring (pinger). Matches each card in the Inventory column to its
+  // Shopify product by name, sets the card photo to the product's CURRENT
+  // featured image (Shopify CDN URL — image swaps show up on their own) and
+  // writes the live on-hand count as the first line of the notes, keeping the
+  // human notes below it. Cards with no Shopify match (Amazon-only stock,
+  // discontinued pieces) are left untouched.
+  if (op === "ops_inventory_sync" && req.method === "POST") {
+    const okKeyOI = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authOI = okKeyOI ? null : await getAuthEarly(req);
+    if (!okKeyOI && !ownerRole(authOI)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const soOI = (await kvGet("shopify_oauth")) || {};
+    const stokOI = soOI.accessToken || soOI.token;
+    if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
+    const qOI = `query { products(first: 150) { edges { node { title status featuredImage { url(transform: { maxWidth: 720 }) } totalInventory } } } }`;
+    const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
+      body: JSON.stringify({ query: qOI }),
+    });
+    const dOI = await rOI.json().catch(() => ({}));
+    const prodsOI = (((dOI.data || {}).products || {}).edges || []).map((e) => ({ title: e.node.title, image: (e.node.featuredImage || {}).url || null, inv: e.node.totalInventory }));
+    if (!prodsOI.length) { res.json({ ok: false, error: "no_products" }); return; }
+    const rawOI = await kvGet("lavalle_data"); const blobOI = Array.isArray(rawOI) ? rawOI[0] : rawOI;
+    const bdOI = blobOI && blobOI.boards && blobOI.boards["rh-operations"];
+    if (!bdOI) { res.json({ ok: false }); return; }
+    const invListOI = bdOI.lists.find((l) => /^inventory$/i.test((l.name || "").trim()));
+    if (!invListOI) { res.json({ ok: false, error: "no_inventory_column" }); return; }
+    const cardsOI = bdOI.cards.filter((c) => c.listId === invListOI.id);
+    const sigOI = createHash("sha256").update(JSON.stringify([prodsOI, cardsOI.map((c) => c.id + (c.name || ""))])).digest("hex").slice(0, 12);
+    const stOI = (await kvGet("ops_inventory_state")) || {};
+    if (!(req.body || {}).force && stOI.sig === sigOI) { res.json({ ok: true, skipped: true }); return; }
+    const normOI = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    let syncedOI = 0;
+    for (const cOI of cardsOI) {
+      const cn = normOI(cOI.name);
+      if (!cn) continue;
+      const hit = prodsOI.find((pp) => normOI(pp.title) === cn) || prodsOI.find((pp) => normOI(pp.title).includes(cn) || cn.includes(normOI(pp.title)));
+      if (!hit) continue;
+      if (hit.image) cOI.cover = hit.image;
+      const lineOI = "⟳ Shopify · " + (hit.inv == null ? "—" : hit.inv) + " on hand · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify")).join("\n").replace(/^\n+/, "");
+      cOI.desc = lineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
+      syncedOI++;
+    }
+    if (syncedOI) await kvSet("lavalle_data", blobOI);
+    await kvSet("ops_inventory_state", { sig: sigOI, at: Date.now() });
+    res.json({ ok: true, synced: syncedOI, products: prodsOI.length });
+    return;
+  }
+
+  // ── LH Operations: Automations card (visible to admins only — the client
+  // hides any card named "Automations…" from non-owner logins) ───────────────
+  if (op === "ops_automations_card" && req.method === "POST") {
+    const okKeyOA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authOA = okKeyOA ? null : await getAuthEarly(req);
+    if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const OPS_AUTOMATIONS = [
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Matches each Inventory card to its Shopify product by name, sets the card photo to the product's current Shopify photo, and writes the live on-hand count as the first line of the notes — your own notes stay underneath. Cards without a Shopify match (Amazon-only stock, limited pieces) are left alone."],
+    ];
+    const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
+    const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
+    if (!bdOA) { res.json({ ok: false }); return; }
+    const listOA = bdOA.lists[0];
+    let cardOA = bdOA.cards.find((c) => /^automations\b/i.test(c.name || ""));
+    if (!cardOA) { cardOA = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listOA.id, name: "Automations — what runs on its own", labels: [], members: [], attachments: [], links: [], done: false }; bdOA.cards.unshift(cardOA); }
+    cardOA.name = "Automations — what runs on its own";
+    cardOA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + OPS_AUTOMATIONS.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
+    await kvSet("lavalle_data", blobOA);
+    res.json({ ok: true, automations: OPS_AUTOMATIONS.length });
+    return;
+  }
+
   if (op === "automations_card" && req.method === "POST") {
     const okKeyA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authA = okKeyA ? null : await getAuthEarly(req);
@@ -4184,7 +4283,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_search" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
+  if (op === "drive_meta" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -4204,15 +4303,6 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error" }); return; }
         res.json(d); return;
-      }
-      if (op === "drive_search") {
-        const term = String(b.q || "").replace(/['\\]/g, "").slice(0, 80);
-        if (!term) { res.status(400).json({ error: "No query." }); return; }
-        const qS = encodeURIComponent(`name contains '${term}' and trashed = false`);
-        const rS = await fetch(`https://www.googleapis.com/drive/v3/files?q=${qS}&fields=files(id,name,mimeType,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: AUTH });
-        const dS = await rS.json();
-        if (!rS.ok) { res.status(400).json({ error: (dS.error && dS.error.message) || "drive_error" }); return; }
-        res.json({ files: dS.files || [] }); return;
       }
       if (op === "drive_shortcut") {
         const target = (b.targetId || "").replace(/[^a-zA-Z0-9_-]/g, "");
