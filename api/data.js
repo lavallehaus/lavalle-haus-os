@@ -1815,6 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
+    ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical) — and the links sync onto the card: the cover photo link is the IG file, with a Cover n-TT link beside it."],
     ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
@@ -2117,6 +2118,80 @@ export default async function handler(req, res) {
     }
     if (addedFP || pairedFP) await kvSet("lavalle_data", blobFP);
     res.json({ ok: true, added: addedFP, paired: pairedFP });
+    return;
+  }
+
+  // ── Platform-sized covers (rule Aug 25 2026): when a post's IG and TikTok
+  // formats need different shapes (reel 9:16 vs feed 4:5), save BOTH sizes to
+  // Drive → <Month> → Cover photos as "<n>-IG.jpg" / "<n>-TT.jpg" and sync the
+  // links onto the card: coverUrl = the IG file, plus a "Cover n-TT" link.
+  // Staged: a few posts per tick; the pinger finishes the rest.
+  if (op === "sisters_cover_sizes" && req.method === "POST") {
+    const okKeyCS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCS = okKeyCS ? null : await getAuthEarly(req);
+    if (!okKeyCS && !ownerRole(authCS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtCS = await googleToken(); if (!gtCS) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const lsCS = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtCS } })).json()).files || [];
+    const monthCS = String((await kvGet(SBOARD.monthDefaultKv)) || "September");
+    const topCS = await lsCS(SBOARD.driveRootId);
+    const mFCS = topCS.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === monthCS.toLowerCase());
+    const cpCS = mFCS && (await lsCS(mFCS.id)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && /^cover photos$/i.test((f.name || "").trim()));
+    if (!cpCS) { res.json({ ok: false, error: "cover photos folder missing" }); return; }
+    const existCS = await lsCS(cpCS.id);
+    const g1CS = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
+    const g2CS = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
+    const tilesCS = [...(g1CS.tiles || []), ...(g2CS.tiles || [])];
+    const rawCS = await kvGet("lavalle_data"); const blobCS = Array.isArray(rawCS) ? rawCS[0] : rawCS;
+    const bdCS = blobCS && blobCS.boards && blobCS.boards[SBOARD.key];
+    if (!bdCS) { res.json({ ok: false }); return; }
+    const schedCS = bdCS.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const cardCS = (n) => bdCS.cards.find((c) => schedCS.includes(c.listId) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
+    const lbOf = (c, pre) => ((c.labels || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => x.toUpperCase().startsWith(pre)) || "");
+    const shapeOf = (lab) => /reel|ftc|b-?roll/i.test(lab) ? "V" : /carousel|static/i.test(lab) ? "F" : null; // V = 1080x1920, F = 1080x1350
+    const stCS = (await kvGet("sisters_cover_sizes_state")) || { done: {} };
+    const JimpCS = (await import("jimp")).default;
+    let madeCS = 0, budgetCS = 6;
+    for (let n = 1; n <= tilesCS.length && budgetCS > 0; n++) {
+      const t = tilesCS[n - 1]; const c = cardCS(n); if (!t || !c) continue;
+      const ig = shapeOf(lbOf(c, "IG")); const tt = shapeOf(lbOf(c, "TT"));
+      if (!ig || !tt || ig === tt) continue; // one shape fits both → classic single cover
+      const sigN = String(t.cover) + "|" + ig + tt;
+      if (stCS.done[n] === sigN) continue;
+      try {
+        const uCS = /^https?:/.test(t.cover) ? t.cover : APP_ORIGIN + t.cover;
+        const rb = await fetch(uCS); if (!rb.ok) continue;
+        const srcCS = await JimpCS.read(Buffer.from(await rb.arrayBuffer()));
+        const outs = [["IG", ig], ["TT", tt]];
+        const linksCS = {};
+        for (const [plat, shp] of outs) {
+          const im = srcCS.clone().cover(1080, shp === "V" ? 1920 : 1350); im.quality(88);
+          const buf = await im.getBufferAsync(JimpCS.MIME_JPEG);
+          const nm = n + "-" + plat + ".jpg";
+          const prev = existCS.find((f) => (f.name || "").trim().toLowerCase() === nm.toLowerCase());
+          let fidCS;
+          if (prev) {
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${prev.id}?uploadType=media&supportsAllDrives=true`, { method: "PATCH", headers: { Authorization: "Bearer " + gtCS, "Content-Type": "image/jpeg" }, body: buf });
+            fidCS = prev.id;
+          } else {
+            const meta = JSON.stringify({ name: nm, parents: [cpCS.id] });
+            const bnd = "lhb" + Math.random().toString(36).slice(2, 10);
+            const body = Buffer.concat([Buffer.from(`--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${bnd}\r\nContent-Type: image/jpeg\r\n\r\n`), buf, Buffer.from(`\r\n--${bnd}--`)]);
+            const cr = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtCS, "Content-Type": `multipart/related; boundary=${bnd}` }, body })).json();
+            fidCS = cr.id; if (fidCS) existCS.push({ id: fidCS, name: nm });
+          }
+          if (fidCS) linksCS[plat] = "https://drive.google.com/file/d/" + fidCS + "/view";
+        }
+        if (linksCS.IG) c.coverUrl = linksCS.IG;
+        if (linksCS.TT) {
+          const keepL = (c.links || []).filter((L) => !(new RegExp("^cover\\s*" + n + "-tt$", "i").test(L.n || "")));
+          c.links = [...keepL, { id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + "-TT", u: linksCS.TT }];
+        }
+        stCS.done[n] = sigN; madeCS++; budgetCS--;
+      } catch (eCS) {}
+    }
+    if (madeCS) await kvSet("lavalle_data", blobCS);
+    await kvSet("sisters_cover_sizes_state", stCS);
+    res.json({ ok: true, made: madeCS, month: monthCS });
     return;
   }
 
@@ -2777,22 +2852,28 @@ export default async function handler(req, res) {
         const sched2 = bdW.lists.find((l) => /^schedule\s*22\s*[-–]\s*42$/i.test((l.name || "").trim()));
         const inSched = (c) => (sched1 && c.listId === sched1.id) || (sched2 && c.listId === sched2.id);
         const cardAt = (n) => bdW.cards.find((c) => inSched(c) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
-        const NAME_RX = /^post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/i; // dates optional (legacy) — names are dateless now
+        const NAME_RX = /^post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/i; // date sits between number and concept
         const offsetW = g === "1" ? 0 : 21;
+        // Dates (rule Aug 25 2026): cycle starts Wed Aug 26; each K advances a
+        // day, a C shares the day of the K before it — so with C tiles on the
+        // MWF slots, Courtney lands Mon/Wed/Fri. Grid 2 starts after grid 1's days.
+        const START_W = Date.UTC(2026, 7, 26);
+        let dayW = 0;
+        if (g === "2") { const r1W = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] }; dayW = (r1W.tiles || []).filter((t0) => t0.tag !== "C").length; }
         // permutation within this grid: new slot q ← previous slot p (by cover, greedy, dup-safe)
         const usedP = new Set(); const srcOf = new Array(rec.tiles.length).fill(-1);
         rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedP.has(i) && pt.cover === t.cover); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
         rec.tiles.forEach((t, q) => { if (srcOf[q] >= 0) return; if (q < prevTilesW.length && !usedP.has(q)) { usedP.add(q); srcOf[q] = q; return; } const p = prevTilesW.findIndex((pt, i) => !usedP.has(i)); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
         const snap = prevTilesW.map((pt, p) => { const c = cardAt(offsetW + p + 1); return c ? { desc: c.desc || "", tags: c.tags || "", approved: !!c.approved, labels: c.labels || [], attachments: c.attachments || [], links: c.links || [], done: !!c.done, coverUrl: c.coverUrl || "", pub: c.pub, tiktokCover: c.tiktokCover, concept: ((NAME_RX.exec(c.name || "") || [])[1] || "").trim() } : null; });
-        // No dates in card names (her call, Aug 24 2026): posting days move — Courtney
-        // starts when she starts — so the name is just the slot: "Post n" (+ concept).
         let wrote = 0;
         rec.tiles.forEach((t, q) => {
           const n = offsetW + q + 1; const card = cardAt(n); if (!card) return;
           const s = srcOf[q] >= 0 ? snap[srcOf[q]] : null;
           if (s) { card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels; card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl; if (s.pub) card.pub = s.pub; else delete card.pub; if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover; }
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
-          const base = "Post " + n;
+          const dW = new Date(START_W + (t.tag === "C" ? Math.max(0, dayW - 1) : dayW) * 86400000);
+          if (t.tag !== "C") dayW++;
+          const base = "Post " + n + " " + dW.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
           const hasCTag = (card.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
           if (t.tag === "C") {
             const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";

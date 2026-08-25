@@ -2098,12 +2098,13 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <div style={label}>On-screen hook</div>
         <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
         </>)}
-        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>
-        <div style={label}>Caption</div>
+        {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
+        <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         <NotesLinks text={desc} />
         {/* TikTok-only hashtags: she wants 2 on TikTok and none on Instagram, so
             these are stored apart from the caption and never reach the IG post. */}
+        {!opsMode && (<>
         <div style={label}>Hashtags · TikTok only</div>
         <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
         {tags.trim() && (
@@ -2116,6 +2117,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
           Approve caption + hashtags {approved ? "— approved" : ""}
         </label>
+        </>)}
         {/* checklist — the film → edit → post steps live on the card */}
         <div style={label}>Checklist{checklist.length ? " · " + checklist.filter((x) => x.done).length + "/" + checklist.length : ""}</div>
         {checklist.length > 0 && (
