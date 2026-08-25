@@ -1217,7 +1217,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             </div>
           </div>
           {folderMode && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px", position: "relative", zIndex: 25 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 14px 10px", position: "relative", zIndex: 25 }}>
               {opsFocus ? (
                 <button onClick={() => setOpsFocus(null)}
                   style={{ border: "1px solid #E0E0DD", background: "rgba(255,255,255,0.94)", borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>← All sections</button>
@@ -1227,7 +1227,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             </div>
           )}
           {folderMode && !opsFocus && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12, paddingBottom: 16, position: "relative", zIndex: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12, padding: "0 14px 16px", position: "relative", zIndex: 20 }}>
               {board.lists.map((l) => {
                 const csF = board.cards.filter((x) => x.listId === l.id && (viewer.owner || !/^automations\b/i.test(x.name || "")));
                 const covF = (csF.find((x) => x.cover) || {}).cover;
