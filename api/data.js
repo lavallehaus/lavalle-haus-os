@@ -1815,6 +1815,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the four numbered windows, always split 1–9, 10–21, 22–30, 31–42 (the standing rule), from whatever is saved in the grid editor; its cover advances to the window we're in. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
+    ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten."],
     ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical) — and the links sync onto the card: the cover photo link is the IG file, with a Cover n-TT link beside it."],
     ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
@@ -2192,6 +2193,76 @@ export default async function handler(req, res) {
     if (madeCS) await kvSet("lavalle_data", blobCS);
     await kvSet("sisters_cover_sizes_state", stCS);
     res.json({ ok: true, made: madeCS, month: monthCS });
+    return;
+  }
+
+  // ── Card concepts (rule Aug 25 2026): every post title carries a short
+  // "point of the post" — "Post n <date> — TF: linen set styling" — read from
+  // the cover photo (vision recognizes The Fold vs Lavalle Haus product) and
+  // the auto-generated caption. Courtney's cards and hand-written concepts are
+  // never overwritten (we only re-touch concepts this op set itself).
+  if (op === "sisters_card_concepts" && req.method === "POST") {
+    const okKeyCC = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCC = okKeyCC ? null : await getAuthEarly(req);
+    if (!okKeyCC && !ownerRole(authCC)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const akeyCC = process.env.ANTHROPIC_API_KEY;
+    if (!akeyCC) { res.json({ ok: false, error: "ANTHROPIC_API_KEY not set" }); return; }
+    const g1CC = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
+    const g2CC = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
+    const tilesCC = [...(g1CC.tiles || []), ...(g2CC.tiles || [])];
+    const rawCC = await kvGet("lavalle_data"); const blobCC = Array.isArray(rawCC) ? rawCC[0] : rawCC;
+    const bdCC = blobCC && blobCC.boards && blobCC.boards[SBOARD.key];
+    if (!bdCC || !tilesCC.length) { res.json({ ok: false }); return; }
+    const schedCC = bdCC.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const RX_CC = /^(post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?)(?:\s*[—–-]\s*(.+))?$/i;
+    const cardCC = (n) => bdCC.cards.find((c) => schedCC.includes(c.listId) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
+    const hashCC = (x) => createHash("sha256").update(String(x)).digest("hex").slice(0, 10);
+    const stCC = (await kvGet("sisters_card_concepts_state")) || { done: {}, set: {} };
+    const todo = [];
+    for (let n = 1; n <= tilesCC.length; n++) {
+      const t = tilesCC[n - 1]; const c = cardCC(n); if (!t || !c) continue;
+      if (t.tag === "C") continue; // Courtney's concepts are hers
+      const m = RX_CC.exec(c.name || ""); if (!m) continue;
+      const curCon = (m[2] || "").trim();
+      if (curCon && curCon !== (stCC.set[n] || "")) continue; // human-written — leave it
+      const sigN = hashCC(t.cover + "|" + (c.desc || "").slice(0, 300));
+      if (curCon && stCC.done[n] === sigN) continue;
+      todo.push({ n, cover: t.cover, caption: (c.desc || "").slice(0, 240), sig: sigN });
+      if (todo.length >= 14) break; // staged — the pinger finishes the rest
+    }
+    if (!todo.length) { res.json({ ok: true, made: 0 }); return; }
+    const JimpCC = (await import("jimp")).default;
+    const contentCC = [];
+    const okN = [];
+    for (const it of todo) {
+      try {
+        const u = /^https?:/.test(it.cover) ? it.cover : APP_ORIGIN + it.cover;
+        const rb = await fetch(u); if (!rb.ok) continue;
+        const im = await JimpCC.read(Buffer.from(await rb.arrayBuffer())); im.resize(240, JimpCC.AUTO); im.quality(66);
+        contentCC.push({ type: "text", text: "Post " + it.n + (it.caption ? " — caption: " + it.caption : " — no caption yet") });
+        contentCC.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await im.getBufferAsync(JimpCC.MIME_JPEG)).toString("base64") } });
+        okN.push(it.n);
+      } catch (e1) {}
+    }
+    if (!okN.length) { res.json({ ok: true, made: 0, error: "no thumbs" }); return; }
+    contentCC.push({ type: "text", text: 'These are Instagram posts for the Lavalle Sisters (two sister founders running two brands: THE FOLD = fashion/garments, LAVALLE HAUS = body care, candles, home). For EACH post, from the photo and caption, write a SHORT point-of-the-post: start with "TF:" if the photo is a Fold fashion/garment product, "LH:" if a Lavalle Haus body/home product, or no prefix if neither brand is the subject (BTS, founders, lifestyle). Then 3-5 plain words for what the post is doing (e.g. "TF: linen set styling", "LH: body scrub ritual", "brand shoot BTS"). No hashtags, no em dashes, no quotes. Return ONLY JSON: {"posts":[{"n":1,"concept":"…"}]} covering every post shown.' });
+    const rCC = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": akeyCC, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: contentCC }] }) });
+    const dCC = await rCC.json(); if (dCC && dCC.error) { res.json({ ok: false, error: dCC.error.message }); return; }
+    const tCC = (dCC.content || []).map((c) => c.text || "").join("");
+    let parsedCC = {}; try { parsedCC = JSON.parse(tCC.slice(tCC.indexOf("{"), tCC.lastIndexOf("}") + 1)); } catch (e2) { res.json({ ok: false, error: "parse" }); return; }
+    let madeCC = 0;
+    for (const pcc of (parsedCC.posts || [])) {
+      const it = todo.find((x) => x.n === Number(pcc.n)); if (!it) continue;
+      const c = cardCC(it.n); if (!c) continue;
+      const con = String(pcc.concept || "").replace(/[—–]/g, "-").replace(/["“”]/g, "").trim().slice(0, 60);
+      if (!con) continue;
+      const m = RX_CC.exec(c.name || ""); if (!m) continue;
+      c.name = m[1].trim() + " — " + con;
+      stCC.done[it.n] = it.sig; stCC.set[it.n] = con; madeCC++;
+    }
+    if (madeCC) await kvSet("lavalle_data", blobCC);
+    await kvSet("sisters_card_concepts_state", stCC);
+    res.json({ ok: true, made: madeCC, checked: todo.length });
     return;
   }
 
