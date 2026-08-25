@@ -1816,7 +1816,7 @@ export default async function handler(req, res) {
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
     ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten."],
-    ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical) — and the links sync onto the card: the cover photo link is the IG file, with a Cover n-TT link beside it."],
+    ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file."],
     ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
@@ -2184,7 +2184,7 @@ export default async function handler(req, res) {
       const ig = shapeOf(lbOf(c, "IG")); const tt = shapeOf(lbOf(c, "TT"));
       if (!ig || !tt || ig === tt) continue; // one shape fits both → classic single cover
       const sigN = String(t.cover) + "|" + ig + tt;
-      if (stCS.done[n] === sigN) continue;
+      if (stCS.done[n] === sigN && (c.coverUrl || "").trim()) continue;
       try {
         const uCS = /^https?:/.test(t.cover) ? t.cover : APP_ORIGIN + t.cover;
         const rb = await fetch(uCS); if (!rb.ok) continue;
@@ -2217,16 +2217,46 @@ export default async function handler(req, res) {
         stCS.done[n] = sigN; madeCS++; budgetCS--;
       } catch (eCS) {}
     }
-    // Non-split posts: the classic numbered file in Cover photos becomes the
-    // card's cover photo link, so EVERY card links its Drive cover.
+    // Non-split posts: the classic numbered file in Cover photos is the card's
+    // cover photo link — and when the GRID photo is replaced, the Drive file
+    // itself is refreshed in place (same file id, links never break).
     let linkedCS = 0;
-    for (let n = 1; n <= tilesCS.length; n++) {
-      const c = cardCS(n); if (!c) continue;
-      if ((c.coverUrl || "").trim()) continue;
-      const fC = existCS.find((f) => new RegExp("^" + n + "\\.(jpe?g|png|heic|webp)$", "i").test((f.name || "").trim()));
-      if (!fC) continue;
-      c.coverUrl = "https://drive.google.com/file/d/" + fC.id + "/view";
-      linkedCS++; madeCS++;
+    stCS.classic = stCS.classic || {};
+    const uploadToCS = async (fidU, nmU, buf) => {
+      if (fidU) {
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fidU}?uploadType=media&supportsAllDrives=true`, { method: "PATCH", headers: { Authorization: "Bearer " + gtCS, "Content-Type": "image/jpeg" }, body: buf });
+        return fidU;
+      }
+      const meta = JSON.stringify({ name: nmU, parents: [cpCS.id] });
+      const bnd = "lhc" + Math.random().toString(36).slice(2, 10);
+      const body = Buffer.concat([Buffer.from(`--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${bnd}\r\nContent-Type: image/jpeg\r\n\r\n`), buf, Buffer.from(`\r\n--${bnd}--`)]);
+      const cr = await (await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtCS, "Content-Type": `multipart/related; boundary=${bnd}` }, body })).json();
+      if (cr.id) existCS.push({ id: cr.id, name: nmU });
+      return cr.id || null;
+    };
+    for (let n = 1; n <= tilesCS.length && budgetCS > 0; n++) {
+      const t = tilesCS[n - 1]; const c = cardCS(n); if (!t || !c) continue;
+      const igC = shapeOf(lbOf(c, "IG")); const ttC = shapeOf(lbOf(c, "TT"));
+      if (igC && ttC && igC !== ttC) continue; // split posts handled above
+      const shpC = igC || ttC || "F";
+      const sig2 = createHash("sha256").update(String(t.cover) + "|classic|" + shpC).digest("hex").slice(0, 10);
+      const hasUrl = !!(c.coverUrl || "").trim();
+      if (stCS.classic[n] === sig2 && hasUrl) continue;
+      let fC = existCS.find((f) => new RegExp("^" + n + "\\.(jpe?g|png|heic|webp)$", "i").test((f.name || "").trim()));
+      try {
+        const photoChanged = (stCS.classic[n] && stCS.classic[n] !== sig2) || (!hasUrl && !stCS.classic[n] && fC);
+        if (photoChanged || !fC) {
+          // grid photo replaced (or file missing) → write the current grid
+          // image into Drive at the post's shape
+          const uC2 = /^https?:/.test(t.cover) ? t.cover : APP_ORIGIN + t.cover;
+          const rb2 = await fetch(uC2); if (!rb2.ok) continue;
+          const im2 = (await JimpCS.read(Buffer.from(await rb2.arrayBuffer()))).cover(1080, shpC === "V" ? 1920 : 1350); im2.quality(88);
+          const fid2 = await uploadToCS(fC && fC.id, n + ".jpg", await im2.getBufferAsync(JimpCS.MIME_JPEG));
+          if (!fC && fid2) fC = { id: fid2, name: n + ".jpg" };
+          budgetCS--;
+        }
+        if (fC) { c.coverUrl = "https://drive.google.com/file/d/" + fC.id + "/view"; stCS.classic[n] = sig2; linkedCS++; madeCS++; }
+      } catch (eC2) {}
     }
     if (madeCS) await kvSet("lavalle_data", blobCS);
     await kvSet("sisters_cover_sizes_state", stCS);
@@ -3078,6 +3108,12 @@ export default async function handler(req, res) {
           clearTimeout(tmGC);
           let dGC = null; try { dGC = rGC && await rGC.json(); } catch (eJ2) {}
           if (!dGC || !dGC.partial) break;
+        }
+        // and refresh Drive cover files + card links for the changed photos
+        if (Date.now() - t0GC < 30000) {
+          const acC3 = new AbortController(); const tmC3 = setTimeout(() => acC3.abort(), 20000);
+          await fetch(APP_ORIGIN + "/api/data?op=sisters_cover_sizes" + (req.query.board ? "&board=" + encodeURIComponent(req.query.board) : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acC3.signal }).catch(() => {});
+          clearTimeout(tmC3);
         }
       }
     } catch (eGC) {}
