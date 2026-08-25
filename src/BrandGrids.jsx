@@ -123,7 +123,9 @@ async function storeImage(dataUrl) {
 export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowedAccts = null, owner = false }) {
   // board-access scoping: only the brands whose boards this person can open
   const VISIBLE_BRANDS = BRANDS.filter((b) => !allowedAccts || allowedAccts.has(b.acct));
-  const [acct, setAcct] = useState((VISIBLE_BRANDS[0] || BRANDS[0]).acct);
+  const WS2IG = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
+  const [acct, setAcct] = useState(() => { try { const ig = WS2IG[localStorage.getItem("lh_brand_view")]; if (ig && (VISIBLE_BRANDS.length ? VISIBLE_BRANDS : BRANDS).some((b) => b.acct === ig)) return ig; } catch {} return (VISIBLE_BRANDS[0] || BRANDS[0]).acct; });
+  useEffect(() => { const h = (e) => { const ig = WS2IG[e.detail]; if (ig && (VISIBLE_BRANDS.length ? VISIBLE_BRANDS : BRANDS).some((b) => b.acct === ig)) setAcct(ig); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
   // Lavalle Sisters runs TWO grids: Instagram and TikTok. Same 21 cards, but
   // the TikTok side keeps its own covers (card.tiktokCover, falling back to the
   // IG cover), its own order, its own zoom crops and its own lock — all stored
@@ -157,6 +159,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   const [trayOpen, setTrayOpen] = useState(false); // photo pool folded by default
   // Lock (server-enforced: a locked grid refuses every tile change for everyone;
   // only the owner can lock/unlock) + undo/redo for accidental moves before saving.
+  const meNameBG = (() => { try { return (JSON.parse(localStorage.getItem("lh_user") || "{}").name || localStorage.getItem("lh_me") || ""); } catch { return ""; } })();
+  const canLockBG = owner || /courtney/i.test(meNameBG); // Courtney makes the grid — she can lock/unlock it
   const [sisLocked, setSisLocked] = useState(false);
   const [sisHist, setSisHist] = useState([]);
   const [sisFuture, setSisFuture] = useState([]);
@@ -819,10 +823,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
             {sisLocked && (
               <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", background: c.card }}>
-                ◈ Grid locked{owner ? "" : " — ask Kiabeth to unlock"}
+                ◈ Grid locked{canLockBG ? "" : " — ask Kiabeth or Courtney to unlock"}
               </span>
             )}
-            {owner && (
+            {canLockBG && (
               <button onClick={toggleSisLock}
                 style={{ border: `1px solid ${sisLocked ? c.green : c.line}`, background: sisLocked ? c.green : "transparent", color: sisLocked ? "#fff" : c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
                 {sisLocked ? "Unlock grid" : "Lock grid"}

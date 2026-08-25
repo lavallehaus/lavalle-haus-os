@@ -330,7 +330,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [loading, setLoading] = useState(!data);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
-  const [ws, setWs] = useState(() => { try { return localStorage.getItem("lh_boards_ws") || "lavalle-haus"; } catch { return "lavalle-haus"; } });
+  const [ws, setWs] = useState(() => { try { const bv = localStorage.getItem("lh_brand_view"); if (bv && bv !== "all" && WORKSPACES.some((w) => w.id === bv)) return bv; return localStorage.getItem("lh_boards_ws") || "lavalle-haus"; } catch { return "lavalle-haus"; } });
+  // Picking a brand up top (Content Brain) filters every sub-tab, this one included.
+  useEffect(() => { const h = (e) => { const v = e.detail; if (v && v !== "all" && WORKSPACES.some((w) => w.id === v)) setWs(v); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
   useEffect(() => { try { localStorage.setItem("lh_boards_ws", ws); } catch {} }, [ws]);
   // Refresh keeps you on the board you were in (per browser, so it works for
   // every team member too). Validated below once boards load.
@@ -707,7 +709,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const _openBoard = open && boards ? boards[open] : null;
   const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
   useEffect(() => { try { if (open) localStorage.setItem("lh_boards_open", open); else localStorage.removeItem("lh_boards_open"); } catch {} }, [open]);
-  useEffect(() => { if (open && boards && (!boards[open] || !canSee(boards[open]))) setOpen(null); }, [open, boards]); // restored board gone or not allowed → boards home
+  useEffect(() => { if (open && boards && Object.keys(boards).length > 1 && (!boards[open] || !canSee(boards[open]))) setOpen(null); }, [open, boards]); // restored board gone or not allowed → boards home (never while data is still loading)
 
   const memberPool = useMemo(() => {
     const set = new Set(team.map((t) => t.name).filter(Boolean));

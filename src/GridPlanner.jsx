@@ -33,7 +33,9 @@ import { NotesLinks } from "./Boards.jsx";
 
 export default function GridPlanner({ allowedAccts = null, data, boards, onSave, onSaveBoards }) {
   const [state, setState] = useState(data || null);
+  const WS2IGP = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
   const [feedId, setFeedId] = useState(null);
+  useEffect(() => { const pick = (v) => { const ig = WS2IGP[v]; if (!ig || !state || !state.feeds) return; const f0 = state.feeds.find((f) => String(f.account || "").toLowerCase() === ig || f.boardKey === Object.keys(WS2IGP).find((k) => WS2IGP[k] === ig)); if (f0) setFeedId(f0.id); }; try { pick(localStorage.getItem("lh_brand_view")); } catch {} const h = (e) => pick(e.detail); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, [state && (state.feeds || []).length]);
   const [aspect, setAspect] = useState("3 / 4"); // Instagram's current portrait grid; toggle to 1:1
   const [openItem, setOpenItem] = useState(null); // cardId
   const [dragIdx, setDragIdx] = useState(null);

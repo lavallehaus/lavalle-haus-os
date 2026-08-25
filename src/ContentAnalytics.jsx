@@ -13,7 +13,9 @@ const fmt = (n) => (n == null ? "—" : n >= 1000 ? (n / 1000).toFixed(n >= 1000
 export default function ContentAnalytics({ allowedAccts = null }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
+  const WS2IGA = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
   const [acct, setAcct] = useState(0);
+  useEffect(() => { const pick = (v) => { const ig = WS2IGA[v]; if (!ig || !visAccounts) return; const ix = visAccounts.findIndex((a0) => String(a0.username || a0.handle || "").toLowerCase() === ig); if (ix >= 0) setAcct(ix); }; try { pick(localStorage.getItem("lh_brand_view")); } catch {} const h = (e) => pick(e.detail); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, [visAccounts && visAccounts.length]);
   const [openId, setOpenId] = useState(null); // media id whose comments are expanded
   const [comments, setComments] = useState({}); // mediaId -> { loading, error, list }
   const [reply, setReply] = useState({}); // commentId -> draft text

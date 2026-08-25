@@ -2726,7 +2726,8 @@ export default async function handler(req, res) {
       return;
     }
     if (typeof bT.locked === "boolean" && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
-      if (!ownerRole(authT2)) { res.status(403).json({ error: "Only the owner can lock or unlock the grid." }); return; }
+      const isCourtneyT2 = /courtney/i.test(String(authT2.name || "")) || String(authT2.email || "").toLowerCase() === "courtney@itsdoestudio.com";
+      if (!ownerRole(authT2) && !isCourtneyT2) { res.status(403).json({ error: "Only Kiabeth or Courtney can lock or unlock the grid." }); return; }
       const recL = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
       recL.locked = bT.locked;
       await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, recL);
