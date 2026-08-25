@@ -2417,7 +2417,9 @@ export default async function handler(req, res) {
     const subs = (await lsL3(mF.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
     const order = ["cover photos", "courtney to edit", "reels", "carousels", "strategy outline", "grid"];
     subs.sort((a, b) => { const ia = order.indexOf((a.name || "").trim().toLowerCase()), ib = order.indexOf((b.name || "").trim().toLowerCase()); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
-    const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => ({ label: wm3 + " → " + (f.name || "").trim(), url: "https://drive.google.com/drive/folders/" + f.id })));
+    // "Courtney to edit" gets her named link — "Courtney September" — per Kiabeth;
+    // the label follows the working month automatically.
+    const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); const lbL = /^courtney to edit$/i.test(nmL) ? "Courtney " + wm3 : wm3 + " → " + nmL; return { label: lbL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
     links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
     links.push({ label: "Grid Archive", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
     const rawL3 = await kvGet("lavalle_data"); const blobL3 = Array.isArray(rawL3) ? rawL3[0] : rawL3;
