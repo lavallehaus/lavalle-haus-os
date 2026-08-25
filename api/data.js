@@ -1963,7 +1963,6 @@ export default async function handler(req, res) {
         if (!hasPre) { cMP.labels = [{ n: "Pre-Order", c: "#D9CFC1" }, ...(cMP.labels || [])]; syncedOI++; }
       }
     };
-    applyManualPre();
     // Amazon restock sync (daily) → which listing(s) belong to which card.
     const amzItemsOI = Object.values(((blobOI.amazonRestock || {}).items) || {});
     const AMZ_MAP_OI = [
@@ -1980,6 +1979,7 @@ export default async function handler(req, res) {
     // Pre-order detection shared by the status tags and the Pre-Orders card.
     const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
     let syncedOI = 0;
+    applyManualPre();
     for (const cOI of cardsOI) {
       if (/^pre-?orders/i.test(cOI.name || "")) continue;
       const cn = normOI(cOI.name);
