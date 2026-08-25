@@ -292,29 +292,78 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
 // Pending web-development pages show in their own strip so upcoming site work
 // is visible next to the launches it unblocks.
 function LaunchCalendar({ items, pending, onOpen }) {
+  // Real calendar (Kiaredza's ask): each month is a date grid; a day with a
+  // proposed launch is marked and clickable — the drop-down shows the rendering
+  // (cover) when there is one, the item name, and its important details.
+  const [openDay, setOpenDay] = useState(null); // "YYYY-MM|D"
   const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   const byM = {};
-  items.forEach(({ card, ym }) => { (byM[ym] = byM[ym] || []).push(card); });
+  items.forEach((it) => { (byM[it.ym] = byM[it.ym] || []).push(it); });
   const yms = Object.keys(byM).sort();
   const fmt = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
-  const row = (cd) => (
-    <div key={cd.id} onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", cursor: "pointer" }}>
-      {cd.cover ? <img src={cd.cover} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} /> : <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#A39B8B", flexShrink: 0, marginLeft: 4, marginRight: 4 }} />}
-      <span style={{ fontFamily: sans, fontSize: 11.5, lineHeight: 1.35, color: "#1A1A1A" }}>{cd.name}</span>
-    </div>
-  );
+  const DOW = ["S", "M", "T", "W", "T", "F", "S"];
   return (
     <div style={{ marginBottom: 10 }}>
-      {yms.map((ym) => (
-        <div key={ym} style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
-          <div style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A", marginBottom: 4 }}>{fmt(ym)}</div>
-          {byM[ym].map(row)}
-        </div>
-      ))}
+      {yms.map((ym) => {
+        const [y, m] = ym.split("-").map(Number);
+        const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+        const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const dayMap = {};
+        const undated = [];
+        byM[ym].forEach((it) => { if (it.day) (dayMap[it.day] = dayMap[it.day] || []).push(it.card); else undated.push(it.card); });
+        const openHere = openDay && openDay.startsWith(ym + "|") ? Number(openDay.split("|")[1]) : null;
+        return (
+          <div key={ym} style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+            <div style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A", marginBottom: 6 }}>{fmt(ym)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+              {DOW.map((d, i2) => <div key={"d" + i2} style={{ fontFamily: sans, fontSize: 7.5, textAlign: "center", color: "#A39B8B" }}>{d}</div>)}
+              {Array.from({ length: first }).map((_, i2) => <div key={"e" + i2} />)}
+              {Array.from({ length: days }).map((_, i2) => {
+                const d = i2 + 1; const has = !!dayMap[d]; const isOpen = openHere === d;
+                return (
+                  <div key={d} onClick={(e) => { if (!has) return; e.stopPropagation(); setOpenDay(isOpen ? null : ym + "|" + d); }}
+                    title={has ? dayMap[d].map((c2) => c2.name).join(" · ") : undefined}
+                    style={{ fontFamily: sans, fontSize: 8.5, textAlign: "center", padding: "3px 0", borderRadius: 3, cursor: has ? "pointer" : "default", color: has ? "#FFFFFF" : "#71716C", background: has ? (isOpen ? "#A07848" : "#1A1A1A") : "transparent", fontWeight: has ? 600 : 400 }}>{d}</div>
+                );
+              })}
+            </div>
+            {openHere && dayMap[openHere] && (
+              <div style={{ marginTop: 8, borderTop: "1px solid #EFEDE7", paddingTop: 8 }}>
+                {dayMap[openHere].map((cd) => (
+                  <div key={cd.id} style={{ marginBottom: 10 }}>
+                    {cd.cover && <img src={cd.cover} alt="" onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 6, display: "block", marginBottom: 6, cursor: "pointer" }} />}
+                    <div onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ fontFamily: sans, fontSize: 12, fontWeight: 600, color: "#1A1A1A", cursor: "pointer", marginBottom: 3 }}>{cd.name}</div>
+                    {(cd.desc || "").split("\n").filter((t) => t.trim()).slice(0, 3).map((t, i3) => (
+                      <div key={i3} style={{ fontFamily: sans, fontSize: 10.5, lineHeight: 1.5, color: "#71716C" }}>{t}</div>
+                    ))}
+                    <button onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }}
+                      style={{ marginTop: 5, border: "1px solid #E0E0DD", background: "transparent", borderRadius: 1, padding: "4px 10px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: "#71716C", cursor: "pointer" }}>Open card</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {undated.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                {undated.map((cd) => (
+                  <div key={cd.id} onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ display: "flex", gap: 6, alignItems: "center", padding: "3px 0", cursor: "pointer" }}>
+                    <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: "#A39B8B" }}>date tbd</span>
+                    <span style={{ fontFamily: sans, fontSize: 11, color: "#1A1A1A" }}>{cd.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {pending.length > 0 && (
         <div style={{ background: "#FFFFFF", border: "1px dashed #C9C4BA", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
           <div style={{ fontFamily: sans, fontSize: 9, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#A39B8B", marginBottom: 4 }}>Pending · Web Development</div>
-          {pending.map(row)}
+          {pending.map((cd) => (
+            <div key={cd.id} onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", cursor: "pointer" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#A39B8B", flexShrink: 0, marginLeft: 4, marginRight: 4 }} />
+              <span style={{ fontFamily: sans, fontSize: 11.5, lineHeight: 1.35, color: "#1A1A1A" }}>{cd.name}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1174,9 +1223,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               // Launch Timeline renders as a month calendar; dated cards move
               // into the panels, undated ones stay as a normal stack below.
               const isLaunchL = /^launch timeline$/i.test((l.name || "").trim());
-              const launchItemsL = isLaunchL ? cards.filter((x) => x.launchMonth).map((x) => ({ card: x, ym: String(x.launchMonth).slice(0, 7) })) : [];
+              const launchItemsL = isLaunchL ? cards.filter((x) => x.launchMonth || x.due).map((x) => { const ym = String(x.launchMonth || x.due).slice(0, 7); const day = x.due && String(x.due).slice(0, 7) === ym ? Number(String(x.due).slice(8, 10)) || null : null; return { card: x, ym, day }; }) : [];
               const webPendL = isLaunchL ? (() => { const wd = board.lists.find((l2) => /^web development/i.test((l2.name || "").trim())); return wd ? board.cards.filter((x) => x.listId === wd.id && (x.labels || []).some((lb) => (((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()) === "pending")) : []; })() : [];
-              if (isLaunchL) cards = cards.filter((x) => !x.launchMonth);
+              if (isLaunchL) cards = cards.filter((x) => !x.launchMonth && !x.due);
               // The Automations card is the owner's plain-English map of what runs
               // on its own — admin reference, not something the team works from.
               if (!viewer.owner) cards = cards.filter((x) => !/^automations\b/i.test(x.name || ""));
