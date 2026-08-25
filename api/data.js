@@ -1942,6 +1942,28 @@ export default async function handler(req, res) {
         }
       })();
     };
+    // Manual pre-order units (Amazon-only stock with a shipment coming, e.g.
+    // Dark Dough Bowl 200): {setPreorder:[{name,units,note}]} persists in KV
+    // and is re-asserted every run — the card face shows "Pre-order N".
+    const manualPre = (await kvGet("ops_preorder_manual")) || {};
+    for (const mp of (Array.isArray((req.body || {}).setPreorder) ? req.body.setPreorder : [])) {
+      if (mp && mp.name) manualPre[normOI(mp.name)] = { units: Number(mp.units) || 0, note: String(mp.note || "") };
+      if (mp && mp.name && mp.remove) delete manualPre[normOI(mp.name)];
+    }
+    await kvSet("ops_preorder_manual", manualPre);
+    const applyManualPre = () => {
+      for (const cMP of cardsOI) {
+        const rec = manualPre[normOI(cMP.name)];
+        if (!rec) continue;
+        const lineMP = "⟳ Pre-order · " + rec.units + " units incoming" + (rec.note ? " · " + rec.note : "");
+        const restMP = String(cMP.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Pre-order")).join("\n").replace(/^\n+/, "");
+        const wantMP = lineMP + (restMP ? "\n" + restMP : "");
+        if (cMP.desc !== wantMP) { cMP.desc = wantMP; syncedOI++; }
+        const hasPre = (cMP.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase()) === "pre-order");
+        if (!hasPre) { cMP.labels = [{ n: "Pre-Order", c: "#D9CFC1" }, ...(cMP.labels || [])]; syncedOI++; }
+      }
+    };
+    applyManualPre();
     // Amazon restock sync (daily) → which listing(s) belong to which card.
     const amzItemsOI = Object.values(((blobOI.amazonRestock || {}).items) || {});
     const AMZ_MAP_OI = [
@@ -2089,7 +2111,7 @@ export default async function handler(req, res) {
     if (bCP.create && bdCP) {
       const listCP = (bdCP.lists || []).find((l) => (bCP.create.listName ? new RegExp(bCP.create.listName, "i").test(l.name || "") : l.id === bCP.create.listId));
       if (!listCP) { res.status(404).json({ error: "No such list." }); return; }
-      const cNew = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listCP.id, name: String(bCP.create.name || "New card").slice(0, 140), desc: String(bCP.create.desc || ""), due: null, labels: Array.isArray(bCP.create.labels) ? bCP.create.labels : [], members: Array.isArray(bCP.create.members) ? bCP.create.members : [], attachments: [], links: [], done: false };
+      const cNew = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listCP.id, name: String(bCP.create.name || "New card").slice(0, 140), desc: String(bCP.create.desc || ""), due: null, labels: Array.isArray(bCP.create.labels) ? bCP.create.labels : [], members: Array.isArray(bCP.create.members) ? bCP.create.members : [], attachments: [], links: [], done: false, launchMonth: bCP.create.launchMonth || null, due: bCP.create.due || null };
       bdCP.cards.push(cNew);
       await kvSet("lavalle_data", blobCP);
       res.json({ ok: true, created: { id: cNew.id, name: cNew.name, list: listCP.name } });
