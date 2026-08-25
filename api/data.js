@@ -1868,7 +1868,7 @@ export default async function handler(req, res) {
     const soOI = (await kvGet("shopify_oauth")) || {};
     const stokOI = soOI.accessToken || soOI.token;
     if (!stokOI || !soOI.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 720 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy inventoryQuantity inventoryItem { tracked } } } } } } } }`;
+    const qOI = `query { products(first: 150, query: "status:active") { edges { node { title status tags onlineStoreUrl featuredImage { url(transform: { maxWidth: 1600 }) } totalInventory productType variants(first: 5) { edges { node { inventoryPolicy inventoryQuantity inventoryItem { tracked } } } } } } } }`;
     const rOI = await fetch(`https://${soOI.shop}/admin/api/2025-10/graphql.json`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokOI },
       body: JSON.stringify({ query: qOI }),
