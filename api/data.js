@@ -4184,7 +4184,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
+  if (op === "drive_meta" || op === "drive_search" || op === "drive_shortcut" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -4204,6 +4204,28 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "drive_error" }); return; }
         res.json(d); return;
+      }
+      if (op === "drive_search") {
+        const term = String(b.q || "").replace(/['\\]/g, "").slice(0, 80);
+        if (!term) { res.status(400).json({ error: "No query." }); return; }
+        const qS = encodeURIComponent(`name contains '${term}' and trashed = false`);
+        const rS = await fetch(`https://www.googleapis.com/drive/v3/files?q=${qS}&fields=files(id,name,mimeType,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: AUTH });
+        const dS = await rS.json();
+        if (!rS.ok) { res.status(400).json({ error: (dS.error && dS.error.message) || "drive_error" }); return; }
+        res.json({ files: dS.files || [] }); return;
+      }
+      if (op === "drive_shortcut") {
+        const target = (b.targetId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        const nameSc = String(b.name || "").slice(0, 120);
+        if (!target || !parent) { res.status(400).json({ error: "targetId and parentId required." }); return; }
+        const rC = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,mimeType", {
+          method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: nameSc || undefined, mimeType: "application/vnd.google-apps.shortcut", parents: [parent], shortcutDetails: { targetId: target } }),
+        });
+        const dC = await rC.json();
+        if (!rC.ok) { res.status(400).json({ error: (dC.error && dC.error.message) || "drive_error" }); return; }
+        res.json(dC); return;
       }
       if (op === "drive_mkdir") {
         const name = String(b.name || "").slice(0, 120);
