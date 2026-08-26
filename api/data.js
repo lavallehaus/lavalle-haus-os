@@ -2226,7 +2226,7 @@ export default async function handler(req, res) {
     const lbOf = (c, pre) => ((c.labels || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => x.toUpperCase().startsWith(pre)) || "");
     const shapeOf = (lab) => /reel|ftc|b-?roll/i.test(lab) ? "V" : /carousel|static/i.test(lab) ? "F" : null; // V = 1080x1920, F = 1080x1350
     const stCS = (await kvGet("sisters_cover_sizes_state")) || { done: {} };
-    for (const nRe of (Array.isArray((req.body || {}).redo) ? req.body.redo : [])) delete stCS.done[Number(nRe)];
+    for (const nRe of (Array.isArray((req.body || {}).redo) ? req.body.redo : [])) { delete stCS.done[Number(nRe)]; if (stCS.classic) delete stCS.classic[Number(nRe)]; }
     const JimpCS = (await import("jimp")).default;
     let madeCS = 0, budgetCS = 6;
     for (let n = 1; n <= tilesCS.length && budgetCS > 0; n++) {
@@ -2259,10 +2259,17 @@ export default async function handler(req, res) {
           }
           if (fidCS) linksCS[plat] = "https://drive.google.com/file/d/" + fidCS + "/view";
         }
-        if (linksCS.IG) c.coverUrl = linksCS.IG;
-        if (linksCS.TT) {
-          const keepL = (c.links || []).filter((L) => !(new RegExp("^cover\\s*" + n + "-tt$", "i").test(L.n || "")));
-          c.links = [...keepL, { id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + "-TT", u: linksCS.TT }];
+        // BOTH platform covers ride the card as clearly labeled links (her ask
+        // Aug 26 — the IG file was only the invisible coverUrl before, so the
+        // card showed a single cover link). File ids are stable (updated in
+        // place), so these links stay correct as the grid photo changes.
+        if (linksCS.IG || linksCS.TT) {
+          const coverRx = new RegExp("^cover\\s*" + n + "\\s*([—–-]\\s*(ig|tt))?$", "i");
+          const keepL = (c.links || []).filter((L) => !coverRx.test((L.n || "").trim()));
+          const addL = [];
+          if (linksCS.IG) { c.coverUrl = linksCS.IG; addL.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + " — IG", u: linksCS.IG }); }
+          if (linksCS.TT) addL.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + " — TT", u: linksCS.TT });
+          c.links = [...keepL, ...addL];
         }
         stCS.done[n] = sigN; madeCS++; budgetCS--;
       } catch (eCS) {}
@@ -2305,7 +2312,14 @@ export default async function handler(req, res) {
           if (!fC && fid2) fC = { id: fid2, name: n + ".jpg" };
           budgetCS--;
         }
-        if (fC) { c.coverUrl = "https://drive.google.com/file/d/" + fC.id + "/view"; stCS.classic[n] = sig2; linkedCS++; madeCS++; }
+        if (fC) {
+          c.coverUrl = "https://drive.google.com/file/d/" + fC.id + "/view";
+          // one visible, labeled cover link on the card too (stale IG/TT split
+          // links from a former split format get cleared here)
+          const coverRx2 = new RegExp("^cover\\s*" + n + "\\s*([—–-]\\s*(ig|tt))?$", "i");
+          c.links = [...(c.links || []).filter((L) => !coverRx2.test((L.n || "").trim())), { id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n, u: c.coverUrl }];
+          stCS.classic[n] = sig2; linkedCS++; madeCS++;
+        }
       } catch (eC2) {}
     }
     if (madeCS) await kvSet("lavalle_data", blobCS);
