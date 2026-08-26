@@ -411,8 +411,8 @@ function StatsHover({ name, anchor, onClose }) {
           {row("Units · 7 days", stats.u7 != null ? stats.u7 + (stats.wow != null ? "  " + arrow(stats.wow) : "") : null, true)}
           {row("Net sales · 30d", stats.sales30 != null ? "$" + Number(stats.sales30).toLocaleString() : null)}
           {row("Page visits · 30d", stats.sess30)}
-          {row("Landing conversion", stats.cvr != null ? stats.cvr + "%" + (stats.storeCvr != null ? " (store " + stats.storeCvr + "%)" : "") : null)}
-          {stats.cvr === 0 && (stats.u7 || 0) > 0 && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 9.5, lineHeight: 1.4, color: "#8F8676", marginTop: 2 }}>Buyers arrived via collections, not this page — sales still count in units.</div>}
+          {row("Page conversion", stats.cvr != null ? stats.cvr + "%" + (stats.storeCvr != null ? " (store " + stats.storeCvr + "%)" : "") : null)}
+          {stats.cvrCredited && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 9.5, lineHeight: 1.4, color: "#8F8676", marginTop: 2 }}>Counts buyers who arrived via collections or home — Shopify only tracks landings per page.</div>}
           {row("Repeat buyers", stats.rpt != null ? stats.rpt + "%" : null)}
           {row("Weeks of cover", stats.cover)}
           {stats.amz && row("Amazon · 30d", stats.amz.sold30 + " sold · " + stats.amz.avail + " avail" + (stats.amz.inbound ? " · " + stats.amz.inbound + " inbound" : ""))}

@@ -2483,7 +2483,14 @@ export default async function handler(req, res) {
       const wow = uPrev > 0 ? Math.round(((u7 - uPrev) / uPrev) * 100) : (u7 > 0 ? 100 : null);
       const pg = byPath["/products/" + n.handle] || null;
       const sess30 = pg ? pg.sess : null;
-      const cvr = pg && pg.sess > 0 ? Math.round((pg.chk / pg.sess) * 1000) / 10 : null;
+      // Shopify's only per-page session dimension is LANDING page, so a buyer
+      // who arrived via a collection or the homepage never shows up in pg.chk —
+      // a SKU with real sales would read 0%. Credit every known buyer instead:
+      // numerator = landing checkouts or 30-day units, whichever is larger,
+      // capped at sessions so the rate stays ≤ 100%.
+      const buyers30 = pg ? Math.max(pg.chk, Math.min(units30, pg.sess)) : 0;
+      const cvr = pg && pg.sess > 0 ? Math.round((buyers30 / pg.sess) * 1000) / 10 : null;
+      const cvrCredited = !!(pg && pg.sess > 0 && buyers30 > pg.chk);
       const tracked = (n.variants.edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false);
       const onHand = tracked ? n.totalInventory : (n.variants.edges || []).reduce((a, v) => a + (Number(v.node.inventoryQuantity) || 0), 0);
       const weekly = u7 > 0 ? u7 : units30 / 4.3;
@@ -2497,7 +2504,7 @@ export default async function handler(req, res) {
       else if (cvr != null && storeCvr != null && cvr >= storeCvr && (sess30 || 0) < 40) lever = "Traffic — the page converts (" + cvr + "%) but only " + (sess30 || 0) + " visits in 30 days; feature it in a Sisters post, PR gifting, or a homepage slot.";
       else if (wow != null && wow <= -25) lever = "Momentum — units fell " + Math.abs(wow) + "% week over week; refresh the content angle or pair it into a set.";
       else if (amz && amz.avail === 0 && amz.sold30 > 0) lever = "Amazon stock — it sells (" + amz.sold30 + "/30d) but FBA is empty; ship the recommended replenishment.";
-      byKey[key] = { u7, wow, sales30, sess30, cvr, storeCvr, cover, amz, lever };
+      byKey[key] = { u7, wow, sales30, sess30, cvr, cvrCredited, storeCvr, cover, amz, lever };
     }
     // Bundles sell as their EXPANDED COMPONENTS (no parent line item on the
     // order — e.g. The Essentials Pair lands as candle + scrub), so the bundle
