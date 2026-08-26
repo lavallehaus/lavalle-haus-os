@@ -1947,8 +1947,9 @@ export default async function handler(req, res) {
     // and is re-asserted every run — the card face shows "Pre-order N".
     const manualPre = (await kvGet("ops_preorder_manual")) || {};
     for (const mp of (Array.isArray((req.body || {}).setPreorder) ? req.body.setPreorder : [])) {
-      if (mp && mp.name) manualPre[normOI(mp.name)] = { units: Number(mp.units) || 0, note: String(mp.note || "") };
-      if (mp && mp.name && mp.remove) delete manualPre[normOI(mp.name)];
+      if (!mp || !mp.name) continue;
+      if (mp.remove) delete manualPre[normOI(mp.name)];
+      else manualPre[normOI(mp.name)] = { units: Number(mp.units) || 0, note: String(mp.note || "") };
     }
     await kvSet("ops_preorder_manual", manualPre);
     const applyManualPre = () => {
@@ -1979,7 +1980,6 @@ export default async function handler(req, res) {
     // Pre-order detection shared by the status tags and the Pre-Orders card.
     const isPreOI = (pp) => /pre.?order/i.test((pp.tags || []).join(" ")) || (pp.inv != null && pp.inv < 0) || (pp.oversell && (pp.inv == null || pp.inv < 1));
     let syncedOI = 0;
-    applyManualPre();
     for (const cOI of cardsOI) {
       if (/^pre-?orders/i.test(cOI.name || "")) continue;
       const cn = normOI(cOI.name);
@@ -2008,7 +2008,7 @@ export default async function handler(req, res) {
         amzLineOI = "\n⟳ Amazon · " + avA + " available" + (inA ? " · " + inA + " inbound" : "") + (amzOI.some((x) => x.alert === "out_of_stock") ? " · OUT OF STOCK" : "");
         if (!(cOI.labels || []).some((lb) => (((typeof lb === "string" ? lb : (lb && lb.n)) || "").toLowerCase() === "amazon"))) cOI.labels = [...cOI.labels, { n: "Amazon", c: "#E9E6DF" }];
       }
-      const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify") && !l.startsWith("⟳ Amazon")).join("\n").replace(/^\n+/, "");
+      const restOI = String(cOI.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Shopify") && !l.startsWith("⟳ Amazon") && !l.startsWith("⟳ Pre-order")).join("\n").replace(/^\n+/, "");
       cOI.desc = lineOI + amzLineOI + (restOI ? "\n\n" + restOI.replace(/^\n+/, "") : "");
       syncedOI++;
     }
@@ -2030,6 +2030,7 @@ export default async function handler(req, res) {
       : "• nothing on pre-order right now";
     const preDesc = "⟳ Shopify pre-orders · synced " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "\n" + preLines + "\n\n" + humanOI;
     if (preCard.desc !== preDesc) { preCard.desc = preDesc; syncedOI++; }
+    applyManualPre();
     await cleanupChip();
     // {setBg:"url"} persists to KV and is RE-ASSERTED every run — a stale
     // browser tab saving old state can no longer bring the Refillery Haus
