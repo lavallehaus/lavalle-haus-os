@@ -2413,16 +2413,36 @@ export default async function handler(req, res) {
     const ql = async (q) => {
       const d = await gqlPS(`query { shopifyqlQuery(query: ${JSON.stringify(q)}) { parseErrors tableData { columns { name } rows } } }`);
       const t = d && d.shopifyqlQuery && d.shopifyqlQuery.tableData;
-      return t && Array.isArray(t.rows) ? t.rows : [];
+      return t && Array.isArray(t.rows) ? t.rows : []; // rows: objects keyed by column name
     };
-    const toMap = (rows) => { const m = {}; for (const r of rows) m[String(r[0] || "").toLowerCase()] = r.slice(1).map(Number); return m; };
-    const s30 = toMap(await ql("FROM sales SHOW net_items_sold, net_sales GROUP BY product_title SINCE -30d UNTIL today"));
-    const s7 = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -7d UNTIL today"));
-    const sPrev = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -14d UNTIL -7d"));
+    const toMap = (rows, keyCol, cols) => { const m = {}; for (const r of rows) { if (!r || r[keyCol] == null) continue; m[String(r[keyCol]).toLowerCase()] = cols.map((c) => Number(r[c]) || 0); } return m; };
+    let s30 = toMap(await ql("FROM sales SHOW net_items_sold, net_sales GROUP BY product_title SINCE -30d UNTIL today"), "product_title", ["net_items_sold", "net_sales"]);
+    let s7 = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -7d UNTIL today"), "product_title", ["net_items_sold"]);
+    let sPrev = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -14d UNTIL -7d"), "product_title", ["net_items_sold"]);
     const pages = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout GROUP BY landing_page_path SINCE -30d UNTIL today ORDER BY sessions DESC LIMIT 100");
     const store = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout SINCE -30d UNTIL today");
-    const storeCvr = store.length && Number(store[0][0]) > 0 ? Math.round((Number(store[0][1]) / Number(store[0][0])) * 1000) / 10 : null;
-    const byPath = {}; for (const r of pages) byPath[String(r[0] || "")] = { sess: Number(r[1]) || 0, chk: Number(r[2]) || 0 };
+    const storeCvr = store.length && Number(store[0].sessions) > 0 ? Math.round((Number(store[0].sessions_that_completed_checkout) / Number(store[0].sessions)) * 1000) / 10 : null;
+    const byPath = {}; for (const r of pages) byPath[String(r.landing_page_path || "")] = { sess: Number(r.sessions) || 0, chk: Number(r.sessions_that_completed_checkout) || 0 };
+    // Fallback when the token lacks the analytics scope: build the sales side
+    // from raw orders (read_orders IS granted). Sessions/conversion stay null
+    // until Shopify is reconnected with a reports scope.
+    if (!Object.keys(s30).length) {
+      const isoPS = new Date(Date.now() - 30 * 86400000).toISOString();
+      const oD = await gqlPS(`query { orders(first: 250, query: "created_at:>='${isoPS}'") { edges { node { createdAt lineItems(first: 25) { edges { node { title quantity discountedTotalSet { shopMoney { amount } } } } } } } } }`);
+      const edsPS = (((oD || {}).orders || {}).edges || []);
+      const accPS = {};
+      for (const oE of edsPS) {
+        const ageD = (Date.now() - new Date(oE.node.createdAt).getTime()) / 86400000;
+        for (const liE of ((oE.node.lineItems || {}).edges || [])) {
+          const li = liE.node; const k = String(li.title || "").toLowerCase(); if (!k) continue;
+          const a = (accPS[k] = accPS[k] || { u30: 0, sales30: 0, u7: 0, uPrev: 0 });
+          a.u30 += li.quantity || 0; a.sales30 += Number(((li.discountedTotalSet || {}).shopMoney || {}).amount) || 0;
+          if (ageD <= 7) a.u7 += li.quantity || 0; else if (ageD <= 14) a.uPrev += li.quantity || 0;
+        }
+      }
+      s30 = {}; s7 = {}; sPrev = {};
+      for (const [k, a] of Object.entries(accPS)) { s30[k] = [a.u30, a.sales30]; s7[k] = [a.u7]; sPrev[k] = [a.uPrev]; }
+    }
     const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
     const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
     const AMZ_RX = [[/candle sand|sand ?wax refill/i, "sandwax refill pouch"], [/small apple|mini.*apple/i, "mini spiced apple botanical candle"], [/large apple/i, "large spiced apple botanical candle"], [/bath salt/i, "bath salts"], [/dough bowl/i, "dark dough bowl"]];
