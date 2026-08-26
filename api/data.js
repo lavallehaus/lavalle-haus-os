@@ -5383,23 +5383,44 @@ export default async function handler(req, res) {
     // Non-owner saves are MERGED over the stored state: protected keys and
     // boards outside the sender's access keep their stored values, so a member
     // client that never received them can't blank them out on save.
+    //
+    // Per-board staleness guard (Aug 26 2026 incident: a weeks-stale member tab
+    // saved and its July copy of lavalle-sisters replaced the live board —
+    // board-by-board replace has no age check). Every stored board carries
+    // _rev; a save whose copy of a board is older than the stored one keeps
+    // the STORED board and reports it in staleBoards instead of reverting it.
+    const mergeBoard = (bs, bk, bd, storedBoards, staleBoards) => {
+      const sb = (storedBoards || {})[bk];
+      const sRev = (sb && sb._rev) || 0, iRev = (bd && bd._rev) || 0;
+      if (sb && iRev < sRev) { staleBoards.push(bk); return; }
+      const changed = !sb || JSON.stringify({ ...bd, _rev: 0 }) !== JSON.stringify({ ...sb, _rev: 0 });
+      bs[bk] = changed ? { ...bd, _rev: sRev + 1 } : sb;
+    };
+    const staleBoards = [];
     let toStore = body;
-    if (!ownerRole(auth)) {
+    {
       const r0 = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
       const d0 = await r0.json();
       let stored = d0.result ? JSON.parse(d0.result) : null;
       if (Array.isArray(stored)) stored = stored[0];
-      if (stored) {
+      if (stored && !ownerRole(auth)) {
         toStore = { ...stored };
         const prot = new Set([...protectedKeysFor(auth), ...(segDenied(auth, "content:pr") ? ["prHub"] : []), ...(segDenied(auth, "content:comms") ? ["comms"] : []), ...(segDenied(auth, "content:meetings") ? ["teamMeetings"] : [])]);
         for (const [k, v] of Object.entries(body)) {
           if (prot.has(k)) continue;
           if (k === "boards" && v && typeof v === "object") {
             const bs = { ...(stored.boards || {}) };
-            for (const [bk, bd] of Object.entries(v)) { if (bk.startsWith("_") || canSeeBoard(auth, (stored.boards || {})[bk] || bd)) bs[bk] = bd; }
+            for (const [bk, bd] of Object.entries(v)) { if (bk.startsWith("_") || canSeeBoard(auth, (stored.boards || {})[bk] || bd)) mergeBoard(bs, bk, bd, stored.boards, staleBoards); }
             toStore.boards = bs;
           } else toStore[k] = v;
         }
+      } else if (stored) {
+        // owner: full-state save, but boards get the same rev guard, and boards
+        // absent from the client's copy keep their stored values
+        toStore = { ...body };
+        const bs = { ...(stored.boards || {}) };
+        for (const [bk, bd] of Object.entries(body.boards || {})) mergeBoard(bs, bk, bd, stored.boards, staleBoards);
+        toStore.boards = bs;
       }
     }
     const rs = await fetch(`${url}/set/lavalle_data`, {
@@ -5409,6 +5430,6 @@ export default async function handler(req, res) {
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
-    res.json({ ok: true });
+    res.json({ ok: true, staleBoards });
   }
 }

@@ -77,6 +77,18 @@ async function dbSave(record) {
       headers: { "Content-Type": "application/json" },
       body,
     });
+    if (r.ok) {
+      // Per-board staleness guard: the server keeps its newer copy of any board
+      // this client's state is behind on, and names them here. Without a reload
+      // this tab would keep re-submitting the stale copy on every save.
+      try {
+        const dj = await r.clone().json();
+        if (dj && Array.isArray(dj.staleBoards) && dj.staleBoards.length && Date.now() - lastSaveAlert > 8000) {
+          lastSaveAlert = Date.now();
+          alert("Heads up — this tab's copy of " + dj.staleBoards.join(", ") + " is older than what's on the server, so those boards were NOT saved (the server kept the newer version).\n\nReload the app to pick up the latest before editing them.");
+        }
+      } catch (e2) {}
+    }
     if (!r.ok) {
       const mb = (body.length / 1048576).toFixed(2);
       const tooBig = r.status === 413;
