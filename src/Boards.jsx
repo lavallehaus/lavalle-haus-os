@@ -1331,12 +1331,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       const renderCard = (card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
                         onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
-                        draggable
-                        onDragStart={(e) => { setDragCard(card.id); e.dataTransfer.effectAllowed = "move"; }}
+                        draggable={!(folderMode && opsFocus)}
+                        onDragStart={(e) => { if (folderMode && opsFocus) { e.preventDefault(); return; } setDragCard(card.id); e.dataTransfer.effectAllowed = "move"; }}
                         onDragEnd={() => { setDragCard(null); setDropHint(null); }}
                         onDragOver={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); setDropHint(card.id); } }}
                         onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); moveCard(dragCard, l.id, card.id, e.clientY > r.top + r.height / 2); } setDragCard(null); setDropHint(null); }}
                         onTouchStart={(e) => {
+                          if (folderMode && opsFocus) return;
                           const t = e.touches[0];
                           touchStartPos.current = { x: t.clientX, y: t.clientY };
                           clearTimeout(touchTimer.current);
@@ -1447,7 +1448,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       // one row per category: dividers/banners break the flow; each
                       // run of products becomes a single sideways-scrolling strip
                       const out = []; let run = [];
-                      const flushRun = () => { if (run.length) { out.push(<div key={"strip" + out.length} style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "stretch", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>{run.map(renderCard)}</div>); run = []; } };
+                      const flushRun = () => { if (run.length) { out.push(<div key={"strip" + out.length} style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "stretch", paddingBottom: 6, WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>{run.map(renderCard)}</div>); run = []; } };
                       cards.forEach((cardR) => { if (/^(—|⚠|pre-orders|automations)/i.test((cardR.name || "").trim())) { flushRun(); out.push(renderCard(cardR)); } else run.push(cardR); });
                       flushRun();
                       return out;
