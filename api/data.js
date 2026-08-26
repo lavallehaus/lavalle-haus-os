@@ -3113,6 +3113,12 @@ export default async function handler(req, res) {
     const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); const lbL = /^courtney to edit$/i.test(nmL) ? "Courtney " + wm3 : wm3 + " → " + nmL; return { label: lbL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
     links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
     links.push({ label: "Grid Archive", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
+    // Pinned links survive every rebuild (the card's links are REPLACED each
+    // run, so anything hand-added would vanish on the next pinger tick).
+    // Owner POST {extra:[{label,url}...]} stores the pinned list.
+    if (Array.isArray((req.body || {}).extra)) await kvSet("sisters_links_extra" + SBOARD.kvSuffix, req.body.extra.filter((e) => e && e.label && e.url).map((e) => ({ label: String(e.label).slice(0, 80), url: String(e.url).slice(0, 300) })).slice(0, 20));
+    const extraL3 = (await kvGet("sisters_links_extra" + SBOARD.kvSuffix)) || [];
+    for (const e of extraL3) links.push({ label: e.label, url: e.url });
     const rawL3 = await kvGet("lavalle_data"); const blobL3 = Array.isArray(rawL3) ? rawL3[0] : rawL3;
     const bdL3 = blobL3 && blobL3.boards && blobL3.boards[SBOARD.key];
     if (!bdL3) { res.json({ ok: false }); return; }
