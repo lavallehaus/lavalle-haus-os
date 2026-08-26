@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ContentBrain from "./ContentBrain.jsx";
+import PRHub from "./PRHub.jsx";
 import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM, composeOutreachEmail } from "./ugcOutreach.js";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
@@ -570,7 +571,7 @@ function PrCalendar({ monthCards, ugcNote, onOpen, wide = false }) {
   );
 }
 
-export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam, gridPlanner = null }) {
+export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam, gridPlanner = null, prHub = null, onSavePrHub = null }) {
   const [boards, setBoards] = useState(data || null);
   const [loading, setLoading] = useState(!data);
   const [past, setPast] = useState([]);
@@ -1409,6 +1410,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   </button>
                 );
               })}
+            </div>
+          )}
+          {open === "pr-refillery-haus" && onSavePrHub && (
+            // The PR hub (the Notion migration's folder tables) lives ON this
+            // board — her ask: everything PR + UGC centrally in one place.
+            <div style={{ background: "rgba(250,249,247,0.96)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "6px 4px", marginBottom: 14 }}>
+              <PRHub data={prHub} onSave={onSavePrHub} />
             </div>
           )}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
