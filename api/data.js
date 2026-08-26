@@ -2079,6 +2079,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
+      ["Pre-order guard", "Every 15 min", "Watches every preorder-tagged product: if a pre-order page starts rendering Add to Cart with no available stock, or its policy goes to CONTINUE (uncapped allocation), an ⚠ card appears at the top of Inventory with the findings — and clears itself when the storefront is healthy. Never writes to Shopify."],
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
       ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
@@ -2361,6 +2362,57 @@ export default async function handler(req, res) {
     if (madeCC) await kvSet("lavalle_data", blobCC);
     await kvSet("sisters_card_concepts_state", stCC);
     res.json({ ok: true, made: madeCC, checked: todo.length });
+    return;
+  }
+
+  // ── Pre-order guard (from the incident note, Aug 25 2026) ─────────────────
+  // Every 15 min: pull all preorder-tagged products and their storefront pages.
+  // Alarms when (a) a pre-order product with no available stock renders
+  // "Add to Cart" (inventory or tags were overwritten), or (b) its policy is
+  // CONTINUE while available ≤ 0 (allocation uncapped — DENY is the only cap).
+  // Findings land as an ⚠ card at the top of the Inventory column; the card is
+  // removed automatically when everything is clean again. Read-only by design:
+  // this op NEVER writes to Shopify (rules 1-3).
+  if (op === "ops_preorder_guard" && req.method === "POST") {
+    const okKeyPG = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authPG = okKeyPG ? null : await getAuthEarly(req);
+    if (!okKeyPG && !ownerRole(authPG)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const soPG = (await kvGet("shopify_oauth")) || {};
+    const stokPG = soPG.accessToken || soPG.token;
+    if (!stokPG || !soPG.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
+    const qPG = `query { products(first: 20, query: "tag:preorder") { edges { node { title onlineStoreUrl totalInventory tags variants(first: 5) { edges { node { inventoryPolicy inventoryItem { inventoryLevels(first: 3) { edges { node { quantities(names: ["available"]) { name quantity } } } } } } } } } } } }`;
+    const rPG = await fetch(`https://${soPG.shop}/admin/api/2025-10/graphql.json`, { method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokPG }, body: JSON.stringify({ query: qPG }) });
+    const dPG = await rPG.json().catch(() => ({}));
+    const prodsPG = (((dPG.data || {}).products || {}).edges || []).map((e) => e.node);
+    const alerts = [];
+    for (const pp of prodsPG) {
+      const avail = (pp.variants.edges || []).reduce((a, v) => a + ((((v.node.inventoryItem || {}).inventoryLevels || {}).edges || []).reduce((a2, lv) => a2 + ((lv.node.quantities || []).find((x) => x.name === "available") || {}).quantity || 0, 0)), 0);
+      const anyContinue = (pp.variants.edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE");
+      if (avail <= 0 && anyContinue) alerts.push("• " + pp.title + " — policy is CONTINUE with no available stock: the pre-order allocation is UNCAPPED (should be DENY).");
+      if (avail <= 0 && pp.onlineStoreUrl) {
+        try {
+          const pgHtml = await (await fetch(pp.onlineStoreUrl, { headers: { "User-Agent": "Mozilla/5.0" } })).text();
+          const hasATC = /add to cart/i.test(pgHtml); const hasPre = /pre-?order/i.test(pgHtml);
+          if (hasATC && !hasPre) alerts.push("• " + pp.title + " — page renders ADD TO CART with no available stock: inventory or tags were overwritten.");
+        } catch (ePg) {}
+      }
+    }
+    const rawPG = await kvGet("lavalle_data"); const blobPG = Array.isArray(rawPG) ? rawPG[0] : rawPG;
+    const bdPG = blobPG && blobPG.boards && blobPG.boards["rh-operations"];
+    if (bdPG) {
+      const invPG = bdPG.lists.find((l) => /^inventory$/i.test((l.name || "").trim()));
+      let guardCard = bdPG.cards.find((cg) => /^⚠ pre-order guard/i.test(cg.name || ""));
+      if (alerts.length && invPG) {
+        if (!guardCard) { guardCard = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invPG.id, name: "", labels: [{ n: "Priority", c: "#1A1A1A" }], members: [], attachments: [], links: [], done: false }; const ix = bdPG.cards.findIndex((cg) => cg.listId === invPG.id); if (ix >= 0) bdPG.cards.splice(ix, 0, guardCard); else bdPG.cards.push(guardCard); }
+        guardCard.name = "⚠ Pre-order guard — " + alerts.length + " issue" + (alerts.length === 1 ? "" : "s");
+        guardCard.desc = "Checked every 15 minutes against the pre-order rules. Current findings:\n\n" + alerts.join("\n") + "\n\n(This card clears itself when the storefront is healthy again.)";
+        await kvSet("lavalle_data", blobPG);
+      } else if (guardCard) {
+        bdPG.cards = bdPG.cards.filter((cg) => cg !== guardCard);
+        await kvSet("lavalle_data", blobPG);
+      }
+    }
+    res.json({ ok: true, protected: prodsPG.length, alerts });
     return;
   }
 
