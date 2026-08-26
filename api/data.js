@@ -5432,6 +5432,10 @@ export default async function handler(req, res) {
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
-    res.json({ ok: true, staleBoards });
+    // Hand every stored board's rev back so the SAVING tab can adopt them —
+    // without this a tab's own successful save left it one rev behind and its
+    // very next save read as stale (her Approved-tag report, Aug 26).
+    const revs = {}; for (const [bk, bd] of Object.entries(toStore.boards || {})) if (bd && bd._rev) revs[bk] = bd._rev;
+    res.json({ ok: true, staleBoards, revs });
   }
 }
