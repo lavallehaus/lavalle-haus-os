@@ -3207,8 +3207,12 @@ export default async function handler(req, res) {
     // "Courtney to edit" gets her named link — "Courtney September" — per Kiabeth;
     // the label follows the working month automatically.
     const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); const lbL = /^courtney to edit$/i.test(nmL) ? "Courtney " + wm3 : wm3 + " → " + nmL; return { label: lbL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
+    // Captions + Hashtags doc and the grid archive ride INSIDE the month group
+    // (her ask, Aug 26) — the "<month> → X" label is what nests them in the
+    // Links sheet, and they follow the working month automatically.
+    if (SBOARD.key === "lavalle-sisters") links.push({ label: wm3 + " → Captions + Hashtags", url: "https://docs.google.com/document/d/1Do98h-x2dl4Wj8suLLHTXrm_2GSOmfN9nyUQhFRXLrI/edit" });
+    links.push({ label: wm3 + " → Grid", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
     links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
-    links.push({ label: "Grid Archive", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
     // Pinned links survive every rebuild (the card's links are REPLACED each
     // run, so anything hand-added would vanish on the next pinger tick).
     // Owner POST {extra:[{label,url}...]} stores the pinned list.
