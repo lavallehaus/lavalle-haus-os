@@ -2858,8 +2858,35 @@ export default async function handler(req, res) {
         if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc)) { c.desc = p.c; pulled++; }
         if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags)) { c.tags = p.h; pulled++; }
       }
-      if (pulled) await kvSet("lavalle_data", blobCB);
     }
+    // Courtney's new hashtags get NOTED on the board's "Hashtags" card (her
+    // ask, Aug 26): any tag on her 12 posts the card doesn't list yet is
+    // appended under a "Courtney's additions" line — once ever (kv seen-set,
+    // so Kiabeth can curate the card without tags re-appearing); #thefold
+    // never (house rule).
+    const notedCT = [];
+    try {
+      const hcCB = bdCB.cards.find((c) => /^hashtags\b/i.test((c.name || "").trim()));
+      if (hcCB) {
+        const isCcb = (c) => (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
+        const seenCT = new Set(((await kvGet("sisters_courtney_tags_seen")) || []).map((t) => String(t).toLowerCase()));
+        const inCard = new Set(((hcCB.desc || "").match(/#[a-z0-9_]+/gi) || []).map((t) => t.toLowerCase()));
+        for (const c of postsCB) {
+          if (!isCcb(c)) continue;
+          for (const t of ((c.tags || "").match(/#[a-z0-9_]+/gi) || [])) {
+            const tl = t.toLowerCase();
+            if (tl === "#thefold" || inCard.has(tl) || seenCT.has(tl)) continue;
+            notedCT.push(t); inCard.add(tl); seenCT.add(tl);
+          }
+        }
+        if (notedCT.length) {
+          if (/courtney's additions:/i.test(hcCB.desc || "")) hcCB.desc = hcCB.desc.replace(/(courtney's additions:[^\n]*)/i, (m0) => m0 + " " + notedCT.join(" "));
+          else hcCB.desc = (hcCB.desc || "") + "\n\nCourtney's additions: " + notedCT.join(" ");
+          await kvSet("sisters_courtney_tags_seen", [...seenCT]);
+        }
+      }
+    } catch (eCT) {}
+    if (pulled || notedCT.length) await kvSet("lavalle_data", blobCB);
     // 2.5 Courtney to-do flags (her ask: BLUE titles for posts she still has to
     // update). KV sisters_captions_todo holds {n: {c,h}} — the values as of
     // flagging; when a post's caption/hashtags CHANGE from that snapshot the
@@ -2903,7 +2930,7 @@ export default async function handler(req, res) {
     }
     const nextBase = {}; for (const c of postsCB) nextBase[numCB(c)] = { c: (c.desc || "").trim(), h: (c.tags || "").trim() };
     await kvSet("sisters_captions_doc_state", { sig: sigCB, base: nextBase, at: Date.now() });
-    res.json({ ok: true, posts: postsCB.length, pulled, pushed: pushedCB });
+    res.json({ ok: true, posts: postsCB.length, pulled, pushed: pushedCB, noted: notedCT });
     return;
   }
   // ── Post formats: face to camera / b-roll / carousel / static ─────────────
