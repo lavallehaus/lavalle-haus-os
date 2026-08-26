@@ -291,7 +291,7 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
 // Cards with a launch month group into month panels (click opens the card);
 // Pending web-development pages show in their own strip so upcoming site work
 // is visible next to the launches it unblocks.
-function LaunchCalendar({ items, pending, onOpen }) {
+function LaunchCalendar({ items, pending, onOpen, wide = false }) {
   // Real calendar (Kiaredza's ask): each month is a date grid; a day with a
   // proposed launch is marked and clickable — the drop-down shows the rendering
   // (cover) when there is one, the item name, and its important details.
@@ -304,6 +304,7 @@ function LaunchCalendar({ items, pending, onOpen }) {
   const DOW = ["S", "M", "T", "W", "T", "F", "S"];
   return (
     <div style={{ marginBottom: 10 }}>
+      <div style={wide ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10, alignItems: "start" } : {}}>
       {yms.map((ym) => {
         const [y, m] = ym.split("-").map(Number);
         const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
@@ -355,6 +356,7 @@ function LaunchCalendar({ items, pending, onOpen }) {
           </div>
         );
       })}
+      </div>
       {pending.length > 0 && (
         <div style={{ background: "#FFFFFF", border: "1px dashed #C9C4BA", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
           <div style={{ fontFamily: sans, fontSize: 9, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#A39B8B", marginBottom: 4 }}>Pending · Web Development</div>
@@ -373,13 +375,14 @@ function LaunchCalendar({ items, pending, onOpen }) {
 // ── UGC / PR Schedule — the column renders as a Sept–Dec 2026 calendar ───────
 // Each month: a mini date grid (the 15th marked — UGC to creators), the PR
 // shipment list from the month card underneath; click opens the month card.
-function PrCalendar({ monthCards, ugcNote, onOpen }) {
+function PrCalendar({ monthCards, ugcNote, onOpen, wide = false }) {
   const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   const MONTHS = [["September", 8], ["October", 9], ["November", 10], ["December", 11]];
   const DOW = ["S", "M", "T", "W", "T", "F", "S"];
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B", padding: "2px 6px 8px" }}>2026 · {ugcNote}</div>
+      <div style={wide ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10, alignItems: "start" } : {}}>
       {MONTHS.map(([nm, mi]) => {
         const card = monthCards.find((x) => (x.name || "").trim().toLowerCase() === nm.toLowerCase());
         const first = new Date(2026, mi, 1).getDay();
@@ -404,6 +407,7 @@ function PrCalendar({ monthCards, ugcNote, onOpen }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -1280,7 +1284,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 <div key={l.id} data-dragcol={l.id}
                   onDragOver={(e) => { if (dragCard) { e.preventDefault(); setDropHint("list:" + l.id); } else if (dragList && dragList !== l.id) { e.preventDefault(); setDropHint("listmove:" + l.id); } }}
                   onDrop={(e) => { if (dragCard) { e.preventDefault(); moveCard(dragCard, l.id, null); } else if (dragList && dragList !== l.id) { e.preventDefault(); moveList(dragList, l.id); } setDragCard(null); setDragList(null); setDropHint(null); }}
-                  style={{ flex: folderMode && opsFocus ? "0 0 min(640px, 94vw)" : narrowB ? "0 0 88vw" : "0 0 276px", scrollSnapAlign: narrowB ? "center" : "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
+                  style={{ flex: folderMode && opsFocus ? "1 1 100%" : narrowB ? "0 0 88vw" : "0 0 276px", scrollSnapAlign: narrowB ? "center" : "start", background: "rgba(250,249,247,0.94)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 10px 10px", opacity: (dragList === l.id || touchDragList === l.id) ? 0.45 : 1, outline: dropHint === "list:" + l.id ? "2px solid #A39B8B" : "none", outlineOffset: -2, boxShadow: dropHint === "listmove:" + l.id ? "inset 3px 0 0 #A39B8B" : "none" }}>
                   <div
                     draggable
                     onDragStart={(e) => { e.stopPropagation(); setDragList(l.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -1320,9 +1324,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       </div>
                     )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
-                    {isCalL && <PrCalendar monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} />}
-                    {isLaunchL && <LaunchCalendar items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} />}
+                  <div style={folderMode && opsFocus ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, alignItems: "start" } : { display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
+                    {isCalL && <div style={{ gridColumn: "1 / -1" }}><PrCalendar wide={folderMode && !!opsFocus} monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
+                    {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {cards.map((card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
                         onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
@@ -1346,7 +1350,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 8) clearTimeout(touchTimer.current);
                         }}
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
-                        style={{ flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                        style={{ ...(folderMode && opsFocus && /^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { gridColumn: "1 / -1" } : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={{ display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
