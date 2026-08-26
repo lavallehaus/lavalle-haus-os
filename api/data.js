@@ -2404,6 +2404,13 @@ export default async function handler(req, res) {
       return;
     }
     if (!okKeyPS && !ownerRole(authPS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    // {injectAnalytics:{pages:[[path,sessions,checkouts]...], store:[sessions,checkouts]}}
+    // persists session/conversion data delivered from a connection that HAS the
+    // analytics scope; merged into every rebuild until the app token gets
+    // read_reports and ShopifyQL takes over natively.
+    if ((req.body || {}).injectAnalytics) {
+      await kvSet("ops_injected_analytics", { ...req.body.injectAnalytics, at: Date.now() });
+    }
     const stPS = (await kvGet("ops_product_stats")) || {};
     if (!(req.body || {}).force && stPS.at && Date.now() - stPS.at < 6 * 3600 * 1000) { res.json({ ok: true, skipped: true }); return; }
     const soPS = (await kvGet("shopify_oauth")) || {};
@@ -2421,8 +2428,16 @@ export default async function handler(req, res) {
     let sPrev = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -14d UNTIL -7d"), "product_title", ["net_items_sold"]);
     const pages = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout GROUP BY landing_page_path SINCE -30d UNTIL today ORDER BY sessions DESC LIMIT 100");
     const store = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout SINCE -30d UNTIL today");
-    const storeCvr = store.length && Number(store[0].sessions) > 0 ? Math.round((Number(store[0].sessions_that_completed_checkout) / Number(store[0].sessions)) * 1000) / 10 : null;
-    const byPath = {}; for (const r of pages) byPath[String(r.landing_page_path || "")] = { sess: Number(r.sessions) || 0, chk: Number(r.sessions_that_completed_checkout) || 0 };
+    let storeCvr = store.length && Number(store[0].sessions) > 0 ? Math.round((Number(store[0].sessions_that_completed_checkout) / Number(store[0].sessions)) * 1000) / 10 : null;
+    let byPath = {}; for (const r of pages) byPath[String(r.landing_page_path || "")] = { sess: Number(r.sessions) || 0, chk: Number(r.sessions_that_completed_checkout) || 0 };
+    let storeCvrInj = null;
+    if (!Object.keys(byPath).length) {
+      const inj = (await kvGet("ops_injected_analytics")) || null;
+      if (inj && Array.isArray(inj.pages)) {
+        for (const r of inj.pages) byPath[String(r[0] || "")] = { sess: Number(r[1]) || 0, chk: Number(r[2]) || 0 };
+        if (Array.isArray(inj.store) && Number(inj.store[0]) > 0) storeCvrInj = Math.round((Number(inj.store[1]) / Number(inj.store[0])) * 1000) / 10;
+      }
+    }
     // Fallback when the token lacks the analytics scope: build the sales side
     // from raw orders (read_orders IS granted). Sessions/conversion stay null
     // until Shopify is reconnected with a reports scope.
@@ -2443,6 +2458,7 @@ export default async function handler(req, res) {
       s30 = {}; s7 = {}; sPrev = {};
       for (const [k, a] of Object.entries(accPS)) { s30[k] = [a.u30, a.sales30]; s7[k] = [a.u7]; sPrev[k] = [a.uPrev]; }
     }
+    if (storeCvr == null && storeCvrInj != null) storeCvr = storeCvrInj;
     const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
     const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
     const AMZ_RX = [[/candle sand|sand ?wax refill/i, "sandwax refill pouch"], [/small apple|mini.*apple/i, "mini spiced apple botanical candle"], [/large apple/i, "large spiced apple botanical candle"], [/bath salt/i, "bath salts"], [/dough bowl/i, "dark dough bowl"]];
