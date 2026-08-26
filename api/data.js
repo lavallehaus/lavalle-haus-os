@@ -2839,7 +2839,7 @@ export default async function handler(req, res) {
     const stCB = (await kvGet("sisters_captions_doc_state")) || {};
     // 1. read the doc and parse Post blocks (captions may span lines)
     const rEx = await fetch("https://www.googleapis.com/drive/v3/files/" + DOC_CB + "/export?mimeType=text/plain&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCB } });
-    const docText = rEx.ok ? (await rEx.text()).replace(/^﻿/, "") : "";
+    const docText = rEx.ok ? (await rEx.text()).replace(/^﻿/, "").replace(/\r/g, "") : "";
     const parsed = {};
     for (const m of docText.matchAll(/^Post\s+(\d+)[^\n]*\n(?:Caption:\s?([\s\S]*?))?\nHashtags:\s?([^\n]*)/gim)) {
       const clean = (s) => String(s || "").trim().replace(/^\(none yet\)$/i, "").replace(/\s*—\s*/g, ", "); // captions never carry em dashes (house rule)
@@ -2849,11 +2849,14 @@ export default async function handler(req, res) {
     const base = stCB.base || null;
     let pulled = 0;
     if (base && docText) {
+      // compare both sides through the same normalizer so cleaning (em dashes,
+      // trims) never reads as a phantom doc edit
+      const nrm = (s) => String(s || "").trim().replace(/\s*—\s*/g, ", ");
       for (const c of postsCB) {
         const n = numCB(c); const p = parsed[n]; const b0 = base[n];
         if (!p || !b0) continue;
-        if (p.c !== b0.c && p.c !== (c.desc || "").trim()) { c.desc = p.c; pulled++; }
-        if (p.h !== b0.h && p.h !== (c.tags || "").trim()) { c.tags = p.h; pulled++; }
+        if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc)) { c.desc = p.c; pulled++; }
+        if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags)) { c.tags = p.h; pulled++; }
       }
       if (pulled) await kvSet("lavalle_data", blobCB);
     }
