@@ -2240,13 +2240,47 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         </div>
         {card.desc && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: c.sub, marginBottom: 16 }}>{card.desc}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(card.links || []).map((L, i) => (
-            <a key={L.id || i} href={L.u || L.url} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 14px", textDecoration: "none" }}>
-              <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: c.ink }}>{L.n || L.label}</span>
-              <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>›</span>
-            </a>
-          ))}
+          {(() => {
+            // "<Month> folder" opens a group; "<Month> → X" and "Courtney <Month>"
+            // nest under it as sub folders — the flat list read as a mess.
+            const groups = [], rest = [];
+            for (const L of (card.links || [])) {
+              const lb = L.n || L.label || "";
+              const mHead = /^(.+?) folder$/i.exec(lb);
+              if (mHead) { groups.push({ name: mHead[1], head: L, subs: [] }); continue; }
+              const mSub = /^(.+?)\s*→\s*(.+)$/.exec(lb);
+              const mC = /^courtney\s+(.+)$/i.exec(lb);
+              const g = mSub ? groups.find((g0) => g0.name.toLowerCase() === mSub[1].toLowerCase()) : mC ? groups.find((g0) => g0.name.toLowerCase() === mC[1].toLowerCase()) : null;
+              if (g) { g.subs.push({ ...L, short: mSub ? mSub[2] : "Courtney" }); continue; }
+              rest.push(L);
+            }
+            const row = (L, label, small) => (
+              <a key={L.id || label} href={L.u || L.url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: small ? "9px 12px" : "12px 14px", textDecoration: "none" }}>
+                <span style={{ flex: 1, fontFamily: sans, fontSize: small ? 12 : 12.5, color: c.ink }}>{label}</span>
+                <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>›</span>
+              </a>
+            );
+            return (
+              <>
+                {groups.map((g) => (
+                  <div key={g.name}>
+                    <a href={g.head.u || g.head.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 14px", textDecoration: "none" }}>
+                      <span style={{ flex: 1, fontFamily: sans, fontSize: 10.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink }}>{g.name}</span>
+                      <span style={{ fontFamily: "Georgia, serif", fontSize: 13, color: c.taupe }}>›</span>
+                    </a>
+                    {g.subs.length > 0 && (
+                      <div style={{ marginLeft: 13, borderLeft: `1px solid ${c.line}`, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 5, marginTop: 5, marginBottom: 2 }}>
+                        {g.subs.map((sub) => row(sub, sub.short, true))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {rest.map((L) => row(L, L.n || L.label))}
+              </>
+            );
+          })()}
           {!(card.links || []).length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 12, color: c.sub }}>The month's folders appear here on the next automatic refresh.</div>}
         </div>
         <button onClick={onClose}
