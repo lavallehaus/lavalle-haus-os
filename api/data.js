@@ -2079,7 +2079,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Pre-order guard", "Every 15 min", "Watches every preorder-tagged product: alarms if the storefront says purchasable while admin shows no stock, if the policy goes to CONTINUE (uncapped allocation — DENY is the only cap), or if available stock or TAGS move between checks (every movement is spelled out old → new). Findings appear as an ⚠ card at the top of Inventory and clear themselves when healthy. Never writes to Shopify."],
+      ["Pre-order guard", "Every 15 min", "Watches the pre-order setup (model: the preorder TAG pins the button, the allocation is available > 0 + DENY on the capped three, Onyx Arched stays CONTINUE while allocation-less). Alarms if a tag disappears, a capped product loses DENY, its allocation hits zero (off sale under DENY), the storefront stops being purchasable, or any available/tags value moves between checks (spelled out old → new). Findings appear as an ⚠ card at the top of Inventory and clear when healthy. Never writes to Shopify."],
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
       ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
@@ -2374,37 +2374,50 @@ export default async function handler(req, res) {
   // removed automatically when everything is clean again. Read-only by design:
   // this op NEVER writes to Shopify (rules 1-3).
   if (op === "ops_preorder_guard" && req.method === "POST") {
+    // Pre-order guard v3 — model corrected Aug 26 by the theme session's reply:
+    // the "preorder" TAG pins the pre-order button (custom Liquid gate), and the
+    // ALLOCATION is available>0 + DENY on the three capped products. available 0
+    // under DENY = OFF SALE (the Calcatta incident). Onyx Arched deliberately
+    // stays CONTINUE while allocation-less. Read-only toward Shopify, always.
     const okKeyPG = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authPG = okKeyPG ? null : await getAuthEarly(req);
     if (!okKeyPG && !ownerRole(authPG)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const soPG = (await kvGet("shopify_oauth")) || {};
     const stokPG = soPG.accessToken || soPG.token;
     if (!stokPG || !soPG.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
-    const qPG = `query { products(first: 20, query: "tag:preorder") { edges { node { title onlineStoreUrl totalInventory tags variants(first: 5) { edges { node { inventoryPolicy inventoryItem { inventoryLevels(first: 3) { edges { node { quantities(names: ["available"]) { name quantity } } } } } } } } } } } }`;
+    const CAPPED_PG = { "gid://shopify/Product/8758400090279": "Italian Viola Calcatta Refillable Candle Set", "gid://shopify/Product/11110537592999": "Rosso Levanto Diffuser", "gid://shopify/Product/11147205050535": "Onyx Diffuser" };
+    const qPG = `query { products(first: 20, query: "tag:preorder") { edges { node { id title onlineStoreUrl tags variants(first: 5) { edges { node { inventoryPolicy inventoryQuantity } } } } } } }`;
     const rPG = await fetch(`https://${soPG.shop}/admin/api/2025-10/graphql.json`, { method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokPG }, body: JSON.stringify({ query: qPG }) });
     const dPG = await rPG.json().catch(() => ({}));
     const prodsPG = (((dPG.data || {}).products || {}).edges || []).map((e) => e.node);
     const alerts = [];
     const stPG = (await kvGet("ops_preorder_guard_state")) || { avail: {}, tags: {} };
+    const seenIds = new Set(prodsPG.map((pp) => pp.id));
+    for (const [pid, ttl] of Object.entries(CAPPED_PG)) {
+      if (!seenIds.has(pid)) alerts.push("• " + ttl + " — the preorder TAG is GONE (product no longer matches tag:preorder): the pre-order button is off. Someone replaced the tag list.");
+    }
+    if ((stPG.known || []).length) { for (const ttl of stPG.known) { if (!prodsPG.some((pp) => pp.title === ttl) && !Object.values(CAPPED_PG).includes(ttl)) alerts.push("• " + ttl + " — dropped out of the preorder set (tag removed?)."); } }
     for (const pp of prodsPG) {
-      const avail = (pp.variants.edges || []).reduce((a, v) => a + ((((v.node.inventoryItem || {}).inventoryLevels || {}).edges || []).reduce((a2, lv) => a2 + (((lv.node.quantities || []).find((x) => x.name === "available") || {}).quantity || 0), 0)), 0);
-      const anyContinue = (pp.variants.edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE");
-      if (anyContinue) alerts.push("• " + pp.title + " — inventory policy is CONTINUE: the pre-order allocation is UNCAPPED (the note requires DENY as the only cap).");
-      // precise purchasability: the storefront's own product .js endpoint
-      if (avail <= 0 && pp.onlineStoreUrl) {
-        try {
-          const jsUrl = pp.onlineStoreUrl.replace(/\?.*$/, "") + ".js";
-          const pj = await (await fetch(jsUrl, { headers: { "User-Agent": "Mozilla/5.0" } })).json();
-          if (pj && pj.available === true && !anyContinue) alerts.push("• " + pp.title + " — storefront says PURCHASABLE while admin shows no available stock: inventory or tags were overwritten.");
-        } catch (ePg) {}
+      const avail = (pp.variants.edges || []).reduce((a, v) => a + (Number(v.node.inventoryQuantity) || 0), 0);
+      const isCapped = !!CAPPED_PG[pp.id];
+      if (isCapped) {
+        const anyNotDeny = (pp.variants.edges || []).some((v) => v.node.inventoryPolicy !== "DENY");
+        if (anyNotDeny) alerts.push("• " + pp.title + " — policy is not DENY: the pre-order allocation is uncapped.");
+        if (avail <= 0) alerts.push("• " + pp.title + " — available is " + avail + ": under DENY this takes the product OFF SALE (allocation zeroed). It should hold the deliberate allocation (> 0).");
+        else if (pp.onlineStoreUrl) {
+          try {
+            const pj = await (await fetch(pp.onlineStoreUrl.replace(/\?.*$/, "") + ".js", { headers: { "User-Agent": "Mozilla/5.0" } })).json();
+            if (pj && pj.available === false) alerts.push("• " + pp.title + " — storefront reports NOT purchasable despite allocation " + avail + " (stale cache or inventory overwrite).");
+          } catch (ePg) {}
+        }
       }
-      // rule 4: make every quantity/tag movement on protected products visible
       const key = pp.title;
-      if (key in stPG.avail && stPG.avail[key] !== avail) alerts.push("• " + pp.title + " — available stock moved " + stPG.avail[key] + " → " + avail + " since the last check. If nobody received stock on purpose, something overwrote it.");
+      if (key in stPG.avail && stPG.avail[key] !== avail) alerts.push("• " + pp.title + " — available moved " + stPG.avail[key] + " → " + avail + " since the last check. If nobody changed the allocation on purpose, something overwrote it.");
       const tagsNow = (pp.tags || []).slice().sort().join(", ");
       if (key in stPG.tags && stPG.tags[key] !== tagsNow) alerts.push("• " + pp.title + " — TAGS CHANGED: [" + stPG.tags[key] + "] → [" + tagsNow + "].");
       stPG.avail[key] = avail; stPG.tags[key] = tagsNow;
     }
+    stPG.known = prodsPG.map((pp) => pp.title);
     await kvSet("ops_preorder_guard_state", stPG);
     const rawPG = await kvGet("lavalle_data"); const blobPG = Array.isArray(rawPG) ? rawPG[0] : rawPG;
     const bdPG = blobPG && blobPG.boards && blobPG.boards["rh-operations"];
@@ -2414,7 +2427,7 @@ export default async function handler(req, res) {
       if (alerts.length && invPG) {
         if (!guardCard) { guardCard = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invPG.id, name: "", labels: [{ n: "Priority", c: "#1A1A1A" }], members: [], attachments: [], links: [], done: false }; const ix = bdPG.cards.findIndex((cg) => cg.listId === invPG.id); if (ix >= 0) bdPG.cards.splice(ix, 0, guardCard); else bdPG.cards.push(guardCard); }
         guardCard.name = "⚠ Pre-order guard — " + alerts.length + " issue" + (alerts.length === 1 ? "" : "s");
-        guardCard.desc = "Checked every 15 minutes against the pre-order rules. Current findings:\n\n" + alerts.join("\n") + "\n\n(This card clears itself when the storefront is healthy again.)";
+        guardCard.desc = "Checked every 15 minutes. Pre-order model: the preorder TAG pins the button; allocation = available (> 0) + DENY on the capped three; Onyx Arched stays CONTINUE while allocation-less.\n\n" + alerts.join("\n") + "\n\n(This card clears itself when everything is healthy.)";
         await kvSet("lavalle_data", blobPG);
       } else if (guardCard) {
         bdPG.cards = bdPG.cards.filter((cg) => cg !== guardCard);
