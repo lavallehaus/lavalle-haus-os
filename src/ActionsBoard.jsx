@@ -61,7 +61,7 @@ function reconcile(items, flags) {
   return out;
 }
 
-export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave, canInvite = false, boards = {} }) {
+export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave, canInvite = false, boards = {}, onSaveBoards }) {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState(() => ({
@@ -431,32 +431,44 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
         </div>
       </div>
 
-      {/* board access matrix — the one place to SEE who can open which board.
-          Read-only: editing stays on each board's "Who can open this board". */}
+      {/* board access matrix — see AND set who can open which board. A chip
+          per member per board; tap to toggle. Empty access list = everyone,
+          so removing someone from an open board writes the explicit list. */}
       {canInvite && Object.keys(boards).some((k) => !k.startsWith("_")) && (
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
             <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Board access · who can open what</span>
-            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>Change it on the board — the ⚲ control in its header</span>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>Tap a name to give or remove access — saves instantly</span>
           </div>
           {Object.entries(boards).filter(([k, b]) => !k.startsWith("_") && b && b.lists).map(([k, b]) => {
             const acc = (b.access || []).filter(Boolean);
+            const matchT = (t) => (n) => n === t.name || (t.email && String(n).toLowerCase() === String(t.email).toLowerCase());
+            const hasAccess = (t) => acc.length === 0 || acc.some(matchT(t));
+            const toggle = (t) => {
+              if (!onSaveBoards) return;
+              const names = state.team.map((x) => x.name);
+              let next = acc.length ? [...acc] : [...names]; // everyone → explicit before an edit
+              if (next.some(matchT(t))) next = next.filter((n) => !matchT(t)(n)); else next = [...next.filter((n) => n !== "Owners only"), t.name];
+              const real = next.filter((n) => n !== "Owners only");
+              if (!real.length) next = ["Owners only"]; // never an empty list — that would mean everyone
+              else if (names.every((n) => real.includes(n))) next = []; // whole team back on → plain everyone
+              onSaveBoards({ ...boards, [k]: { ...b, access: next } });
+            };
             return (
-              <div key={k} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "6px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
                 <span style={{ fontFamily: serif, fontSize: 13.5, color: c.ink, minWidth: 180 }}>{b.name || k}</span>
-                {acc.length === 0
-                  ? <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>Everyone on the team</span>
-                  : acc.map((n) => (
-                      <span key={n} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 9px", fontFamily: sans, fontSize: 10, color: c.ink }}>{n}</span>
-                    ))}
-                <span style={{ flex: 1 }} />
-                {acc.length > 0 && state.team.filter((t) => !acc.some((n) => n === t.name || (t.email && String(n).toLowerCase() === String(t.email).toLowerCase()))).map((t) => (
-                  <span key={t.id} title={t.name + " cannot open this board (owners always can)"} style={{ fontFamily: sans, fontSize: 9.5, color: "#B0483A", textDecoration: "line-through" }}>{t.name.split(" ")[0]}</span>
-                ))}
+                {state.team.map((t) => { const on = hasAccess(t); return (
+                  <button key={t.id} onClick={() => toggle(t)} title={on ? "Tap to remove " + t.name + " from this board" : "Tap to give " + t.name + " access"}
+                    style={{ border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? "#FFFFFF" : "#B0483A", borderRadius: 1, padding: "3px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 0.5, cursor: onSaveBoards ? "pointer" : "default", textDecoration: on ? "none" : "line-through" }}>
+                    {t.name}
+                  </button>
+                ); })}
+                {acc.length === 0 && <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub }}>Everyone</span>}
+                {acc.length === 1 && acc[0] === "Owners only" && <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.2, textTransform: "uppercase", color: c.sub }}>Owners only</span>}
               </div>
             );
           })}
-          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>Owners always see every board. A struck-through name is shut out of that board; "Everyone" means the board carries no access list.</div>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>Owners always see every board no matter the chips. Changes apply the next time that person loads the app; the board's own header control stays in sync.</div>
         </div>
       )}
 
