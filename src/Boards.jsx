@@ -336,7 +336,7 @@ function LaunchCalendar({ items, pending, films = [], onOpen, wide = false }) {
         const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
         const dayMap = {};
         const undated = [];
-        byM[ym].forEach((it) => { if (it.day) (dayMap[it.day] = dayMap[it.day] || []).push(it.card); else undated.push(it.card); });
+        (byM[ym] || []).forEach((it) => { if (it.day) (dayMap[it.day] = dayMap[it.day] || []).push(it.card); else undated.push(it.card); });
         const openHere = openDay && openDay.startsWith(ym + "|") ? Number(openDay.split("|")[1]) : null;
         return (
           <div key={ym} style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
