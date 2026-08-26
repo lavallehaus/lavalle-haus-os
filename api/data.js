@@ -2409,7 +2409,8 @@ export default async function handler(req, res) {
     // analytics scope; merged into every rebuild until the app token gets
     // read_reports and ShopifyQL takes over natively.
     if ((req.body || {}).injectAnalytics) {
-      await kvSet("ops_injected_analytics", { ...req.body.injectAnalytics, at: Date.now() });
+      const prevInj = (await kvGet("ops_injected_analytics")) || {};
+      await kvSet("ops_injected_analytics", { ...prevInj, ...req.body.injectAnalytics, at: Date.now() });
     }
     const stPS = (await kvGet("ops_product_stats")) || {};
     if (!(req.body || {}).force && stPS.at && Date.now() - stPS.at < 6 * 3600 * 1000) { res.json({ ok: true, skipped: true }); return; }
@@ -2438,9 +2439,17 @@ export default async function handler(req, res) {
         if (Array.isArray(inj.store) && Number(inj.store[0]) > 0) storeCvrInj = Math.round((Number(inj.store[1]) / Number(inj.store[0])) * 1000) / 10;
       }
     }
-    // Fallback when the token lacks the analytics scope: build the sales side
-    // from raw orders (read_orders IS granted). Sessions/conversion stay null
-    // until Shopify is reconnected with a reports scope.
+    // Injected NET sales (from an analytics-scoped connection) are the
+    // authoritative dollars — HER RULE: net, never gross; the orders-based
+    // fallback reads line totals BEFORE order-level discount codes, which
+    // inflates gifted PR/UGC units (Bath Salts: 76 units, $0 net).
+    const injM = (await kvGet("ops_injected_analytics")) || null;
+    if (!Object.keys(s30).length && injM && injM.sales30) {
+      s30 = {}; s7 = {}; sPrev = {};
+      for (const [t, v] of Object.entries(injM.sales30)) s30[t.toLowerCase()] = [Number(v[0]) || 0, Number(v[1]) || 0];
+      for (const [t, v] of Object.entries(injM.sales7 || {})) s7[t.toLowerCase()] = [Number(v) || 0];
+      for (const [t, v] of Object.entries(injM.salesPrev || {})) sPrev[t.toLowerCase()] = [Number(v) || 0];
+    }
     if (!Object.keys(s30).length) {
       const isoPS = new Date(Date.now() - 30 * 86400000).toISOString();
       const oD = await gqlPS(`query { orders(first: 250, query: "created_at:>='${isoPS}'") { edges { node { createdAt lineItems(first: 25) { edges { node { title quantity discountedTotalSet { shopMoney { amount } } } } } } } } }`);
