@@ -2507,7 +2507,10 @@ export default async function handler(req, res) {
       // and pg.chk itself counts sessions that landed here then bought ANYTHING.
       // Neither is product conversion. Numerator = paid orders whose own line
       // for this product carried revenue, capped at sessions (rate ≤ 100%).
-      const buyers30 = pg ? Math.min(paidOrders30[tKey] || 0, pg.sess) : 0;
+      // Line totals sit BEFORE order-level codes, so a 100%-off gifted order
+      // that charged shipping still slips through both checks — the backstop is
+      // her net-not-gross rule: $0 net over 30 days means zero credit.
+      const buyers30 = pg && sales30 > 0 ? Math.min(paidOrders30[tKey] || 0, pg.sess) : 0;
       const cvr = pg && pg.sess > 0 ? Math.round((buyers30 / pg.sess) * 1000) / 10 : null;
       const cvrCredited = !!(pg && pg.sess > 0 && buyers30 > pg.chk);
       const tracked = (n.variants.edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false);
@@ -2552,17 +2555,21 @@ export default async function handler(req, res) {
       } catch (eBm) {}
       for (const [bk, comps] of Object.entries(BUNDLE_MAP)) {
         if (!byKey[bk]) continue;
-        let u30 = 0, u7 = 0, uPrev = 0, sales30 = 0;
+        let u30 = 0, u7 = 0, uPrev = 0, sales30 = 0, u30paid = 0;
         for (const oE of ordersPS) {
           const titles = ((oE.node.lineItems || {}).edges || []).map((x) => normPS(x.node.title));
           if (!comps.every((c2) => titles.includes(c2))) continue;
           const ageD = (Date.now() - new Date(oE.node.createdAt).getTime()) / 86400000;
           u30 += 1; if (ageD <= 7) u7 += 1; else if (ageD <= 14) uPrev += 1;
+          if (Number((((oE.node || {}).totalPriceSet || {}).shopMoney || {}).amount) > 0) u30paid += 1;
           for (const liE of ((oE.node.lineItems || {}).edges || [])) if (comps.includes(normPS(liE.node.title))) sales30 += Number(((liE.node.discountedTotalSet || {}).shopMoney || {}).amount) || 0;
         }
         if (u30 > 0) {
           const b = byKey[bk];
           b.u7 = u7; b.sales30 = Math.round(sales30); b.wow = uPrev > 0 ? Math.round(((u7 - uPrev) / uPrev) * 100) : (u7 > 0 ? 100 : null);
+          // The bundle has no line item of its own, so the per-product pass left
+          // its conversion at 0 — credit its paid component-set orders here.
+          if (b.sess30 > 0 && b.sales30 > 0) { b.cvr = Math.round((Math.min(u30paid, b.sess30) / b.sess30) * 1000) / 10; b.cvrCredited = b.cvr > 0; }
           b.lever = (u30 === 1 ? "1 pair sold this month" : u30 + " pairs sold this month") + " — the bundle sells as its components on orders, so these are credited from paired purchases. " + (b.lever || "");
         }
       }
