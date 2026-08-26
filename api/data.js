@@ -5459,7 +5459,10 @@ export default async function handler(req, res) {
           toStore[k] = guardKey(stored, k, v);
         }
         const bs = { ...(stored.boards || {}) };
-        for (const [bk, bd] of Object.entries(body.boards || {})) mergeBoard(bs, bk, bd, stored.boards, staleBoards);
+        // Boards can't be deleted by omission (the guard keeps stored boards a
+        // save doesn't mention) — an owner deletes one EXPLICITLY with a
+        // {_deleted:true} tombstone in its place.
+        for (const [bk, bd] of Object.entries(body.boards || {})) { if (bd && bd._deleted === true) { delete bs[bk]; continue; } mergeBoard(bs, bk, bd, stored.boards, staleBoards); }
         toStore.boards = bs;
         toStore._keyStamps = keyStamps;
       }
