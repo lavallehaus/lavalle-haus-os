@@ -1325,6 +1325,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     )}
                   </div>
                   <div style={folderMode && opsFocus ? { display: "flex", flexDirection: "column", gap: 12 } : { display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
+                    {folderMode && opsFocus && <style>{".lh-strip::-webkit-scrollbar{height:5px}.lh-strip::-webkit-scrollbar-thumb{background:rgba(163,155,139,0.45);border-radius:3px}.lh-strip::-webkit-scrollbar-thumb:hover{background:rgba(163,155,139,0.7)}.lh-strip::-webkit-scrollbar-track{background:transparent}.lh-strip{scrollbar-width:thin;scrollbar-color:rgba(163,155,139,0.45) transparent}"}</style>}
                     {isCalL && <div style={{ gridColumn: "1 / -1" }}><PrCalendar wide={folderMode && !!opsFocus} monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {(() => {
@@ -1448,7 +1449,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       // one row per category: dividers/banners break the flow; each
                       // run of products becomes a single sideways-scrolling strip
                       const out = []; let run = [];
-                      const flushRun = () => { if (run.length) { out.push(<div key={"strip" + out.length} style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "stretch", paddingBottom: 6, WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>{run.map(renderCard)}</div>); run = []; } };
+                      const flushRun = () => { if (run.length) { out.push(<div key={"strip" + out.length} className="lh-strip" style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "stretch", paddingBottom: 6, WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>{run.map(renderCard)}</div>); run = []; } };
                       cards.forEach((cardR) => { if (/^(—|⚠|pre-orders|automations)/i.test((cardR.name || "").trim())) { flushRun(); out.push(renderCard(cardR)); } else run.push(cardR); });
                       flushRun();
                       return out;
