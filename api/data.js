@@ -760,6 +760,8 @@ export default async function handler(req, res) {
     try {
       const out = await publishDueItems();
       await kvSet("publish_last", { at: new Date().toISOString(), ...out });
+      // ride the sweep: two-way captions-doc sync (sig-guarded, cheap when idle)
+      try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 15000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -2813,11 +2815,14 @@ export default async function handler(req, res) {
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
-  // ── Captions + hashtags backup doc ────────────────────────────────────────
-  // Mirrors every Schedule post's caption + hashtags into the shared Google
-  // Doc (her standing backup after Courtney's captions were lost to the Aug 26
-  // revert window). Hash-guarded; triggered after each strategy-PDF rebuild
-  // (which itself fires whenever cards change) and callable directly.
+  // ── Captions + hashtags doc — TWO-WAY sync ────────────────────────────────
+  // Her protocol (Aug 26, after Courtney's captions were lost): the shared
+  // Google Doc is both the standing backup AND an editing surface — Courtney
+  // writes captions/hashtags in the doc and they flow onto the matching Post
+  // card; card edits flow back out. Merge is 3-way against the last-synced
+  // base (state.base): a doc entry that changed since last sync wins its post,
+  // otherwise the card is authoritative. Runs on every publish_due sweep
+  // (~15 min) and after each strategy-PDF rebuild; callable directly.
   if (op === "sisters_captions_doc" && req.method === "POST") {
     const okKeyCB = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authCB = okKeyCB ? null : await getAuthEarly(req);
@@ -2830,23 +2835,49 @@ export default async function handler(req, res) {
     const schedCB = bdCB.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
     const postsCB = bdCB.cards.filter((c) => schedCB.includes(c.listId) && /^post\s*\d+/i.test(c.name || ""))
       .sort((a, b) => Number((/^post\s*(\d+)/i.exec(a.name) || [])[1] || 0) - Number((/^post\s*(\d+)/i.exec(b.name) || [])[1] || 0));
-    const sigCB = createHash("sha256").update(postsCB.map((c) => c.name + "|" + (c.desc || "") + "|" + (c.tags || "")).join("\n")).digest("hex").slice(0, 12);
+    const numCB = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
     const stCB = (await kvGet("sisters_captions_doc_state")) || {};
-    if (stCB.sig === sigCB && !(req.body || {}).force) { res.json({ ok: true, skipped: true }); return; }
-    const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS (BACKUP)", "Auto-updated from the Lavalle Haus OS board whenever a caption changes. Do not edit here; edit the card.", "Last updated: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
+    // 1. read the doc and parse Post blocks (captions may span lines)
+    const rEx = await fetch("https://www.googleapis.com/drive/v3/files/" + DOC_CB + "/export?mimeType=text/plain&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCB } });
+    const docText = rEx.ok ? (await rEx.text()).replace(/^﻿/, "") : "";
+    const parsed = {};
+    for (const m of docText.matchAll(/^Post\s+(\d+)[^\n]*\n(?:Caption:\s?([\s\S]*?))?\nHashtags:\s?([^\n]*)/gim)) {
+      const clean = (s) => String(s || "").trim().replace(/^\(none yet\)$/i, "").replace(/\s*—\s*/g, ", "); // captions never carry em dashes (house rule)
+      parsed[Number(m[1])] = { c: clean(m[2]), h: String(m[3] || "").trim().replace(/^\(none yet\)$/i, "") };
+    }
+    // 2. pull: doc entries that changed since last sync win their post
+    const base = stCB.base || null;
+    let pulled = 0;
+    if (base && docText) {
+      for (const c of postsCB) {
+        const n = numCB(c); const p = parsed[n]; const b0 = base[n];
+        if (!p || !b0) continue;
+        if (p.c !== b0.c && p.c !== (c.desc || "").trim()) { c.desc = p.c; pulled++; }
+        if (p.h !== b0.h && p.h !== (c.tags || "").trim()) { c.tags = p.h; pulled++; }
+      }
+      if (pulled) await kvSet("lavalle_data", blobCB);
+    }
+    // 3. push: rebuild the doc from the (possibly updated) cards
+    const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS", "Edit captions or hashtags right here (or on the card) — the app and this doc sync both ways every few minutes. Keep each post's Caption:/Hashtags: lines.", "Last synced: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
     for (const c of postsCB) {
       lines.push(c.name);
       lines.push("Caption: " + ((c.desc || "").trim() || "(none yet)"));
       lines.push("Hashtags: " + ((c.tags || "").trim() || "(none yet)"));
       lines.push("");
     }
-    const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
-      method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/plain; charset=utf-8" }, body: lines.join("\n"),
-    });
-    const dUp = await rUp.json().catch(() => ({}));
-    if (!rUp.ok) { res.status(400).json({ error: "doc update failed: " + ((dUp.error && dUp.error.message) || rUp.status) }); return; }
-    await kvSet("sisters_captions_doc_state", { sig: sigCB, at: Date.now() });
-    res.json({ ok: true, posts: postsCB.length });
+    const nextText = lines.join("\n");
+    const sigCB = createHash("sha256").update(nextText).digest("hex").slice(0, 12);
+    let pushedCB = false;
+    if (stCB.sig !== sigCB || pulled || (req.body || {}).force) {
+      const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
+        method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/plain; charset=utf-8" }, body: nextText,
+      });
+      if (!rUp.ok) { const dUp = await rUp.json().catch(() => ({})); res.status(400).json({ error: "doc update failed: " + ((dUp.error && dUp.error.message) || rUp.status) }); return; }
+      pushedCB = true;
+    }
+    const nextBase = {}; for (const c of postsCB) nextBase[numCB(c)] = { c: (c.desc || "").trim(), h: (c.tags || "").trim() };
+    await kvSet("sisters_captions_doc_state", { sig: sigCB, base: nextBase, at: Date.now() });
+    res.json({ ok: true, posts: postsCB.length, pulled, pushed: pushedCB });
     return;
   }
   // ── Post formats: face to camera / b-roll / carousel / static ─────────────
