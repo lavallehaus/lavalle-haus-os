@@ -2079,7 +2079,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
-      ["Pre-order guard", "Every 15 min", "Watches every preorder-tagged product: if a pre-order page starts rendering Add to Cart with no available stock, or its policy goes to CONTINUE (uncapped allocation), an ⚠ card appears at the top of Inventory with the findings — and clears itself when the storefront is healthy. Never writes to Shopify."],
+      ["Pre-order guard", "Every 15 min", "Watches every preorder-tagged product: alarms if the storefront says purchasable while admin shows no stock, if the policy goes to CONTINUE (uncapped allocation — DENY is the only cap), or if available stock or TAGS move between checks (every movement is spelled out old → new). Findings appear as an ⚠ card at the top of Inventory and clear themselves when healthy. Never writes to Shopify."],
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
       ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
@@ -2385,18 +2385,27 @@ export default async function handler(req, res) {
     const dPG = await rPG.json().catch(() => ({}));
     const prodsPG = (((dPG.data || {}).products || {}).edges || []).map((e) => e.node);
     const alerts = [];
+    const stPG = (await kvGet("ops_preorder_guard_state")) || { avail: {}, tags: {} };
     for (const pp of prodsPG) {
-      const avail = (pp.variants.edges || []).reduce((a, v) => a + ((((v.node.inventoryItem || {}).inventoryLevels || {}).edges || []).reduce((a2, lv) => a2 + ((lv.node.quantities || []).find((x) => x.name === "available") || {}).quantity || 0, 0)), 0);
+      const avail = (pp.variants.edges || []).reduce((a, v) => a + ((((v.node.inventoryItem || {}).inventoryLevels || {}).edges || []).reduce((a2, lv) => a2 + (((lv.node.quantities || []).find((x) => x.name === "available") || {}).quantity || 0), 0)), 0);
       const anyContinue = (pp.variants.edges || []).some((v) => v.node.inventoryPolicy === "CONTINUE");
-      if (avail <= 0 && anyContinue) alerts.push("• " + pp.title + " — policy is CONTINUE with no available stock: the pre-order allocation is UNCAPPED (should be DENY).");
+      if (anyContinue) alerts.push("• " + pp.title + " — inventory policy is CONTINUE: the pre-order allocation is UNCAPPED (the note requires DENY as the only cap).");
+      // precise purchasability: the storefront's own product .js endpoint
       if (avail <= 0 && pp.onlineStoreUrl) {
         try {
-          const pgHtml = await (await fetch(pp.onlineStoreUrl, { headers: { "User-Agent": "Mozilla/5.0" } })).text();
-          const hasATC = /add to cart/i.test(pgHtml); const hasPre = /pre-?order/i.test(pgHtml);
-          if (hasATC && !hasPre) alerts.push("• " + pp.title + " — page renders ADD TO CART with no available stock: inventory or tags were overwritten.");
+          const jsUrl = pp.onlineStoreUrl.replace(/\?.*$/, "") + ".js";
+          const pj = await (await fetch(jsUrl, { headers: { "User-Agent": "Mozilla/5.0" } })).json();
+          if (pj && pj.available === true && !anyContinue) alerts.push("• " + pp.title + " — storefront says PURCHASABLE while admin shows no available stock: inventory or tags were overwritten.");
         } catch (ePg) {}
       }
+      // rule 4: make every quantity/tag movement on protected products visible
+      const key = pp.title;
+      if (key in stPG.avail && stPG.avail[key] !== avail) alerts.push("• " + pp.title + " — available stock moved " + stPG.avail[key] + " → " + avail + " since the last check. If nobody received stock on purpose, something overwrote it.");
+      const tagsNow = (pp.tags || []).slice().sort().join(", ");
+      if (key in stPG.tags && stPG.tags[key] !== tagsNow) alerts.push("• " + pp.title + " — TAGS CHANGED: [" + stPG.tags[key] + "] → [" + tagsNow + "].");
+      stPG.avail[key] = avail; stPG.tags[key] = tagsNow;
     }
+    await kvSet("ops_preorder_guard_state", stPG);
     const rawPG = await kvGet("lavalle_data"); const blobPG = Array.isArray(rawPG) ? rawPG[0] : rawPG;
     const bdPG = blobPG && blobPG.boards && blobPG.boards["rh-operations"];
     if (bdPG) {
