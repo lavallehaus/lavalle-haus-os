@@ -2940,7 +2940,7 @@ export default async function handler(req, res) {
   // first, vision on the grid tile otherwise) and re-tags every card with
   // explicit IG · and TT · chips under her cadence rules:
   //   max 1-2 statics per cycle, statics are Instagram-only;
-  //   where IG runs a static, TikTok runs a carousel;
+  //   where IG runs a static, TikTok runs a REEL (her rule Aug 26 — was carousel);
   //   carousels are fine on IG, but TikTok prefers a reel when one exists.
   if (op === "sisters_formats" && req.method === "POST") {
     const okKeyF = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
@@ -3043,7 +3043,7 @@ export default async function handler(req, res) {
       else if (style === "still") { ig = "Carousel"; note = "static cap reached"; }
       else if (style) { ig = "Reel"; }
       else continue; // nothing known yet — leave the card untagged
-      if (ig === "Static") tt = "Carousel";
+      if (ig === "Static") tt = "Reel"; // her rule Aug 26: IG static days run a TT reel, never carousel
       else if (carByN[n] && !reelByN[n]) tt = "Carousel"; // an actual carousel final with no reel
 
       else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "B-roll" : "FTC"; }
