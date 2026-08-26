@@ -2468,6 +2468,22 @@ export default async function handler(req, res) {
       for (const [k, a] of Object.entries(accPS)) { s30[k] = [a.u30, a.sales30]; s7[k] = [a.u7]; sPrev[k] = [a.uPrev]; }
     }
     if (storeCvr == null && storeCvrInj != null) storeCvr = storeCvrInj;
+    // PAID buyers per product — only orders with a nonzero total count (gifted
+    // PR/UGC orders ride 100%-off codes and land at $0; her net-not-gross rule
+    // says those are not sales). Counted as ORDERS, not units, so a 3-pack
+    // buyer is one buyer. Also reused by the bundle-credit pass below.
+    let ordersPS = [];
+    try {
+      const isoOP = new Date(Date.now() - 30 * 86400000).toISOString();
+      const oAll = await gqlPS(`query { orders(first: 250, query: "created_at:>='${isoOP}'") { edges { node { createdAt totalPriceSet { shopMoney { amount } } lineItems(first: 25) { edges { node { title quantity discountedTotalSet { shopMoney { amount } } } } } } } } }`);
+      ordersPS = (((oAll || {}).orders || {}).edges || []);
+    } catch (eOP) {}
+    const paidOrders30 = {};
+    for (const oE of ordersPS) {
+      if (!(Number((((oE.node || {}).totalPriceSet || {}).shopMoney || {}).amount) > 0)) continue;
+      const seenT = new Set();
+      for (const liE of (((oE.node || {}).lineItems || {}).edges || [])) { const k2 = String((liE.node || {}).title || "").toLowerCase(); if (k2 && !seenT.has(k2)) { seenT.add(k2); paidOrders30[k2] = (paidOrders30[k2] || 0) + 1; } }
+    }
     const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle createdAt totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
     const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
     const AMZ_RX = [[/candle sand|sand ?wax refill/i, "sandwax refill pouch"], [/small apple|mini.*apple/i, "mini spiced apple botanical candle"], [/large apple/i, "large spiced apple botanical candle"], [/bath salt/i, "bath salts"], [/dough bowl/i, "dark dough bowl"]];
@@ -2485,10 +2501,10 @@ export default async function handler(req, res) {
       const sess30 = pg ? pg.sess : null;
       // Shopify's only per-page session dimension is LANDING page, so a buyer
       // who arrived via a collection or the homepage never shows up in pg.chk —
-      // a SKU with real sales would read 0%. Credit every known buyer instead:
-      // numerator = landing checkouts or 30-day units, whichever is larger,
-      // capped at sessions so the rate stays ≤ 100%.
-      const buyers30 = pg ? Math.max(pg.chk, Math.min(units30, pg.sess)) : 0;
+      // a SKU with real sales would read 0%. Credit known PAID buyers instead
+      // (units would let $0 gifted PR/UGC orders read as conversions), capped
+      // at sessions so the rate stays ≤ 100%.
+      const buyers30 = pg ? Math.max(pg.chk, Math.min(paidOrders30[tKey] || 0, pg.sess)) : 0;
       const cvr = pg && pg.sess > 0 ? Math.round((buyers30 / pg.sess) * 1000) / 10 : null;
       const cvrCredited = !!(pg && pg.sess > 0 && buyers30 > pg.chk);
       const tracked = (n.variants.edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false);
@@ -2500,10 +2516,11 @@ export default async function handler(req, res) {
       let lever = "Hold — steady; keep the cadence.";
       const isPre = (n.tags || []).some((t) => /preorder/i.test(t));
       const ageDays = n.createdAt ? Math.round((Date.now() - new Date(n.createdAt).getTime()) / 86400000) : null;
-      // Zero sales outranks every other lever — cover, WoW, and conversion are
-      // all meaningless without a sale, so without this branch a dead SKU falls
-      // through the whole chain and reads "Hold — steady."
-      if (units30 === 0) {
+      // Zero PAID sales outranks every other lever — cover, WoW, and conversion
+      // are all meaningless without a sale, so without this branch a dead SKU
+      // falls through the whole chain and reads "Hold — steady." sales30 <= 0
+      // catches gifted-only SKUs whose units are all $0 PR/UGC sends.
+      if (units30 === 0 || sales30 <= 0) {
         if (amz && amz.sold30 > 0) lever = "Channel — Amazon moves " + amz.sold30 + "/30d but the site sold zero; the demand is real, so fix site visibility (homepage, collections, email).";
         else if (isPre) lever = "Pre-order — zero orders in 30 days; push the pre-order story in email and a Sisters post, or revisit the offer.";
         else if (ageDays != null && ageDays <= 14) lever = "Launch — " + ageDays + " days old with no sales yet; seed it now with a Sisters post, homepage slot, and email feature.";
@@ -2530,12 +2547,10 @@ export default async function handler(req, res) {
           if (comps.length >= 2) BUNDLE_MAP[normPS(e2.node.title)] = [...new Set(comps)];
         }
       } catch (eBm) {}
-      const isoB = new Date(Date.now() - 30 * 86400000).toISOString();
-      const oB = await gqlPS(`query { orders(first: 250, query: "created_at:>='${isoB}'") { edges { node { createdAt lineItems(first: 25) { edges { node { title quantity discountedTotalSet { shopMoney { amount } } } } } } } } }`);
       for (const [bk, comps] of Object.entries(BUNDLE_MAP)) {
         if (!byKey[bk]) continue;
         let u30 = 0, u7 = 0, uPrev = 0, sales30 = 0;
-        for (const oE of (((oB || {}).orders || {}).edges || [])) {
+        for (const oE of ordersPS) {
           const titles = ((oE.node.lineItems || {}).edges || []).map((x) => normPS(x.node.title));
           if (!comps.every((c2) => titles.includes(c2))) continue;
           const ageD = (Date.now() - new Date(oE.node.createdAt).getTime()) / 86400000;
