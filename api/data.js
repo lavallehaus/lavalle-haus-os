@@ -5393,7 +5393,9 @@ export default async function handler(req, res) {
       const sb = (storedBoards || {})[bk];
       const sRev = (sb && sb._rev) || 0, iRev = (bd && bd._rev) || 0;
       if (sb && iRev < sRev) { staleBoards.push(bk); return; }
-      const changed = !sb || JSON.stringify({ ...bd, _rev: 0 }) !== JSON.stringify({ ...sb, _rev: 0 });
+      // a rev-less stored board counts as changed so every board picks up its
+      // first stamp on the next save — the guard is inert until a board has one
+      const changed = !sb || !sb._rev || JSON.stringify({ ...bd, _rev: 0 }) !== JSON.stringify({ ...sb, _rev: 0 });
       bs[bk] = changed ? { ...bd, _rev: sRev + 1 } : sb;
     };
     const staleBoards = [];
