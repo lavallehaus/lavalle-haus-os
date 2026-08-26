@@ -290,8 +290,30 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
 // ── Launch Timeline — renders as a month-by-month calendar ────────────────────
 // Cards with a launch month group into month panels (click opens the card);
 // Pending web-development pages show in their own strip so upcoming site work
-// is visible next to the launches it unblocks.
-function LaunchCalendar({ items, pending, onOpen, wide = false }) {
+// is visible next to the launches it unblocks. Every month Sept 2026 – Aug 2027
+// renders whether or not it has launches, and each carries a feature slate:
+// the To-be-filmed products shot that month or the two before (the 4-per-Q
+// cadence) mixed with current top sellers by net sales, 4 slots total.
+function LaunchCalendar({ items, pending, films = [], onOpen, wide = false }) {
+  const [topSellers, setTopSellers] = useState([]);
+  useEffect(() => {
+    let dead = false;
+    const use = (d) => {
+      if (dead || !d || !d.byKey) return;
+      const pretty = (k) => k.replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+      setTopSellers(Object.entries(d.byKey)
+        .filter(([k, v]) => (v.sales30 || 0) > 0 && !/gift card|sample/.test(k))
+        .sort((a, b) => (b[1].sales30 || 0) - (a[1].sales30 || 0))
+        .slice(0, 6).map(([k, v]) => ({ name: pretty(k), net: v.sales30 })));
+    };
+    const cached = (window.__lhStats && Date.now() - window.__lhStats.at < 10 * 60 * 1000) ? window.__lhStats.data : null;
+    if (cached) { use(cached); return () => { dead = true; }; }
+    fetch("/api/data?op=ops_product_stats", { headers: { "x-app-token": localStorage.getItem("lh_token") || "" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.byKey) { window.__lhStats = { at: Date.now(), data: d }; use(d); } })
+      .catch(() => {}); // non-owners get a 403 — the slate just shows films
+    return () => { dead = true; };
+  }, []);
   // Real calendar (Kiaredza's ask): each month is a date grid; a day with a
   // proposed launch is marked and clickable — the drop-down shows the rendering
   // (cover) when there is one, the item name, and its important details.
@@ -299,7 +321,10 @@ function LaunchCalendar({ items, pending, onOpen, wide = false }) {
   const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   const byM = {};
   items.forEach((it) => { (byM[it.ym] = byM[it.ym] || []).push(it); });
-  const yms = Object.keys(byM).sort();
+  const RANGE = [];
+  for (let y = 2026, m = 9; y < 2027 || m <= 8; m = m === 12 ? (y++, 1) : m + 1) RANGE.push(y + "-" + String(m).padStart(2, "0"));
+  const yms = [...new Set([...RANGE, ...Object.keys(byM), ...films.map((f) => f.ym).filter(Boolean)])].sort();
+  const mIdx = (ym2) => Number(ym2.slice(0, 4)) * 12 + Number(ym2.slice(5, 7));
   const fmt = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
   const DOW = ["S", "M", "T", "W", "T", "F", "S"];
   return (
@@ -353,6 +378,31 @@ function LaunchCalendar({ items, pending, onOpen, wide = false }) {
                 ))}
               </div>
             )}
+            {(() => {
+              // filmed content serves its own month plus the two after it
+              const filmsHere = films.filter((f) => f.ym && mIdx(ym) - mIdx(f.ym) >= 0 && mIdx(ym) - mIdx(f.ym) <= 2);
+              const launchNames = (byM[ym] || []).map((it) => (it.card.name || "").toLowerCase());
+              const slate = filmsHere.slice(0, 4).map((f) => ({ type: "film", name: f.card.name, id: f.card.id }));
+              topSellers.forEach((t) => {
+                if (slate.length >= 4) return;
+                const n2 = t.name.toLowerCase();
+                if (slate.some((s) => s.name.toLowerCase().includes(n2) || n2.includes(s.name.toLowerCase()))) return;
+                if (launchNames.some((n3) => n3.includes(n2))) return;
+                slate.push({ type: "seller", name: t.name, net: t.net });
+              });
+              return slate.length > 0 && (
+                <div style={{ marginTop: 6, borderTop: "1px solid #EFEDE7", paddingTop: 6 }}>
+                  <div style={{ fontFamily: sans, fontSize: 7.5, letterSpacing: 1.5, textTransform: "uppercase", color: "#A39B8B", marginBottom: 3 }}>Feature slate · to film + top sellers</div>
+                  {slate.map((s, i4) => (
+                    <div key={i4} onClick={s.id ? (e) => { e.stopPropagation(); onOpen(s.id); } : undefined}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "2px 0", cursor: s.id ? "pointer" : "default" }}>
+                      <span style={{ fontFamily: sans, fontSize: 10.5, color: "#1A1A1A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                      <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: s.type === "film" ? "#A07848" : "#A39B8B", flexShrink: 0 }}>{s.type === "film" ? "to film" : "top seller"}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         );
       })}
@@ -1323,6 +1373,18 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               const isLaunchL = /^launch timeline$/i.test((l.name || "").trim());
               const launchItemsL = isLaunchL ? cards.filter((x) => x.launchMonth || x.due).map((x) => { const ym = String(x.launchMonth || x.due).slice(0, 7); const day = x.due && String(x.due).slice(0, 7) === ym ? Number(String(x.due).slice(8, 10)) || null : null; return { card: x, ym, day }; }) : [];
               const webPendL = isLaunchL ? (() => { const wd = board.lists.find((l2) => /^web development/i.test((l2.name || "").trim())); return wd ? board.cards.filter((x) => x.listId === wd.id && (x.labels || []).some((lb) => (((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()) === "pending")) : []; })() : [];
+              // To-be-filmed cards feed the calendar's feature slates. Month comes
+              // from the card's launch month, else a month-name label (Sept–Dec
+              // reads as 2026, Jan–Aug as 2027 — the planning horizon).
+              const filmsL = isLaunchL ? (() => {
+                const fl = board.lists.find((l2) => /^to be filmed/i.test((l2.name || "").trim())); if (!fl) return [];
+                const MN = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+                return board.cards.filter((x) => x.listId === fl.id && !/^notes?$/i.test((x.name || "").trim())).map((x) => {
+                  let ym = x.launchMonth ? String(x.launchMonth).slice(0, 7) : null;
+                  if (!ym) { const lbl = (x.labels || []).map((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()).find((s) => MN[s]); if (lbl) ym = (MN[lbl] >= 9 ? 2026 : 2027) + "-" + String(MN[lbl]).padStart(2, "0"); }
+                  return { card: x, ym };
+                });
+              })() : [];
               if (isLaunchL) cards = cards.filter((x) => !x.launchMonth && !x.due);
               const statsHoverOk = folderMode && opsFocus && viewer.owner && /^inventory$/i.test((l.name || "").trim());
               // The Automations card is the owner's plain-English map of what runs
@@ -1384,7 +1446,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   <div style={folderMode && opsFocus ? { display: "flex", flexDirection: "column", gap: 12 } : { display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
                     {folderMode && opsFocus && <style>{".lh-strip::-webkit-scrollbar{height:5px}.lh-strip::-webkit-scrollbar-thumb{background:rgba(163,155,139,0.45);border-radius:3px}.lh-strip::-webkit-scrollbar-thumb:hover{background:rgba(163,155,139,0.7)}.lh-strip::-webkit-scrollbar-track{background:transparent}.lh-strip{scrollbar-width:thin;scrollbar-color:rgba(163,155,139,0.45) transparent}"}</style>}
                     {isCalL && <div style={{ gridColumn: "1 / -1" }}><PrCalendar wide={folderMode && !!opsFocus} monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
-                    {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
+                    {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} films={filmsL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {(() => {
                       const renderCard = (card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
