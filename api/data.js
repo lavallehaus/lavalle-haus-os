@@ -2040,26 +2040,34 @@ export default async function handler(req, res) {
     if (wantBgOI && bdOI.bg !== wantBgOI) { bdOI.bg = wantBgOI; syncedOI++; }
     // HER RULE: the Inventory column reads clearly divided — BODY CARE first,
     // then HOME — with divider cards, regrouped automatically every sync.
-    const bodyRx = /scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i;
+    // Category scheme (her order, Aug 26): Body Care → Bundles → Diffusers →
+    // Stone Vessels & Candle Sand → Botanical Candles (phase-outs at the bottom).
+    const CAT_ORDER_OI = [["— BODY CARE —", "body"], ["— BUNDLES —", "bundle"], ["— DIFFUSERS —", "diffuser"], ["— STONE VESSELS & CANDLE SAND —", "stone"], ["— BOTANICAL CANDLES —", "botanical"]];
     const kindOf = (cK) => {
       const cn = normOI(cK.name);
       const hitK = prodsOI.find((pp) => normOI(pp.title) === cn) || prodsOI.find((pp) => normOI(pp.title).includes(cn) || cn.includes(normOI(pp.title)));
       const basis = ((hitK && (hitK.ptype + " " + hitK.title)) || cK.name || "");
-      return bodyRx.test(basis) ? "body" : "home";
+      if (/pair\b|bundle|duo\b/i.test(basis)) return "bundle";
+      if (/diffuser/i.test(basis)) return "diffuser";
+      if (/botanical|spiced apple/i.test(basis)) return "botanical";
+      if (/scrub|lotion|body|oil|soap|salt|cr[eè]me|cream|butter|wash|serum|skin/i.test(basis)) return "body";
+      return "stone"; // vessels, candle sand, sandwax, dough bowl
     };
     const ensureDivOI = (nmD) => {
       let dv = bdOI.cards.find((c) => c.listId === invListOI.id && (c.name || "").trim().toLowerCase() === nmD.toLowerCase());
       if (!dv) { dv = { id: "c" + Math.random().toString(36).slice(2, 10), listId: invListOI.id, name: nmD, desc: "", labels: [], members: [], attachments: [], links: [], done: false }; bdOI.cards.push(dv); }
       return dv;
     };
-    const divBody = ensureDivOI("— BODY CARE —");
-    const divHome = ensureDivOI("— HOME —");
+    // retire dividers that aren't part of the current scheme (e.g. — HOME —)
+    const validDivsOI = new Set(CAT_ORDER_OI.map(([nm]) => nm.toLowerCase()));
+    bdOI.cards = bdOI.cards.filter((c) => !(c.listId === invListOI.id && /^—/.test((c.name || "").trim()) && !validDivsOI.has((c.name || "").trim().toLowerCase())));
+    cardsOI = cardsOI.filter((c) => bdOI.cards.includes(c));
+    const divsOI = CAT_ORDER_OI.map(([nm]) => ensureDivOI(nm));
     const invCardsAll = bdOI.cards.filter((c) => c.listId === invListOI.id);
-    const headOI = invCardsAll.filter((c) => /^automations\b/i.test(c.name || "") || /^pre-?orders/i.test(c.name || ""));
-    const restInv = invCardsAll.filter((c) => !headOI.includes(c) && c !== divBody && c !== divHome);
-    const bodyCards = restInv.filter((c) => kindOf(c) === "body");
-    const homeCards = restInv.filter((c) => !bodyCards.includes(c));
-    const desiredOI = [...headOI, divBody, ...bodyCards, divHome, ...homeCards];
+    const headOI = invCardsAll.filter((c) => /^automations\b/i.test(c.name || "") || /^pre-?orders/i.test(c.name || "") || /^⚠/.test((c.name || "").trim()));
+    const restInv = invCardsAll.filter((c) => !headOI.includes(c) && !/^—/.test((c.name || "").trim()));
+    const desiredOI = [...headOI];
+    CAT_ORDER_OI.forEach(([nm, kind], ixD) => { desiredOI.push(divsOI[ixD]); desiredOI.push(...restInv.filter((c) => kindOf(c) === kind)); });
     const curOrder = invCardsAll.map((c) => c.id).join(",");
     if (desiredOI.map((c) => c.id).join(",") !== curOrder) {
       const othersOI = bdOI.cards.filter((c) => c.listId !== invListOI.id);
@@ -2082,7 +2090,7 @@ export default async function handler(req, res) {
     const OPS_AUTOMATIONS = [
       ["Pre-order guard", "Every 15 min", "Watches the pre-order setup (model: the preorder TAG pins the button, the allocation is available > 0 + DENY on the capped three, Onyx Arched stays CONTINUE while allocation-less). Alarms if a tag disappears, a capped product loses DENY, its allocation hits zero (off sale under DENY), the storefront stops being purchasable, or any available/tags value moves between checks (spelled out old → new). Findings appear as an ⚠ card at the top of Inventory and clear when healthy. Never writes to Shopify."],
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
-      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped BODY CARE first, then HOME, with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
+      ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped in her order — Body Care, Bundles, Diffusers, Stone Vessels & Candle Sand, Botanical Candles (phase-outs at the bottom) — with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
     ];
     const rawOA = await kvGet("lavalle_data"); const blobOA = Array.isArray(rawOA) ? rawOA[0] : rawOA;
     const bdOA = blobOA && blobOA.boards && blobOA.boards["rh-operations"];
