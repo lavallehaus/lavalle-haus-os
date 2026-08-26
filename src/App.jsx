@@ -83,8 +83,9 @@ async function dbSave(record) {
       // this tab would keep re-submitting the stale copy on every save.
       try {
         const dj = await r.clone().json();
-        // adopt the server's revs so this tab's next save isn't read as stale
+        // adopt the server's revs + stamps so this tab's next save isn't read as stale
         if (dj && dj.revs && record && record.boards) for (const [bk, rv] of Object.entries(dj.revs)) if (record.boards[bk]) record.boards[bk]._rev = rv;
+        if (dj && dj.stamps && record && record.boards) for (const [bk, st] of Object.entries(dj.stamps)) if (record.boards[bk]) record.boards[bk]._stamp = st;
         if (dj && Array.isArray(dj.staleBoards) && dj.staleBoards.length && Date.now() - lastSaveAlert > 8000) {
           lastSaveAlert = Date.now();
           const names = dj.staleBoards.map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk);

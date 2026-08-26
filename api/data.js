@@ -5389,14 +5389,22 @@ export default async function handler(req, res) {
     // board-by-board replace has no age check). Every stored board carries
     // _rev; a save whose copy of a board is older than the stored one keeps
     // the STORED board and reports it in staleBoards instead of reverting it.
+    // Staleness is judged by AGE, not by exact revision (her Aug 26 report:
+    // exact-rev matching blocked a tab's second same-day save whenever any
+    // other writer had touched the board). A copy under a day behind saves
+    // normally (last edit wins, the app's long-standing behavior); a copy more
+    // than STALE_MS behind the board's last change is refused — that is the
+    // weeks-old-tab disaster this guard exists for. A stamp-less copy of a
+    // stamped board is undatable and also refused (reload once to stamp it).
+    const STALE_MS = 24 * 3600 * 1000;
     const mergeBoard = (bs, bk, bd, storedBoards, staleBoards) => {
       const sb = (storedBoards || {})[bk];
-      const sRev = (sb && sb._rev) || 0, iRev = (bd && bd._rev) || 0;
-      if (sb && iRev < sRev) { staleBoards.push(bk); return; }
-      // a rev-less stored board counts as changed so every board picks up its
-      // first stamp on the next save — the guard is inert until a board has one
-      const changed = !sb || !sb._rev || JSON.stringify({ ...bd, _rev: 0 }) !== JSON.stringify({ ...sb, _rev: 0 });
-      bs[bk] = changed ? { ...bd, _rev: sRev + 1 } : sb;
+      const sRev = (sb && sb._rev) || 0;
+      const sStamp = (sb && sb._stamp) || 0, iStamp = (bd && bd._stamp) || 0;
+      if (sb && sStamp && (!iStamp || sStamp - iStamp > STALE_MS)) { staleBoards.push(bk); return; }
+      const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
+      const changed = !sb || !sb._rev || !sb._stamp || norm(bd) !== norm(sb);
+      bs[bk] = changed ? { ...bd, _rev: sRev + 1, _stamp: Date.now() } : sb;
     };
     const staleBoards = [];
     let toStore = body;
@@ -5435,7 +5443,8 @@ export default async function handler(req, res) {
     // Hand every stored board's rev back so the SAVING tab can adopt them —
     // without this a tab's own successful save left it one rev behind and its
     // very next save read as stale (her Approved-tag report, Aug 26).
-    const revs = {}; for (const [bk, bd] of Object.entries(toStore.boards || {})) if (bd && bd._rev) revs[bk] = bd._rev;
-    res.json({ ok: true, staleBoards, revs });
+    const revs = {}, stamps = {};
+    for (const [bk, bd] of Object.entries(toStore.boards || {})) { if (bd && bd._rev) revs[bk] = bd._rev; if (bd && bd._stamp) stamps[bk] = bd._stamp; }
+    res.json({ ok: true, staleBoards, revs, stamps });
   }
 }
