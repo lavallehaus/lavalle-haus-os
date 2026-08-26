@@ -1955,7 +1955,14 @@ export default async function handler(req, res) {
     const applyManualPre = () => {
       for (const cMP of cardsOI) {
         const rec = manualPre[normOI(cMP.name)];
-        if (!rec) continue;
+        if (!rec) {
+          // entry removed → its ⟳ Pre-order line comes off the card too
+          if ((cMP.desc || "").split("\n").some((l) => l.startsWith("⟳ Pre-order"))) {
+            cMP.desc = String(cMP.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Pre-order")).join("\n").replace(/^\n+/, "");
+            syncedOI++;
+          }
+          continue;
+        }
         const lineMP = "⟳ Pre-order · " + rec.units + " units incoming" + (rec.note ? " · " + rec.note : "");
         const restMP = String(cMP.desc || "").split("\n").filter((l) => !l.startsWith("⟳ Pre-order")).join("\n").replace(/^\n+/, "");
         const wantMP = lineMP + (restMP ? "\n" + restMP : "");
