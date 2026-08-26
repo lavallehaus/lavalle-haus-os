@@ -292,8 +292,8 @@ function Avatar({ member, size = 26, ring = "#FFFFFF" }) {
 // Pending web-development pages show in their own strip so upcoming site work
 // is visible next to the launches it unblocks. Every month Sept 2026 – Aug 2027
 // renders whether or not it has launches, and each carries a feature slate:
-// the To-be-filmed products shot that month or the two before (the 4-per-Q
-// cadence) mixed with current top sellers by net sales, 4 slots total.
+// the To-be-filmed products shot that month or the two before (beauty films
+// every other month) mixed with current top sellers by net sales, 4 slots.
 function LaunchCalendar({ items, pending, films = [], onOpen, wide = false }) {
   const [topSellers, setTopSellers] = useState([]);
   useEffect(() => {
@@ -418,6 +418,54 @@ function LaunchCalendar({ items, pending, films = [], onOpen, wide = false }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── To be filmed — beauty-month calendar ─────────────────────────────────────
+// Filming alternates month to month between fashion (The Fold) and beauty;
+// August 2026 was fashion, so beauty holds September and every other month
+// after — those are the months this board shows, 4 filming slots each. A card
+// lands in a month via its launch month; a fashion month only appears if
+// something is scheduled there (flagged off-cycle). Unscheduled cards stay in
+// the list below the calendar.
+function FilmCalendar({ items, onOpen, wide = false }) {
+  const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const byM = {};
+  items.forEach((it) => { if (it.ym) (byM[it.ym] = byM[it.ym] || []).push(it.card); });
+  const BEAUTY = Array.from({ length: 6 }, (_, i) => { const t = 2026 * 12 + 8 + i * 2; return Math.floor(t / 12) + "-" + String((t % 12) + 1).padStart(2, "0"); });
+  const yms = [...new Set([...BEAUTY, ...Object.keys(byM)])].sort();
+  const fmt = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676", marginBottom: 8 }}>
+        Filming alternates with fashion month to month — August 2026 was fashion, so beauty holds September and every other month after. Four products per month.
+      </div>
+      <div style={wide ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10, alignItems: "start" } : {}}>
+        {yms.map((ym) => {
+          const cardsM = byM[ym] || [];
+          const isBeauty = BEAUTY.includes(ym);
+          return (
+            <div key={ym} style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: "#1A1A1A" }}>{fmt(ym)}</span>
+                <span style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1.2, textTransform: "uppercase", color: isBeauty ? "#A07848" : "#B0483A" }}>{isBeauty ? "Beauty" : "Off-cycle · fashion month"}</span>
+              </div>
+              {Array.from({ length: Math.max(4, cardsM.length) }).map((_, i2) => { const cd = cardsM[i2];
+                return cd ? (
+                  <div key={cd.id} onClick={(e) => { e.stopPropagation(); onOpen(cd.id); }} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", cursor: "pointer" }}>
+                    {cd.cover ? <img src={cd.cover} alt="" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} /> : <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#A07848", flexShrink: 0, marginLeft: 4, marginRight: 4 }} />}
+                    <span style={{ fontFamily: sans, fontSize: 11.5, lineHeight: 1.35, color: "#1A1A1A" }}>{cd.name}</span>
+                  </div>
+                ) : (
+                  <div key={"s" + i2} style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: "#C9C4BA", padding: "5px 0" }}>Open slot · {i2 + 1} of 4</div>
+                );
+              })}
+              {cardsM.length > 4 && <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: "#B0483A", marginTop: 4 }}>Over capacity — {cardsM.length} of 4</div>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1386,6 +1434,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 });
               })() : [];
               if (isLaunchL) cards = cards.filter((x) => !x.launchMonth && !x.due);
+              const isFilmL = /^to be filmed/i.test((l.name || "").trim());
+              const filmItemsL = isFilmL ? cards.filter((x) => x.launchMonth).map((x) => ({ card: x, ym: String(x.launchMonth).slice(0, 7) })) : [];
+              if (isFilmL) cards = cards.filter((x) => !x.launchMonth);
               const statsHoverOk = folderMode && opsFocus && viewer.owner && /^inventory$/i.test((l.name || "").trim());
               // The Automations card is the owner's plain-English map of what runs
               // on its own — admin reference, not something the team works from.
@@ -1447,6 +1498,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     {folderMode && opsFocus && <style>{".lh-strip::-webkit-scrollbar{height:5px}.lh-strip::-webkit-scrollbar-thumb{background:rgba(163,155,139,0.45);border-radius:3px}.lh-strip::-webkit-scrollbar-thumb:hover{background:rgba(163,155,139,0.7)}.lh-strip::-webkit-scrollbar-track{background:transparent}.lh-strip{scrollbar-width:thin;scrollbar-color:rgba(163,155,139,0.45) transparent}"}</style>}
                     {isCalL && <div style={{ gridColumn: "1 / -1" }}><PrCalendar wide={folderMode && !!opsFocus} monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} films={filmsL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
+                    {isFilmL && <div style={{ gridColumn: "1 / -1" }}><FilmCalendar wide={folderMode && !!opsFocus} items={filmItemsL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {(() => {
                       const renderCard = (card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
