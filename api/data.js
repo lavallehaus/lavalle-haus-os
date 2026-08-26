@@ -2860,20 +2860,43 @@ export default async function handler(req, res) {
       }
       if (pulled) await kvSet("lavalle_data", blobCB);
     }
-    // 3. push: rebuild the doc from the (possibly updated) cards
-    const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS", "Edit captions or hashtags right here (or on the card) — the app and this doc sync both ways every few minutes. Keep each post's Caption:/Hashtags: lines.", "Last synced: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
+    // 2.5 Courtney to-do flags (her ask: BLUE titles for posts she still has to
+    // update). KV sisters_captions_todo holds {n: {c,h}} — the values as of
+    // flagging; when a post's caption/hashtags CHANGE from that snapshot the
+    // flag self-clears and the title returns to black. Seed/replace the set by
+    // POSTing {todo:[2,5,...]}.
+    let todoCB = (await kvGet("sisters_captions_todo")) || {};
+    if (Array.isArray((req.body || {}).todo)) {
+      todoCB = {};
+      for (const n0 of req.body.todo) { const c0 = postsCB.find((x) => numCB(x) === Number(n0)); if (c0) todoCB[Number(n0)] = { c: (c0.desc || "").trim(), h: (c0.tags || "").trim() }; }
+      await kvSet("sisters_captions_todo", todoCB);
+    }
+    let todoChanged = false;
+    for (const [nT, snap] of Object.entries(todoCB)) { const cT = postsCB.find((x) => numCB(x) === Number(nT)); if (!cT) continue; if ((cT.desc || "").trim() !== snap.c || (cT.tags || "").trim() !== snap.h) { delete todoCB[nT]; todoChanged = true; } }
+    if (todoChanged) await kvSet("sisters_captions_todo", todoCB);
+    // 3. push: rebuild the doc from the (possibly updated) cards — as HTML so
+    // the blue to-do titles survive every rebuild (text export for the pull is
+    // unaffected by color)
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS", "Edit captions or hashtags right here (or on the card) — the app and this doc sync both ways every few minutes. Keep each post's Caption:/Hashtags: lines.", "Blue titles are still waiting on Courtney; they turn black on their own once the caption changes.", "Last synced: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
+    const htmlParts = lines.map((l) => l ? "<p>" + esc(l) + "</p>" : "<p>&nbsp;</p>");
     for (const c of postsCB) {
       lines.push(c.name);
       lines.push("Caption: " + ((c.desc || "").trim() || "(none yet)"));
       lines.push("Hashtags: " + ((c.tags || "").trim() || "(none yet)"));
       lines.push("");
+      const isTodo = !!todoCB[numCB(c)];
+      htmlParts.push("<p>" + (isTodo ? '<span style="color:#1155cc">' + esc(c.name) + "</span>" : esc(c.name)) + "</p>");
+      htmlParts.push("<p>Caption: " + (esc((c.desc || "").trim() || "(none yet)")).replace(/\n/g, "<br>") + "</p>");
+      htmlParts.push("<p>Hashtags: " + esc((c.tags || "").trim() || "(none yet)") + "</p>");
+      htmlParts.push("<p>&nbsp;</p>");
     }
     const nextText = lines.join("\n");
-    const sigCB = createHash("sha256").update(nextText).digest("hex").slice(0, 12);
+    const sigCB = createHash("sha256").update(nextText + "|todo:" + Object.keys(todoCB).sort().join(",")).digest("hex").slice(0, 12);
     let pushedCB = false;
     if (stCB.sig !== sigCB || pulled || (req.body || {}).force) {
       const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
-        method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/plain; charset=utf-8" }, body: nextText,
+        method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/html; charset=utf-8" }, body: "<html><body>" + htmlParts.join("") + "</body></html>",
       });
       if (!rUp.ok) { const dUp = await rUp.json().catch(() => ({})); res.status(400).json({ error: "doc update failed: " + ((dUp.error && dUp.error.message) || rUp.status) }); return; }
       pushedCB = true;
