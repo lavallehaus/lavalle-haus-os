@@ -3204,9 +3204,10 @@ export default async function handler(req, res) {
     const subs = (await lsL3(mF.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
     const order = ["cover photos", "courtney to edit", "reels", "carousels", "strategy outline", "grid"];
     subs.sort((a, b) => { const ia = order.indexOf((a.name || "").trim().toLowerCase()), ib = order.indexOf((b.name || "").trim().toLowerCase()); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
-    // "Courtney to edit" gets her named link — "Courtney September" — per Kiabeth;
-    // the label follows the working month automatically.
-    const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); const lbL = /^courtney to edit$/i.test(nmL) ? "Courtney " + wm3 : wm3 + " → " + nmL; return { label: lbL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
+    // "Courtney to edit" renders as "Courtney drafted" and points at her
+    // DRAFTED CONTENT folder (Kiabeth, Aug 26) — the drafts are what the team
+    // opens from here, not the raw to-edit pool.
+    const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); if (/^courtney to edit$/i.test(nmL)) return { label: "Courtney drafted", url: "https://drive.google.com/drive/folders/1woGS7L4PQwFcNOu3sxBtTXP2ZIo8DMkc" }; return { label: wm3 + " → " + nmL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
     // Captions + Hashtags doc and the grid archive ride INSIDE the month group
     // (her ask, Aug 26) — the "<month> → X" label is what nests them in the
     // Links sheet, and they follow the working month automatically.
