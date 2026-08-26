@@ -86,10 +86,15 @@ async function dbSave(record) {
         // adopt the server's revs + stamps so this tab's next save isn't read as stale
         if (dj && dj.revs && record && record.boards) for (const [bk, rv] of Object.entries(dj.revs)) if (record.boards[bk]) record.boards[bk]._rev = rv;
         if (dj && dj.stamps && record && record.boards) for (const [bk, st] of Object.entries(dj.stamps)) if (record.boards[bk]) record.boards[bk]._stamp = st;
-        if (dj && Array.isArray(dj.staleBoards) && dj.staleBoards.length && Date.now() - lastSaveAlert > 8000) {
+        if (dj && dj.keyStamps && record) record._keyStamps = dj.keyStamps;
+        const KEY_LABELS = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes" };
+        const staleAll = [
+          ...(dj && Array.isArray(dj.staleBoards) ? dj.staleBoards.map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk) : []),
+          ...(dj && Array.isArray(dj.staleKeys) ? dj.staleKeys.map((k) => KEY_LABELS[k] || k) : []),
+        ];
+        if (staleAll.length && Date.now() - lastSaveAlert > 8000) {
           lastSaveAlert = Date.now();
-          const names = dj.staleBoards.map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk);
-          alert("Heads up — this tab's copy of " + names.join(", ") + " is older than what's on the server, so those boards were NOT saved (the server kept the newer version).\n\nReload the app to pick up the latest before editing them.");
+          alert("Heads up — this tab's copy of " + staleAll.join(", ") + " is older than what's on the server, so those were NOT saved (the server kept the newer version).\n\nReload the app to pick up the latest before editing them.");
         }
       } catch (e2) {}
     }

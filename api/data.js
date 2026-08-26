@@ -5412,31 +5412,56 @@ export default async function handler(req, res) {
       const changed = !sb || !sb._rev || !sb._stamp || norm(bd) !== norm(sb);
       bs[bk] = changed ? { ...bd, _rev: sRev + 1, _stamp: Date.now() } : sb;
     };
-    const staleBoards = [];
+    const staleBoards = [], staleKeys = [];
     let toStore = body;
+    let keyStamps = {};
     {
       const r0 = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
       const d0 = await r0.json();
       let stored = d0.result ? JSON.parse(d0.result) : null;
       if (Array.isArray(stored)) stored = stored[0];
+      // Every OTHER top-level key (team roster, PR hub, grid planner…) gets the
+      // same age guard as boards (the Aug 26 roster wipe: only boards were
+      // protected, so a stale save could still rewind everything else). Values
+      // aren't all objects, so stamps live in a _keyStamps side table that
+      // clients echo back and adopt from the save response.
+      keyStamps = { ...((stored && stored._keyStamps) || {}) };
+      const iStamps = (body && body._keyStamps) || {};
+      const nowKS = Date.now();
+      const guardKey = (stored0, k, v) => {
+        if (!stored0 || !(k in stored0)) { keyStamps[k] = nowKS; return v; }
+        const sv = stored0[k];
+        if (JSON.stringify(v) === JSON.stringify(sv)) { if (!keyStamps[k]) keyStamps[k] = nowKS; return sv; } // bootstrap-stamp untouched keys
+        const sStamp = keyStamps[k] || 0, iStamp = iStamps[k] || 0;
+        if (sStamp && (!iStamp || sStamp - iStamp > STALE_MS)) { staleKeys.push(k); return sv; }
+        keyStamps[k] = nowKS; return v;
+      };
       if (stored && !ownerRole(auth)) {
         toStore = { ...stored };
         const prot = new Set([...protectedKeysFor(auth), ...(segDenied(auth, "content:pr") ? ["prHub"] : []), ...(segDenied(auth, "content:comms") ? ["comms"] : []), ...(segDenied(auth, "content:meetings") ? ["teamMeetings"] : [])]);
         for (const [k, v] of Object.entries(body)) {
-          if (prot.has(k)) continue;
+          if (prot.has(k) || k === "_keyStamps") continue;
           if (k === "boards" && v && typeof v === "object") {
             const bs = { ...(stored.boards || {}) };
             for (const [bk, bd] of Object.entries(v)) { if (bk.startsWith("_") || canSeeBoard(auth, (stored.boards || {})[bk] || bd)) mergeBoard(bs, bk, bd, stored.boards, staleBoards); }
             toStore.boards = bs;
-          } else toStore[k] = v;
+          } else toStore[k] = guardKey(stored, k, v);
         }
+        toStore._keyStamps = keyStamps;
       } else if (stored) {
-        // owner: full-state save, but boards get the same rev guard, and boards
-        // absent from the client's copy keep their stored values
-        toStore = { ...body };
+        // owner: keys absent from the client's copy keep their stored values
+        // (the app never deletes top-level keys on purpose), boards + keys get
+        // the same age guard
+        toStore = { ...stored };
+        for (const [k, v] of Object.entries(body)) {
+          if (k === "_keyStamps") continue;
+          if (k === "boards") continue;
+          toStore[k] = guardKey(stored, k, v);
+        }
         const bs = { ...(stored.boards || {}) };
         for (const [bk, bd] of Object.entries(body.boards || {})) mergeBoard(bs, bk, bd, stored.boards, staleBoards);
         toStore.boards = bs;
+        toStore._keyStamps = keyStamps;
       }
     }
     const rs = await fetch(`${url}/set/lavalle_data`, {
@@ -5451,6 +5476,6 @@ export default async function handler(req, res) {
     // very next save read as stale (her Approved-tag report, Aug 26).
     const revs = {}, stamps = {};
     for (const [bk, bd] of Object.entries(toStore.boards || {})) { if (bd && bd._rev) revs[bk] = bd._rev; if (bd && bd._stamp) stamps[bk] = bd._stamp; }
-    res.json({ ok: true, staleBoards, revs, stamps });
+    res.json({ ok: true, staleBoards, staleKeys, revs, stamps, keyStamps });
   }
 }
