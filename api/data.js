@@ -2807,7 +2807,46 @@ export default async function handler(req, res) {
     }
     await kvSet("lavalle_data", blobS2);
     await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl, pages: pageUrls });
+    // captions changed → refresh the Google Doc backup too (her rule after the
+    // Aug 26 caption loss: the doc is the standing off-app copy)
+    if (process.env.PUBLISH_KEY) { try { const acCD = new AbortController(); setTimeout(() => acCD.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCD.signal }).catch(() => {}); } catch (eCD) {} }
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
+    return;
+  }
+  // ── Captions + hashtags backup doc ────────────────────────────────────────
+  // Mirrors every Schedule post's caption + hashtags into the shared Google
+  // Doc (her standing backup after Courtney's captions were lost to the Aug 26
+  // revert window). Hash-guarded; triggered after each strategy-PDF rebuild
+  // (which itself fires whenever cards change) and callable directly.
+  if (op === "sisters_captions_doc" && req.method === "POST") {
+    const okKeyCB = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCB = okKeyCB ? null : await getAuthEarly(req);
+    if (!okKeyCB && !ownerRole(authCB)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtCB = await googleToken(); if (!gtCB) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const DOC_CB = "1Do98h-x2dl4Wj8suLLHTXrm_2GSOmfN9nyUQhFRXLrI";
+    const rawCB = await kvGet("lavalle_data"); const blobCB = Array.isArray(rawCB) ? rawCB[0] : rawCB;
+    const bdCB = blobCB && blobCB.boards && blobCB.boards["lavalle-sisters"];
+    if (!bdCB) { res.json({ ok: false }); return; }
+    const schedCB = bdCB.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const postsCB = bdCB.cards.filter((c) => schedCB.includes(c.listId) && /^post\s*\d+/i.test(c.name || ""))
+      .sort((a, b) => Number((/^post\s*(\d+)/i.exec(a.name) || [])[1] || 0) - Number((/^post\s*(\d+)/i.exec(b.name) || [])[1] || 0));
+    const sigCB = createHash("sha256").update(postsCB.map((c) => c.name + "|" + (c.desc || "") + "|" + (c.tags || "")).join("\n")).digest("hex").slice(0, 12);
+    const stCB = (await kvGet("sisters_captions_doc_state")) || {};
+    if (stCB.sig === sigCB && !(req.body || {}).force) { res.json({ ok: true, skipped: true }); return; }
+    const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS (BACKUP)", "Auto-updated from the Lavalle Haus OS board whenever a caption changes. Do not edit here; edit the card.", "Last updated: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
+    for (const c of postsCB) {
+      lines.push(c.name);
+      lines.push("Caption: " + ((c.desc || "").trim() || "(none yet)"));
+      lines.push("Hashtags: " + ((c.tags || "").trim() || "(none yet)"));
+      lines.push("");
+    }
+    const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
+      method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/plain; charset=utf-8" }, body: lines.join("\n"),
+    });
+    const dUp = await rUp.json().catch(() => ({}));
+    if (!rUp.ok) { res.status(400).json({ error: "doc update failed: " + ((dUp.error && dUp.error.message) || rUp.status) }); return; }
+    await kvSet("sisters_captions_doc_state", { sig: sigCB, at: Date.now() });
+    res.json({ ok: true, posts: postsCB.length });
     return;
   }
   // ── Post formats: face to camera / b-roll / carousel / static ─────────────
