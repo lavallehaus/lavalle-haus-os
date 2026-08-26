@@ -4966,8 +4966,8 @@ export default async function handler(req, res) {
     if (!name) { res.status(400).json({ error: "name required" }); return; }
     const gt = await googleToken();
     if (!gt) { res.status(400).json({ error: "google_not_connected" }); return; }
-    const q = encodeURIComponent("name contains '" + name + "' and trashed = false");
-    const fr = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name,mimeType,parents)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gt } })).json();
+    const q = encodeURIComponent("name contains '" + name + "' and trashed = " + ((req.body || {}).trashed ? "true" : "false"));
+    const fr = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name,mimeType,parents,modifiedTime,trashed)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gt } })).json();
     res.json({ files: fr.files || [] });
     return;
   }
