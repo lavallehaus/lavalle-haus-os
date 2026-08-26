@@ -2482,7 +2482,10 @@ export default async function handler(req, res) {
     for (const oE of ordersPS) {
       if (!(Number((((oE.node || {}).totalPriceSet || {}).shopMoney || {}).amount) > 0)) continue;
       const seenT = new Set();
-      for (const liE of (((oE.node || {}).lineItems || {}).edges || [])) { const k2 = String((liE.node || {}).title || "").toLowerCase(); if (k2 && !seenT.has(k2)) { seenT.add(k2); paidOrders30[k2] = (paidOrders30[k2] || 0) + 1; } }
+      // The product's own line must carry revenue too — a free-gift line (the
+      // $50+ body-care promo adds Bath Salts at $0) rides inside a PAID order
+      // and would otherwise read as a purchase of the gift.
+      for (const liE of (((oE.node || {}).lineItems || {}).edges || [])) { const li2 = liE.node || {}; if (!(Number(((li2.discountedTotalSet || {}).shopMoney || {}).amount) > 0)) continue; const k2 = String(li2.title || "").toLowerCase(); if (k2 && !seenT.has(k2)) { seenT.add(k2); paidOrders30[k2] = (paidOrders30[k2] || 0) + 1; } }
     }
     const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle createdAt totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
     const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
@@ -2500,11 +2503,11 @@ export default async function handler(req, res) {
       const pg = byPath["/products/" + n.handle] || null;
       const sess30 = pg ? pg.sess : null;
       // Shopify's only per-page session dimension is LANDING page, so a buyer
-      // who arrived via a collection or the homepage never shows up in pg.chk —
-      // a SKU with real sales would read 0%. Credit known PAID buyers instead
-      // (units would let $0 gifted PR/UGC orders read as conversions), capped
-      // at sessions so the rate stays ≤ 100%.
-      const buyers30 = pg ? Math.max(pg.chk, Math.min(paidOrders30[tKey] || 0, pg.sess)) : 0;
+      // who arrived via a collection or the homepage never lands in pg.chk —
+      // and pg.chk itself counts sessions that landed here then bought ANYTHING.
+      // Neither is product conversion. Numerator = paid orders whose own line
+      // for this product carried revenue, capped at sessions (rate ≤ 100%).
+      const buyers30 = pg ? Math.min(paidOrders30[tKey] || 0, pg.sess) : 0;
       const cvr = pg && pg.sess > 0 ? Math.round((buyers30 / pg.sess) * 1000) / 10 : null;
       const cvrCredited = !!(pg && pg.sess > 0 && buyers30 > pg.chk);
       const tracked = (n.variants.edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false);
