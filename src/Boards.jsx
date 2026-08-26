@@ -372,6 +372,60 @@ function LaunchCalendar({ items, pending, onOpen, wide = false }) {
   );
 }
 
+// ── Hover intelligence panel (owner/admin only — carries financials) ─────────
+// Hovering (or long-pressing) a product card in the focused Inventory view
+// floats the SKU's live numbers: velocity, money, traffic, conversion, cover,
+// Amazon, and the single lever to pull next week.
+function StatsHover({ name, anchor, onClose }) {
+  const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const [stats, setStats] = useState(undefined);
+  useEffect(() => {
+    let dead = false;
+    const cached = (window.__lhStats && Date.now() - window.__lhStats.at < 10 * 60 * 1000) ? window.__lhStats.data : null;
+    const use = (d) => { if (!dead) setStats(((d || {}).byKey || {})[name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()] || null); };
+    if (cached) use(cached);
+    else fetch("/api/data?op=ops_product_stats", { headers: { "x-app-token": localStorage.getItem("lh_token") || "" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.byKey) { window.__lhStats = { at: Date.now(), data: d }; use(d); } else use(null); })
+      .catch(() => use(null));
+    return () => { dead = true; };
+  }, [name]);
+  if (stats === null) return null;
+  const row = (label, val, strong) => (val == null ? null : (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "3px 0" }}>
+      <span style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 1.2, textTransform: "uppercase", color: "#8F8676" }}>{label}</span>
+      <span style={{ fontFamily: sans, fontSize: 11.5, fontWeight: strong ? 600 : 500, color: "#1A1A1A", textAlign: "right" }}>{val}</span>
+    </div>
+  ));
+  const arrow = (x) => (x == null ? null : x > 0 ? "▲ " + x + "%" : x < 0 ? "▼ " + Math.abs(x) + "%" : "→ 0%");
+  return (
+    <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+      style={{ position: "absolute", zIndex: 120, top: 10, left: "calc(100% - 24px)", width: 264, background: "rgba(255,255,255,0.98)", border: "1px solid #1A1A1A", borderRadius: 2, boxShadow: "0 18px 50px rgba(26,26,26,0.22)", padding: "13px 15px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B" }}>Last 30 days</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
+      </div>
+      {stats === undefined && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: "#8F8676" }}>Reading the numbers…</div>}
+      {stats && (
+        <>
+          {row("Units · 7 days", stats.u7 != null ? stats.u7 + (stats.wow != null ? "  " + arrow(stats.wow) : "") : null, true)}
+          {row("Net sales · 30d", stats.sales30 != null ? "$" + Number(stats.sales30).toLocaleString() : null)}
+          {row("Page visits · 30d", stats.sess30)}
+          {row("Conversion", stats.cvr != null ? stats.cvr + "%" + (stats.storeCvr != null ? " (store " + stats.storeCvr + "%)" : "") : null)}
+          {row("Repeat buyers", stats.rpt != null ? stats.rpt + "%" : null)}
+          {row("Weeks of cover", stats.cover)}
+          {stats.amz && row("Amazon · 30d", stats.amz.sold30 + " sold · " + stats.amz.avail + " avail" + (stats.amz.inbound ? " · " + stats.amz.inbound + " inbound" : ""))}
+          {stats.lever && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #EFEDE7", fontFamily: sans, fontSize: 11, lineHeight: 1.5, color: "#1A1A1A" }}>
+              <span style={{ fontWeight: 700 }}>Lever → </span>{stats.lever}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── UGC / PR Schedule — the column renders as a Sept–Dec 2026 calendar ───────
 // Each month: a mini date grid (the 15th marked — UGC to creators), the PR
 // shipment list from the month card underneath; click opens the month card.
@@ -427,6 +481,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // LH Operations folder mode (her ask: too many mixed columns) — the board
   // shows its sections as clickable files; opening one focuses that column.
   const [opsFocus, setOpsFocus] = useState(() => { try { return localStorage.getItem("lh_ops_focus") || null; } catch { return null; } });
+  const [statsFor, setStatsFor] = useState(null); // product name whose hover stats panel is open
   useEffect(() => { try { if (opsFocus) localStorage.setItem("lh_ops_focus", opsFocus); else localStorage.removeItem("lh_ops_focus"); } catch {} }, [opsFocus]);
   const [editCard, setEditCard] = useState(null);
   // Comment/activity attribution follows the login; localStorage only backs up
@@ -1268,6 +1323,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               const launchItemsL = isLaunchL ? cards.filter((x) => x.launchMonth || x.due).map((x) => { const ym = String(x.launchMonth || x.due).slice(0, 7); const day = x.due && String(x.due).slice(0, 7) === ym ? Number(String(x.due).slice(8, 10)) || null : null; return { card: x, ym, day }; }) : [];
               const webPendL = isLaunchL ? (() => { const wd = board.lists.find((l2) => /^web development/i.test((l2.name || "").trim())); return wd ? board.cards.filter((x) => x.listId === wd.id && (x.labels || []).some((lb) => (((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()) === "pending")) : []; })() : [];
               if (isLaunchL) cards = cards.filter((x) => !x.launchMonth && !x.due);
+              const statsHoverOk = folderMode && opsFocus && viewer.owner && /^inventory$/i.test((l.name || "").trim());
               // The Automations card is the owner's plain-English map of what runs
               // on its own — admin reference, not something the team works from.
               if (!viewer.owner) cards = cards.filter((x) => !/^automations\b/i.test(x.name || ""));
@@ -1337,8 +1393,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         onDragEnd={() => { setDragCard(null); setDropHint(null); }}
                         onDragOver={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); setDropHint(card.id); } }}
                         onDrop={(e) => { if (dragCard && dragCard !== card.id) { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); moveCard(dragCard, l.id, card.id, e.clientY > r.top + r.height / 2); } setDragCard(null); setDropHint(null); }}
+                        onMouseEnter={() => { if (statsHoverOk && !/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim())) { clearTimeout(window.__lhHovT); window.__lhHovT = setTimeout(() => setStatsFor(card.name), 350); } }}
+                        onMouseLeave={() => { clearTimeout(window.__lhHovT); window.__lhHovT = setTimeout(() => setStatsFor(null), 250); }}
                         onTouchStart={(e) => {
-                          if (folderMode && opsFocus) return;
+                          if (folderMode && opsFocus) { if (statsHoverOk && !/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim())) { clearTimeout(window.__lhHovT); window.__lhHovT = setTimeout(() => setStatsFor(card.name), 420); } return; }
                           const t = e.touches[0];
                           touchStartPos.current = { x: t.clientX, y: t.clientY };
                           clearTimeout(touchTimer.current);
@@ -1353,7 +1411,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 8) clearTimeout(touchTimer.current);
                         }}
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
-                        style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300 }) : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                        style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300, position: "relative", overflow: "visible" }) : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                        {statsHoverOk && statsFor === card.name && <StatsHover name={card.name} onClose={() => setStatsFor(null)} />}
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={folderMode && opsFocus ? { display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover" } : { display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>

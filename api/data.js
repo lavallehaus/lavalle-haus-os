@@ -2095,6 +2095,7 @@ export default async function handler(req, res) {
     const authOA = okKeyOA ? null : await getAuthEarly(req);
     if (!okKeyOA && !ownerRole(authOA)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const OPS_AUTOMATIONS = [
+      ["Product stats — hover intelligence", "Every 15 min (refreshes when 6h old)", "Builds each SKU's 30-day picture from Shopify analytics + the Amazon sync — weekly velocity and trend, net sales, page visits, true page conversion vs store average, weeks of cover, FBA stock — and names the single lever to pull next week. Shown when an admin hovers a product card in Inventory; never visible to team members."],
       ["Pre-order guard", "Every 15 min", "Watches the pre-order setup (model: the preorder TAG pins the button, the allocation is available > 0 + DENY on the capped three, Onyx Arched stays CONTINUE while allocation-less). Alarms if a tag disappears, a capped product loses DENY, its allocation hits zero (off sale under DENY), the storefront stops being purchasable, or any available/tags value moves between checks (spelled out old → new). Findings appear as an ⚠ card at the top of Inventory and clear when healthy. Never writes to Shopify."],
       ["To be filmed ⟷ PR pairing", "Every 15 min", "Every card in To be filmed (4 per Q) automatically gets a matching card in the PR column (name-matched, created once, never deleted), so PR always mirrors what's being filmed."],
       ["Inventory — Shopify autosync", "Every 15 min (re-runs when Shopify stock, product photos, or the Inventory column change)", "Keeps the Inventory column mirroring the products LIVE on the website: every live product gets a card automatically (unpublished SKUs and gift cards excluded), each card wears the product's current Shopify photo, the live on-hand count is written as the first line of the notes (your own notes stay underneath), each SKU carries an auto status tag (Live, Sold Out when on-hand hits zero, or Pre-Order) plus channel tags — Shopify automatic; Amazon automatic when the product matches the daily Amazon restock sync (a second ⟳ line shows FBA availability + inbound), or flagged by you — and the column stays grouped in her order — Body Care, Bundles, Diffusers, Candle Sand Vessels, Botanical Candles (phase-outs at the bottom) — with divider cards. A Pre-Orders card lists everything currently on pre-order (tagged pre-order, selling with no stock, or oversold) with its own human Notes section. Cards without a Shopify match (e.g. Amazon-only stock) are left alone."],
@@ -2389,6 +2390,75 @@ export default async function handler(req, res) {
   // Findings land as an ⚠ card at the top of the Inventory column; the card is
   // removed automatically when everything is clean again. Read-only by design:
   // this op NEVER writes to Shopify (rules 1-3).
+  // ── Product stats for the hover panel (owner-only; carries financials) ─────
+  // POST (pinger/owner) refreshes a 30-day per-SKU picture via ShopifyQL:
+  // velocity + WoW, net sales, page visits, true page conversion vs store,
+  // weeks of cover, Amazon FBA — and computes THE lever to pull next week.
+  // GET serves the cached blob to owners for the Inventory hover cards.
+  if (op === "ops_product_stats") {
+    const authPS = await getAuthEarly(req);
+    const okKeyPS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    if (req.method === "GET") {
+      if (!ownerRole(authPS)) { res.status(403).json({ error: "Owner only." }); return; }
+      res.json((await kvGet("ops_product_stats")) || { byKey: {}, at: 0 });
+      return;
+    }
+    if (!okKeyPS && !ownerRole(authPS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const stPS = (await kvGet("ops_product_stats")) || {};
+    if (!(req.body || {}).force && stPS.at && Date.now() - stPS.at < 6 * 3600 * 1000) { res.json({ ok: true, skipped: true }); return; }
+    const soPS = (await kvGet("shopify_oauth")) || {};
+    const stokPS = soPS.accessToken || soPS.token;
+    if (!stokPS || !soPS.shop) { res.json({ ok: false, error: "shopify_not_connected" }); return; }
+    const gqlPS = async (q) => { const r = await fetch(`https://${soPS.shop}/admin/api/2025-10/graphql.json`, { method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": stokPS }, body: JSON.stringify({ query: q }) }); return (await r.json()).data; };
+    const ql = async (q) => {
+      const d = await gqlPS(`query { shopifyqlQuery(query: ${JSON.stringify(q)}) { parseErrors tableData { columns { name } rows } } }`);
+      const t = d && d.shopifyqlQuery && d.shopifyqlQuery.tableData;
+      return t && Array.isArray(t.rows) ? t.rows : [];
+    };
+    const toMap = (rows) => { const m = {}; for (const r of rows) m[String(r[0] || "").toLowerCase()] = r.slice(1).map(Number); return m; };
+    const s30 = toMap(await ql("FROM sales SHOW net_items_sold, net_sales GROUP BY product_title SINCE -30d UNTIL today"));
+    const s7 = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -7d UNTIL today"));
+    const sPrev = toMap(await ql("FROM sales SHOW net_items_sold GROUP BY product_title SINCE -14d UNTIL -7d"));
+    const pages = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout GROUP BY landing_page_path SINCE -30d UNTIL today ORDER BY sessions DESC LIMIT 100");
+    const store = await ql("FROM sessions SHOW sessions, sessions_that_completed_checkout SINCE -30d UNTIL today");
+    const storeCvr = store.length && Number(store[0][0]) > 0 ? Math.round((Number(store[0][1]) / Number(store[0][0])) * 1000) / 10 : null;
+    const byPath = {}; for (const r of pages) byPath[String(r[0] || "")] = { sess: Number(r[1]) || 0, chk: Number(r[2]) || 0 };
+    const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
+    const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
+    const AMZ_RX = [[/candle sand|sand ?wax refill/i, "sandwax refill pouch"], [/small apple|mini.*apple/i, "mini spiced apple botanical candle"], [/large apple/i, "large spiced apple botanical candle"], [/bath salt/i, "bath salts"], [/dough bowl/i, "dark dough bowl"]];
+    const normPS = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const byKey = {};
+    for (const e of (((prodsD || {}).products || {}).edges || [])) {
+      const n = e.node; const tKey = String(n.title || "").toLowerCase();
+      const key = normPS(n.title);
+      const units30 = (s30[tKey] || [])[0] || 0;
+      const sales30 = Math.round(((s30[tKey] || [])[1] || 0));
+      const u7 = (s7[tKey] || [])[0] || 0;
+      const uPrev = (sPrev[tKey] || [])[0] || 0;
+      const wow = uPrev > 0 ? Math.round(((u7 - uPrev) / uPrev) * 100) : (u7 > 0 ? 100 : null);
+      const pg = byPath["/products/" + n.handle] || null;
+      const sess30 = pg ? pg.sess : null;
+      const cvr = pg && pg.sess > 0 ? Math.round((pg.chk / pg.sess) * 1000) / 10 : null;
+      const tracked = (n.variants.edges || []).some((v) => ((v.node.inventoryItem || {}).tracked) !== false);
+      const onHand = tracked ? n.totalInventory : (n.variants.edges || []).reduce((a, v) => a + (Number(v.node.inventoryQuantity) || 0), 0);
+      const weekly = u7 > 0 ? u7 : units30 / 4.3;
+      const cover = onHand > 0 && weekly > 0 ? Math.round((onHand / weekly) * 10) / 10 : null;
+      const amzHit = amzItems.filter((it) => { const m = AMZ_RX.find(([rx]) => rx.test(it.name || "")); return m && m[1] === key; });
+      const amz = amzHit.length ? { sold30: amzHit.reduce((a, x) => a + (Number(x.sold30) || 0), 0), avail: amzHit.reduce((a, x) => a + (Number(x.available) || 0), 0), inbound: amzHit.reduce((a, x) => a + (Number(x.inbound) || 0), 0) } : null;
+      let lever = "Hold — steady; keep the cadence.";
+      const isPre = (n.tags || []).some((t) => /preorder/i.test(t));
+      if (cover != null && cover <= 2 && !isPre) lever = "Stock — about " + cover + " weeks of cover left; reorder or produce this week.";
+      else if (sess30 != null && sess30 >= 40 && cvr != null && storeCvr != null && cvr < storeCvr * 0.6) lever = "Page — traffic is there (" + sess30 + " visits) but conversion lags (" + cvr + "% vs store " + storeCvr + "%); rework imagery, price framing, or add reviews.";
+      else if (cvr != null && storeCvr != null && cvr >= storeCvr && (sess30 || 0) < 40) lever = "Traffic — the page converts (" + cvr + "%) but only " + (sess30 || 0) + " visits in 30 days; feature it in a Sisters post, PR gifting, or a homepage slot.";
+      else if (wow != null && wow <= -25) lever = "Momentum — units fell " + Math.abs(wow) + "% week over week; refresh the content angle or pair it into a set.";
+      else if (amz && amz.avail === 0 && amz.sold30 > 0) lever = "Amazon stock — it sells (" + amz.sold30 + "/30d) but FBA is empty; ship the recommended replenishment.";
+      byKey[key] = { u7, wow, sales30, sess30, cvr, storeCvr, cover, amz, lever };
+    }
+    await kvSet("ops_product_stats", { byKey, storeCvr, at: Date.now() });
+    res.json({ ok: true, products: Object.keys(byKey).length, storeCvr });
+    return;
+  }
+
   if (op === "ops_preorder_guard" && req.method === "POST") {
     // Pre-order guard v3 — model corrected Aug 26 by the theme session's reply:
     // the "preorder" TAG pins the pre-order button (custom Liquid gate), and the
