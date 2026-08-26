@@ -98,16 +98,21 @@ const BG_PRESETS = [
 function CoverCarousel({ images, alt }) {
   const [i, setI] = React.useState(0);
   const [full, setFull] = React.useState(false);
+  // frame follows the image's real shape — a fixed 4:5 letterboxed landscape
+  // deck pages behind wide borders (her note, Aug 26)
+  const [ar, setAr] = React.useState(null);
   const startRef = React.useRef(null);
   const n = images.length;
   const go = (d) => setI((p) => (p + d + n) % n);
   const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 28, height: 28, border: "1px solid rgba(143,134,118,0.5)", borderRadius: 14, background: "rgba(255,255,255,0.92)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 17, lineHeight: "26px", cursor: "pointer", padding: 0, boxShadow: "0 1px 5px rgba(0,0,0,0.18)" };
   return (
-    <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y", aspectRatio: "4/5", background: "#F2EFE9", overflow: "hidden" }}
+    <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y", aspectRatio: ar || "4/5", background: "#F2EFE9", overflow: "hidden" }}
       onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
       onPointerUp={(e) => { const st = startRef.current; startRef.current = null; if (!st) return; const dx = e.clientX - st.x, dy = e.clientY - st.y; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { e.stopPropagation(); e.preventDefault(); go(dx < 0 ? 1 : -1); } }}
       onClickCapture={(e) => { const st = startRef.current; if (st && Math.abs(e.clientX - st.x) > 40) { e.stopPropagation(); e.preventDefault(); } }}>
-      <img src={images[i].url} alt={alt || ""} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      <img src={images[i].url} alt={alt || ""} draggable={false}
+        onLoad={(e) => { const im = e.currentTarget; if (im.naturalWidth && im.naturalHeight) setAr(im.naturalWidth + " / " + im.naturalHeight); }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
       <div style={{ position: "absolute", top: 8, left: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.6, textTransform: "uppercase", color: "#71716C", background: "rgba(255,255,255,0.75)", padding: "2px 6px", borderRadius: 1 }}>{images[i].name || ("" + (i + 1) + " / " + n)}</div>
       <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 6 }}>‹</button>
       <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 6 }}>›</button>
