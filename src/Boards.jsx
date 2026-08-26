@@ -1324,10 +1324,11 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       </div>
                     )}
                   </div>
-                  <div style={folderMode && opsFocus ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, alignItems: "start" } : { display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
+                  <div style={folderMode && opsFocus ? { display: "flex", flexDirection: "column", gap: 12 } : { display: "flex", flexDirection: "column", gap: 6, maxHeight: "calc(100vh - 285px)", overflowY: "auto" }}>
                     {isCalL && <div style={{ gridColumn: "1 / -1" }}><PrCalendar wide={folderMode && !!opsFocus} monthCards={calMonthsL} ugcNote={((calNoteL && calNoteL.desc) || "UGC delivered to creators no later than the 15th").replace(/^[-•\s]*/, "")} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
                     {isLaunchL && <div style={{ gridColumn: "1 / -1" }}><LaunchCalendar wide={folderMode && !!opsFocus} items={launchItemsL} pending={webPendL} onOpen={(id) => setEditCard({ boardKey: open, cardId: id })} /></div>}
-                    {cards.map((card) => (
+                    {(() => {
+                      const renderCard = (card) => (
                       <div key={card.id} data-dragcard={card.id} data-draglist={l.id}
                         onClick={() => { if (Date.now() - suppressClick.current < 500) return; setEditCard({ boardKey: open, cardId: card.id }); }}
                         draggable
@@ -1350,7 +1351,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 8) clearTimeout(touchTimer.current);
                         }}
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
-                        style={{ ...(folderMode && opsFocus && /^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { gridColumn: "1 / -1" } : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                        style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300 }) : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={folderMode && opsFocus ? { display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover" } : { display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
@@ -1441,7 +1442,16 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                      if (!(folderMode && opsFocus)) return cards.map(renderCard);
+                      // one row per category: dividers/banners break the flow; each
+                      // run of products becomes a single sideways-scrolling strip
+                      const out = []; let run = [];
+                      const flushRun = () => { if (run.length) { out.push(<div key={"strip" + out.length} style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "stretch", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>{run.map(renderCard)}</div>); run = []; } };
+                      cards.forEach((cardR) => { if (/^(—|⚠|pre-orders|automations)/i.test((cardR.name || "").trim())) { flushRun(); out.push(renderCard(cardR)); } else run.push(cardR); });
+                      flushRun();
+                      return out;
+                    })()}
                   </div>
                   <button onClick={() => setEditCard({ boardKey: open, listId: l.id, isNew: true })}
                     style={{ width: "100%", marginTop: 6, textAlign: "left", background: "transparent", border: "none", borderRadius: 8, color: c.sub, fontFamily: sans, fontSize: 12.5, padding: "7px 8px", cursor: "pointer" }}>+ Add a card</button>
