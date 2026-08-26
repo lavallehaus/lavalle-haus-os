@@ -2468,7 +2468,7 @@ export default async function handler(req, res) {
       for (const [k, a] of Object.entries(accPS)) { s30[k] = [a.u30, a.sales30]; s7[k] = [a.u7]; sPrev[k] = [a.uPrev]; }
     }
     if (storeCvr == null && storeCvrInj != null) storeCvr = storeCvrInj;
-    const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
+    const prodsD = await gqlPS(`query { products(first: 100, query: "status:active") { edges { node { title handle createdAt totalInventory tags variants(first: 3) { edges { node { inventoryItem { tracked } inventoryQuantity } } } } } } }`);
     const amzItems = Object.values((((await kvGet("lavalle_data")) || [])[0] || (await kvGet("lavalle_data")) || {}).amazonRestock ? ((Array.isArray(await kvGet("lavalle_data")) ? (await kvGet("lavalle_data"))[0] : await kvGet("lavalle_data")).amazonRestock.items || {}) : {});
     const AMZ_RX = [[/candle sand|sand ?wax refill/i, "sandwax refill pouch"], [/small apple|mini.*apple/i, "mini spiced apple botanical candle"], [/large apple/i, "large spiced apple botanical candle"], [/bath salt/i, "bath salts"], [/dough bowl/i, "dark dough bowl"]];
     const normPS = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -2499,7 +2499,18 @@ export default async function handler(req, res) {
       const amz = amzHit.length ? { sold30: amzHit.reduce((a, x) => a + (Number(x.sold30) || 0), 0), avail: amzHit.reduce((a, x) => a + (Number(x.available) || 0), 0), inbound: amzHit.reduce((a, x) => a + (Number(x.inbound) || 0), 0) } : null;
       let lever = "Hold — steady; keep the cadence.";
       const isPre = (n.tags || []).some((t) => /preorder/i.test(t));
-      if (cover != null && cover <= 2 && !isPre) lever = "Stock — about " + cover + " weeks of cover left; reorder or produce this week.";
+      const ageDays = n.createdAt ? Math.round((Date.now() - new Date(n.createdAt).getTime()) / 86400000) : null;
+      // Zero sales outranks every other lever — cover, WoW, and conversion are
+      // all meaningless without a sale, so without this branch a dead SKU falls
+      // through the whole chain and reads "Hold — steady."
+      if (units30 === 0) {
+        if (amz && amz.sold30 > 0) lever = "Channel — Amazon moves " + amz.sold30 + "/30d but the site sold zero; the demand is real, so fix site visibility (homepage, collections, email).";
+        else if (isPre) lever = "Pre-order — zero orders in 30 days; push the pre-order story in email and a Sisters post, or revisit the offer.";
+        else if (ageDays != null && ageDays <= 14) lever = "Launch — " + ageDays + " days old with no sales yet; seed it now with a Sisters post, homepage slot, and email feature.";
+        else if (sess30 != null && sess30 >= 40) lever = "Page — " + sess30 + " visits in 30 days and not one sale; the page is the blocker — rework imagery, price framing, or add reviews.";
+        else lever = "Dormant — zero sales and only " + (sess30 || 0) + " visits in 30 days; it will not sell unseen — feature it (Sisters post, PR gifting, homepage) or decide to retire it.";
+      }
+      else if (cover != null && cover <= 2 && !isPre) lever = "Stock — about " + cover + " weeks of cover left; reorder or produce this week.";
       else if (sess30 != null && sess30 >= 40 && cvr != null && storeCvr != null && cvr < storeCvr * 0.6) lever = "Page — traffic is there (" + sess30 + " visits) but conversion lags (" + cvr + "% vs store " + storeCvr + "%); rework imagery, price framing, or add reviews.";
       else if (cvr != null && storeCvr != null && cvr >= storeCvr && (sess30 || 0) < 40) lever = "Traffic — the page converts (" + cvr + "%) but only " + (sess30 || 0) + " visits in 30 days; feature it in a Sisters post, PR gifting, or a homepage slot.";
       else if (wow != null && wow <= -25) lever = "Momentum — units fell " + Math.abs(wow) + "% week over week; refresh the content angle or pair it into a set.";
