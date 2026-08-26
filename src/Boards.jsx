@@ -1419,6 +1419,24 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               <PRHub data={prHub} onSave={onSavePrHub} />
             </div>
           )}
+          {open === "rd" && (() => {
+            // R&D mirrors the LH Operations Launch Timeline — SAME cards, read
+            // live and opened in place, so supplier ETAs and launch dates stay
+            // one source of truth while she works R&D at a glance.
+            const ops = boards["rh-operations"]; if (!ops || !ops.lists) return null;
+            const lt = ops.lists.find((l0) => /^launch timeline$/i.test((l0.name || "").trim())); if (!lt) return null;
+            const items = ops.cards.filter((x) => x.listId === lt.id && (x.launchMonth || x.due)).map((x) => { const ym = String(x.launchMonth || x.due).slice(0, 7); const day = x.due && String(x.due).slice(0, 7) === ym ? Number(String(x.due).slice(8, 10)) || null : null; return { card: x, ym, day }; });
+            const wd = ops.lists.find((l0) => /^web development/i.test((l0.name || "").trim()));
+            const pending = wd ? ops.cards.filter((x) => x.listId === wd.id && (x.labels || []).some((lb) => (((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase()) === "pending")) : [];
+            const fl = ops.lists.find((l0) => /^to be filmed/i.test((l0.name || "").trim()));
+            const films = fl ? ops.cards.filter((x) => x.listId === fl.id && x.launchMonth).map((x) => ({ card: x, ym: String(x.launchMonth).slice(0, 7) })) : [];
+            return (
+              <div style={{ background: "rgba(250,249,247,0.96)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 14px 4px", marginBottom: 14 }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B", marginBottom: 8 }}>Launch Timeline · live from LH Operations — open a card to edit the shared plan</div>
+                <LaunchCalendar wide items={items} pending={pending} films={films} onOpen={(id) => setEditCard({ boardKey: "rh-operations", cardId: id })} />
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
             {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : board.lists).map((l) => {
               let cards = board.cards.filter((x) => x.listId === l.id);
