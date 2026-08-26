@@ -61,7 +61,7 @@ function reconcile(items, flags) {
   return out;
 }
 
-export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave, canInvite = false }) {
+export default function ActionsBoard({ data = {}, flags = [], recurring = [], onSave, canInvite = false, boards = {} }) {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState(() => ({
@@ -430,6 +430,35 @@ export default function ActionsBoard({ data = {}, flags = [], recurring = [], on
           <button onClick={addMember} style={{ ...btnGhost, color: c.ink, borderColor: c.clay }}>+ Add member</button>
         </div>
       </div>
+
+      {/* board access matrix — the one place to SEE who can open which board.
+          Read-only: editing stays on each board's "Who can open this board". */}
+      {canInvite && Object.keys(boards).some((k) => !k.startsWith("_")) && (
+        <div style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <span style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, fontFamily: sans }}>Board access · who can open what</span>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>Change it on the board — the ⚲ control in its header</span>
+          </div>
+          {Object.entries(boards).filter(([k, b]) => !k.startsWith("_") && b && b.lists).map(([k, b]) => {
+            const acc = (b.access || []).filter(Boolean);
+            return (
+              <div key={k} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "6px 0", borderBottom: "1px solid #00000008", flexWrap: "wrap" }}>
+                <span style={{ fontFamily: serif, fontSize: 13.5, color: c.ink, minWidth: 180 }}>{b.name || k}</span>
+                {acc.length === 0
+                  ? <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.sub }}>Everyone on the team</span>
+                  : acc.map((n) => (
+                      <span key={n} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 9px", fontFamily: sans, fontSize: 10, color: c.ink }}>{n}</span>
+                    ))}
+                <span style={{ flex: 1 }} />
+                {acc.length > 0 && state.team.filter((t) => !acc.some((n) => n === t.name || (t.email && String(n).toLowerCase() === String(t.email).toLowerCase()))).map((t) => (
+                  <span key={t.id} title={t.name + " cannot open this board (owners always can)"} style={{ fontFamily: sans, fontSize: 9.5, color: "#B0483A", textDecoration: "line-through" }}>{t.name.split(" ")[0]}</span>
+                ))}
+              </div>
+            );
+          })}
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>Owners always see every board. A struck-through name is shut out of that board; "Everyone" means the board carries no access list.</div>
+        </div>
+      )}
 
       {/* new manual item draft */}
       {draft && (
