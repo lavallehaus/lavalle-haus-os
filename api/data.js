@@ -2428,7 +2428,9 @@ export default async function handler(req, res) {
         }
       }
       const key = pp.title;
-      if (key in stPG.avail && stPG.avail[key] !== avail) alerts.push("• " + pp.title + " — available moved " + stPG.avail[key] + " → " + avail + " since the last check. If nobody changed the allocation on purpose, something overwrote it.");
+      // sales draw the allocation DOWN — that is normal and stays quiet.
+      // an INCREASE on a protected product means someone wrote stock to it.
+      if (key in stPG.avail && avail > stPG.avail[key]) alerts.push("• " + pp.title + " — available INCREASED " + stPG.avail[key] + " → " + avail + ". Nobody should be writing stock to a pre-order product — check who did.");
       const tagsNow = (pp.tags || []).slice().sort().join(", ");
       if (key in stPG.tags && stPG.tags[key] !== tagsNow) alerts.push("• " + pp.title + " — TAGS CHANGED: [" + stPG.tags[key] + "] → [" + tagsNow + "].");
       stPG.avail[key] = avail; stPG.tags[key] = tagsNow;
