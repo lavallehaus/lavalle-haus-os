@@ -5100,6 +5100,25 @@ export default async function handler(req, res) {
         if (!rM.ok) { res.status(400).json({ error: (dM.error && dM.error.message) || "drive_error" }); return; }
         res.json(dM); return;
       }
+      if (op === "drive_revisions") {
+        // List a Drive file's revisions, or fetch one as base64 — built Aug 26
+        // to recover Monday-evening Strategy Outline builds (Drive keeps binary
+        // revisions ~30 days; the outline prints every post's caption).
+        const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        if (!id) { res.status(400).json({ error: "id required" }); return; }
+        if (b.rev) {
+          const rev = String(b.rev).replace(/[^a-zA-Z0-9_-]/g, "");
+          const rR = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/revisions/${rev}?alt=media`, { headers: AUTH });
+          if (!rR.ok) { res.status(400).json({ error: "revision fetch failed: " + rR.status }); return; }
+          const buf = Buffer.from(await rR.arrayBuffer());
+          res.json({ ok: true, b64: buf.toString("base64"), bytes: buf.length });
+          return;
+        }
+        const rL = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/revisions?fields=revisions(id,modifiedTime,originalFilename,size)&pageSize=100`, { headers: AUTH });
+        const dL = await rL.json();
+        if (!rL.ok) { res.status(400).json({ error: (dL.error && dL.error.message) || "drive_error" }); return; }
+        res.json(dL); return;
+      }
       if (op === "drive_mkdir") {
         const name = String(b.name || "").slice(0, 120);
         const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
