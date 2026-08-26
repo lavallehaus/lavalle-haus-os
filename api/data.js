@@ -2474,6 +2474,38 @@ export default async function handler(req, res) {
       else if (amz && amz.avail === 0 && amz.sold30 > 0) lever = "Amazon stock — it sells (" + amz.sold30 + "/30d) but FBA is empty; ship the recommended replenishment.";
       byKey[key] = { u7, wow, sales30, sess30, cvr, storeCvr, cover, amz, lever };
     }
+    // Bundles sell as their EXPANDED COMPONENTS (no parent line item on the
+    // order — e.g. The Essentials Pair lands as candle + scrub), so the bundle
+    // SKU is credited by finding orders that contain its full component set.
+    try {
+      const BUNDLE_MAP = { "the essentials pair": ["mini spiced apple botanical candle", "vanilla cashmere body scrub"] };
+      try {
+        const bd2 = await gqlPS(`query { products(first: 20, query: "status:active") { edges { node { title variants(first: 3) { edges { node { requiresComponents productVariantComponents(first: 8) { nodes { productVariant { product { title } } } } } } } } } } }`);
+        for (const e2 of (((bd2 || {}).products || {}).edges || [])) {
+          const comps = [];
+          for (const vE of (e2.node.variants.edges || [])) for (const cN of (((vE.node || {}).productVariantComponents || {}).nodes || [])) { const t2 = normPS((((cN || {}).productVariant || {}).product || {}).title); if (t2) comps.push(t2); }
+          if (comps.length >= 2) BUNDLE_MAP[normPS(e2.node.title)] = [...new Set(comps)];
+        }
+      } catch (eBm) {}
+      const isoB = new Date(Date.now() - 30 * 86400000).toISOString();
+      const oB = await gqlPS(`query { orders(first: 250, query: "created_at:>='${isoB}'") { edges { node { createdAt lineItems(first: 25) { edges { node { title quantity discountedTotalSet { shopMoney { amount } } } } } } } } }`);
+      for (const [bk, comps] of Object.entries(BUNDLE_MAP)) {
+        if (!byKey[bk]) continue;
+        let u30 = 0, u7 = 0, uPrev = 0, sales30 = 0;
+        for (const oE of (((oB || {}).orders || {}).edges || [])) {
+          const titles = ((oE.node.lineItems || {}).edges || []).map((x) => normPS(x.node.title));
+          if (!comps.every((c2) => titles.includes(c2))) continue;
+          const ageD = (Date.now() - new Date(oE.node.createdAt).getTime()) / 86400000;
+          u30 += 1; if (ageD <= 7) u7 += 1; else if (ageD <= 14) uPrev += 1;
+          for (const liE of ((oE.node.lineItems || {}).edges || [])) if (comps.includes(normPS(liE.node.title))) sales30 += Number(((liE.node.discountedTotalSet || {}).shopMoney || {}).amount) || 0;
+        }
+        if (u30 > 0) {
+          const b = byKey[bk];
+          b.u7 = u7; b.sales30 = Math.round(sales30); b.wow = uPrev > 0 ? Math.round(((u7 - uPrev) / uPrev) * 100) : (u7 > 0 ? 100 : null);
+          b.lever = (u30 === 1 ? "1 pair sold this month" : u30 + " pairs sold this month") + " — the bundle sells as its components on orders, so these are credited from paired purchases. " + (b.lever || "");
+        }
+      }
+    } catch (eBd) {}
     await kvSet("ops_product_stats", { byKey, storeCvr, at: Date.now() });
     res.json({ ok: true, products: Object.keys(byKey).length, storeCvr });
     return;
