@@ -2281,8 +2281,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               if (mHead) { groups.push({ name: mHead[1], head: L, subs: [] }); continue; }
               const mSub = /^(.+?)\s*→\s*(.+)$/.exec(lb);
               const mC = /^courtney\s+(.+)$/i.exec(lb);
-              const g = mSub ? groups.find((g0) => g0.name.toLowerCase() === mSub[1].toLowerCase()) : mC ? groups.find((g0) => g0.name.toLowerCase() === mC[1].toLowerCase()) : null;
-              if (g) { g.subs.push({ ...L, short: mSub ? mSub[2] : "Courtney" }); continue; }
+              // any "Courtney …" link belongs to the month group even when the
+              // suffix isn't the month name ("Courtney drafted")
+              const g = mSub ? groups.find((g0) => g0.name.toLowerCase() === mSub[1].toLowerCase()) : mC ? (groups.find((g0) => g0.name.toLowerCase() === mC[1].toLowerCase()) || groups[0]) : null;
+              if (g) { g.subs.push({ ...L, short: mSub ? mSub[2] : (groups.some((g0) => g0.name.toLowerCase() === (mC[1] || "").toLowerCase()) ? "Courtney" : lb) }); continue; }
               rest.push(L);
             }
             const row = (L, label, small) => (
