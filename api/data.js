@@ -5055,7 +5055,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session") {
+  if (op === "drive_meta" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session" || op === "drive_revisions") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
