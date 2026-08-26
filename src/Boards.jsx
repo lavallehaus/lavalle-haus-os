@@ -400,7 +400,7 @@ function StatsHover({ name, anchor, onClose }) {
   const arrow = (x) => (x == null ? null : x > 0 ? "▲ " + x + "%" : x < 0 ? "▼ " + Math.abs(x) + "%" : "→ 0%");
   return (
     <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-      style={{ position: "absolute", zIndex: 120, top: 10, left: "calc(100% - 24px)", width: 264, background: "rgba(255,255,255,0.98)", border: "1px solid #1A1A1A", borderRadius: 2, boxShadow: "0 18px 50px rgba(26,26,26,0.22)", padding: "13px 15px" }}>
+      style={{ position: "absolute", zIndex: 120, top: 8, left: 8, right: 8, maxHeight: "calc(100% - 16px)", overflowY: "auto", background: "rgba(255,255,255,0.97)", border: "1px solid #1A1A1A", borderRadius: 2, boxShadow: "0 18px 50px rgba(26,26,26,0.22)", padding: "13px 15px", backdropFilter: "blur(4px)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
         <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B" }}>Last 30 days</span>
         <button onClick={onClose} style={{ background: "none", border: "none", color: "#8F8676", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
