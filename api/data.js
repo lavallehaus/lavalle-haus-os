@@ -5642,6 +5642,12 @@ export default async function handler(req, res) {
     // very next save read as stale (her Approved-tag report, Aug 26).
     const revs = {}, stamps = {};
     for (const [bk, bd] of Object.entries(toStore.boards || {})) { if (bd && bd._rev) revs[bk] = bd._rev; if (bd && bd._stamp) stamps[bk] = bd._stamp; }
+    // A refusal must be UNMISSABLE. Old app bundles (a resumed phone PWA can
+    // run one for days) ignore staleBoards in a 200 body and report success —
+    // that silently ate her Post 3 video (Aug 27). 409 makes every client,
+    // however old, show its NOT SAVED alert; new bundles parse the body for
+    // the precise message. The accepted parts of the save ARE stored.
+    if (staleBoards.length || staleKeys.length) { res.status(409).json({ ok: false, staleBoards, staleKeys, revs, stamps, keyStamps }); return; }
     res.json({ ok: true, staleBoards, staleKeys, revs, stamps, keyStamps });
   }
 }

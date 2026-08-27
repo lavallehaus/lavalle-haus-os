@@ -98,6 +98,23 @@ async function dbSave(record) {
         }
       } catch (e2) {}
     }
+    if (r.status === 409) {
+      // stale-copy refusal: some boards/keys were kept at the server's newer
+      // version; everything else in this save was stored
+      try {
+        const dj = await r.clone().json();
+        const KEY_LABELS9 = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes" };
+        const names9 = [
+          ...((dj && dj.staleBoards) || []).map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk),
+          ...((dj && dj.staleKeys) || []).map((k) => KEY_LABELS9[k] || k),
+        ];
+        if (Date.now() - lastSaveAlert > 8000) {
+          lastSaveAlert = Date.now();
+          alert("NOT SAVED for " + (names9.join(", ") || "part of this change") + " — this device's copy is older than the server's, so the server kept its newer version.\n\nReload the app to pick up the latest, then redo that change. Everything else in this save was stored.");
+        }
+      } catch (e9) {}
+      return false;
+    }
     if (!r.ok) {
       const mb = (body.length / 1048576).toFixed(2);
       const tooBig = r.status === 413;
