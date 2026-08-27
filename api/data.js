@@ -2346,7 +2346,7 @@ export default async function handler(req, res) {
     const bdCC = blobCC && blobCC.boards && blobCC.boards[SBOARD.key];
     if (!bdCC || !tilesCC.length) { res.json({ ok: false }); return; }
     const schedCC = bdCC.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
-    const RX_CC = /^(post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?)(?:\s*[—–-]\s*(.+))?$/i;
+    const RX_CC = /^(post\s*\d+(?:\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday))?(?:\s+[A-Za-z]+\s+\d+)?)(?:\s*[—–-]\s*(.+))?$/i;
     const cardCC = (n) => bdCC.cards.find((c) => schedCC.includes(c.listId) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
     const hashCC = (x) => createHash("sha256").update(String(x)).digest("hex").slice(0, 10);
     const stCC = (await kvGet("sisters_card_concepts_state")) || { done: {}, set: {} };
@@ -3473,7 +3473,7 @@ export default async function handler(req, res) {
         const sched2 = bdW.lists.find((l) => /^schedule\s*22\s*[-–]\s*42$/i.test((l.name || "").trim()));
         const inSched = (c) => (sched1 && c.listId === sched1.id) || (sched2 && c.listId === sched2.id);
         const cardAt = (n) => bdW.cards.find((c) => inSched(c) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
-        const NAME_RX = /^post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/i; // date sits between number and concept
+        const NAME_RX = /^post\s*\d+(?:\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday))?(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/i; // weekday + date sit between number and concept (weekday added Aug 27 — her MWF-legibility ask)
         const offsetW = g === "1" ? 0 : 21;
         // Dates (rule Aug 25 2026): cycle starts Wed Aug 26; each K advances a
         // day, a C shares the day of the K before it — so with C tiles on the
@@ -3494,7 +3494,7 @@ export default async function handler(req, res) {
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
           const dW = new Date(START_W + (t.tag === "C" ? Math.max(0, dayW - 1) : dayW) * 86400000);
           if (t.tag !== "C") dayW++;
-          const base = "Post " + n + " " + dW.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+          const base = "Post " + n + " " + dW.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) + " " + dW.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
           const hasCTag = (card.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
           if (t.tag === "C") {
             const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";
@@ -3737,7 +3737,7 @@ export default async function handler(req, res) {
       const start = new Date(Math.max(Date.now() + 86400000, lastT + 86400000));
       for (let n = 1; n <= 21; n++) {
         const day = new Date(start.getTime() + (n - 1) * 86400000);
-        bdS.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: schedS.id, name: "Post " + n + " " + MOS[day.getUTCMonth()] + " " + day.getUTCDate(), desc: "", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
+        bdS.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: schedS.id, name: "Post " + n + " " + day.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) + " " + MOS[day.getUTCMonth()] + " " + day.getUTCDate(), desc: "", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
       }
       await kvSet("lavalle_data", blobS);
       st.stage = null;
