@@ -3479,8 +3479,31 @@ export default async function handler(req, res) {
         // day, a C shares the day of the K before it — so with C tiles on the
         // MWF slots, Courtney lands Mon/Wed/Fri. Grid 2 starts after grid 1's days.
         const START_W = Date.UTC(2026, 7, 26);
-        let dayW = 0;
-        if (g === "2") { const r1W = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] }; dayW = (r1W.tiles || []).filter((t0) => t0.tag !== "C").length; }
+        // Cadence rule (hers, Aug 27 — replaces the MWF-second-post model):
+        // ONE post per day maximum. C (Courtney) posts snap forward to the next
+        // Mon/Wed/Fri; K posts take the next day; days between stay empty. One
+        // sanctioned exception: Fri Aug 28 2026 carries TWO posts (the C that
+        // lands there + the following K) to catch the cycle up. Grid order is
+        // untouched — this is dating only. Grid 2's walk continues from grid
+        // 1's last assigned day.
+        const walkDaysW = (tags) => {
+          const DOUBLE_DAY = Date.UTC(2026, 7, 28);
+          const nextMWF = (t0) => { let t = t0 + 86400000; while (![1, 3, 5].includes(new Date(t).getUTCDay())) t += 86400000; return t; };
+          const days = []; let prev = null; let doubleUsed = false;
+          for (let i = 0; i < tags.length; i++) {
+            let t;
+            if (prev == null) t = START_W;
+            else if (tags[i] === "C") t = nextMWF(prev);
+            else if (!doubleUsed && prev === DOUBLE_DAY && tags[i - 1] === "C") { t = prev; doubleUsed = true; }
+            else t = prev + 86400000;
+            days.push(t); prev = t;
+          }
+          return days;
+        };
+        let tagsW = rec.tiles.map((t0) => (t0.tag === "C" ? "C" : "K"));
+        let idx0W = 0;
+        if (g === "2") { const r1W = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] }; const t1W = (r1W.tiles || []).map((t0) => (t0.tag === "C" ? "C" : "K")); idx0W = t1W.length; tagsW = [...t1W, ...tagsW]; }
+        const daysAllW = walkDaysW(tagsW);
         // permutation within this grid: new slot q ← previous slot p (by cover, greedy, dup-safe)
         const usedP = new Set(); const srcOf = new Array(rec.tiles.length).fill(-1);
         rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedP.has(i) && pt.cover === t.cover); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
@@ -3492,8 +3515,7 @@ export default async function handler(req, res) {
           const s = srcOf[q] >= 0 ? snap[srcOf[q]] : null;
           if (s) { card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels; card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl; if (s.pub) card.pub = s.pub; else delete card.pub; if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover; }
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
-          const dW = new Date(START_W + (t.tag === "C" ? Math.max(0, dayW - 1) : dayW) * 86400000);
-          if (t.tag !== "C") dayW++;
+          const dW = new Date(daysAllW[idx0W + q]);
           const base = "Post " + n + " " + dW.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) + " " + dW.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
           const hasCTag = (card.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
           if (t.tag === "C") {
