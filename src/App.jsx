@@ -2801,6 +2801,23 @@ const [materials, setMaterials] = useState(MATERIALS);
 const [weeks, setWeeks] = useState([]);
 const [campaigns] = useState(INITIAL_CAMPAIGNS);
 const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: MATERIALS, weekly: [], profitMatrix: {}, cogs: {}, keywords: INITIAL_KEYWORDS, wholesale: [], pnl: {}, googleAds: [], metaAds: [], emailRetention: [], deletedProducts: [] });
+// RESUME AUTO-REFRESH (her call, Aug 27): a phone PWA resumes from memory with
+// days-old state and bundle, and nobody remembers to pull-refresh — her Post 3
+// video was silently refused that way. Coming back to the foreground after 10+
+// minutes away reloads the app outright: fresh bundle, fresh data, every
+// screen. Short hops away don't reload (the save guard tolerates far more).
+useEffect(() => {
+  let hiddenAt = 0;
+  const resume = () => {
+    if (hiddenAt && Date.now() - hiddenAt > 10 * 60 * 1000) { window.location.reload(); return; }
+    hiddenAt = 0;
+  };
+  const onVis = () => { if (document.visibilityState === "hidden") hiddenAt = Date.now(); else resume(); };
+  const onShow = (e) => { if (e.persisted) window.location.reload(); }; // bfcache restore = stale by definition
+  document.addEventListener("visibilitychange", onVis);
+  window.addEventListener("pageshow", onShow);
+  return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("pageshow", onShow); };
+}, []);
 const [loaded, setLoaded] = useState(false);
 const [showPrivacy, setShowPrivacy] = useState(false);
 const [showRetention, setShowRetention] = useState(false);
