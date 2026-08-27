@@ -3051,7 +3051,15 @@ export default async function handler(req, res) {
         continue;
       }
       let ig, tt, note = style === "face" ? "face to camera" : style === "broll" ? "b-roll" : null;
-      if (reelByN[n]) { ig = "Reel"; }
+      // Under the static/carousel→TT-Reel rule, a numbered reel final can be
+      // the TIKTOK asset for an IG-static day (her Post 3 video, Aug 27) — so
+      // a reel file must not flip a post whose IG chip already says Static or
+      // Carousel. To make such a post a real IG reel, change its IG chip.
+      const curIGF = ((cardByN[n] && cardByN[n].labels) || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => /^IG · /i.test(x)) || "";
+      const igLocked = /static|carousel/i.test(curIGF);
+      if (reelByN[n] && !igLocked) { ig = "Reel"; }
+      else if (igLocked && /static/i.test(curIGF) && staticCount < 2) { staticCount++; ig = "Static"; }
+      else if (igLocked) { ig = "Carousel"; }
       else if (carByN[n]) { ig = "Carousel"; }
       else if (style === "still" && staticCount < 2) { staticCount++; ig = "Static"; }
       else if (style === "still") { ig = "Carousel"; note = "static cap reached"; }
