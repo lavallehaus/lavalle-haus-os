@@ -3057,8 +3057,10 @@ export default async function handler(req, res) {
       else if (style === "still") { ig = "Carousel"; note = "static cap reached"; }
       else if (style) { ig = "Reel"; }
       else continue; // nothing known yet — leave the card untagged
-      if (ig === "Static") tt = "Reel"; // her rule Aug 26: IG static days run a TT reel, never carousel
-      else if (carByN[n] && !reelByN[n]) tt = "Carousel"; // an actual carousel final with no reel
+      // Her rule Aug 26 (full scope, restated Aug 27 after the engine reverted
+      // hand-flipped chips): ANY post that runs Static or Carousel on IG runs a
+      // REEL on TikTok — TT never gets a carousel on our posts.
+      if (ig === "Static" || ig === "Carousel") tt = "Reel";
 
       else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "B-roll" : "FTC"; }
       formats[n] = { ig, tt, note };
