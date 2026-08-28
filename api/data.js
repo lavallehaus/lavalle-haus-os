@@ -3487,14 +3487,17 @@ export default async function handler(req, res) {
         // untouched — this is dating only. Grid 2's walk continues from grid
         // 1's last assigned day.
         const walkDaysW = (tags) => {
-          const DOUBLE_DAY = Date.UTC(2026, 7, 28);
+          // Posts 1-5 are ANCHORED to what actually happened / her call Aug 28:
+          // P1+P2 posted Wed Aug 26 (the original double), P3 Thu Aug 27,
+          // P4+P5 post Fri Aug 28 (the approved catch-up double). From P6 on:
+          // one post per day max, C posts snap to the next Mon/Wed/Fri.
+          const ANCHORS = [Date.UTC(2026, 7, 26), Date.UTC(2026, 7, 26), Date.UTC(2026, 7, 27), Date.UTC(2026, 7, 28), Date.UTC(2026, 7, 28)];
           const nextMWF = (t0) => { let t = t0 + 86400000; while (![1, 3, 5].includes(new Date(t).getUTCDay())) t += 86400000; return t; };
-          const days = []; let prev = null; let doubleUsed = false;
+          const days = []; let prev = null;
           for (let i = 0; i < tags.length; i++) {
             let t;
-            if (prev == null) t = START_W;
+            if (i < ANCHORS.length) t = ANCHORS[i];
             else if (tags[i] === "C") t = nextMWF(prev);
-            else if (!doubleUsed && prev === DOUBLE_DAY && tags[i - 1] === "C") { t = prev; doubleUsed = true; }
             else t = prev + 86400000;
             days.push(t); prev = t;
           }
