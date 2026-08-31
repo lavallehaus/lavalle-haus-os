@@ -1,40 +1,49 @@
 import React, { useMemo, useState } from "react";
 
-// THE FOLD · LEDGER — the running cost + ad-spend sheet for the label.
-// One row per garment: what we paid wholesale (FashionGo), what it retails
-// for (house rule: 3–4x wholesale so the price carries its own marketing),
-// its monthly ad allotment, and what the ads are actually doing (spend, CPC,
-// ROAS, sales). Kiabeth's business partner runs The Fold's Meta ads off this
-// sheet (~$35/day), and her Claude reads the CSV/digest export to propose
-// next month's per-piece spend. Production costs from shoots (model,
-// location, photographer, creative director) live in the bottom section so
-// blended marketing cost per piece is honest, not just ad clicks.
+// THE FOLD · LEDGER — per-piece unit economics + ad spend for the label,
+// built like a case study: every garment carries its wholesale cost, retail,
+// contribution per unit, its share of fixed marketing (shoot production,
+// allocated by inventory investment within its season), its monthly ad
+// allotment from the $35/day pool, and a break-even unit count. Seasons
+// group the sheet; the Month/YTD toggle answers "what happened this month"
+// vs "where do we stand for the year" so ads gear toward what actually
+// sells for the time of year. Constraint the analysis honors: ad spend is
+// CAPPED at ~$35/day and clothing sales are ~zero so far — prices must
+// compete (hold the 3x floor of the 3–4x rule rather than stretch to 4x),
+// and the budget concentrates on the few pieces with proof of demand.
+// Her ads partner works from the CSV / digest exports.
 
 const c = { bg: "#FFFFFF", ink: "#1A1A1A", sub: "#71716C", line: "#E0E0DD", card: "#F4F4F3", taupe: "#8F8676", red: "#9b5e5e", green: "#5a7a5a" };
 const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const uid = () => "fl" + Math.random().toString(36).slice(2, 9);
 const money = (n) => (n || n === 0) && isFinite(n) ? "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—";
 const num = (v) => { const n = parseFloat(String(v).replace(/[$,\s]/g, "")); return isFinite(n) ? n : null; };
+const SEASONS = ["Fall 2026", "Summer 2026", "Core", "Spring 2027"];
 
+// Full catalog — the YTD view covers EVERYTHING on the site, not just the
+// drop, so campaign/ad decisions see the whole board (her ask, Sep 1 2026).
 const SEED_ITEMS = [
-  "Chloe Jean", "Anais Top", "Willa Short", "Camille Blouse", "Elodie Blouse",
-  "Green Pant (name TBD)", "Black Knit Dress (name TBD)", "Dove Sweater", "Hazel Sweater",
-].map((name) => ({ id: uid(), name, wholesale: null, retail: null, units: null, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note: "" }));
+  // Fall 2026 drop (drafts created Sep 1 2026; prices provisional until FashionGo wholesale lands)
+  ["Chloe Jean", "Fall 2026", 138], ["Anais Top", "Fall 2026", 88], ["Willa Short", "Fall 2026", 64],
+  ["Camille Blouse", "Fall 2026", 78], ["Elodie Blouse", "Fall 2026", 92], ["Gia Pant", "Fall 2026", 118], ["Mara Dress", "Fall 2026", 118],
+  // Existing apparel
+  ["Luce Pants", "Summer 2026", 138], ["Sera Top", "Summer 2026", 98], ["Iris Dress", "Summer 2026", 92],
+  ["Romy Cardigan", "Core", 145], ["Sable Pant", "Summer 2026", 76], ["Renata Dress", "Summer 2026", 155],
+  ["Olivia Dress", "Summer 2026", 96], ["Margaux Blouse", "Summer 2026", 68], ["Dove Sweater", "Core", 88],
+  ["Hazel Sweater", "Core", 88], ["Solene Dress", "Summer 2026", 84], ["Lucia Dress", "Summer 2026", 98],
+  // Jewelry — the only category with any sales velocity so far (~1 piece/week)
+  ["Selene Necklace", "Core", 68], ["Cora Bracelet", "Core", 78], ["Mira Earrings", "Core", 38],
+].map(([name, season, retail]) => ({ id: uid(), name, season, retail, wholesale: null, units: null, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note: "" }));
 
-// Seeded from the verified 2026 receipts in Gmail (Sep 1 2026). The Third
-// Culture campaign invoice was paid in three: $2,573.75 + $1,936.87 + $1,936.88.
 const SEED_COSTS = [
-  { label: "Third Culture LA — lifestyle campaign (Sacia)", amount: 6447.5, month: "2026-07", note: "VERIFIED: 3 payments Jul 8/14/23. Breakdown per Kiabeth: Sacia ~$2,700 + location ~$2,400 + Paige $1,000 (billed via Sacia); MUA included" },
-  { label: "Third Culture LA — e-comm shoot", amount: 720, month: "2026-08", note: "VERIFIED payment Aug 11. Contract total ~$1,200–1,300 per Kiabeth — confirm remaining balance" },
-  { label: "Luna Vela — makeup artist, e-comm shoot", amount: 500, month: "2026-08", note: "Paid via Zelle Aug 20 (invoice attached in email); $500 per Kiabeth" },
-  { label: "Sylvana — model, lifestyle shoot", amount: 750, month: "2026-07", note: "UNVERIFIED: $700–800 per Kiabeth; receipt not found in Gmail — may be in bank/Zelle" },
-  { label: "Chloe — model, e-comm shoot", amount: 800, month: "2026-08", note: "Per Kiabeth; receipt not found in Gmail — may be in bank/Zelle" },
+  { label: "Third Culture LA — lifestyle campaign (Sacia)", amount: 6447.5, month: "2026-07", season: "Fall 2026", note: "VERIFIED: 3 payments Jul 8/14/23. Per Kiabeth: Sacia ~$2,700 + location ~$2,400 + Paige $1,000; MUA included" },
+  { label: "Third Culture LA — e-comm shoot", amount: 720, month: "2026-08", season: "Fall 2026", note: "VERIFIED payment Aug 11. Contract ~$1,200–1,300 per Kiabeth — confirm balance" },
+  { label: "Luna Vela — makeup artist, e-comm shoot", amount: 500, month: "2026-08", season: "Fall 2026", note: "Paid via Zelle Aug 20; $500 per Kiabeth" },
+  { label: "Sylvana — model, lifestyle shoot", amount: 750, month: "2026-07", season: "Fall 2026", note: "UNVERIFIED: $700–800 per Kiabeth" },
+  { label: "Chloe — model, e-comm shoot", amount: 800, month: "2026-08", season: "Fall 2026", note: "Per Kiabeth; receipt likely Zelle" },
 ].map((x) => ({ id: uid(), ...x }));
 
-// Ad verdict — the partner's Claude uses the same bands. Below $25 spent the
-// data is noise, so no verdict is issued yet.
-const verdictFor = (it) => {
-  const spent = num(it.adSpent), roas = num(it.roas);
+const verdictFor = (spent, roas) => {
   if (!spent || spent < 25) return { t: "Learning", col: c.sub };
   if (roas == null) return { t: "No ROAS", col: c.sub };
   if (roas >= 2.5) return { t: "Scale", col: c.green };
@@ -43,60 +52,113 @@ const verdictFor = (it) => {
 };
 
 export default function FoldLedger({ data, onSave, viewer = { owner: true } }) {
-  const led = data && data.items ? data : { dailyAd: 35, month: new Date().toISOString().slice(0, 7), items: SEED_ITEMS, costs: SEED_COSTS, history: [] };
-  const [draft, setDraft] = useState(null); // {itemId, field} being edited keeps keystrokes local
+  const led = data && data.items ? { history: [], costs: [], ...data } : { dailyAd: 35, month: "2026-09", items: SEED_ITEMS, costs: SEED_COSTS, history: [] };
+  const [view, setView] = useState("month"); // "month" | "ytd"
+  const [draft, setDraft] = useState(null);
   const save = (next) => onSave({ ...led, ...next });
   const patchItem = (id, part) => save({ items: led.items.map((x) => (x.id === id ? { ...x, ...part } : x)) });
   const patchCost = (id, part) => save({ costs: led.costs.map((x) => (x.id === id ? { ...x, ...part } : x)) });
 
   const monthlyBudget = (num(led.dailyAd) || 0) * 30.4;
+
+  // YTD per item = archived months + the live month, matched by name.
+  const ytd = useMemo(() => {
+    const m = {};
+    const add = (name, f, v) => { if (v == null) return; const k = name.trim().toLowerCase(); m[k] = m[k] || { adSpent: 0, sold: 0, net: 0 }; m[k][f] += v; };
+    (led.history || []).forEach((h) => (h.items || []).forEach((it) => { add(it.name, "adSpent", num(it.adSpent)); add(it.name, "sold", num(it.sold)); add(it.name, "net", num(it.net)); }));
+    led.items.forEach((it) => { add(it.name, "adSpent", num(it.adSpent)); add(it.name, "sold", num(it.sold)); add(it.name, "net", num(it.net)); });
+    return m;
+  }, [led]);
+  const y = (it) => ytd[it.name.trim().toLowerCase()] || { adSpent: 0, sold: 0, net: 0 };
+
+  // Fixed-cost allocation: each season's production spend spreads across that
+  // season's pieces in proportion to inventory investment (wholesale x units);
+  // equal split when investments are unknown. Costs without a season spread
+  // across everything.
+  const alloc = useMemo(() => {
+    const bySeason = {}; const out = {};
+    (led.costs || []).forEach((x) => { const s = x.season || "_all"; bySeason[s] = (bySeason[s] || 0) + (num(x.amount) || 0); });
+    const seasonItems = (s) => led.items.filter((it) => s === "_all" ? true : (it.season || "Fall 2026") === s);
+    Object.entries(bySeason).forEach(([s, total]) => {
+      const items = seasonItems(s); if (!items.length) return;
+      const invs = items.map((it) => (num(it.wholesale) || 0) * (num(it.units) || 0));
+      const invTotal = invs.reduce((a, b) => a + b, 0);
+      items.forEach((it, i) => { out[it.id] = (out[it.id] || 0) + (invTotal > 0 ? total * (invs[i] / invTotal) : total / items.length); });
+    });
+    return out;
+  }, [led]);
+
+  const contribOf = (it) => { const w = num(it.wholesale), r = num(it.retail); return w != null && r != null ? r - w : null; };
+  const breakEvenOf = (it) => {
+    const cu = contribOf(it); if (!cu || cu <= 0) return null;
+    return Math.ceil(((alloc[it.id] || 0) + (y(it).adSpent || 0)) / cu);
+  };
+
   const totals = useMemo(() => {
-    const t = { allot: 0, spent: 0, net: 0, wholesale: 0, prod: 0 };
+    const t = { allot: 0, spent: 0, net: 0, wholesale: 0, prod: 0, ytdSpent: 0, ytdNet: 0, contribYtd: 0 };
     led.items.forEach((it) => {
       t.allot += num(it.adAllot) || 0; t.spent += num(it.adSpent) || 0; t.net += num(it.net) || 0;
       t.wholesale += (num(it.wholesale) || 0) * (num(it.units) || 0);
+      const yy = y(it); t.ytdSpent += yy.adSpent; t.ytdNet += yy.net;
+      const cu = contribOf(it); if (cu != null) t.contribYtd += cu * (yy.sold || 0);
     });
     (led.costs || []).forEach((x) => { t.prod += num(x.amount) || 0; });
     t.blendedRoas = t.spent ? t.net / t.spent : null;
+    t.recovery = (t.prod + t.ytdSpent) > 0 ? (t.contribYtd / (t.prod + t.ytdSpent)) * 100 : null;
     return t;
-  }, [led]);
+  }, [led, ytd, alloc]);
 
-  // Markup guard — the whole point of the sheet. Outside 3–4x gets flagged.
-  const markupOf = (it) => { const w = num(it.wholesale), r = num(it.retail); return w && r ? r / w : null; };
+  // Case-study focus list: proof-of-demand x margin. With near-zero clothing
+  // sales, anything with sold>0 and decent contribution leads; ties go to the
+  // current season (we are in fall).
+  const focus = useMemo(() => {
+    const inSeason = (it) => (it.season || "") === "Fall 2026";
+    return led.items
+      .map((it) => ({ it, cu: contribOf(it), yy: y(it) }))
+      .filter((r) => r.cu == null || r.cu > 0)
+      .sort((a, b) => ((b.yy.sold || 0) * (b.cu || 40) + (inSeason(b.it) ? 20 : 0)) - ((a.yy.sold || 0) * (a.cu || 40) + (inSeason(a.it) ? 20 : 0)))
+      .slice(0, 3);
+  }, [led, ytd]);
 
   const csv = () => {
-    const head = ["Piece", "Wholesale", "Retail", "Markup x", "Units bought", "Ad $/mo allotted", "Ad $ spent (" + led.month + ")", "CPC", "ROAS", "Units sold", "Net sales", "Live in ads", "Verdict", "Notes"];
-    const rows = led.items.map((it) => [it.name, it.wholesale, it.retail, markupOf(it) ? markupOf(it).toFixed(2) : "", it.units, it.adAllot, it.adSpent, it.cpc, it.roas, it.sold, it.net, it.live ? "yes" : "no", verdictFor(it).t, (it.note || "").replace(/[\n,]/g, " ")]);
-    const meta = [["Month", led.month], ["Daily ad budget", led.dailyAd], ["Monthly ad budget", monthlyBudget.toFixed(0)], ["Production costs (shoots)", totals.prod], []];
+    const head = ["Piece", "Season", "Wholesale", "Retail", "Markup x", "Contribution/unit", "Units bought", "Alloc fixed $", "Break-even units", "Ad $/mo allotted", "Ad $ spent " + (view === "ytd" ? "YTD" : led.month), "CPC", "ROAS", "Sold " + (view === "ytd" ? "YTD" : led.month), "Net sales", "Sell-through %", "Live", "Verdict", "Notes"];
+    const rows = led.items.map((it) => {
+      const m = markupOf(it), cu = contribOf(it), be = breakEvenOf(it), yy = y(it);
+      const spent = view === "ytd" ? yy.adSpent : num(it.adSpent), sold = view === "ytd" ? yy.sold : num(it.sold), net = view === "ytd" ? yy.net : num(it.net);
+      const st = num(it.units) && sold != null ? Math.round((sold / num(it.units)) * 100) : "";
+      return [it.name, it.season || "", it.wholesale, it.retail, m ? m.toFixed(2) : "", cu, it.units, Math.round(alloc[it.id] || 0), be, it.adAllot, spent, it.cpc, it.roas, sold, net, st, it.live ? "yes" : "no", verdictFor(spent, num(it.roas)).t, (it.note || "").replace(/[\n,]/g, " ")];
+    });
+    const meta = [["View", view.toUpperCase()], ["Month", led.month], ["Daily ad budget (HARD CAP)", led.dailyAd], ["Monthly ad budget", monthlyBudget.toFixed(0)], ["Production costs", totals.prod], ["Spend recovered by contribution YTD", totals.recovery != null ? totals.recovery.toFixed(1) + "%" : ""], []];
     const body = [...meta, head, ...rows].map((r) => r.map((v) => v == null ? "" : String(v)).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    a.download = "the-fold-ledger-" + led.month + ".csv"; a.click();
+    a.download = "the-fold-ledger-" + (view === "ytd" ? "ytd" : led.month) + ".csv"; a.click();
   };
 
   const copyDigest = async () => {
     const lines = led.items.map((it) => {
-      const m = markupOf(it);
-      return `- ${it.name}: wholesale ${money(num(it.wholesale))}, retail ${money(num(it.retail))}${m ? ` (${m.toFixed(1)}x)` : ""}, ad allot ${money(num(it.adAllot))}/mo, spent ${money(num(it.adSpent))}, CPC ${it.cpc || "—"}, ROAS ${it.roas || "—"}, sold ${it.sold || 0} / ${money(num(it.net))} net, ${it.live ? "LIVE in ads" : "not running"} → ${verdictFor(it).t}${it.note ? ` · ${it.note}` : ""}`;
+      const m = markupOf(it), cu = contribOf(it), be = breakEvenOf(it), yy = y(it);
+      return `- ${it.name} [${it.season || "?"}]: wholesale ${money(num(it.wholesale))}, retail ${money(num(it.retail))}${m ? ` (${m.toFixed(1)}x, ${money(cu)}/unit)` : ""}${be ? `, break-even ${be} units (sold ${yy.sold || 0} YTD)` : ""}, allot ${money(num(it.adAllot))}/mo, spent ${money(num(it.adSpent))} this mo / ${money(yy.adSpent)} YTD, ROAS ${it.roas || "—"}, ${it.live ? "LIVE" : "off"} → ${verdictFor(num(it.adSpent), num(it.roas)).t}${it.note ? ` · ${it.note}` : ""}`;
     });
-    const txt = `THE FOLD LEDGER · ${led.month}\nAd budget: $${led.dailyAd || 0}/day (~${money(monthlyBudget)}/mo) · allocated ${money(totals.allot)} · spent ${money(totals.spent)} · blended ROAS ${totals.blendedRoas ? totals.blendedRoas.toFixed(2) : "—"}\nProduction (model/location/photo/creative): ${money(totals.prod)}\nRule: retail = 3–4x wholesale. Verdict bands: Scale ROAS≥2.5 · Hold ≥1.2 · Cut <1.2 (after $25 spent).\n\n${lines.join("\n")}`;
-    try { await navigator.clipboard.writeText(txt); alert("Digest copied — paste it to your ads partner (or her Claude)."); } catch { prompt("Copy the digest:", txt); }
+    const f = focus.map((r) => r.it.name).join(", ");
+    const txt = `THE FOLD LEDGER · ${led.month}\nHARD CAP $${led.dailyAd || 0}/day (~${money(monthlyBudget)}/mo). Clothing sales are near zero — price to compete (3x floor), concentrate spend, no broad reach.\nAllocated ${money(totals.allot)} · spent ${money(totals.spent)} this mo · YTD ad ${money(totals.ytdSpent)} · production ${money(totals.prod)} · contribution recovered ${totals.recovery != null ? totals.recovery.toFixed(1) + "%" : "—"}\nFocus (demand x margin x season): ${f}\nVerdicts: Scale ROAS≥2.5 · Hold ≥1.2 · Cut <1.2 after $25.\n\n${lines.join("\n")}`;
+    try { await navigator.clipboard.writeText(txt); alert("Digest copied for the ads partner."); } catch { prompt("Copy:", txt); }
   };
 
-  // Close the month: totals go to history, per-month fields reset, allotments stay.
   const closeMonth = () => {
-    if (!confirm(`Close ${led.month}? Spend/sales columns reset for the new month (allotments and prices stay). ${led.month} is archived below.`)) return;
-    const snap = { month: led.month, items: led.items.map((it) => ({ name: it.name, adSpent: it.adSpent, cpc: it.cpc, roas: it.roas, sold: it.sold, net: it.net, verdict: verdictFor(it).t })), costs: led.costs, dailyAd: led.dailyAd };
+    if (!confirm(`Close ${led.month}? Spend/sales reset for the new month; ${led.month} is archived (and stays in YTD).`)) return;
+    const snap = { month: led.month, items: led.items.map((it) => ({ name: it.name, season: it.season, adSpent: it.adSpent, cpc: it.cpc, roas: it.roas, sold: it.sold, net: it.net, verdict: verdictFor(num(it.adSpent), num(it.roas)).t })), costs: led.costs, dailyAd: led.dailyAd };
     const d = new Date(led.month + "-15"); d.setMonth(d.getMonth() + 1);
     save({ history: [snap, ...(led.history || [])], month: d.toISOString().slice(0, 7), items: led.items.map((it) => ({ ...it, adSpent: null, cpc: null, roas: null, sold: null, net: null })) });
   };
 
+  const markupOf = (it) => { const w = num(it.wholesale), r = num(it.retail); return w && r ? r / w : null; };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe };
   const cellIn = { width: "100%", border: "none", background: "transparent", fontFamily: sans, fontSize: 12, color: c.ink, padding: "7px 6px", outline: "none", boxSizing: "border-box" };
   const th = { ...label, textAlign: "left", padding: "6px 6px", borderBottom: `1px solid ${c.ink}`, whiteSpace: "nowrap" };
   const td = { borderBottom: `1px solid ${c.line}`, padding: 0, verticalAlign: "middle" };
 
-  const Cell = ({ it, field, width, placeholder, prefix }) => (
+  const Cell = ({ it, field, width, placeholder }) => (
     <td style={{ ...td, width }}>
       <input
         value={draft && draft.id === it.id && draft.field === field ? draft.v : it[field] == null ? "" : it[field]}
@@ -105,119 +167,169 @@ export default function FoldLedger({ data, onSave, viewer = { owner: true } }) {
         onChange={(e) => setDraft({ id: it.id, field, v: e.target.value })}
         onBlur={() => { if (draft && draft.id === it.id && draft.field === field) { patchItem(it.id, { [field]: field === "name" || field === "note" ? draft.v : num(draft.v) }); setDraft(null); } }}
         onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-        style={{ ...cellIn, ...(prefix ? { paddingLeft: 4 } : {}) }} />
+        style={cellIn} />
     </td>
   );
+
+  const seasonsInSheet = [...new Set(led.items.map((it) => it.season || "Fall 2026"))].sort((a, b) => SEASONS.indexOf(a) - SEASONS.indexOf(b));
+
+  const renderRow = (it) => {
+    const m = markupOf(it), cu = contribOf(it), be = breakEvenOf(it), yy = y(it);
+    const spent = view === "ytd" ? yy.adSpent : num(it.adSpent);
+    const sold = view === "ytd" ? yy.sold : num(it.sold);
+    const net = view === "ytd" ? yy.net : num(it.net);
+    const v = verdictFor(spent, num(it.roas));
+    const mCol = m == null ? c.sub : m < 3 ? c.red : m > 4 ? c.taupe : c.green;
+    const beCol = be != null && sold != null && sold >= be ? c.green : c.ink;
+    return (
+      <tr key={it.id}>
+        <Cell it={it} field="name" width={150} />
+        <td style={{ ...td, width: 92 }}>
+          <select value={it.season || "Fall 2026"} onChange={(e) => patchItem(it.id, { season: e.target.value })}
+            style={{ ...cellIn, appearance: "none", fontSize: 10.5, color: c.sub }}>
+            {SEASONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </td>
+        <Cell it={it} field="wholesale" width={70} placeholder="$" />
+        <Cell it={it} field="retail" width={70} placeholder="$" />
+        <td style={{ ...td, width: 52 }}><span style={{ fontFamily: sans, fontSize: 12, color: mCol, padding: "0 6px" }}>{m ? m.toFixed(1) + "x" : "—"}</span></td>
+        <Cell it={it} field="units" width={50} />
+        <td style={{ ...td, width: 78, whiteSpace: "nowrap" }}>
+          <span style={{ fontFamily: sans, fontSize: 11.5, color: beCol, padding: "0 6px" }} title={cu ? `${money(cu)}/unit contribution · ${money(alloc[it.id] || 0)} allocated fixed + ${money(yy.adSpent)} YTD ads` : "needs wholesale + retail"}>
+            {be != null ? `${be} u` : "—"}
+          </span>
+        </td>
+        {view === "month" ? <Cell it={it} field="adAllot" width={64} placeholder="$" /> : <td style={{ ...td, width: 64 }}><span style={{ fontFamily: sans, fontSize: 12, color: c.sub, padding: "0 6px" }}>{money(num(it.adAllot))}</span></td>}
+        {view === "month" ? <Cell it={it} field="adSpent" width={64} placeholder="$" /> : <td style={{ ...td, width: 64 }}><span style={{ fontFamily: sans, fontSize: 12, padding: "0 6px" }}>{money(yy.adSpent)}</span></td>}
+        <Cell it={it} field="cpc" width={52} placeholder="$" />
+        <Cell it={it} field="roas" width={52} />
+        {view === "month" ? <Cell it={it} field="sold" width={48} /> : <td style={{ ...td, width: 48 }}><span style={{ fontFamily: sans, fontSize: 12, padding: "0 6px" }}>{yy.sold || 0}</span></td>}
+        {view === "month" ? <Cell it={it} field="net" width={74} placeholder="$" /> : <td style={{ ...td, width: 74 }}><span style={{ fontFamily: sans, fontSize: 12, padding: "0 6px" }}>{money(yy.net)}</span></td>}
+        <td style={{ ...td, width: 40, textAlign: "center" }}>
+          <input type="checkbox" checked={!!it.live} onChange={() => patchItem(it.id, { live: !it.live })} title="Currently running in ads" />
+        </td>
+        <td style={{ ...td, width: 72 }}><span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: v.col, padding: "0 6px" }}>{v.t}</span></td>
+        <Cell it={it} field="note" width={130} />
+        <td style={{ ...td, width: 26, textAlign: "center" }}>
+          <button title="Remove row" onClick={() => { if (confirm(`Remove ${it.name}?`)) save({ items: led.items.filter((x) => x.id !== it.id) }); }}
+            style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12 }}>×</button>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
         <div>
-          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, fontWeight: 500 }}>The Fold · Ledger — {led.month}</div>
+          <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, fontWeight: 500 }}>The Fold · Ledger — {view === "ytd" ? "Year to date" : led.month}</div>
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 3 }}>
-            Every piece pays its own way: retail = 3–4x wholesale (FashionGo cost first, always), and its ad line answers with ROAS.
+            Wholesale first, 3–4x retail (hold the 3x floor while sales build), $35/day is a hard cap — concentrate it where demand is proven.
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", border: `1px solid ${c.line}`, borderRadius: 1 }}>
+            {["month", "ytd"].map((vk) => (
+              <button key={vk} onClick={() => setView(vk)} style={{ ...btn(), border: "none", background: view === vk ? c.ink : c.bg, color: view === vk ? "#fff" : c.ink }}>{vk === "ytd" ? "Year to date" : "This month"}</button>
+            ))}
+          </div>
           <button onClick={csv} style={btn()}>Export CSV</button>
-          <button onClick={copyDigest} style={btn()}>Copy digest for ads partner</button>
-          {viewer.owner && <button onClick={closeMonth} style={btn()}>Close month</button>}
+          <button onClick={copyDigest} style={btn()}>Copy digest</button>
+          {viewer.owner && view === "month" && <button onClick={closeMonth} style={btn()}>Close month</button>}
         </div>
       </div>
 
       {/* budget strip */}
-      <div style={{ display: "flex", gap: 0, flexWrap: "wrap", border: `1px solid ${c.line}`, borderRadius: 2, margin: "10px 0 14px", background: c.bg }}>
-        <Stat label="Ad budget / day">
+      <div style={{ display: "flex", gap: 0, flexWrap: "wrap", border: `1px solid ${c.line}`, borderRadius: 2, margin: "10px 0 10px", background: c.bg }}>
+        <Stat label="Ad $/day (cap)">
           <input value={led.dailyAd == null ? "" : led.dailyAd} onChange={(e) => save({ dailyAd: num(e.target.value) })}
-            style={{ ...cellIn, fontSize: 16, fontWeight: 500, padding: 0, width: 70 }} placeholder="35" />
+            style={{ ...cellIn, fontSize: 16, fontWeight: 500, padding: 0, width: 60 }} placeholder="35" />
         </Stat>
         <Stat label="Monthly budget" v={money(monthlyBudget)} />
-        <Stat label="Allotted to pieces" v={money(totals.allot)} warn={totals.allot > monthlyBudget + 1 ? "over budget" : null} />
+        <Stat label="Allotted" v={money(totals.allot)} warn={totals.allot > monthlyBudget + 1 ? "over cap" : null} />
         <Stat label={"Spent · " + led.month} v={money(totals.spent)} />
-        <Stat label="Blended ROAS" v={totals.blendedRoas ? totals.blendedRoas.toFixed(2) + "x" : "—"} />
-        <Stat label="Production costs" v={money(totals.prod)} />
-        <Stat label="Wholesale on order" v={money(totals.wholesale)} />
+        <Stat label="Ad spend YTD" v={money(totals.ytdSpent)} />
+        <Stat label="Production" v={money(totals.prod)} />
+        <Stat label="Inventory $" v={money(totals.wholesale)} />
+        <Stat label="Contribution YTD" v={money(totals.contribYtd)} />
+        <Stat label="Spend recovered" v={totals.recovery != null ? totals.recovery.toFixed(1) + "%" : "—"} warn={totals.recovery != null && totals.recovery < 25 ? "early days" : null} />
       </div>
 
-      {/* the sheet */}
-      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1080 }}>
-          <thead><tr>
-            <th style={{ ...th, minWidth: 150 }}>Piece</th><th style={th}>Wholesale</th><th style={th}>Retail</th><th style={th}>Markup</th>
-            <th style={th}>Units</th><th style={th}>Ad $/mo</th><th style={th}>Spent</th><th style={th}>CPC</th><th style={th}>ROAS</th>
-            <th style={th}>Sold</th><th style={th}>Net sales</th><th style={th}>Live</th><th style={th}>Verdict</th><th style={{ ...th, minWidth: 140 }}>Notes</th><th style={th}></th>
-          </tr></thead>
-          <tbody>
-            {led.items.map((it) => {
-              const m = markupOf(it); const v = verdictFor(it);
-              const mCol = m == null ? c.sub : m < 3 ? c.red : m > 4 ? c.taupe : c.green;
-              return (
-                <tr key={it.id}>
-                  <Cell it={it} field="name" width={160} />
-                  <Cell it={it} field="wholesale" width={78} placeholder="$" />
-                  <Cell it={it} field="retail" width={78} placeholder="$" />
-                  <td style={{ ...td, width: 84, whiteSpace: "nowrap" }}>
-                    <span style={{ fontFamily: sans, fontSize: 12, color: mCol, padding: "0 6px" }}>{m ? m.toFixed(1) + "x" : "—"}</span>
-                    {num(it.wholesale) && !num(it.retail) ? (
-                      <button title="Suggest 3.5x" onClick={() => patchItem(it.id, { retail: Math.round(num(it.wholesale) * 3.5) - 0.0 })} style={{ ...btn(), padding: "2px 6px", fontSize: 9 }}>3.5x</button>
-                    ) : null}
-                  </td>
-                  <Cell it={it} field="units" width={56} />
-                  <Cell it={it} field="adAllot" width={70} placeholder="$" />
-                  <Cell it={it} field="adSpent" width={70} placeholder="$" />
-                  <Cell it={it} field="cpc" width={60} placeholder="$" />
-                  <Cell it={it} field="roas" width={60} />
-                  <Cell it={it} field="sold" width={54} />
-                  <Cell it={it} field="net" width={80} placeholder="$" />
-                  <td style={{ ...td, width: 44, textAlign: "center" }}>
-                    <input type="checkbox" checked={!!it.live} onChange={() => patchItem(it.id, { live: !it.live })} title="Currently running in ads" />
-                  </td>
-                  <td style={{ ...td, width: 76 }}><span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: v.col, padding: "0 6px" }}>{v.t}</span></td>
-                  <Cell it={it} field="note" width={150} />
-                  <td style={{ ...td, width: 30, textAlign: "center" }}>
-                    <button title="Remove row" onClick={() => { if (confirm(`Remove ${it.name}?`)) save({ items: led.items.filter((x) => x.id !== it.id) }); }}
-                      style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12 }}>×</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* the professor's paragraph */}
+      <div style={{ border: `1px solid ${c.line}`, borderLeft: `3px solid ${c.taupe}`, borderRadius: 2, padding: "10px 14px", marginBottom: 14, background: c.card }}>
+        <div style={label}>Read on the business</div>
+        <div style={{ fontFamily: sans, fontSize: 12, color: c.ink, marginTop: 5, lineHeight: 1.55 }}>
+          {money(totals.prod)} of production + {money(totals.ytdSpent)} of ads are sunk into marketing; contribution earned back so far is {money(totals.contribYtd)} ({totals.recovery != null ? totals.recovery.toFixed(1) : "—"}%).
+          Break-even column = units each piece must sell to cover its share of shoots plus its own ad spend, at current contribution per unit — it needs wholesale costs (FashionGo) to be exact.
+          With ~1 jewelry sale/week and clothing at zero, the play is not reach, it is concentration: keep the whole {money(monthlyBudget)}/mo behind 2–3 fall pieces until one earns a Scale verdict, price at the 3x floor so conversion isn't fighting the tag, and re-split monthly from the verdicts.
+          {focus.length ? <> Current focus picks: <b>{focus.map((r) => r.it.name).join(", ")}</b>.</> : null}
+        </div>
       </div>
-      <button onClick={() => save({ items: [...led.items, { id: uid(), name: "", wholesale: null, retail: null, units: null, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note: "" }] })}
-        style={{ ...btn(), marginTop: 8 }}>+ Add piece</button>
+
+      {/* season-grouped sheet */}
+      {seasonsInSheet.map((s) => {
+        const items = led.items.filter((it) => (it.season || "Fall 2026") === s);
+        const st = items.reduce((a, it) => {
+          const yy = y(it); a.spent += view === "ytd" ? yy.adSpent : (num(it.adSpent) || 0); a.net += view === "ytd" ? yy.net : (num(it.net) || 0);
+          a.sold += view === "ytd" ? yy.sold : (num(it.sold) || 0); a.inv += (num(it.wholesale) || 0) * (num(it.units) || 0); a.fixed += alloc[it.id] || 0; return a;
+        }, { spent: 0, net: 0, sold: 0, inv: 0, fixed: 0 });
+        return (
+          <div key={s} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 2px" }}>
+              <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink, fontWeight: 500 }}>{s}</div>
+              <div style={{ fontFamily: sans, fontSize: 10.5, color: c.sub }}>
+                {items.length} pieces · inventory {money(st.inv)} · fixed {money(st.fixed)} · ads {money(st.spent)} · {st.sold} sold · net {money(st.net)}
+              </div>
+            </div>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", border: `1px solid ${c.line}`, borderRadius: 2, background: c.bg }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1220 }}>
+                <thead><tr>
+                  <th style={{ ...th, minWidth: 140 }}>Piece</th><th style={th}>Season</th><th style={th}>Whlsl</th><th style={th}>Retail</th><th style={th}>Mark</th>
+                  <th style={th}>Units</th><th style={th}>Break-even</th><th style={th}>Ad $/mo</th><th style={th}>Spent{view === "ytd" ? " YTD" : ""}</th><th style={th}>CPC</th><th style={th}>ROAS</th>
+                  <th style={th}>Sold{view === "ytd" ? " YTD" : ""}</th><th style={th}>Net</th><th style={th}>Live</th><th style={th}>Verdict</th><th style={{ ...th, minWidth: 120 }}>Notes</th><th style={th}></th>
+                </tr></thead>
+                <tbody>{items.map(renderRow)}</tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+      <button onClick={() => save({ items: [...led.items, { id: uid(), name: "", season: "Fall 2026", wholesale: null, retail: null, units: null, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note: "" }] })}
+        style={btn()}>+ Add piece</button>
       <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6 }}>
-        Markup shows red under 3x (price can't carry its marketing) and taupe over 4x. Verdicts: Scale ROAS ≥ 2.5 · Hold ≥ 1.2 · Cut below — only once a piece has spent $25+.
+        Markup: red under 3x, taupe over 4x. Break-even turns green once sold ≥ needed. YTD sums every closed month plus this one. Sales/ROAS are entered by whoever runs the ads; nothing here syncs automatically yet.
       </div>
 
       {/* production costs */}
       <div style={{ marginTop: 18 }}>
-        <div style={label}>Marketing production · shoots (amortized across the drop)</div>
+        <div style={label}>Marketing production · shoots (allocated to pieces by season + inventory share)</div>
         <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, marginTop: 6, background: c.bg }}>
           {(led.costs || []).map((x) => (
             <div key={x.id} style={{ display: "flex", gap: 0, borderBottom: `1px solid ${c.line}`, alignItems: "center" }}>
-              <input value={x.label || ""} onChange={(e) => patchCost(x.id, { label: e.target.value })} placeholder="Cost" style={{ ...cellIn, flex: 2 }} />
-              <input value={x.amount == null ? "" : x.amount} onChange={(e) => patchCost(x.id, { amount: num(e.target.value) })} placeholder="$" style={{ ...cellIn, flex: 1, borderLeft: `1px solid ${c.line}` }} />
-              <input value={x.month || ""} onChange={(e) => patchCost(x.id, { month: e.target.value })} placeholder="YYYY-MM" style={{ ...cellIn, flex: 1, borderLeft: `1px solid ${c.line}` }} />
-              <input value={x.note || ""} onChange={(e) => patchCost(x.id, { note: e.target.value })} placeholder="Note" style={{ ...cellIn, flex: 3, borderLeft: `1px solid ${c.line}` }} />
-              <button onClick={() => save({ costs: led.costs.filter((y) => y.id !== x.id) })} style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12, padding: "0 10px" }}>×</button>
+              <input value={x.label || ""} onChange={(e) => patchCost(x.id, { label: e.target.value })} placeholder="Cost" style={{ ...cellIn, flex: 2.4 }} />
+              <input value={x.amount == null ? "" : x.amount} onChange={(e) => patchCost(x.id, { amount: num(e.target.value) })} placeholder="$" style={{ ...cellIn, flex: 0.7, borderLeft: `1px solid ${c.line}` }} />
+              <input value={x.month || ""} onChange={(e) => patchCost(x.id, { month: e.target.value })} placeholder="YYYY-MM" style={{ ...cellIn, flex: 0.8, borderLeft: `1px solid ${c.line}` }} />
+              <select value={x.season || ""} onChange={(e) => patchCost(x.id, { season: e.target.value || null })} style={{ ...cellIn, flex: 0.9, borderLeft: `1px solid ${c.line}`, appearance: "none", fontSize: 10.5, color: c.sub }}>
+                <option value="">All seasons</option>{SEASONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <input value={x.note || ""} onChange={(e) => patchCost(x.id, { note: e.target.value })} placeholder="Note" style={{ ...cellIn, flex: 2.6, borderLeft: `1px solid ${c.line}` }} />
+              <button onClick={() => save({ costs: led.costs.filter((z) => z.id !== x.id) })} style={{ border: "none", background: "transparent", color: c.sub, cursor: "pointer", fontSize: 12, padding: "0 10px" }}>×</button>
             </div>
           ))}
-          <button onClick={() => save({ costs: [...(led.costs || []), { id: uid(), label: "", amount: null, month: "", note: "" }] })} style={{ ...btn(), border: "none", margin: 6 }}>+ Add cost</button>
+          <button onClick={() => save({ costs: [...(led.costs || []), { id: uid(), label: "", amount: null, month: "", season: "Fall 2026", note: "" }] })} style={{ ...btn(), border: "none", margin: 6 }}>+ Add cost</button>
         </div>
       </div>
 
-      {/* archived months */}
       {(led.history || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={label}>Closed months</div>
           {(led.history || []).map((h) => (
             <details key={h.month} style={{ border: `1px solid ${c.line}`, borderRadius: 2, marginTop: 6, background: c.card, padding: "8px 12px" }}>
               <summary style={{ fontFamily: sans, fontSize: 11.5, color: c.ink, cursor: "pointer" }}>
-                {h.month} — spent {money(h.items.reduce((s, i2) => s + (num(i2.adSpent) || 0), 0))} · net {money(h.items.reduce((s, i2) => s + (num(i2.net) || 0), 0))}
+                {h.month} — spent {money(h.items.reduce((s2, i2) => s2 + (num(i2.adSpent) || 0), 0))} · net {money(h.items.reduce((s2, i2) => s2 + (num(i2.net) || 0), 0))}
               </summary>
               <div style={{ fontFamily: sans, fontSize: 11, color: c.sub, marginTop: 6 }}>
-                {h.items.filter((i2) => num(i2.adSpent)).map((i2) => (
+                {h.items.filter((i2) => num(i2.adSpent) || num(i2.sold)).map((i2) => (
                   <div key={i2.name}>{i2.name}: spent {money(num(i2.adSpent))} · ROAS {i2.roas || "—"} · {i2.sold || 0} sold · {i2.verdict}</div>
                 ))}
               </div>
@@ -233,9 +345,9 @@ const btn = () => ({ border: `1px solid ${c.line}`, background: c.bg, borderRadi
 
 function Stat({ label: l, v, children, warn }) {
   return (
-    <div style={{ padding: "10px 16px", borderRight: `1px solid ${c.line}`, minWidth: 100 }}>
-      <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.8, textTransform: "uppercase", color: c.taupe }}>{l}</div>
-      <div style={{ fontFamily: sans, fontSize: 16, fontWeight: 500, color: warn ? c.red : c.ink, marginTop: 3 }}>{children || v}</div>
+    <div style={{ padding: "9px 13px", borderRight: `1px solid ${c.line}`, minWidth: 84 }}>
+      <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase", color: c.taupe }}>{l}</div>
+      <div style={{ fontFamily: sans, fontSize: 15, fontWeight: 500, color: warn ? c.red : c.ink, marginTop: 3 }}>{children || v}</div>
       {warn && <div style={{ fontFamily: sans, fontSize: 9, color: c.red, letterSpacing: 1, textTransform: "uppercase" }}>{warn}</div>}
     </div>
   );
