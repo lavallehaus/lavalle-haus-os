@@ -606,6 +606,27 @@ async function kvClaim(key, ex = 180) {
 async function kvDel(key) {
   await fetch(`${KV_URL}/del/${key}`, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}` } });
 }
+// Re-fetch the LIVE blob and transplant only the cards an op touched (matched
+// by id; unknown ids are appended to their list). The long ops (cover renders,
+// vision passes) used to kvSet their whole minutes-old snapshot at the end,
+// wiping any human save made during the render window — that ate Courtney's
+// reel link and captions (Aug 31). `extra(blob, board)` applies small
+// non-card tweaks (board bg, hashtags card) on the fresh copy.
+async function patchBoardCards(boardKey, patches, extra) {
+  const raw = await kvGet("lavalle_data");
+  const blob = Array.isArray(raw) ? raw[0] : raw;
+  const bd = blob && blob.boards && blob.boards[boardKey];
+  if (!bd) return false;
+  for (const p of (patches || [])) {
+    if (!p || !p.id) continue;
+    const card = (bd.cards || []).find((c) => c && c.id === p.id);
+    if (card && p.apply) { try { p.apply(card); } catch (eA) {} }
+    else if (!card && p.append) bd.cards.push(p.append);
+  }
+  try { if (extra) extra(blob, bd); } catch (eP) {}
+  await kvSet("lavalle_data", Array.isArray(raw) ? [blob] : blob);
+  return true;
+}
 // Cached Google access token — board covers stream through /api/data?op=drive_img
 // which hits Drive per image, so refreshing the token every call would be brutal.
 let _gCache = { token: null, exp: 0 };
@@ -2229,6 +2250,7 @@ export default async function handler(req, res) {
     for (const nRe of (Array.isArray((req.body || {}).redo) ? req.body.redo : [])) { delete stCS.done[Number(nRe)]; if (stCS.classic) delete stCS.classic[Number(nRe)]; }
     const JimpCS = (await import("jimp")).default;
     let madeCS = 0, budgetCS = 6;
+    const patchesCS = []; // field-level patches applied to the FRESH blob at the end
     for (let n = 1; n <= tilesCS.length && budgetCS > 0; n++) {
       const t = tilesCS[n - 1]; const c = cardCS(n); if (!t || !c) continue;
       const ig = shapeOf(lbOf(c, "IG")); const tt = shapeOf(lbOf(c, "TT"));
@@ -2270,6 +2292,7 @@ export default async function handler(req, res) {
           if (linksCS.IG) { c.coverUrl = linksCS.IG; addL.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + " — IG", u: linksCS.IG }); }
           if (linksCS.TT) addL.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n + " — TT", u: linksCS.TT });
           c.links = [...keepL, ...addL];
+          { const cu = linksCS.IG, add2 = addL, rx2 = coverRx; patchesCS.push({ id: c.id, apply: (fc) => { if (cu) fc.coverUrl = cu; fc.links = [...(fc.links || []).filter((L) => !rx2.test((L.n || "").trim())), ...add2]; } }); }
         }
         stCS.done[n] = sigN; madeCS++; budgetCS--;
       } catch (eCS) {}
@@ -2317,12 +2340,14 @@ export default async function handler(req, res) {
           // one visible, labeled cover link on the card too (stale IG/TT split
           // links from a former split format get cleared here)
           const coverRx2 = new RegExp("^cover\\s*" + n + "\\s*([—–-]\\s*(ig|tt))?$", "i");
-          c.links = [...(c.links || []).filter((L) => !coverRx2.test((L.n || "").trim())), { id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n, u: c.coverUrl }];
+          const newLink = { id: "l" + Math.random().toString(36).slice(2, 8), n: "Cover " + n, u: c.coverUrl };
+          c.links = [...(c.links || []).filter((L) => !coverRx2.test((L.n || "").trim())), newLink];
+          { const cu2 = c.coverUrl; patchesCS.push({ id: c.id, apply: (fc) => { fc.coverUrl = cu2; fc.links = [...(fc.links || []).filter((L) => !coverRx2.test((L.n || "").trim())), newLink]; } }); }
           stCS.classic[n] = sig2; linkedCS++; madeCS++;
         }
       } catch (eC2) {}
     }
-    if (madeCS) await kvSet("lavalle_data", blobCS);
+    if (madeCS) await patchBoardCards(SBOARD.key, patchesCS);
     await kvSet("sisters_cover_sizes_state", stCS);
     res.json({ ok: true, made: madeCS, linked: linkedCS, month: monthCS });
     return;
@@ -2383,6 +2408,7 @@ export default async function handler(req, res) {
     const tCC = (dCC.content || []).map((c) => c.text || "").join("");
     let parsedCC = {}; try { parsedCC = JSON.parse(tCC.slice(tCC.indexOf("{"), tCC.lastIndexOf("}") + 1)); } catch (e2) { res.json({ ok: false, error: "parse" }); return; }
     let madeCC = 0;
+    const patchesCC = [];
     for (const pcc of (parsedCC.posts || [])) {
       const it = todo.find((x) => x.n === Number(pcc.n)); if (!it) continue;
       const c = cardCC(it.n); if (!c) continue;
@@ -2390,9 +2416,10 @@ export default async function handler(req, res) {
       if (!con) continue;
       const m = RX_CC.exec(c.name || ""); if (!m) continue;
       c.name = m[1].trim() + " — " + con;
+      patchesCC.push({ id: c.id, apply: (fc) => { const m2 = RX_CC.exec(fc.name || ""); if (m2) fc.name = m2[1].trim() + " — " + con; } });
       stCC.done[it.n] = it.sig; stCC.set[it.n] = con; madeCC++;
     }
-    if (madeCC) await kvSet("lavalle_data", blobCC);
+    if (madeCC) await patchBoardCards(SBOARD.key, patchesCC);
     await kvSet("sisters_card_concepts_state", stCC);
     res.json({ ok: true, made: madeCC, checked: todo.length });
     return;
@@ -2733,7 +2760,7 @@ export default async function handler(req, res) {
     // as the grids switch. The Strategy Outline card keeps its cover page.
     try {
       const rawPk = await kvGet("lavalle_data"); const blobPk = Array.isArray(rawPk) ? rawPk[0] : rawPk; const bdPk = blobPk && blobPk.boards && blobPk.boards[SBOARD.key];
-      if (bdPk && pick && bdPk.bg !== pick) { bdPk.bg = pick; await kvSet("lavalle_data", blobPk); }
+      if (bdPk && pick && bdPk.bg !== pick) { bdPk.bg = pick; await patchBoardCards(SBOARD.key, [], (blob9, bd9) => { bd9.bg = pick; }); }
     } catch (e) {}
     res.json({ ok: true, ...out });
     return;
@@ -2811,17 +2838,19 @@ export default async function handler(req, res) {
     // attach pages + PDF to the Strategy Outline column card (current month on top); PDF link on the Grid card too
     const pageAtt = pageUrls.map((u, i) => ({ id: "sop" + i, name: "Page " + (i + 1), url: u, type: "image/jpeg" }));
     const pdfAtt = pdfUrl ? [{ id: "sopdf", name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }] : [];
-    const gridCard = bdS2.cards.find((c) => /^grid\b/i.test(c.name || ""));
-    if (gridCard && pdfUrl) { gridCard.attachments = (gridCard.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
-    const soList = bdS2.lists.find((l) => /strategy outline/i.test(l.name || ""));
-    if (soList) {
-      let sc = bdS2.cards.find((c) => c.listId === soList.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
-      if (!sc) { sc = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
-      bdS2.cards = bdS2.cards.filter((c) => c !== sc); bdS2.cards.unshift(sc); // current month always tops the column
-      sc.cover = pageUrls[0] || sc.cover; sc.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
-      sc.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
-    }
-    await kvSet("lavalle_data", blobS2);
+    // attach on a FRESH blob — the render above takes ~40s and writing the
+    // stale snapshot wiped concurrent human saves (Courtney's edits, Aug 31)
+    await patchBoardCards(SBOARD.key, [], (blob9, bd9) => {
+      const gridCard9 = bd9.cards.find((c) => /^grid\b/i.test(c.name || ""));
+      if (gridCard9 && pdfUrl) { gridCard9.attachments = (gridCard9.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard9.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
+      const soList9 = bd9.lists.find((l) => /strategy outline/i.test(l.name || ""));
+      if (!soList9) return;
+      let sc9 = bd9.cards.find((c) => c.listId === soList9.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
+      if (!sc9) { sc9 = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList9.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
+      bd9.cards = bd9.cards.filter((c) => c !== sc9); bd9.cards.unshift(sc9); // current month always tops the column
+      sc9.cover = pageUrls[0] || sc9.cover; sc9.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
+      sc9.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc9.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
+    });
     await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl, pages: pageUrls });
     // captions changed → refresh the Google Doc backup too (her rule after the
     // Aug 26 caption loss: the doc is the standing off-app copy)
@@ -2862,6 +2891,7 @@ export default async function handler(req, res) {
     // 2. pull: doc entries that changed since last sync win their post
     const base = stCB.base || null;
     let pulled = 0;
+    const patchesCB = [];
     if (base && docText) {
       // compare both sides through the same normalizer so cleaning (em dashes,
       // trims) never reads as a phantom doc edit
@@ -2869,8 +2899,10 @@ export default async function handler(req, res) {
       for (const c of postsCB) {
         const n = numCB(c); const p = parsed[n]; const b0 = base[n];
         if (!p || !b0) continue;
-        if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc)) { c.desc = p.c; pulled++; }
-        if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags)) { c.tags = p.h; pulled++; }
+        let dc = null, dh = null;
+        if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc)) { c.desc = p.c; dc = p.c; pulled++; }
+        if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags)) { c.tags = p.h; dh = p.h; pulled++; }
+        if (dc !== null || dh !== null) patchesCB.push({ id: c.id, apply: (fc) => { if (dc !== null) fc.desc = dc; if (dh !== null) fc.tags = dh; } });
       }
     }
     // Courtney's new hashtags get NOTED on the board's "Hashtags" card (her
@@ -2900,7 +2932,14 @@ export default async function handler(req, res) {
         }
       }
     } catch (eCT) {}
-    if (pulled || notedCT.length) await kvSet("lavalle_data", blobCB);
+    if (pulled || notedCT.length) await patchBoardCards("lavalle-sisters", patchesCB, (blob9, bd9) => {
+      if (!notedCT.length) return;
+      const hc9 = bd9.cards.find((c) => /^hashtags\b/i.test((c.name || "").trim())); if (!hc9) return;
+      const missing = notedCT.filter((t) => !((hc9.desc || "").toLowerCase().includes(t.toLowerCase())));
+      if (!missing.length) return;
+      if (/courtney's additions:/i.test(hc9.desc || "")) hc9.desc = hc9.desc.replace(/(courtney's additions:[^\n]*)/i, (m0) => m0 + " " + missing.join(" "));
+      else hc9.desc = (hc9.desc || "") + "\n\nCourtney's additions: " + missing.join(" ");
+    });
     // 2.5 Courtney to-do flags (her ask: BLUE titles for posts she still has to
     // update). KV sisters_captions_todo holds {n: {c,h}} — the values as of
     // flagging; when a post's caption/hashtags CHANGE from that snapshot the
@@ -3075,6 +3114,7 @@ export default async function handler(req, res) {
     }
     // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)
     let tagged = 0;
+    const patchesF = [];
     if (bdF) {
       const schedF = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
       for (const c of bdF.cards) {
@@ -3084,9 +3124,12 @@ export default async function handler(req, res) {
         const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); });
         const add = [{ n: "IG · " + f.ig + (f.note && f.note !== "Courtney's pick" && f.ig === "Reel" ? " · " + f.note : ""), c: "#E9E6DF" }, { n: "TT · " + f.tt, c: "#C6CCCF" }];
         const next = [...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")];
-        if (JSON.stringify(next) !== JSON.stringify(c.labels || [])) { c.labels = next; tagged++; }
+        if (JSON.stringify(next) !== JSON.stringify(c.labels || [])) {
+          c.labels = next; tagged++;
+          patchesF.push({ id: c.id, apply: (fc) => { const kp = (fc.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); }); fc.labels = [...kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")]; } });
+        }
       }
-      if (tagged) await kvSet("lavalle_data", blobF);
+      if (tagged) await patchBoardCards(SBOARD.key, patchesF);
     }
     await kvSet("sisters_formats_state" + SBOARD.kvSuffix, { sig: sigF, at: Date.now(), tileStyles: tileStyle || undefined, tilesHash: createHash("sha256").update(JSON.stringify(tilesF.map((t) => t.cover))).digest("hex").slice(0, 12) });
     res.json({ ok: true, month: monthF, reels: Object.keys(reelByN).length, carousels: Object.keys(carByN).length, classified: tileStyle ? Object.keys(tileStyle).length : 0, statics: staticCount, tagged });
@@ -3235,7 +3278,8 @@ export default async function handler(req, res) {
       tc.desc = "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
     }
     if (!(tc.themeData && (tc.themeData.stage === "owners" || tc.themeData.stage === "approved"))) setStage("sarah");
-    await kvSet("lavalle_data", blobT3);
+    // the IG + Claude passes above are slow — write onto the FRESH blob
+    await patchBoardCards(SBOARD.key, [{ id: tc.id, append: tc, apply: (fc) => { fc.name = tc.name; fc.desc = tc.desc; fc.labels = tc.labels; fc.themeData = tc.themeData; } }]);
     await kvSet("sisters_theme_state" + SBOARD.kvSuffix, { at: Date.now(), month: label, feedbackCount: feedback.length });
     res.json({ ok: true, label, posts: rows.length, styleDbg, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });
     return;
