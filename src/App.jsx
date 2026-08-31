@@ -87,7 +87,7 @@ async function dbSave(record) {
         if (dj && dj.revs && record && record.boards) for (const [bk, rv] of Object.entries(dj.revs)) if (record.boards[bk]) record.boards[bk]._rev = rv;
         if (dj && dj.stamps && record && record.boards) for (const [bk, st] of Object.entries(dj.stamps)) if (record.boards[bk]) record.boards[bk]._stamp = st;
         if (dj && dj.keyStamps && record) record._keyStamps = dj.keyStamps;
-        const KEY_LABELS = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes" };
+        const KEY_LABELS = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes", foldLedger: "Fold Ledger" };
         const staleAll = [
           ...(dj && Array.isArray(dj.staleBoards) ? dj.staleBoards.map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk) : []),
           ...(dj && Array.isArray(dj.staleKeys) ? dj.staleKeys.map((k) => KEY_LABELS[k] || k) : []),
@@ -103,7 +103,7 @@ async function dbSave(record) {
       // version; everything else in this save was stored
       try {
         const dj = await r.clone().json();
-        const KEY_LABELS9 = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes" };
+        const KEY_LABELS9 = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes", foldLedger: "Fold Ledger" };
         const names9 = [
           ...((dj && dj.staleBoards) || []).map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk),
           ...((dj && dj.staleKeys) || []).map((k) => KEY_LABELS9[k] || k),
@@ -3302,7 +3302,7 @@ return profitNode;
 }
 if (tab === "content") return (
 <SegTabs id="content" segments={[
-{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} gridPlanner={dbState.gridPlanner || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} prHub={dbState.prHub || null} onSavePrHub={(pv) => setDbState((prev) => { const next = { ...prev, prHub: pv }; dbSave(next); return next; })} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
+{ id: "boards", label: "Boards", render: () => <Boards data={dbState.boards || null} gridPlanner={dbState.gridPlanner || null} team={(dbState.actionsBoard || {}).team || []} viewer={{ name: (me && me.name) || "", email: (me && me.email) || "", owner: iAmOwner }} foldLedger={dbState.foldLedger || null} onSaveFoldLedger={(fv) => setDbState((prev) => { const next = { ...prev, foldLedger: fv }; dbSave(next); return next; })} prHub={dbState.prHub || null} onSavePrHub={(pv) => setDbState((prev) => { const next = { ...prev, prHub: pv }; dbSave(next); return next; })} onSave={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} onSaveTeam={(tv) => setDbState((prev) => { const next = { ...prev, actionsBoard: { ...(prev.actionsBoard || {}), team: tv } }; dbSave(next); return next; })} /> },
 { id: "brandgrids", label: "Grids", render: () => <BrandGrids allowedAccts={allowedAccts} owner={iAmOwner} boards={dbState.boards || null} data={dbState.brandGrids || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, brandGrids: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "grid", label: "Schedule", render: () => <GridPlanner allowedAccts={allowedAccts} data={dbState.gridPlanner || null} boards={dbState.boards || null} onSave={(gv) => setDbState((prev) => { const next = { ...prev, gridPlanner: gv }; dbSave(next); return next; })} onSaveBoards={(bv) => setDbState((prev) => { const next = { ...prev, boards: bv }; dbSave(next); return next; })} /> },
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics allowedAccts={allowedAccts} /> },

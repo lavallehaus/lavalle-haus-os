@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ContentBrain from "./ContentBrain.jsx";
 import PRHub from "./PRHub.jsx";
+import FoldLedger from "./FoldLedger.jsx";
 import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM, composeOutreachEmail } from "./ugcOutreach.js";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
@@ -571,7 +572,7 @@ function PrCalendar({ monthCards, ugcNote, onOpen, wide = false }) {
   );
 }
 
-export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam, gridPlanner = null, prHub = null, onSavePrHub = null }) {
+export default function Boards({ data, onSave, team = [], viewer = { name: "", email: "", owner: true }, onSaveTeam, gridPlanner = null, prHub = null, onSavePrHub = null, foldLedger = null, onSaveFoldLedger = null }) {
   const [boards, setBoards] = useState(data || null);
   const [loading, setLoading] = useState(!data);
   const [past, setPast] = useState([]);
@@ -953,6 +954,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   }, []);
 
   const commit = (next) => { setPast((p) => [...p.slice(-49), boards]); setFuture([]); setBoards(next); onSave && onSave(next); };
+  // The Fold · Ledger board (cost + ad-spend sheet) — self-seeds once for the
+  // owner so the tile exists without touching the stored seed file.
+  useEffect(() => {
+    if (!viewer.owner || !boards || !boards["the-fold"] || boards["the-fold-ledger"]) return;
+    commit({ ...boards, "the-fold-ledger": { name: "The Fold · Ledger", ws: "the-fold",
+      lists: [{ id: "fl-rules", name: "How this board works" }, { id: "fl-notes", name: "Partner notes" }],
+      cards: [
+        { id: "flc-rules", listId: "fl-rules", name: "RULES — every time we add a new item to The Fold", labels: [], members: [], comments: [],
+          desc: "1. WHOLESALE FIRST. Look up what we actually paid in FashionGo order history (fashiongo.net → My Orders → Purchased Items). Never set a price without the cost.\n2. RETAIL = 3–4x WHOLESALE so the price carries its own marketing budget. The sheet flags markup red under 3x and taupe over 4x.\n3. ADD THE ROW to this Ledger the same day the item is added to the site: name, wholesale, retail, units bought.\n4. AD ALLOTMENT: give the piece a monthly ad budget line from the $35/day pool BEFORE it runs in ads. The budget strip shows allocated vs unallocated.\n5. PHOTOS come from Ashe Design's Drive deliveries; the product goes up as a DRAFT and publishes with its drop.\n6. WEEKLY: ads partner updates Spent / CPC / ROAS / Live per piece. Verdicts are automatic — Scale (ROAS ≥ 2.5), Hold (≥ 1.2), Cut (below, after $25 spent). Shift the daily budget toward Scale pieces.\n7. MONTHLY: hit Close month to archive the month, then re-split allotments using the verdicts.\n8. HANDOFF: Export CSV or Copy digest — the digest is written for the ads partner (or her Claude) to propose next month's per-piece spend." },
+        { id: "flc-auto", listId: "fl-rules", name: "Automations wired to this board", labels: [], members: [], comments: [],
+          desc: "· This board self-created with the ledger sheet on it; fall-drop pieces and verified shoot costs (from the 2026 receipts email label) were pre-seeded.\n· MONDAYS 8:30 AM — \"TF conversion deep-dive\" scheduled task: carries Friday's Lavalle Haus deep-dive findings to The Fold, sweeps Maison Margiela / The Row / Toteme / Brunello Cucinelli, checks every Fold PDP for breakage.\n· FRIDAYS 8:30 AM — the LH deep-dive now saves its report to disk so Monday's task can read it.\n· Pricing rule (3–4x FashionGo wholesale) is saved in Claude's permanent memory and enforced whenever an item is added." },
+      ] } });
+  }, [boards, viewer.owner]); // eslint-disable-line
   const undo = () => { if (!past.length) return; const prev = past[past.length - 1]; setPast((p) => p.slice(0, -1)); setFuture((f) => [boards, ...f].slice(0, 50)); setBoards(prev); onSave && onSave(prev); };
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture((f) => f.slice(1)); setPast((p) => [...p.slice(-49), boards]); setBoards(nxt); onSave && onSave(nxt); };
 
@@ -1410,6 +1424,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   </button>
                 );
               })}
+            </div>
+          )}
+          {open === "the-fold-ledger" && onSaveFoldLedger && (
+            // The label's running cost + ad-spend sheet lives ON this board —
+            // her ads partner works from it; columns below hold partner notes.
+            <div style={{ background: "rgba(250,249,247,0.96)", border: `1px solid ${c.line}`, borderRadius: 2, padding: "12px 14px", marginBottom: 14 }}>
+              <FoldLedger data={foldLedger} onSave={onSaveFoldLedger} viewer={viewer} />
             </div>
           )}
           {open === "pr-refillery-haus" && onSavePrHub && (
