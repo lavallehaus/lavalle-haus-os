@@ -3568,7 +3568,10 @@ export default async function handler(req, res) {
           if (t.tag === "C") {
             const concept = (s && s.concept) || (((NAME_RX.exec(card.name || "") || [])[1] || "").trim()) || "Courtney post";
             card.name = base + " — " + concept;
-            if (!/courtney/i.test(card.desc || "")) { card.desc = "Courtney's post — caption and hashtags to come from Courtney."; card.tags = ""; }
+            // Seed the placeholder ONLY on an empty caption — the old
+            // /courtney/i test nuked any real caption she wrote that didn't
+            // contain her own name (Post 2's walk-through caption, Aug 31).
+            if (!(card.desc || "").trim()) { card.desc = "Courtney's post — caption and hashtags to come from Courtney."; card.tags = card.tags || ""; }
             if (!hasCTag) card.labels = [{ n: "Courtney", c: "#FFFFFF" }, ...(card.labels || [])]; // her tag: white box, black square, "Courtney"
           } else {
             card.name = base;
