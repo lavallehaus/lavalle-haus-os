@@ -2806,9 +2806,23 @@ const [dbState, setDbState] = useState({ products: INITIAL_PRODUCTS, materials: 
 // video was silently refused that way. Coming back to the foreground after 10+
 // minutes away reloads the app outright: fresh bundle, fresh data, every
 // screen. Short hops away don't reload (the save guard tolerates far more).
+// iOS zoom clamp: an installed PWA can cache the start page with the OLD
+// viewport meta, so the anti-auto-zoom setting never arrives — and a lingering
+// zoom pans the app sideways into a white panel (her Aug 30-31 reports).
+// Re-asserting the meta from JS forces iOS to re-evaluate and snap scale to 1,
+// bypassing any cached HTML. Runs at launch and on every resume.
+const clampZoom = () => {
+  try {
+    let m = document.querySelector('meta[name="viewport"]');
+    if (!m) { m = document.createElement("meta"); m.name = "viewport"; document.head.appendChild(m); }
+    m.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover");
+  } catch (eZ) {}
+};
 useEffect(() => {
+  clampZoom();
   let hiddenAt = 0;
   const resume = () => {
+    clampZoom();
     if (hiddenAt && Date.now() - hiddenAt > 10 * 60 * 1000) { window.location.reload(); return; }
     hiddenAt = 0;
   };
