@@ -25,7 +25,7 @@ const SEASONS = ["Fall 2026", "Summer 2026", "Core", "Spring 2027"];
 // Wholesale + units pulled from her real FashionGo order history (Sep 1 2026).
 // Anais/Willa arrive as one wholesale SET ($38.75) — split by retail ratio.
 const SEED_ITEMS = [
-  ["Cleo Jean", "Fall 2026", 138, 27.75, 6, "et clet C6518P_1 dark denim 3S/2M/1L Feb 23 — 5.0x, OVER the 3-4x band"],
+  ["Chloe Jean", "Fall 2026", 138, 27.75, 6, "et clet C6518P_1 dark denim 3S/2M/1L Feb 23 — 5.0x, OVER the 3-4x band"],
   ["Anais Top", "Fall 2026", 88, 22.45, 6, "MABLE MST8254 set w/ Willa @$38.75/set, split by retail ratio; 3S/2M/1L"],
   ["Willa Short", "Fall 2026", 64, 16.30, 6, "other half of the MABLE set; 3S/2M/1L"],
   ["Camille Blouse", "Fall 2026", 78, 18.95, 12, "Miss Love T2828 white 6S/4M/2L Jun 17 — 4.1x"],
