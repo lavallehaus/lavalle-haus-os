@@ -24,7 +24,7 @@ const SEASONS = ["Fall 2026", "Summer 2026", "Core", "Spring 2027"];
 // drop, so campaign/ad decisions see the whole board (her ask, Sep 1 2026).
 const SEED_ITEMS = [
   // Fall 2026 drop (drafts created Sep 1 2026; prices provisional until FashionGo wholesale lands)
-  ["Chloe Jean", "Fall 2026", 138], ["Anais Top", "Fall 2026", 88], ["Willa Short", "Fall 2026", 64],
+  ["Cleo Jean", "Fall 2026", 138], ["Anais Top", "Fall 2026", 88], ["Willa Short", "Fall 2026", 64],
   ["Camille Blouse", "Fall 2026", 78], ["Elodie Blouse", "Fall 2026", 92], ["Gia Pant", "Fall 2026", 118], ["Mara Dress", "Fall 2026", 118],
   // Existing apparel
   ["Luce Pants", "Summer 2026", 138], ["Sera Top", "Summer 2026", 98], ["Iris Dress", "Summer 2026", 92],
