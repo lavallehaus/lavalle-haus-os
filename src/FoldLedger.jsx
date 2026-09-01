@@ -22,18 +22,32 @@ const SEASONS = ["Fall 2026", "Summer 2026", "Core", "Spring 2027"];
 
 // Full catalog — the YTD view covers EVERYTHING on the site, not just the
 // drop, so campaign/ad decisions see the whole board (her ask, Sep 1 2026).
+// Wholesale + units pulled from her real FashionGo order history (Sep 1 2026).
+// Anais/Willa arrive as one wholesale SET ($38.75) — split by retail ratio.
 const SEED_ITEMS = [
-  // Fall 2026 drop (drafts created Sep 1 2026; prices provisional until FashionGo wholesale lands)
-  ["Cleo Jean", "Fall 2026", 138], ["Anais Top", "Fall 2026", 88], ["Willa Short", "Fall 2026", 64],
-  ["Camille Blouse", "Fall 2026", 78], ["Elodie Blouse", "Fall 2026", 92], ["Gia Pant", "Fall 2026", 118], ["Mara Dress", "Fall 2026", 118],
-  // Existing apparel
-  ["Luce Pants", "Summer 2026", 138], ["Sera Top", "Summer 2026", 98], ["Iris Dress", "Summer 2026", 92],
-  ["Romy Cardigan", "Core", 145], ["Sable Pant", "Summer 2026", 76], ["Renata Dress", "Summer 2026", 155],
-  ["Olivia Dress", "Summer 2026", 96], ["Margaux Blouse", "Summer 2026", 68], ["Dove Sweater", "Core", 88],
-  ["Hazel Sweater", "Core", 88], ["Solene Dress", "Summer 2026", 84], ["Lucia Dress", "Summer 2026", 98],
-  // Jewelry — the only category with any sales velocity so far (~1 piece/week)
-  ["Selene Necklace", "Core", 68], ["Cora Bracelet", "Core", 78], ["Mira Earrings", "Core", 38],
-].map(([name, season, retail]) => ({ id: uid(), name, season, retail, wholesale: null, units: null, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note: "" }));
+  ["Cleo Jean", "Fall 2026", 138, 27.75, 6, "et clet C6518P_1 dark denim 3S/2M/1L Feb 23 — 5.0x, OVER the 3-4x band"],
+  ["Anais Top", "Fall 2026", 88, 22.45, 6, "MABLE MST8254 set w/ Willa @$38.75/set, split by retail ratio; 3S/2M/1L"],
+  ["Willa Short", "Fall 2026", 64, 16.30, 6, "other half of the MABLE set; 3S/2M/1L"],
+  ["Camille Blouse", "Fall 2026", 78, 18.95, 12, "Miss Love T2828 white 6S/4M/2L Jun 17 — 4.1x"],
+  ["Elodie Blouse", "Fall 2026", 92, 37.30, 6, "Esley T2502 eyelet 3S/2M/1L Feb 23 — 2.5x, UNDER the 3x floor"],
+  ["Gia Pant", "Fall 2026", 118, 25.95, 6, "Miss Love P5544B olive 3S/2M/1L Jun 17 — 4.5x, OVER the band"],
+  ["Mara Dress", "Fall 2026", 118, null, null, "NO FashionGo record on this account — where was the black knit dress bought?"],
+  ["Luce Pants", "Summer 2026", 138, null, null, "not in this FashionGo account's history"],
+  ["Sera Top", "Summer 2026", 98, 23, 6, "Mod Ref Eugenie Top white 3S/2M/1L Feb 15 — 4.3x"],
+  ["Iris Dress", "Summer 2026", 92, 8, 12, "IRIS BD05739 taupe 4S/4M/4L Feb 23 — 11.5x"],
+  ["Romy Cardigan", "Core", 145, null, null, ""],
+  ["Sable Pant", "Summer 2026", 76, null, null, ""],
+  ["Renata Dress", "Summer 2026", 155, 38, 6, "Loucia Eliza halter maxi white 3S/2M/1L Feb 13 — 4.1x"],
+  ["Olivia Dress", "Summer 2026", 96, null, null, ""],
+  ["Margaux Blouse", "Summer 2026", 68, null, null, ""],
+  ["Dove Sweater", "Core", 88, 30, 12, "Mod Ref Layla white: 6 Feb + 6 Jun restock — 2.9x; 4 sold/$88 net past 90d"],
+  ["Hazel Sweater", "Core", 88, 30, 6, "Mod Ref Layla brown 3S/2M/1L Feb 15 — 2.9x; 1 gifted $0"],
+  ["Solene Dress", "Summer 2026", 84, null, null, ""],
+  ["Lucia Dress", "Summer 2026", 98, 38, 6, "Loucia Cressida poplin maxi white 3S/2M/1L Feb 13 — 2.6x, under floor"],
+  ["Selene Necklace", "Core", 68, null, null, ""],
+  ["Cora Bracelet", "Core", 78, null, null, ""],
+  ["Mira Earrings", "Core", 38, 15, 20, "Flint J. E0037 pearl dangle studs, 20 units Aug 13 — 2.5x; the ~1/week seller"],
+].map(([name, season, retail, wholesale, units, note]) => ({ id: uid(), name, season, retail, wholesale, units, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note }));
 
 const SEED_COSTS = [
   { label: "Third Culture LA — lifestyle campaign (Sacia)", amount: 6447.5, month: "2026-07", season: "Fall 2026", note: "VERIFIED: 3 payments Jul 8/14/23. Per Kiabeth: Sacia ~$2,700 + location ~$2,400 + Paige $1,000; MUA included" },
