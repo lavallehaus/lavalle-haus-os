@@ -2892,6 +2892,15 @@ export default async function handler(req, res) {
     const base = stCB.base || null;
     let pulled = 0;
     const patchesCB = [];
+    // keep the last few raw doc reads in KV (small ring) — the doc is her
+    // command surface, so whatever was typed there must always be recoverable
+    // even after Drive consolidates revisions
+    try {
+      if (docText) {
+        const snaps = (await kvGet("sisters_captions_doc_snaps")) || [];
+        if (!snaps.length || snaps[0].text !== docText) await kvSet("sisters_captions_doc_snaps", [{ at: Date.now(), text: docText }, ...snaps].slice(0, 6));
+      }
+    } catch (eSN) {}
     if (base && docText) {
       // compare both sides through the same normalizer so cleaning (em dashes,
       // trims) never reads as a phantom doc edit
@@ -2900,8 +2909,11 @@ export default async function handler(req, res) {
         const n = numCB(c); const p = parsed[n]; const b0 = base[n];
         if (!p || !b0) continue;
         let dc = null, dh = null;
-        if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc)) { c.desc = p.c; dc = p.c; pulled++; }
-        if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags)) { c.tags = p.h; dh = p.h; pulled++; }
+        // a BLANK doc entry never blanks a written caption — an empty parse is
+        // far more likely a doc mishap (partial edit, broken block) than an
+        // intentional erase; clearing is done in the app
+        if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc) && (p.c || !(c.desc || "").trim())) { c.desc = p.c; dc = p.c; pulled++; }
+        if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags) && (p.h || !(c.tags || "").trim())) { c.tags = p.h; dh = p.h; pulled++; }
         if (dc !== null || dh !== null) patchesCB.push({ id: c.id, apply: (fc) => { if (dc !== null) fc.desc = dc; if (dh !== null) fc.tags = dh; } });
       }
     }
@@ -2972,7 +2984,11 @@ export default async function handler(req, res) {
       htmlParts.push("<p>&nbsp;</p>");
     }
     const nextText = lines.join("\n");
-    const sigCB = createHash("sha256").update(nextText + "|todo:" + Object.keys(todoCB).sort().join(",")).digest("hex").slice(0, 12);
+    // sig over CONTENT only — the "Last synced" line used to be hashed too,
+    // which made every 15-min sweep rewrite the whole doc (flooding version
+    // history and reload-flickering the doc under whoever was reading it on a
+    // phone). Now an unchanged doc is left alone.
+    const sigCB = createHash("sha256").update(lines.filter((l) => !/^Last synced:/.test(l)).join("\n") + "|todo:" + Object.keys(todoCB).sort().join(",")).digest("hex").slice(0, 12);
     let pushedCB = false;
     if (stCB.sig !== sigCB || pulled || (req.body || {}).force) {
       const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
@@ -3530,17 +3546,24 @@ export default async function handler(req, res) {
         // lands there + the following K) to catch the cycle up. Grid order is
         // untouched — this is dating only. Grid 2's walk continues from grid
         // 1's last assigned day.
-        const walkDaysW = (tags) => {
+        const walkDaysW = (tags, existing) => {
           // Posts 1-5 are ANCHORED to what actually happened / her call Aug 28:
           // P1+P2 posted Wed Aug 26 (the original double), P3 Thu Aug 27,
           // P4+P5 post Fri Aug 28 (the approved catch-up double). From P6 on:
           // one post per day max, C posts snap to the next Mon/Wed/Fri.
+          // Sep 2: a post whose card already carries a date that has passed is
+          // HISTORY — it keeps that date no matter how the tags move (a C-dot
+          // re-tag must never rename what actually went out); the walk resumes
+          // from it.
           const ANCHORS = [Date.UTC(2026, 7, 26), Date.UTC(2026, 7, 26), Date.UTC(2026, 7, 27), Date.UTC(2026, 7, 28), Date.UTC(2026, 7, 28)];
+          const nowW = new Date(); const TODAY_W = Date.UTC(nowW.getUTCFullYear(), nowW.getUTCMonth(), nowW.getUTCDate());
           const nextMWF = (t0) => { let t = t0 + 86400000; while (![1, 3, 5].includes(new Date(t).getUTCDay())) t += 86400000; return t; };
           const days = []; let prev = null;
           for (let i = 0; i < tags.length; i++) {
             let t;
-            if (i < ANCHORS.length) t = ANCHORS[i];
+            const ex = existing && existing[i];
+            if (ex != null && ex <= TODAY_W) t = ex;
+            else if (i < ANCHORS.length) t = ANCHORS[i];
             else if (tags[i] === "C") t = nextMWF(prev);
             else t = prev + 86400000;
             days.push(t); prev = t;
@@ -3550,7 +3573,17 @@ export default async function handler(req, res) {
         let tagsW = rec.tiles.map((t0) => (t0.tag === "C" ? "C" : "K"));
         let idx0W = 0;
         if (g === "2") { const r1W = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] }; const t1W = (r1W.tiles || []).map((t0) => (t0.tag === "C" ? "C" : "K")); idx0W = t1W.length; tagsW = [...t1W, ...tagsW]; }
-        const daysAllW = walkDaysW(tagsW);
+        // pull each post's currently-carried date off its card name so passed
+        // dates stay anchored (see walkDaysW)
+        const MONTHS_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+        const existingW = tagsW.map((_, i) => {
+          const cEx = cardAt(i + 1); if (!cEx) return null;
+          const mEx = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(cEx.name || "");
+          if (!mEx) return null;
+          const mo = MONTHS_W[mEx[1].toLowerCase()]; if (mo == null) return null;
+          return Date.UTC(mo >= 6 ? 2026 : 2027, mo, Number(mEx[2]));
+        });
+        const daysAllW = walkDaysW(tagsW, existingW);
         // permutation within this grid: new slot q ← previous slot p (by cover, greedy, dup-safe)
         const usedP = new Set(); const srcOf = new Array(rec.tiles.length).fill(-1);
         rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedP.has(i) && pt.cover === t.cover); if (p >= 0) { usedP.add(p); srcOf[q] = p; } });
