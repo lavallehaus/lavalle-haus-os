@@ -5332,6 +5332,15 @@ export default async function handler(req, res) {
         if (!id) { res.status(400).json({ error: "id required" }); return; }
         if (b.rev) {
           const rev = String(b.rev).replace(/[^a-zA-Z0-9_-]/g, "");
+          if (b.export) {
+            // native Google Docs have no binary revision media — the legacy
+            // export endpoint is the only per-revision text path
+            const rX = await fetch(`https://docs.google.com/feeds/download/documents/export/Export?id=${id}&revision=${rev}&exportFormat=` + (b.export === true ? "txt" : String(b.export).replace(/[^a-z]/g, "")), { headers: AUTH });
+            if (!rX.ok) { res.status(400).json({ error: "revision export failed: " + rX.status }); return; }
+            const bufX = Buffer.from(await rX.arrayBuffer());
+            res.json({ ok: true, b64: bufX.toString("base64"), bytes: bufX.length });
+            return;
+          }
           const rR = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/revisions/${rev}?alt=media`, { headers: AUTH });
           if (!rR.ok) { res.status(400).json({ error: "revision fetch failed: " + rR.status }); return; }
           const buf = Buffer.from(await rR.arrayBuffer());
