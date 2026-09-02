@@ -2885,7 +2885,10 @@ export default async function handler(req, res) {
     const docText = rEx.ok ? (await rEx.text()).replace(/^﻿/, "").replace(/\r/g, "") : "";
     const parsed = {};
     for (const m of docText.matchAll(/^Post\s+(\d+)[^\n]*\n(?:Caption:\s?([\s\S]*?))?\nHashtags:\s?([^\n]*)/gim)) {
-      const clean = (s) => String(s || "").trim().replace(/^\(none yet\)$/i, "").replace(/\s*—\s*/g, ", "); // captions never carry em dashes (house rule)
+      // \n{3,} collapse: Docs INFLATES newline runs on every push→export round
+      // trip (a caption with stacked blank lines never compared equal again and
+      // the sync ping-ponged on it — Post 10, Sep 2)
+      const clean = (s) => String(s || "").trim().replace(/^\(none yet\)$/i, "").replace(/\s*—\s*/g, ", ").replace(/\n{3,}/g, "\n\n"); // captions never carry em dashes (house rule)
       parsed[Number(m[1])] = { c: clean(m[2]), h: String(m[3] || "").trim().replace(/^\(none yet\)$/i, "") };
     }
     // 2. pull: doc entries that changed since last sync win their post
@@ -2904,7 +2907,7 @@ export default async function handler(req, res) {
     if (base && docText) {
       // compare both sides through the same normalizer so cleaning (em dashes,
       // trims) never reads as a phantom doc edit
-      const nrm = (s) => String(s || "").trim().replace(/\s*—\s*/g, ", ");
+      const nrm = (s) => String(s || "").trim().replace(/\s*—\s*/g, ", ").replace(/\n{3,}/g, "\n\n");
       for (const c of postsCB) {
         const n = numCB(c); const p = parsed[n]; const b0 = base[n];
         if (!p || !b0) continue;
@@ -2973,13 +2976,14 @@ export default async function handler(req, res) {
     const lines = ["LAVALLE SISTERS — CAPTIONS + HASHTAGS", "Edit captions or hashtags right here (or on the card) — the app and this doc sync both ways every few minutes. Keep each post's Caption:/Hashtags: lines.", "Blue titles are still waiting on Courtney; they turn black on their own once the caption changes.", "Last synced: " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC", ""];
     const htmlParts = lines.map((l) => l ? "<p>" + esc(l) + "</p>" : "<p>&nbsp;</p>");
     for (const c of postsCB) {
+      const descOut = (c.desc || "").trim().replace(/\n{3,}/g, "\n\n"); // collapsed on the way out too, so push/export/pull agree
       lines.push(c.name);
-      lines.push("Caption: " + ((c.desc || "").trim() || "(none yet)"));
+      lines.push("Caption: " + (descOut || "(none yet)"));
       lines.push("Hashtags: " + ((c.tags || "").trim() || "(none yet)"));
       lines.push("");
       const isTodo = !!todoCB[numCB(c)];
       htmlParts.push("<p>" + (isTodo ? '<span style="color:#1155cc">' + esc(c.name) + "</span>" : esc(c.name)) + "</p>");
-      htmlParts.push("<p>Caption: " + (esc((c.desc || "").trim() || "(none yet)")).replace(/\n/g, "<br>") + "</p>");
+      htmlParts.push("<p>Caption: " + (esc(descOut || "(none yet)")).replace(/\n/g, "<br>") + "</p>");
       htmlParts.push("<p>Hashtags: " + esc((c.tags || "").trim() || "(none yet)") + "</p>");
       htmlParts.push("<p>&nbsp;</p>");
     }
