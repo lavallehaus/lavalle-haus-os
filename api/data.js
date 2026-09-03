@@ -5794,6 +5794,15 @@ export default async function handler(req, res) {
         if (sOld && sNew && sNew !== sOld) {
           const capSig = (b) => JSON.stringify((b.cards || []).filter((c) => /^post\s*\d+/i.test(c.name || "")).map((c) => [c.id, c.desc || "", c.tags || ""]));
           sistersCapsChanged = capSig(sOld) !== capSig(sNew);
+          // Rolling pre-change snapshot (Sep 3: Posts 1-21 were found replaced
+          // by blank re-dated shells with no identified culprit) — before a
+          // change lands, the outgoing state is kept under a hidden board key,
+          // refreshed at most every 30 min. Whatever breaks the board next,
+          // the state from ≤30 min before the first bad save is one copy away.
+          const snapPrev = (stored.boards || {})["_snap-lavalle-sisters"];
+          if (!snapPrev || !snapPrev._stamp || Date.now() - snapPrev._stamp > 30 * 60 * 1000) {
+            toStore.boards["_snap-lavalle-sisters"] = { ...sOld, _stamp: Date.now(), _rev: ((snapPrev && snapPrev._rev) || 0) + 1 };
+          }
         }
       } catch (eSC) {}
     }
