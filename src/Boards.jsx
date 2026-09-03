@@ -85,6 +85,37 @@ const normLabel = (lb) => {
   return { n: lb.n || "", c: lb.c || "#E9E6DF" };
 };
 const labelText = (hex) => (hex === "#8F8676" || hex === "#1A1A1A" ? "#FFFFFF" : "#1A1A1A");
+// Saved custom tags (her ask, Sep 3: "Kiabeth"/"Kiaredza" kept re-typing) —
+// every non-house tag used on a board's cards is remembered on the board
+// (board.tagBank) and offered as a tap-to-add preset; names she removes go to
+// board.tagBankHidden so the auto-union never resurrects them. House tags are
+// the automation vocabulary and stay fixed.
+const HOUSE_TAG_SET = new Set(["courtney", "approved", "ready for review", "live", "pre-order", "ordered", "in production", "shipped", "arrived", "shopify", "amazon", "on hold", "priority"]);
+const isHouseTag = (n) => { const s = String(n || "").trim().toLowerCase(); return HOUSE_TAG_SET.has(s) || /^(ig|tt)\s*·/.test(s); };
+const deriveTagBank = (bd) => {
+  const seen = new Map();
+  for (const cd of ((bd && bd.cards) || [])) for (const L of (cd.labels || [])) {
+    const n = ((typeof L === "string" ? L : L && L.n) || "").trim();
+    if (!n || isHouseTag(n)) continue;
+    const k = n.toLowerCase();
+    if (!seen.has(k)) seen.set(k, { n, c: (typeof L === "object" && L && L.c) || "#E9E6DF" });
+  }
+  return [...seen.values()];
+};
+const bankOf = (bd) => (bd && Array.isArray(bd.tagBank)) ? bd.tagBank : deriveTagBank(bd);
+const unionTagBank = (bd, cards) => {
+  const hidden = new Set(((bd && bd.tagBankHidden) || []).map((s) => String(s).toLowerCase()));
+  const bank = [...bankOf(bd)];
+  const have = new Set(bank.map((t) => t.n.toLowerCase()));
+  for (const cd of (cards || [])) for (const L of (cd.labels || [])) {
+    const n = ((typeof L === "string" ? L : L && L.n) || "").trim();
+    if (!n || isHouseTag(n)) continue;
+    const k = n.toLowerCase();
+    if (have.has(k) || hidden.has(k)) continue;
+    have.add(k); bank.push({ n, c: (typeof L === "object" && L && L.c) || "#E9E6DF" });
+  }
+  return bank;
+};
 
 // Board backgrounds — Trello-style picker: upload a photo or pick a tone.
 const BG_PRESETS = [
@@ -1060,16 +1091,47 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
       : { ...old, ...vals, comments: withActivity };
 
     if (destKey === srcKey) {
-      patchBoard(srcKey, { cards: editCard.isNew ? [...boards[srcKey].cards, cardOut] : boards[srcKey].cards.map((x) => (x.id === editCard.cardId ? cardOut : x)) });
+      const nextCards = editCard.isNew ? [...boards[srcKey].cards, cardOut] : boards[srcKey].cards.map((x) => (x.id === editCard.cardId ? cardOut : x));
+      // any custom tag on the saved card joins the board's saved-tags bank
+      patchBoard(srcKey, { cards: nextCards, tagBank: unionTagBank(boards[srcKey], nextCards) });
     } else {
       // cross-board move: remove from source, add to destination
       const next = { ...boards };
       next[srcKey] = { ...next[srcKey], cards: next[srcKey].cards.filter((x) => x.id !== editCard.cardId) };
       next[destKey] = { ...next[destKey], cards: [...next[destKey].cards, cardOut] };
+      next[destKey].tagBank = unionTagBank(boards[destKey], next[destKey].cards);
       commit(next);
     }
     if (summary && (cardOut.members || []).length) notify(cardOut, summary);
     setEditCard(null);
+  };
+
+  // Saved-tags bank management from the card sheet: explicit add (typed tag),
+  // remove (hides it from presets — cards already tagged keep it), rename
+  // (bank + every card on the board carrying it).
+  const tagBankAct = (bk, action) => {
+    const bd = boards[bk]; if (!bd) return;
+    const bank = [...bankOf(bd)];
+    const hidden = (bd.tagBankHidden || []);
+    if (action.add) {
+      const n = String(action.add.n || "").trim(); if (!n || isHouseTag(n)) return;
+      const k = n.toLowerCase();
+      const nb = bank.some((t) => t.n.toLowerCase() === k) ? bank : [...bank, { n, c: action.add.c || "#E9E6DF" }];
+      patchBoard(bk, { tagBank: nb, tagBankHidden: hidden.filter((h) => String(h).toLowerCase() !== k) });
+    } else if (action.remove) {
+      const k = String(action.remove).toLowerCase();
+      patchBoard(bk, { tagBank: bank.filter((t) => t.n.toLowerCase() !== k), tagBankHidden: [...hidden.filter((h) => String(h).toLowerCase() !== k), action.remove] });
+    } else if (action.rename) {
+      const from = String(action.rename.from || ""), to = String(action.rename.to || "").trim();
+      if (!to || isHouseTag(to)) return;
+      const kf = from.toLowerCase();
+      const nb = bank.map((t) => (t.n.toLowerCase() === kf ? { ...t, n: to } : t));
+      const cards = bd.cards.map((cd) => {
+        if (!(cd.labels || []).some((L) => (((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === kf))) return cd;
+        return { ...cd, labels: cd.labels.map((L) => { const nm = ((typeof L === "string" ? L : L && L.n) || ""); if (nm.toLowerCase() !== kf) return L; return typeof L === "string" ? { n: to, c: "#E9E6DF" } : { ...L, n: to }; }) };
+      });
+      patchBoard(bk, { tagBank: nb, cards });
+    }
   };
 
   // Persist a single field (e.g. cover) immediately, without closing the sheet —
@@ -1741,6 +1803,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             const nums = ((bd && bd.cards) || []).map((cd) => { const m = (cd.name || "").match(new RegExp("^" + label + "\\s+(\\d+)")); return m ? parseInt(m[1]) : 0; });
             return { active, label, nextNum: (nums.length ? Math.max(0, ...nums) : 0) + 1 };
           })()}
+          tagBank={bankOf(boards[editCard.boardKey])}
+          onTagBank={(action) => tagBankAct(editCard.boardKey, action)}
           onClose={() => setEditCard(null)}
           onSave={saveCard}
           onPatch={patchCard}
@@ -1827,7 +1891,7 @@ function LookbookView({ board, shoots, onClose }) {
 const arrowBtn = (side) => ({ position: "absolute", [side]: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(237,233,226,0.3)", color: "#EDE9E2", width: 44, height: 44, borderRadius: "50%", fontSize: 22, cursor: "pointer", lineHeight: 1 });
 const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) return k; return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }); };
 
-function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
+function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, tagBank, onTagBank, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   // click the board (backdrop) or press ESC to leave the card — the × is not the only way out
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose && onClose(); };
@@ -1955,7 +2019,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // sticks even if the sheet is dismissed by tapping outside instead of Save.
   const applyCover = (val) => { setCover(val); if (!isNew && onPatch) onPatch({ cover: val || null }); };
   const addMember = (m) => { const v = (m || "").trim(); if (!v || members.includes(v)) return; setMembers([...members, v]); setMemberInput(""); };
-  const addLabel = () => { const n = labelName.trim(); if (!n) return; setLabels([...labels, { n, c: labelColor }]); setLabelName(""); };
+  const addLabel = () => { const n = labelName.trim(); if (!n) return; setLabels([...labels, { n, c: labelColor }]); if (!isHouseTag(n)) onTagBank && onTagBank({ add: { n, c: labelColor } }); setLabelName(""); };
   const destLists = (boardsIndex[destBoard] || {}).lists || [];
   const comments = (card.comments || []);
   // Auto-save: persist an existing card ~0.6s after the last edit, so nobody has
@@ -2844,6 +2908,31 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </button>
           ))}
         </div>
+        {/* her saved custom tags — remembered from any card on this board */}
+        {(tagBank || []).length > 0 && (
+          <>
+            <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>Saved tags — tap to add · ✎ rename · × remove from saved</div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+              {(tagBank || []).filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
+                <span key={pr.n} style={{ display: "inline-flex", alignItems: "center", border: `1px dashed ${c.line}`, borderRadius: 1 }}>
+                  <button onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: "none", padding: "4px 4px 4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+                    <span style={{ width: 6, height: 6, background: pr.c, border: `1px solid ${c.line}`, display: "inline-block" }} />+ {pr.n}
+                  </button>
+                  <button title={`Rename "${pr.n}" everywhere on this board`} onClick={() => {
+                    const to = window.prompt('Rename tag "' + pr.n + '" — this renames it on every card of this board:', pr.n);
+                    if (!to || !to.trim() || to.trim() === pr.n) return;
+                    onTagBank && onTagBank({ rename: { from: pr.n, to: to.trim() } });
+                    setLabels((cur) => cur.map((L) => { const nm = ((typeof L === "string" ? L : L && L.n) || ""); if (nm.toLowerCase() !== pr.n.toLowerCase()) return L; return typeof L === "string" ? { n: to.trim(), c: pr.c } : { ...L, n: to.trim() }; }));
+                  }} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "4px 3px", fontSize: 10 }}>✎</button>
+                  <button title={`Remove "${pr.n}" from saved tags (cards already tagged keep it)`} onClick={() => {
+                    if (window.confirm('Remove "' + pr.n + '" from your saved tags?\n\nCards already carrying it keep the tag — it just stops being offered here.')) onTagBank && onTagBank({ remove: pr.n });
+                  }} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "4px 8px 4px 3px", fontSize: 11 }}>×</button>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
           {LABEL_PALETTE.map((p) => (
             <button key={p.c} onClick={() => setLabelColor(p.c)} title={p.name}
