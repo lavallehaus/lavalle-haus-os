@@ -620,8 +620,8 @@ async function patchBoardCards(boardKey, patches, extra) {
   for (const p of (patches || [])) {
     if (!p || !p.id) continue;
     const card = (bd.cards || []).find((c) => c && c.id === p.id);
-    if (card && p.apply) { try { p.apply(card); } catch (eA) {} }
-    else if (!card && p.append) bd.cards.push(p.append);
+    if (card && p.apply) { try { p.apply(card); card._touched = Date.now(); } catch (eA) {} } // _touched: per-card newest-edit-wins in the save merge
+    else if (!card && p.append) bd.cards.push({ ...p.append, _touched: Date.now() });
   }
   try { if (extra) extra(blob, bd); } catch (eP) {}
   await kvSet("lavalle_data", Array.isArray(raw) ? [blob] : blob);
@@ -3518,7 +3518,7 @@ export default async function handler(req, res) {
           if (t.tag !== "K") { kN++; continue; }
           if (schedW) {
             const card = bdW.cards.find((c) => c.listId === schedW.id && new RegExp("^post\\s*" + kN + "\\b", "i").test(c.name || ""));
-            if (card && card.cover !== t.cover) { card.cover = t.cover; wrote++; }
+            if (card && card.cover !== t.cover) { card.cover = t.cover; card._touched = Date.now(); wrote++; }
           }
           kN++;
         }
@@ -3615,6 +3615,7 @@ export default async function handler(req, res) {
             if (/^courtney's post — caption and hashtags to come/i.test(card.desc || "")) { card.desc = ""; card.tags = ""; }
             if (hasCTag) card.labels = (card.labels || []).filter((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() !== "courtney");
           }
+          card._touched = Date.now(); // per-card newest-edit-wins: writeback results survive stale-tab saves
           wrote++;
         });
         // Courtney's own list ("Courtney Posts 1-12") keeps her 12 topic cards —
@@ -3627,7 +3628,7 @@ export default async function handler(req, res) {
             if (t.tag !== "C") return; const n = offsetW + q + 1; const card = cardAt(n); if (!card) return;
             const concept = ((NAME_RX.exec(card.name || "") || [])[1] || "").trim(); if (!concept) return;
             const cc = bdW.cards.find((c) => c.listId === crtW2.id && (c.name || "").toLowerCase().includes(concept.toLowerCase()));
-            if (cc) { if (cc.cover !== card.cover) { cc.cover = card.cover; wrote++; } const d2 = "From Trello: COURTNEY CONTENT IDEAS · scheduled as Post " + n + ". Caption + hashtags: Courtney."; if (cc.desc !== d2) { cc.desc = d2; wrote++; } }
+            if (cc) { if (cc.cover !== card.cover) { cc.cover = card.cover; cc._touched = Date.now(); wrote++; } const d2 = "From Trello: COURTNEY CONTENT IDEAS · scheduled as Post " + n + ". Caption + hashtags: Courtney."; if (cc.desc !== d2) { cc.desc = d2; cc._touched = Date.now(); wrote++; } }
           });
         }
         if (wrote) await kvSet("lavalle_data", blobW);
@@ -5697,9 +5698,24 @@ export default async function handler(req, res) {
       const sRev = (sb && sb._rev) || 0;
       const sStamp = (sb && sb._stamp) || 0, iStamp = (bd && bd._stamp) || 0;
       if (sb && sStamp && (!iStamp || sStamp - iStamp > STALE_MS)) { staleBoards.push(bk); return; }
+      // Per-CARD newest-edit-wins (Sep 3: two same-day devices flip-flopped
+      // Post 21's caption — the board-level guard passes same-day copies, so
+      // the device with the older board kept re-saving over the fresh edit).
+      // Every card edit (client sheet saves + server ops) stamps _touched;
+      // when an incoming board carries an OLDER copy of a card than what's
+      // stored, the stored card survives the save.
+      let bdM = bd;
+      try {
+        if (sb && bd && Array.isArray(bd.cards) && Array.isArray(sb.cards)) {
+          const sMap = new Map(sb.cards.map((c0) => [c0.id, c0]));
+          let kept = 0;
+          const mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if ((sc._touched || 0) > ((c0 && c0._touched) || 0)) { kept++; return sc; } return c0; });
+          if (kept) bdM = { ...bd, cards: mc };
+        }
+      } catch (eMC) {}
       const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
-      const changed = !sb || !sb._rev || !sb._stamp || norm(bd) !== norm(sb);
-      bs[bk] = changed ? { ...bd, _rev: sRev + 1, _stamp: Date.now() } : sb;
+      const changed = !sb || !sb._rev || !sb._stamp || norm(bdM) !== norm(sb);
+      bs[bk] = changed ? { ...bdM, _rev: sRev + 1, _stamp: Date.now() } : sb;
     };
     const staleBoards = [], staleKeys = [];
     let toStore = body;

@@ -838,7 +838,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     const moving = b.cards.find((x) => x.id === cardId);
     if (!moving || (moving.listId === toListId && anchorCardId === cardId)) return;
     let rest = b.cards.filter((x) => x.id !== cardId);
-    const moved = { ...moving, listId: toListId };
+    const moved = { ...moving, listId: toListId, _touched: Date.now() }; // _touched: per-card newest-edit-wins in the server merge
     if (anchorCardId) {
       const i = rest.findIndex((x) => x.id === anchorCardId);
       // placeAfter: dropped on the lower half of the anchor card → land below
@@ -1087,8 +1087,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     const summary = old ? (changes.length ? changes.join(" · ") : null) : "card created";
     const withActivity = summary ? [...(vals.comments || []), sysComment(summary)] : (vals.comments || []);
     const cardOut = editCard.isNew
-      ? { id: uid(), ...vals, comments: withActivity }
-      : { ...old, ...vals, comments: withActivity };
+      ? { id: uid(), ...vals, comments: withActivity, _touched: Date.now() }
+      : { ...old, ...vals, comments: withActivity, _touched: Date.now() };
 
     if (destKey === srcKey) {
       const nextCards = editCard.isNew ? [...boards[srcKey].cards, cardOut] : boards[srcKey].cards.map((x) => (x.id === editCard.cardId ? cardOut : x));
@@ -1140,7 +1140,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     if (!editCard || editCard.isNew) return;
     const bk = editCard.boardKey;
     if (!boards[bk]) return;
-    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === editCard.cardId ? { ...x, ...partial } : x)) });
+    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === editCard.cardId ? { ...x, ...partial, _touched: Date.now() } : x)) });
   };
 
   const deleteCard = () => {
@@ -1154,14 +1154,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const toggleDone = (bk, cardId) => {
     const card = boards[bk].cards.find((x) => x.id === cardId);
     const nowDone = !card.done;
-    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === cardId ? { ...x, done: nowDone, comments: [...(x.comments || []), sysComment(nowDone ? "marked done" : "reopened")] } : x)) });
+    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === cardId ? { ...x, done: nowDone, _touched: Date.now(), comments: [...(x.comments || []), sysComment(nowDone ? "marked done" : "reopened")] } : x)) });
     if ((card.members || []).length) notify(card, nowDone ? "marked done — posted" : "reopened");
   };
 
   const addComment = (bk, cardId, text) => {
     const card = boards[bk].cards.find((x) => x.id === cardId);
     const entry = { id: uid(), by: me || "Someone", text, at: new Date().toISOString() };
-    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === cardId ? { ...x, comments: [...(x.comments || []), entry] } : x)) });
+    patchBoard(bk, { cards: boards[bk].cards.map((x) => (x.id === cardId ? { ...x, _touched: Date.now(), comments: [...(x.comments || []), entry] } : x)) });
     // @mentions: notify anyone named after an @
     const mentioned = memberPool.filter((m) => new RegExp("@" + m.split(" ")[0], "i").test(text));
     notify(card, (me || "Someone") + " commented: " + text.slice(0, 140), mentioned);
