@@ -5704,6 +5704,7 @@ export default async function handler(req, res) {
     const staleBoards = [], staleKeys = [];
     let toStore = body;
     let keyStamps = {};
+    let sistersCapsChanged = false;
     {
       const r0 = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
       const d0 = await r0.json();
@@ -5755,6 +5756,17 @@ export default async function handler(req, res) {
         toStore.boards = bs;
         toStore._keyStamps = keyStamps;
       }
+      // her ask (Sep 3): a caption or hashtag edit on a Sisters post card
+      // shows up in the Captions + Hashtags doc right away, not on the next
+      // 15-min sweep — flag it here (where the old blob is still in scope)
+      // and trigger the doc sync after the store succeeds
+      try {
+        const sOld = ((stored && stored.boards) || {})["lavalle-sisters"], sNew = (toStore.boards || {})["lavalle-sisters"];
+        if (sOld && sNew && sNew !== sOld) {
+          const capSig = (b) => JSON.stringify((b.cards || []).filter((c) => /^post\s*\d+/i.test(c.name || "")).map((c) => [c.id, c.desc || "", c.tags || ""]));
+          sistersCapsChanged = capSig(sOld) !== capSig(sNew);
+        }
+      } catch (eSC) {}
     }
     const rs = await fetch(`${url}/set/lavalle_data`, {
       method: "POST",
@@ -5763,6 +5775,11 @@ export default async function handler(req, res) {
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
+    if (sistersCapsChanged && process.env.PUBLISH_KEY) {
+      // instant doc sync on caption/hashtag edits — the op itself no-ops when
+      // the doc already matches, so this is cheap on false positives
+      try { const acCQ = new AbortController(); setTimeout(() => acCQ.abort(), 12000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCQ.signal }).catch(() => {}); } catch (eCQ) {}
+    }
     // Hand every stored board's rev back so the SAVING tab can adopt them —
     // without this a tab's own successful save left it one rev behind and its
     // very next save read as stale (her Approved-tag report, Aug 26).

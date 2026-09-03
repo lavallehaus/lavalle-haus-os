@@ -94,7 +94,8 @@ async function dbSave(record) {
         ];
         if (staleAll.length && Date.now() - lastSaveAlert > 8000) {
           lastSaveAlert = Date.now();
-          alert("Heads up — this tab's copy of " + staleAll.join(", ") + " is older than what's on the server, so those were NOT saved (the server kept the newer version).\n\nReload the app to pick up the latest before editing them.");
+          alert("Heads up — this tab's copy of " + staleAll.join(", ") + " is older than what's on the server, so those were NOT saved (the server kept the newer version).\n\nThe app will refresh now to pick up the latest — then redo that change.");
+          try { window.location.reload(); } catch (eR0) {}
         }
       } catch (e2) {}
     }
@@ -110,7 +111,10 @@ async function dbSave(record) {
         ];
         if (Date.now() - lastSaveAlert > 8000) {
           lastSaveAlert = Date.now();
-          alert("NOT SAVED for " + (names9.join(", ") || "part of this change") + " — this device's copy is older than the server's, so the server kept its newer version.\n\nReload the app to pick up the latest, then redo that change. Everything else in this save was stored.");
+          // don't just tell her to reload — do it (her Sep 3 report: the alert
+          // kept coming back because the tab kept resubmitting its old copy)
+          alert("NOT SAVED for " + (names9.join(", ") || "part of this change") + " — this device's copy is older than the server's, so the server kept its newer version.\n\nThe app will refresh now to pick up the latest — then redo that change. Everything else in this save was stored.");
+          try { window.location.reload(); } catch (eR9) {}
         }
       } catch (e9) {}
       return false;
