@@ -816,7 +816,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     const movingCards = src.cards.filter((cd) => cd.listId === listId);
     commit({
       ...boards,
-      [open]: { ...src, lists: src.lists.filter((l) => l.id !== listId), cards: src.cards.filter((cd) => cd.listId !== listId) },
+      [open]: { ...src, lists: src.lists.filter((l) => l.id !== listId), cards: [...src.cards.filter((cd) => cd.listId !== listId), ...movingCards.map((cd) => ({ id: cd.id, _deleted: true }))] },
       [destKey]: { ...dest, lists: [...dest.lists, list], cards: [...dest.cards, ...movingCards] },
     });
   };
@@ -1097,7 +1097,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     } else {
       // cross-board move: remove from source, add to destination
       const next = { ...boards };
-      next[srcKey] = { ...next[srcKey], cards: next[srcKey].cards.filter((x) => x.id !== editCard.cardId) };
+      next[srcKey] = { ...next[srcKey], cards: [...next[srcKey].cards.filter((x) => x.id !== editCard.cardId), { id: editCard.cardId, _deleted: true }] }; // tombstone: the server only deletes cards told to delete
       next[destKey] = { ...next[destKey], cards: [...next[destKey].cards, cardOut] };
       next[destKey].tagBank = unionTagBank(boards[destKey], next[destKey].cards);
       commit(next);
@@ -1146,7 +1146,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const deleteCard = () => {
     const bk = editCard.boardKey;
     const card = boards[bk].cards.find((x) => x.id === editCard.cardId);
-    patchBoard(bk, { cards: boards[bk].cards.filter((x) => x.id !== editCard.cardId) });
+    patchBoard(bk, { cards: [...boards[bk].cards.filter((x) => x.id !== editCard.cardId), { id: editCard.cardId, _deleted: true }] }); // tombstone: the server only deletes cards told to delete
     if (card && (card.members || []).length) notify(card, "card removed from " + boards[bk].name);
     setEditCard(null);
   };
@@ -1175,7 +1175,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const deleteList = (l) => {
     const n = board.cards.filter((x) => x.listId === l.id).length;
     if (!confirm(n ? `Delete the list "${l.name}" and its ${n} card${n === 1 ? "" : "s"}?` : `Delete the empty list "${l.name}"?`)) return;
-    patchBoard(open, { lists: board.lists.filter((x) => x.id !== l.id), cards: board.cards.filter((x) => x.listId !== l.id) });
+    patchBoard(open, { lists: board.lists.filter((x) => x.id !== l.id), cards: [...board.cards.filter((x) => x.listId !== l.id), ...board.cards.filter((x) => x.listId === l.id).map((x) => ({ id: x.id, _deleted: true }))] });
   };
 
   const ghost = { background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, color: c.sub, fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", padding: "7px 12px", cursor: "pointer" };

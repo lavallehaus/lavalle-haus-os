@@ -5713,8 +5713,17 @@ export default async function handler(req, res) {
           // card is a not-yet-updated app build mid-edit — dropping it silently
           // would eat live edits (her Post 21 report, minutes after rollout);
           // legacy last-writer-wins applies until every device carries stamps
-          const mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if (c0 && c0._touched && (sc._touched || 0) > c0._touched) { kept++; return sc; } return c0; });
-          if (kept) bdM = { ...bd, cards: mc };
+          let mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if (c0 && c0._touched && (sc._touched || 0) > c0._touched) { kept++; return sc; } return c0; });
+          // Cards can't disappear by OMISSION (Sep 3: a glitched local view
+          // nearly saved a board missing Posts 1-21) — a save that simply
+          // lacks a card the server has keeps the server's copy. Real deletes
+          // arrive as {_deleted:true} tombstones (deleteCard, list delete,
+          // cross-board move) and are dropped here.
+          const inIds = new Set(bd.cards.map((c0) => c0 && c0.id));
+          const back = sb.cards.filter((sc) => sc && sc.id && !inIds.has(sc.id) && !sc._deleted);
+          const hadTomb = mc.some((c0) => c0 && c0._deleted);
+          if (hadTomb) mc = mc.filter((c0) => !(c0 && c0._deleted));
+          if (kept || back.length || hadTomb) bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc };
         }
       } catch (eMC) {}
       const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
