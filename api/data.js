@@ -3418,10 +3418,22 @@ export default async function handler(req, res) {
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
     // which window are we in? computed FIRST so the window the card DISPLAYS
     // renders first — a tile change shows on the card after ONE render call.
-    const start = Date.UTC(2026, 7, 26); // posting cycle starts Wed Aug 26
-    const dayN = Math.max(0, Math.floor((Date.now() - start) / 86400000));
-    let postN = 0; let d = new Date(start);
-    for (let i = 0; i <= dayN && postN < 42; i++) { postN++; if ([1, 3, 5].includes(d.getUTCDay())) postN++; d = new Date(d.getTime() + 86400000); }
+    // HER RULE (Sep 3): the card's cover follows COMPLETION, not the calendar —
+    // the first post not yet checked off decides the window, so the moment a
+    // window's posts are all done the cover advances to the next set.
+    let postN = 0;
+    try {
+      const rawP = await kvGet("lavalle_data"); const blobP = Array.isArray(rawP) ? rawP[0] : rawP;
+      const bdP = blobP && blobP.boards && blobP.boards[SBOARD.key];
+      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      const doneP = new Set();
+      for (const c of (bdP ? bdP.cards : [])) { if (!schedP.includes(c.listId)) continue; const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0); if (n && c.done) doneP.add(n); }
+      postN = 1; while (postN <= 42 && doneP.has(postN)) postN++;
+    } catch (eDN) {}
+    if (!postN) { // fallback: date walk (one post per day from Aug 26, doubles on 26+28)
+      const start = Date.UTC(2026, 7, 26);
+      postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
+    }
     const cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
     let rendered = null;
     for (const wi of [cur, ...[0, 1, 2, 3].filter((x) => x !== cur)]) {
