@@ -2020,6 +2020,17 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const applyCover = (val) => { setCover(val); if (!isNew && onPatch) onPatch({ cover: val || null }); };
   const addMember = (m) => { const v = (m || "").trim(); if (!v || members.includes(v)) return; setMembers([...members, v]); setMemberInput(""); };
   const addLabel = () => { const n = labelName.trim(); if (!n) return; setLabels([...labels, { n, c: labelColor }]); if (!isHouseTag(n)) onTagBank && onTagBank({ add: { n, c: labelColor } }); setLabelName(""); };
+  // saved-tags bank UI state: inline rename + tap-×-twice removal (no native dialogs)
+  const [bankRename, setBankRename] = useState(null); // {from, to, c}
+  const [bankRemove, setBankRemove] = useState(null); // tag name armed for removal
+  const commitBankRename = () => {
+    if (!bankRename) return;
+    const to = bankRename.to.trim();
+    if (!to || to === bankRename.from) { setBankRename(null); return; }
+    onTagBank && onTagBank({ rename: { from: bankRename.from, to } });
+    setLabels((cur) => cur.map((L) => { const nm = ((typeof L === "string" ? L : L && L.n) || ""); if (nm.toLowerCase() !== bankRename.from.toLowerCase()) return L; return typeof L === "string" ? { n: to, c: bankRename.c } : { ...L, n: to }; }));
+    setBankRename(null);
+  };
   const destLists = (boardsIndex[destBoard] || {}).lists || [];
   const comments = (card.comments || []);
   // Auto-save: persist an existing card ~0.6s after the last edit, so nobody has
@@ -2908,27 +2919,36 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </button>
           ))}
         </div>
-        {/* her saved custom tags — remembered from any card on this board */}
+        {/* her saved custom tags — remembered from any card on this board.
+            No window.confirm/prompt here: native dialogs are unreliable in the
+            iOS home-screen app (and wedge automation) — remove is tap-×-twice,
+            rename is an inline input. */}
         {(tagBank || []).length > 0 && (
           <>
             <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>Saved tags — tap to add · ✎ rename · × remove from saved</div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
               {(tagBank || []).filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
-                <span key={pr.n} style={{ display: "inline-flex", alignItems: "center", border: `1px dashed ${c.line}`, borderRadius: 1 }}>
-                  <button onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
+                bankRename && bankRename.from === pr.n ? (
+                  <span key={pr.n} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "2px 4px" }}>
+                    <input autoFocus value={bankRename.to} onChange={(e) => setBankRename({ ...bankRename, to: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") commitBankRename(); if (e.key === "Escape") setBankRename(null); }}
+                      style={{ border: "none", outline: "none", background: "transparent", fontFamily: sans, fontSize: 10, width: Math.max(70, bankRename.to.length * 8), color: c.ink }} />
+                    <button onClick={commitBankRename} style={{ background: c.ink, color: c.bg, border: "none", borderRadius: 1, padding: "2px 7px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Save</button>
+                    <button onClick={() => setBankRename(null)} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "2px 4px", fontSize: 11 }}>×</button>
+                  </span>
+                ) : (
+                <span key={pr.n} style={{ display: "inline-flex", alignItems: "center", border: `1px dashed ${bankRemove === pr.n ? "#B0524A" : c.line}`, borderRadius: 1, background: bankRemove === pr.n ? "#F3E6E3" : "transparent" }}>
+                  <button onClick={() => { setBankRemove(null); setLabels([...labels, { n: pr.n, c: pr.c }]); }}
                     style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: "none", padding: "4px 4px 4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
                     <span style={{ width: 6, height: 6, background: pr.c, border: `1px solid ${c.line}`, display: "inline-block" }} />+ {pr.n}
                   </button>
-                  <button title={`Rename "${pr.n}" everywhere on this board`} onClick={() => {
-                    const to = window.prompt('Rename tag "' + pr.n + '" — this renames it on every card of this board:', pr.n);
-                    if (!to || !to.trim() || to.trim() === pr.n) return;
-                    onTagBank && onTagBank({ rename: { from: pr.n, to: to.trim() } });
-                    setLabels((cur) => cur.map((L) => { const nm = ((typeof L === "string" ? L : L && L.n) || ""); if (nm.toLowerCase() !== pr.n.toLowerCase()) return L; return typeof L === "string" ? { n: to.trim(), c: pr.c } : { ...L, n: to.trim() }; }));
-                  }} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "4px 3px", fontSize: 10 }}>✎</button>
-                  <button title={`Remove "${pr.n}" from saved tags (cards already tagged keep it)`} onClick={() => {
-                    if (window.confirm('Remove "' + pr.n + '" from your saved tags?\n\nCards already carrying it keep the tag — it just stops being offered here.')) onTagBank && onTagBank({ remove: pr.n });
-                  }} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "4px 8px 4px 3px", fontSize: 11 }}>×</button>
+                  <button title={`Rename "${pr.n}" everywhere on this board`} onClick={() => { setBankRemove(null); setBankRename({ from: pr.n, to: pr.n, c: pr.c }); }}
+                    style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: "4px 3px", fontSize: 10 }}>✎</button>
+                  <button title={bankRemove === pr.n ? "Tap again to remove from saved tags" : `Remove "${pr.n}" from saved tags (cards already tagged keep it)`}
+                    onClick={() => { if (bankRemove === pr.n) { setBankRemove(null); onTagBank && onTagBank({ remove: pr.n }); } else setBankRemove(pr.n); }}
+                    style={{ background: "none", border: "none", color: bankRemove === pr.n ? "#B0524A" : c.sub, cursor: "pointer", padding: "4px 8px 4px 3px", fontSize: bankRemove === pr.n ? 9 : 11, fontFamily: sans, letterSpacing: bankRemove === pr.n ? 0.5 : 0 }}>{bankRemove === pr.n ? "× sure?" : "×"}</button>
                 </span>
+                )
               ))}
             </div>
           </>
