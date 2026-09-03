@@ -5709,7 +5709,11 @@ export default async function handler(req, res) {
         if (sb && bd && Array.isArray(bd.cards) && Array.isArray(sb.cards)) {
           const sMap = new Map(sb.cards.map((c0) => [c0.id, c0]));
           let kept = 0;
-          const mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if ((sc._touched || 0) > ((c0 && c0._touched) || 0)) { kept++; return sc; } return c0; });
+          // only stamped-vs-stamped comparisons block: an UNSTAMPED incoming
+          // card is a not-yet-updated app build mid-edit — dropping it silently
+          // would eat live edits (her Post 21 report, minutes after rollout);
+          // legacy last-writer-wins applies until every device carries stamps
+          const mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if (c0 && c0._touched && (sc._touched || 0) > c0._touched) { kept++; return sc; } return c0; });
           if (kept) bdM = { ...bd, cards: mc };
         }
       } catch (eMC) {}
