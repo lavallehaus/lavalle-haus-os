@@ -2719,7 +2719,8 @@ export default async function handler(req, res) {
     if (!okKeyP && !ownerRole(authP)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const akeyP = process.env.ANTHROPIC_API_KEY;
     if (!akeyP) { res.json({ ok: false, error: "ANTHROPIC_API_KEY not set" }); return; }
-    const startP = Date.UTC(2026, 7, 26); // posting cycle starts Wed Aug 26 (her call, Aug 25) const dayP = Math.max(0, Math.floor((Date.now() - startP) / 86400000));
+    const startP = Date.UTC(2026, 7, 26); // posting cycle starts Wed Aug 26 (her call, Aug 25)
+    const dayP = Math.max(0, Math.floor((Date.now() - startP) / 86400000));
     let postNP = 0; let dP = new Date(startP); for (let i = 0; i <= dayP && postNP < 42; i++) { postNP++; if ([1, 3, 5].includes(dP.getUTCDay())) postNP++; dP = new Date(dP.getTime() + 86400000); }
     const gridNum = postNP <= 21 ? "1" : "2";
     const recP = (await kvGet("sisters_grid_tiles_" + gridNum + SBOARD.kvSuffix)) || { tiles: [] };
