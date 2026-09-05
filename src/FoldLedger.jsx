@@ -33,21 +33,19 @@ const SEED_ITEMS = [
   ["Camille Blouse", "Fall 2026", 78, 18.95, 12, "Miss Love T2828 white 6S/4M/2L Jun 17 — 4.1x"],
   ["Elodie Blouse", "Fall 2026", 92, 37.30, 6, "Esley T2502 eyelet 3S/2M/1L Feb 23 — 2.5x, UNDER the 3x floor"],
   ["Gia Pant", "Fall 2026", 118, 25.95, 6, "Miss Love P5544B olive 3S/2M/1L Jun 17 — 4.5x, OVER the band"],
-  ["Mara Dress", "Fall 2026", 118, null, null, "NO FashionGo record on this account — where was the black knit dress bought?"],
+  ["Mara Dress", "Fall 2026", 118, null, null, "not in FashionGo (Kiaredza acct) OR Faire — where was the black ribbed knit dress bought?"],
   ["Luce Pants", "Summer 2026", 138, 26.25, 6, "ABLE SP1286-1 Linen Basic Pants ivory 2S/2M/2L Dec 5 '25 — 5.3x, OVER the band"],
   ["Sera Top", "Summer 2026", 98, 23, 6, "Mod Ref Eugenie Top white 3S/2M/1L Feb 15 — 4.3x"],
   ["Iris Dress", "Summer 2026", 92, 8, 12, "IRIS BD05739 taupe 4S/4M/4L Feb 23 — 11.5x"],
-  ["Romy Cardigan", "Core", 145, null, null, ""],
+  ["Romy Cardigan", "Core", 145, 175, 2, "Faire: Beachwood The Label 'Cashmere Kaia Cropped Cardigan // Fern' 2 units Dec 6 '25 — 0.83x: RETAIL IS BELOW COST (-$30/unit; Beachwood's own MSRP is $318)"],
   ["Sable Pant", "Summer 2026", 76, null, null, ""],
   ["Renata Dress", "Summer 2026", 155, 38, 6, "Loucia Eliza halter maxi white 3S/2M/1L Feb 13 — 4.1x"],
-  ["Olivia Dress", "Summer 2026", 96, null, null, ""],
+  ["Olivia Dress", "Summer 2026", 96, 54, 4, "Faire: The Handloom 'Sofia Ties Maxi — Khaki Green' 4 units Dec 9 '25 — 1.8x, well UNDER the 3x floor"],
   ["Margaux Blouse", "Summer 2026", 68, null, null, ""],
   ["Dove Sweater", "Core", 88, 30, 12, "Mod Ref Layla white: 6 Feb + 6 Jun restock — 2.9x; 4 sold/$88 net past 90d"],
   ["Hazel Sweater", "Core", 88, 30, 6, "Mod Ref Layla brown 3S/2M/1L Feb 15 — 2.9x; 1 gifted $0"],
   ["Solene Dress", "Summer 2026", 84, null, null, ""],
   ["Lucia Dress", "Summer 2026", 98, 38, 6, "Loucia Cressida poplin maxi white 3S/2M/1L Feb 13 — 2.6x, under floor"],
-  ["Selene Necklace", "Core", 68, null, null, ""],
-  ["Cora Bracelet", "Core", 78, null, null, ""],
   ["Mira Earrings", "Core", 38, 15, 25, "Flint J. E0037 pearl dangle studs — 5 units Dec 2 '25 + 20 restock Aug 13, all @ $15 — 2.5x; the ~1/week seller"],
   // Purchased on FashionGo but NEVER listed on the site (found Sep 5 2026) —
   // inventory sitting without a product page; name + retail are hers to set.
@@ -55,6 +53,8 @@ const SEED_ITEMS = [
   ["Linen Midi Skirt — not on site", "Fall 2026", null, 32.75, 6, "MABLE LS5019 front-pleat linen midi, taupe 2S/2M/2L, Feb 23 — same order as Anais/Willa, never listed"],
   ["Linen Pintuck Shirt — not on site", "Fall 2026", null, 25.75, 12, "MABLE LT1041 l/s button-down, dusty blue 3S/2M/1L + off-white 3S/2M/1L, Feb 23 — never listed"],
   ["Linen Peplum Tube Top — not on site", "Fall 2026", null, 22.75, 6, "MABLE MT2494 strapless smocked-back, oatmeal 3S/2M/1L, Feb 23 — never listed"],
+  ["Selene Necklace — REMOVED from site Sep 5", "Core", null, 59.45, 2, "was $68 retail. Faire: Celino '1ct Moissanite Sterling Silver Horse Eye Necklace' 2 units Dec 9 '25 (1.14x — under water after fees; likely why it was pulled)"],
+  ["Cora Bracelet — REMOVED from site Sep 5", "Core", null, 65.25, 2, "was $78 retail. Faire: Celino '1ct Silver Moissanite Tennis Bracelet' 2 units Dec 9 '25 (1.2x)"],
 ].map(([name, season, retail, wholesale, units, note]) => ({ id: uid(), name, season, retail, wholesale, units, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note }));
 
 const SEED_COSTS = [
