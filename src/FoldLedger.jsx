@@ -22,7 +22,9 @@ const SEASONS = ["Fall 2026", "Summer 2026", "Core", "Spring 2027"];
 
 // Full catalog — the YTD view covers EVERYTHING on the site, not just the
 // drop, so campaign/ad decisions see the whole board (her ask, Sep 1 2026).
-// Wholesale + units pulled from her real FashionGo order history (Sep 1 2026).
+// Wholesale + units pulled from her real FashionGo order history (Sep 1 2026;
+// Dec '25 orders mined Sep 5 — Luce found under ABLE, Mira's first batch under
+// Flint J., plus four purchased-but-never-listed pieces added at the bottom).
 // Anais/Willa arrive as one wholesale SET ($38.75) — split by retail ratio.
 const SEED_ITEMS = [
   ["Chloe Jean", "Fall 2026", 138, 27.75, 6, "et clet C6518P_1 dark denim 3S/2M/1L Feb 23 — 5.0x, OVER the 3-4x band"],
@@ -32,7 +34,7 @@ const SEED_ITEMS = [
   ["Elodie Blouse", "Fall 2026", 92, 37.30, 6, "Esley T2502 eyelet 3S/2M/1L Feb 23 — 2.5x, UNDER the 3x floor"],
   ["Gia Pant", "Fall 2026", 118, 25.95, 6, "Miss Love P5544B olive 3S/2M/1L Jun 17 — 4.5x, OVER the band"],
   ["Mara Dress", "Fall 2026", 118, null, null, "NO FashionGo record on this account — where was the black knit dress bought?"],
-  ["Luce Pants", "Summer 2026", 138, null, null, "not in this FashionGo account's history"],
+  ["Luce Pants", "Summer 2026", 138, 26.25, 6, "ABLE SP1286-1 Linen Basic Pants ivory 2S/2M/2L Dec 5 '25 — 5.3x, OVER the band"],
   ["Sera Top", "Summer 2026", 98, 23, 6, "Mod Ref Eugenie Top white 3S/2M/1L Feb 15 — 4.3x"],
   ["Iris Dress", "Summer 2026", 92, 8, 12, "IRIS BD05739 taupe 4S/4M/4L Feb 23 — 11.5x"],
   ["Romy Cardigan", "Core", 145, null, null, ""],
@@ -46,7 +48,13 @@ const SEED_ITEMS = [
   ["Lucia Dress", "Summer 2026", 98, 38, 6, "Loucia Cressida poplin maxi white 3S/2M/1L Feb 13 — 2.6x, under floor"],
   ["Selene Necklace", "Core", 68, null, null, ""],
   ["Cora Bracelet", "Core", 78, null, null, ""],
-  ["Mira Earrings", "Core", 38, 15, 20, "Flint J. E0037 pearl dangle studs, 20 units Aug 13 — 2.5x; the ~1/week seller"],
+  ["Mira Earrings", "Core", 38, 15, 25, "Flint J. E0037 pearl dangle studs — 5 units Dec 2 '25 + 20 restock Aug 13, all @ $15 — 2.5x; the ~1/week seller"],
+  // Purchased on FashionGo but NEVER listed on the site (found Sep 5 2026) —
+  // inventory sitting without a product page; name + retail are hers to set.
+  ["CZ Huggie Earrings — not on site", "Core", null, 13.5, 5, "Flint J. E0122 mini baguette CZ huggies, 5 gold, Dec 2 '25 — bought with Mira's first batch, never listed"],
+  ["Linen Midi Skirt — not on site", "Fall 2026", null, 32.75, 6, "MABLE LS5019 front-pleat linen midi, taupe 2S/2M/2L, Feb 23 — same order as Anais/Willa, never listed"],
+  ["Linen Pintuck Shirt — not on site", "Fall 2026", null, 25.75, 12, "MABLE LT1041 l/s button-down, dusty blue 3S/2M/1L + off-white 3S/2M/1L, Feb 23 — never listed"],
+  ["Linen Peplum Tube Top — not on site", "Fall 2026", null, 22.75, 6, "MABLE MT2494 strapless smocked-back, oatmeal 3S/2M/1L, Feb 23 — never listed"],
 ].map(([name, season, retail, wholesale, units, note]) => ({ id: uid(), name, season, retail, wholesale, units, adAllot: null, adSpent: null, cpc: null, roas: null, sold: null, net: null, live: false, note }));
 
 const SEED_COSTS = [
