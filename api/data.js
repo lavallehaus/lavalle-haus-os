@@ -5736,7 +5736,23 @@ export default async function handler(req, res) {
           const back = sb.cards.filter((sc) => sc && sc.id && !inIds.has(sc.id) && !sc._deleted);
           const hadTomb = mc.some((c0) => c0 && c0._deleted);
           if (hadTomb) mc = mc.filter((c0) => !(c0 && c0._deleted));
-          if (kept || back.length || hadTomb) bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc };
+          // Blank Post-shell shield (Sep 5: an unidentified client generated 21
+          // empty "Post N <weekday> <date>" cards TWICE — Sep 3 it replaced the
+          // real cards, Sep 5 the omission guard kept the real ones but the
+          // shells landed as duplicates): an incoming post-numbered card with a
+          // NEW id, duplicating a stored post number in the same list, carrying
+          // no content at all, is dropped rather than stored.
+          let shells = 0;
+          const postKey = (c0) => { const m0 = /^post\s*(\d+)\b/i.exec((c0 && c0.name) || ""); return m0 ? c0.listId + "#" + m0[1] : null; };
+          const storedPosts = new Set(sb.cards.map(postKey).filter(Boolean));
+          mc = mc.filter((c0) => {
+            if (!c0 || sMap.has(c0.id)) return true;
+            const k0 = postKey(c0); if (!k0 || !storedPosts.has(k0)) return true;
+            const empty = !(c0.desc || "").trim() && !(c0.tags || "").trim() && !c0.cover && !(c0.labels || []).length;
+            if (empty) { shells++; return false; }
+            return true;
+          });
+          if (kept || back.length || hadTomb || shells) bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc };
         }
       } catch (eMC) {}
       const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
