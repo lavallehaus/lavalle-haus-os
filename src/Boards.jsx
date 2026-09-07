@@ -2010,8 +2010,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [themePage, setThemePage] = useState(0); // which section the present view shows
   const [themePosts, setThemePosts] = useState(null); // which stat group's posts are unfolded
   const [assetUrlState, setAssetUrlState] = useState(card.assetUrl || "");
+  const [carouselUrl, setCarouselUrl] = useState(card.carouselUrl || ""); // dual-format posts: separate carousel slot beside the reel
   const [editCover, setEditCover] = useState(false);
   const [editAsset, setEditAsset] = useState(false);
+  const [editCarousel, setEditCarousel] = useState(false);
   const [attachments, setAttachments] = useState(card.attachments || []);
   const input = { width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 13, color: c.ink, outline: "none" };
   const label = { fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, margin: "14px 0 4px" };
@@ -2041,7 +2043,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -2052,7 +2054,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, tags, draft, draftNotes, attachments, desc, exampleUrl, coverUrl, assetUrlState, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
+  }, [name, hook, tags, draft, draftNotes, attachments, desc, exampleUrl, coverUrl, assetUrlState, carouselUrl, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -2734,14 +2736,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               )}
             </div>
           );
-          // "carousel link" vs "reel link" follows the card's format chips
-          // (IG ·/TT · labels), falling back to [carousel]/[reel] in the name
+          // The link slots follow the card's format chips (IG ·/TT · labels),
+          // falling back to [carousel]/[reel] in the name. A DUAL-format post
+          // (IG carousel + TT reel) shows BOTH a carousel and a reel link (her
+          // ask, Sep 7 — the carousel slot was missing on those cards).
           const lblNames = (labels || []).map((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase());
-          const reelLabel = (lblNames.some((n0) => n0.includes("carousel")) && !lblNames.some((n0) => /reel|ftc|b-roll/.test(n0))) || (isCarouselCard(card.name) && !isReelCard(card.name)) ? "carousel" : "reel";
+          const hasCar = lblNames.some((n0) => n0.includes("carousel")) || (isCarouselCard(card.name) && !isReelCard(card.name));
+          const hasReel = lblNames.some((n0) => /reel|ftc|b-roll/.test(n0)) || isReelCard(card.name);
+          // carousel-only cards keep their link in assetUrl (as always);
+          // dual-format cards get a second, separate carouselUrl slot
           return (
             <div>
               {btnRow("cover photo", coverUrl, setCoverUrl, editCover, setEditCover, "coverUrl")}
-              {btnRow(reelLabel, assetUrlState, setAssetUrlState, editAsset, setEditAsset, "assetUrl")}
+              {btnRow(hasCar && !hasReel ? "carousel" : "reel", assetUrlState, setAssetUrlState, editAsset, setEditAsset, "assetUrl")}
+              {hasCar && hasReel && btnRow("carousel", carouselUrl, setCarouselUrl, editCarousel, setEditCarousel, "carouselUrl")}
             </div>
           );
         })()}
@@ -2996,7 +3004,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
+          onSave({ fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
