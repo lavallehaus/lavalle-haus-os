@@ -5749,6 +5749,15 @@ export default async function handler(req, res) {
         if (sb && bd && Array.isArray(bd.cards) && Array.isArray(sb.cards)) {
           const sMap = new Map(sb.cards.map((c0) => [c0.id, c0]));
           let kept = 0;
+          // Mass tombstone-and-replace of Post cards = the shell generator on a
+          // CURRENT bundle (Sep 7, 4th strike: it deleted the schedule cards
+          // with real tombstones and recreated blank shells under new ids —
+          // legitimately passing every per-card rule). No human deletes >3
+          // posts AND recreates post-numbered cards in the same save; her own
+          // past-due cleanups are deletes WITHOUT recreations and pass fine.
+          const tombPostN = bd.cards.filter((c0) => { if (!c0 || !c0._deleted) return false; const s0 = sMap.get(c0.id); return s0 && /^post\s*\d+\b/i.test(s0.name || ""); }).length;
+          const newPostN = bd.cards.filter((c0) => c0 && !c0._deleted && !sMap.has(c0.id) && /^post\s*\d+\b/i.test(c0.name || "")).length;
+          if (tombPostN > 3 && newPostN > 3) { staleBoards.push(bk); return; }
           const nowMs = Date.now();
           const cnorm = (x) => { const { _touched, _deleted, ...rest } = x || {}; return JSON.stringify(rest); };
           const blind = [];
