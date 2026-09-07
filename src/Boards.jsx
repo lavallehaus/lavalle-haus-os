@@ -2710,6 +2710,23 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           </div>
         </div>
 
+        {/* Courtney's format pick sits right above Post Asset (her ask, Sep 7) */}
+        {!opsMode && (labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
+          <>
+            <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {["Reel", "Carousel"].map((F) => { const on = (fmt || (labels.find((L) => /^IG ·/.test((L && L.n) || ""))?.n || "").includes("Carousel") ? "Carousel" : "Reel") === F; return (
+                <button key={F} onClick={() => {
+                  setFmt(F);
+                  // rewrite the platform chips in place — neutral colors are locked
+                  // to the platform (ivory = IG, slate = TT) and never editable.
+                  setLabels((cur) => { const keep = cur.filter((L) => !/^(IG|TT)\s*·/i.test((typeof L === "string" ? L : (L && L.n)) || "")); return [...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() === "courtney"), { n: "IG · " + F, c: "#E9E6DF" }, { n: "TT · " + F, c: "#C6CCCF" }, ...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() !== "courtney")]; });
+                }}
+                  style={{ flex: 1, border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? c.bg : c.sub, borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{F}</button>
+              ); })}
+            </div>
+          </>
+        )}
         <div style={label}>Post asset</div>
         {(() => {
           // One editable Drive button. url/setUrl live in state; the pencil (top
@@ -2895,22 +2912,6 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         </>)}
 
         {/* tags — neutral palette */}
-        {!opsMode && (labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
-          <>
-            <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {["Reel", "Carousel"].map((F) => { const on = (fmt || (labels.find((L) => /^IG ·/.test((L && L.n) || ""))?.n || "").includes("Carousel") ? "Carousel" : "Reel") === F; return (
-                <button key={F} onClick={() => {
-                  setFmt(F);
-                  // rewrite the platform chips in place — neutral colors are locked
-                  // to the platform (ivory = IG, slate = TT) and never editable.
-                  setLabels((cur) => { const keep = cur.filter((L) => !/^(IG|TT)\s*·/i.test((typeof L === "string" ? L : (L && L.n)) || "")); return [...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() === "courtney"), { n: "IG · " + F, c: "#E9E6DF" }, { n: "TT · " + F, c: "#C6CCCF" }, ...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() !== "courtney")]; });
-                }}
-                  style={{ flex: 1, border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? c.bg : c.sub, borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{F}</button>
-              ); })}
-            </div>
-          </>
-        )}
         <div style={label}>Tags</div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
           {labels.map((L, i) => (
