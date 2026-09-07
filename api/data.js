@@ -5757,7 +5757,7 @@ export default async function handler(req, res) {
           // past-due cleanups are deletes WITHOUT recreations and pass fine.
           const tombPostN = bd.cards.filter((c0) => { if (!c0 || !c0._deleted) return false; const s0 = sMap.get(c0.id); return s0 && /^post\s*\d+\b/i.test(s0.name || ""); }).length;
           const newPostN = bd.cards.filter((c0) => c0 && !c0._deleted && !sMap.has(c0.id) && /^post\s*\d+\b/i.test(c0.name || "")).length;
-          if (tombPostN > 3 && newPostN > 3) { staleBoards.push(bk); return; }
+          if (tombPostN > 3 && newPostN > 3) { staleBoards.push(bk); guardHits.push("tombstone-replace:" + tombPostN + "/" + newPostN); return; }
           const nowMs = Date.now();
           const cnorm = (x) => { const { _touched, _deleted, ...rest } = x || {}; return JSON.stringify(rest); };
           const blind = [];
@@ -5779,7 +5779,7 @@ export default async function handler(req, res) {
           if (blind.length) {
             const blindSet = new Set(blind);
             mc = mc.map((c0) => { if (!c0 || !blindSet.has(c0.id)) return c0; if (acceptBlind) return { ...c0, _touched: nowMs }; kept++; return sMap.get(c0.id); });
-            if (!acceptBlind) staleBoards.push(bk);
+            if (!acceptBlind) { staleBoards.push(bk); guardHits.push("mass-blind:" + blind.length); }
           }
           // legacy stamps from the wrong-clock incident: clamp anything future
           mc = mc.map((c0) => (c0 && c0._touched > nowMs + 60000 ? { ...c0, _touched: nowMs } : c0));
@@ -5820,6 +5820,7 @@ export default async function handler(req, res) {
       bs[bk] = changed ? { ...bdM, _rev: sRev + 1, _stamp: Date.now() } : sb;
     };
     const staleBoards = [], staleKeys = [];
+    const guardHits = []; // which shell/replay guards fired this save — logged with WHO sent it
     let toStore = body;
     let keyStamps = {};
     let sistersCapsChanged = false;
@@ -5902,6 +5903,10 @@ export default async function handler(req, res) {
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
+    if (guardHits.length) {
+      // forensic ring: WHO tripped a shell/replay guard (finding the mystery device)
+      try { const gl = (await kvGet("sisters_guard_log")) || []; await kvSet("sisters_guard_log", [{ iso: new Date().toISOString(), who: (auth && (auth.email || auth.name)) || "unknown", ua: String(req.headers["user-agent"] || "").slice(0, 120), guards: guardHits }, ...gl].slice(0, 20)); } catch (eGL) {}
+    }
     // (Sep 7: the instant caption→doc push trigger was REMOVED — the doc is
     // one-way source-of-truth now and is never auto-written by the app.)
     // Hand every stored board's rev back so the SAVING tab can adopt them —
