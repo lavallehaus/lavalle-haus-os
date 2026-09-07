@@ -1951,6 +1951,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   }, [exampleUrl, autoTag && autoTag.active]); // eslint-disable-line
   const [checklist, setChecklist] = useState(card.checklist || []);
   const [checkInput, setCheckInput] = useState("");
+  const [prePro, setPrePro] = useState(false); // Pre-production accordion (example video + rough draft), collapsed by default
   const [pub, setPub] = useState(card.pub || null);
   const [pubAccounts, setPubAccounts] = useState(null); // connected IG accounts (owner only — 403 hides the section)
   // UGC outreach card state
@@ -2593,53 +2594,20 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
+        {/* PRE-PRODUCTION — example video + rough draft, collapsed at the top
+            (her ask, Sep 7: it's the first step of creating a card, tucked
+            behind a clearly named dropdown) */}
         {!opsMode && (<>
-        <div style={label}>On-screen hook</div>
-        <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
-        </>)}
-        {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
-        <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
-        <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
-        <NotesLinks text={desc} />
-        {/* TikTok-only hashtags: she wants 2 on TikTok and none on Instagram, so
-            these are stored apart from the caption and never reach the IG post. */}
-        {!opsMode && (<>
-        <div style={label}>Hashtags · TikTok only</div>
-        <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
-        {tags.trim() && (
-          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
-            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to TikTok only
-          </div>
-        )}
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: approved ? "#5a7a5a" : c.sub, cursor: "pointer" }}>
-          <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
-          Approve caption + hashtags {approved ? "— approved" : ""}
-        </label>
-        </>)}
-        {/* checklist — the film → edit → post steps live on the card */}
-        <div style={label}>Checklist{checklist.length ? " · " + checklist.filter((x) => x.done).length + "/" + checklist.length : ""}</div>
-        {checklist.length > 0 && (
-          <div style={{ height: 5, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 3, marginBottom: 8, overflow: "hidden" }}>
-            <div style={{ width: (checklist.filter((x) => x.done).length / checklist.length) * 100 + "%", height: "100%", background: c.green, transition: "width 0.3s ease" }} />
-          </div>
-        )}
-        {checklist.map((it) => (
-          <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "3px 0" }}>
-            <input type="checkbox" checked={!!it.done} onChange={() => setChecklist(checklist.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)))} />
-            <span style={{ flex: 1, fontFamily: sans, fontSize: 12.5, color: it.done ? c.sub : c.ink, textDecoration: it.done ? "line-through" : "none" }}>{it.t}</span>
-            <button onClick={() => setChecklist(checklist.filter((x) => x.id !== it.id))} style={{ background: "none", border: "none", color: c.sub, cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 6, marginTop: checklist.length ? 6 : 0 }}>
-          <input style={{ ...input, flex: 1 }} placeholder="Add a step… (film, edit, approve)" value={checkInput} onChange={(e) => setCheckInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && checkInput.trim()) { setChecklist([...checklist, { id: uid(), t: checkInput.trim(), done: false }]); setCheckInput(""); } }} />
-          <button onClick={() => { if (!checkInput.trim()) return; setChecklist([...checklist, { id: uid(), t: checkInput.trim(), done: false }]); setCheckInput(""); }}
-            style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
-        </div>
-
-        {/* the two standing buttons: reference video + this post's Drive asset */}
-        {!opsMode && (<>
+        <button onClick={() => setPrePro(!prePro)}
+          style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", border: `1px solid ${c.line}`, background: prePro ? c.bg : "transparent", borderRadius: 2, padding: "10px 12px", fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer", marginBottom: 10 }}>
+          <span style={{ fontSize: 10 }}>{prePro ? "▾" : "▸"}</span> Pre-production — example video + rough draft
+          {(exampleUrl.trim() || Object.keys(draft).length > 0) && (
+            <span style={{ marginLeft: "auto", color: c.sub, textTransform: "none", letterSpacing: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5 }}>
+              {exampleUrl.trim() && Object.keys(draft).length ? "video + draft" : exampleUrl.trim() ? "video linked" : "draft started"}
+            </span>
+          )}
+        </button>
+        {prePro && (<>
         <div style={label}>Example video</div>
         <div style={{ display: "flex", gap: 6 }}>
           <input style={{ ...input, flex: 1 }} placeholder="https://www.tiktok.com/…" value={exampleUrl} onChange={(e) => setExampleUrl(e.target.value)} />
@@ -2710,7 +2678,35 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </button>
           </div>
         </div>
+        </>)}
+        </>)}
+        {!opsMode && (<>
+        <div style={label}>On-screen hook</div>
+        <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
+        </>)}
+        {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
+        <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
+        <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        <NotesLinks text={desc} />
+        {/* TikTok-only hashtags: she wants 2 on TikTok and none on Instagram, so
+            these are stored apart from the caption and never reach the IG post. */}
+        {!opsMode && (<>
+        <div style={label}>Hashtags · TikTok only</div>
+        <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
+        {tags.trim() && (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
+            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to TikTok only
+          </div>
+        )}
 
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: approved ? "#5a7a5a" : c.sub, cursor: "pointer" }}>
+          <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
+          Approve caption + hashtags {approved ? "— approved" : ""}
+        </label>
+        </>)}
+        {/* Checklist section removed (her ask, Sep 7) — existing checklist data
+            stays stored on cards, just no longer shown. */}
+        {!opsMode && (<>
         {/* Courtney's format pick sits right above Post Asset (her ask, Sep 7) */}
         {!opsMode && (labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
           <>
