@@ -2715,7 +2715,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <>
             <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
             <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {["Reel", "Carousel"].map((F) => { const on = (fmt || (labels.find((L) => /^IG ·/.test((L && L.n) || ""))?.n || "").includes("Carousel") ? "Carousel" : "Reel") === F; return (
+              {["Reel", "Carousel"].map((F) => { const curF = fmt || (((labels.find((L) => /^IG ·/.test((L && L.n) || "")) || {}).n || "").includes("Carousel") ? "Carousel" : "Reel"); const on = curF === F; return (
                 <button key={F} onClick={() => {
                   setFmt(F);
                   // rewrite the platform chips in place — neutral colors are locked
