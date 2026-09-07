@@ -2859,7 +2859,15 @@ export default async function handler(req, res) {
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
-  // ── Captions + hashtags doc — TWO-WAY sync ────────────────────────────────
+  // ── Doc-snapshot ring reader (owner) — the raw doc texts the sync captured ─
+  if (op === "captions_doc_snaps" && req.method === "GET") {
+    const authSN = await getAuthEarly(req);
+    if (!ownerRole(authSN)) { res.status(403).json({ error: "Owner only." }); return; }
+    const snaps = (await kvGet("sisters_captions_doc_snaps")) || [];
+    res.json({ snaps: snaps.map((s) => ({ at: s.at, atIso: new Date(s.at).toISOString(), len: (s.text || "").length, text: s.text })) });
+    return;
+  }
+  // ── Captions + hashtags doc — ONE-WAY sync (doc → cards; push manual-only) ─
   // Her protocol (Aug 26, after Courtney's captions were lost): the shared
   // Google Doc is both the standing backup AND an editing surface — Courtney
   // writes captions/hashtags in the doc and they flow onto the matching Post
@@ -2989,20 +2997,23 @@ export default async function handler(req, res) {
       htmlParts.push("<p>&nbsp;</p>");
     }
     const nextText = lines.join("\n");
-    // sig over CONTENT only — the "Last synced" line used to be hashed too,
-    // which made every 15-min sweep rewrite the whole doc (flooding version
-    // history and reload-flickering the doc under whoever was reading it on a
-    // phone). Now an unchanged doc is left alone.
+    // ONE-WAY SYNC (her rule, Sep 7: the doc is the source of truth and is
+    // NEVER auto-written — the Sep 7 card wipe leaked into the doc through the
+    // old two-way push and ate Courtney's captions). The app only PULLS from
+    // the doc; the rewrite below runs ONLY on an explicit owner {push:true}
+    // (used for deliberate rebuilds — e.g. after a restore, at her ask).
     const sigCB = createHash("sha256").update(lines.filter((l) => !/^Last synced:/.test(l)).join("\n") + "|todo:" + Object.keys(todoCB).sort().join(",")).digest("hex").slice(0, 12);
     let pushedCB = false;
-    if (stCB.sig !== sigCB || pulled || (req.body || {}).force) {
+    if ((req.body || {}).push === true && !okKeyCB) {
       const rUp = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + DOC_CB + "?uploadType=media&supportsAllDrives=true", {
         method: "PATCH", headers: { Authorization: "Bearer " + gtCB, "Content-Type": "text/html; charset=utf-8" }, body: "<html><body>" + htmlParts.join("") + "</body></html>",
       });
       if (!rUp.ok) { const dUp = await rUp.json().catch(() => ({})); res.status(400).json({ error: "doc update failed: " + ((dUp.error && dUp.error.message) || rUp.status) }); return; }
       pushedCB = true;
     }
-    const nextBase = {}; for (const c of postsCB) nextBase[numCB(c)] = { c: (c.desc || "").trim(), h: (c.tags || "").trim() };
+    // base tracks the DOC (what we last saw there), not the cards — with
+    // one-way sync a card edited in-app must not read as a phantom doc change
+    const nextBase = {}; for (const c of postsCB) { const nB = numCB(c); const pB = parsed[nB]; nextBase[nB] = pB ? { c: pB.c, h: pB.h } : { c: (c.desc || "").trim(), h: (c.tags || "").trim() }; }
     await kvSet("sisters_captions_doc_state", { sig: sigCB, base: nextBase, at: Date.now() });
     res.json({ ok: true, posts: postsCB.length, pulled, pushed: pushedCB, noted: notedCT });
     return;
@@ -5398,10 +5409,18 @@ export default async function handler(req, res) {
           res.json({ ok: true, b64: buf.toString("base64"), bytes: buf.length });
           return;
         }
-        const rL = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/revisions?fields=revisions(id,modifiedTime,originalFilename,size)&pageSize=100`, { headers: AUTH });
-        const dL = await rL.json();
-        if (!rL.ok) { res.status(400).json({ error: (dL.error && dL.error.message) || "drive_error" }); return; }
-        res.json(dL); return;
+        // paginate to the END — Drive lists oldest-first and the Sep 7 recovery
+        // needed revisions past the first 100
+        let allRevs = [], pt = "";
+        for (let i = 0; i < 10; i++) {
+          const rL = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/revisions?fields=nextPageToken,revisions(id,modifiedTime,originalFilename,size)&pageSize=200${pt ? "&pageToken=" + encodeURIComponent(pt) : ""}`, { headers: AUTH });
+          const dL = await rL.json();
+          if (!rL.ok) { res.status(400).json({ error: (dL.error && dL.error.message) || "drive_error" }); return; }
+          allRevs = allRevs.concat(dL.revisions || []);
+          if (!dL.nextPageToken) break;
+          pt = dL.nextPageToken;
+        }
+        res.json({ revisions: allRevs }); return;
       }
       if (op === "drive_mkdir") {
         const name = String(b.name || "").slice(0, 120);
@@ -5870,11 +5889,8 @@ export default async function handler(req, res) {
     });
     let ds = null; try { ds = await rs.json(); } catch {}
     if (!rs.ok || (ds && ds.error)) { res.status(507).json({ error: "Store refused the save: " + (ds && ds.error ? ds.error : rs.status) }); return; }
-    if (sistersCapsChanged && process.env.PUBLISH_KEY) {
-      // instant doc sync on caption/hashtag edits — the op itself no-ops when
-      // the doc already matches, so this is cheap on false positives
-      try { const acCQ = new AbortController(); setTimeout(() => acCQ.abort(), 12000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCQ.signal }).catch(() => {}); } catch (eCQ) {}
-    }
+    // (Sep 7: the instant caption→doc push trigger was REMOVED — the doc is
+    // one-way source-of-truth now and is never auto-written by the app.)
     // Hand every stored board's rev back so the SAVING tab can adopt them —
     // without this a tab's own successful save left it one rev behind and its
     // very next save read as stale (her Approved-tag report, Aug 26).
