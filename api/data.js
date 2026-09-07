@@ -5801,7 +5801,11 @@ export default async function handler(req, res) {
           });
           bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc }; // mc always carries server-assigned stamps
         }
-      } catch (eMC) {}
+      } catch (eMC) {
+        // FAIL CLOSED: if the merge itself errors, keep the stored board — an
+        // exception must never become a raw-overwrite path
+        if (sb) { staleBoards.push(bk); return; }
+      }
       const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
       const changed = !sb || !sb._rev || !sb._stamp || norm(bdM) !== norm(sb);
       bs[bk] = changed ? { ...bdM, _rev: sRev + 1, _stamp: Date.now() } : sb;
