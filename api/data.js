@@ -2859,6 +2859,13 @@ export default async function handler(req, res) {
     res.json({ ok: true, built: true, pdfUrl, pages: pageUrls.length, pageErr, posts: postCards.length, allApproved });
     return;
   }
+  // ── Guard-log reader (owner) — who tripped a shell/replay guard ──────────
+  if (op === "guard_log" && req.method === "GET") {
+    const authGL = await getAuthEarly(req);
+    if (!ownerRole(authGL)) { res.status(403).json({ error: "Owner only." }); return; }
+    res.json({ log: (await kvGet("sisters_guard_log")) || [] });
+    return;
+  }
   // ── Doc-snapshot ring reader (owner) — the raw doc texts the sync captured ─
   if (op === "captions_doc_snaps" && req.method === "GET") {
     const authSN = await getAuthEarly(req);
