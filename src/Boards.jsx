@@ -2688,14 +2688,14 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         <NotesLinks text={desc} />
-        {/* TikTok-only hashtags: she wants 2 on TikTok and none on Instagram, so
-            these are stored apart from the caption and never reach the IG post. */}
+        {/* hashtags go to BOTH platforms (her rule Sep 7 — was TikTok-only);
+            stored apart from the caption, appended to the IG post at publish */}
         {!opsMode && (<>
-        <div style={label}>Hashtags · TikTok only</div>
-        <input style={input} placeholder="#cozyhome #candle — added to TikTok only, never Instagram" value={tags} onChange={(e) => setTags(e.target.value)} />
+        <div style={label}>Hashtags</div>
+        <input style={input} placeholder="#cozyhome #candle" value={tags} onChange={(e) => setTags(e.target.value)} />
         {tags.trim() && (
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
-            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to TikTok only
+            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to Instagram + TikTok
           </div>
         )}
 
@@ -2926,7 +2926,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           const statusPr = opsMode
             ? [{ n: "Live", c: "#DCE3DC" }, { n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Pre-Order", c: "#D9CFC1" }, { n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "Shopify", c: "#C6CCCF" }, { n: "Amazon", c: "#E9E6DF" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }]
             : [{ n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Live", c: "#DCE3DC" }];
-          const igPr = opsMode ? [] : [{ n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" }];
+          const igPr = opsMode ? [] : [{ n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" }]; // bare "IG · Reel" dropped (her ask Sep 7) — the two specific reel types + carousel/static cover it
           const ttPr = opsMode ? [] : [{ n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" }]; // TT · B-roll retired (her rule Sep 7: a TT b-roll IS a reel)
           // "person assigned" = Courtney + any saved tag matching a roster name;
           // status-flavored saved tags (Need to film, … ready for review, …)

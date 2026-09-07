@@ -115,6 +115,9 @@ const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-medi
 // fit: "igfeed" for a feed photo or carousel slide, "vertical" for a Reel cover
 // (9:16). A card can be a carousel on Instagram and a video on TikTok, so the
 // shape is decided by what's being posted, not by the card.
+// IG caption = caption + hashtags (her rule Sep 7: hashtags go to Instagram
+// too, no longer TikTok-only)
+function igCaption(card) { const d = (card.desc || "").trim(), t = (card.tags || "").trim(); return t ? (d ? d + "\n\n" + t : t) : d; }
 function cardCoverUrl(card, bKey, fit = "igfeed") {
   // assetUrl is deliberately NOT consulted: on a [reel] card it points at the
   // .mov, and handing Instagram a video as a photo fails the post.
@@ -388,7 +391,7 @@ async function publishDueItems(only) {
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) { fail("video/Reel posting isn't wired up yet — post this one manually"); continue; }
       const imageUrl = it.src ? "https://lavalle-haus-os.vercel.app" + it.src : "https://drive.google.com/thumbnail?id=" + it.driveId + "&sz=w2000";
       if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; } // another runner owns this post
-      const r = await igPublishPhoto(tok, imageUrl, card.desc || "");
+      const r = await igPublishPhoto(tok, imageUrl, igCaption(card));
       if (r.ok) {
         const publishedAt = new Date().toISOString();
         ledger[ledgerKey] = { mediaId: r.mediaId, at: publishedAt };
@@ -459,7 +462,7 @@ async function publishDueItems(only) {
           .sort((a, b) => ((parseInt(a.name) || 999) - (parseInt(b.name) || 999)) || a.name.localeCompare(b.name)).slice(0, 10);
         if (slides.length < 2) { fail("carousel needs at least 2 slides in the linked folder (found " + slides.length + ")"); continue; }
         const imageUrls = slides.map((f) => "https://lavalle-haus-os.vercel.app/api/data?op=drive_img&id=" + f.id + "&fit=igfeed");
-        const ccap = card.desc || "";
+        const ccap = igCaption(card);
         if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
         const cr = await igPublishCarousel(tok, imageUrls, ccap);
         if (cr.ok) {
@@ -480,7 +483,7 @@ async function publishDueItems(only) {
       if (/reel|video/i.test((card.name || "").match(/\[(.+?)\]/)?.[1] || "")) {
         const reelId = ((card.assetUrl || "").match(/\/d\/([-\w]{20,})/) || [])[1];
         if (!reelId) { fail("no Reel video file is linked — the card points at a folder, not a .mov; link the file first"); continue; }
-        const rcap = card.desc || "";
+        const rcap = igCaption(card);
         // Auto-convert the .mov to H.264 MP4 (Cloudinary) before Instagram — IG's
         // Reel API rejects HEVC. Skip if already converted (p.mp4Url).
         let videoUrl = p.mp4Url;
@@ -520,7 +523,7 @@ async function publishDueItems(only) {
       // Better a visible failure she can fix than a soft 300px photo on the
       // brand's feed, which can only be undone by deleting the post.
       if (isLowResPreview(imageUrl)) { fail("cover is only a 300px board preview — link the full-size photo from Drive on this card, then re-schedule"); continue; }
-      const caption = card.desc || "";
+      const caption = igCaption(card);
       if (!(await kvClaim("claim:" + ledgerKey))) { results.skipped++; results.items.push({ boardKey: bKey, cardId: card.id, ok: false, skipped: "another publish attempt is still holding this post — try again in a minute" }); continue; }
       const r = await igPublishPhoto(tok, imageUrl, caption);
       if (r.ok) {
