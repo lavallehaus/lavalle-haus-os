@@ -5726,7 +5726,24 @@ export default async function handler(req, res) {
           // card is a not-yet-updated app build mid-edit — dropping it silently
           // would eat live edits (her Post 21 report, minutes after rollout);
           // legacy last-writer-wins applies until every device carries stamps
-          let mc = bd.cards.map((c0) => { const sc = sMap.get(c0 && c0.id); if (!sc) return c0; if (c0 && c0._touched && (sc._touched || 0) > c0._touched) { kept++; return sc; } return c0; });
+          // Stamps from the future are poisoned (Sep 7: a device with a wrong
+          // clock stamped its blank shells hours ahead and beat every honest
+          // edit) — a stored or incoming _touched beyond now+5min carries no
+          // authority, and everything stored is clamped to server time below.
+          const nowMs = Date.now(), FUT = 5 * 60000;
+          const sane = (t) => (t && t > nowMs + FUT ? 0 : t || 0);
+          let mc = bd.cards.map((c0) => {
+            const sc = sMap.get(c0 && c0.id); if (!sc) return c0;
+            // an EMPTY card never replaces one that has content — no real edit
+            // blanks caption, hashtags, cover, labels and done in one stroke;
+            // that shape is the shell generator (3rd strike, Sep 7)
+            const cEmpty = c0 && !(c0.desc || "").trim() && !(c0.tags || "").trim() && !c0.cover && !((c0.labels || []).length) && !c0.done;
+            const sHas = (sc.desc || "").trim() || sc.cover;
+            if (cEmpty && sHas) { kept++; return sc; }
+            if (c0 && c0._touched && sane(sc._touched) > sane(c0._touched)) { kept++; return sc; }
+            return c0;
+          });
+          mc = mc.map((c0) => (c0 && c0._touched > nowMs + FUT ? { ...c0, _touched: nowMs } : c0));
           // Cards can't disappear by OMISSION (Sep 3: a glitched local view
           // nearly saved a board missing Posts 1-21) — a save that simply
           // lacks a card the server has keeps the server's copy. Real deletes
