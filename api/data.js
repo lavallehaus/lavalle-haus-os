@@ -5765,6 +5765,20 @@ export default async function handler(req, res) {
           const tombPostN = bd.cards.filter((c0) => { if (!c0 || !c0._deleted) return false; const s0 = sMap.get(c0.id); return s0 && /^post\s*\d+\b/i.test(s0.name || ""); }).length;
           const newPostN = bd.cards.filter((c0) => c0 && !c0._deleted && !sMap.has(c0.id) && /^post\s*\d+\b/i.test(c0.name || "")).length;
           if (tombPostN > 3 && newPostN > 3) { staleBoards.push(bk); guardHits.push("tombstone-replace:" + tombPostN + "/" + newPostN); return; }
+          // OWNER-ONLY STRUCTURE on the sisters schedule (Sep 7, after the 4th
+          // shell strike): only Kiabeth's login can CREATE or DELETE Post-
+          // numbered cards on lavalle-sisters. Everyone edits them freely;
+          // nobody else (and no rogue device) can add or remove them.
+          if (bk === "lavalle-sisters" && !ownerRole(auth)) {
+            const dropped = [];
+            bd = { ...bd, cards: bd.cards.filter((c0) => {
+              if (!c0) return true;
+              if (c0._deleted) { const s0 = sMap.get(c0.id); if (s0 && /^post\s*\d+\b/i.test(s0.name || "")) { dropped.push("del:" + c0.id); return false; } return true; }
+              if (!sMap.has(c0.id) && /^post\s*\d+\b/i.test(c0.name || "")) { dropped.push("new:" + c0.id); return false; }
+              return true;
+            }) };
+            if (dropped.length) guardHits.push("owner-only-structure:" + dropped.length);
+          }
           const nowMs = Date.now();
           const cnorm = (x) => { const { _touched, _deleted, ...rest } = x || {}; return JSON.stringify(rest); };
           const blind = [];
