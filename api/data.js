@@ -5711,39 +5711,50 @@ export default async function handler(req, res) {
       const sRev = (sb && sb._rev) || 0;
       const sStamp = (sb && sb._stamp) || 0, iStamp = (bd && bd._stamp) || 0;
       if (sb && sStamp && (!iStamp || sStamp - iStamp > STALE_MS)) { staleBoards.push(bk); return; }
-      // Per-CARD newest-edit-wins (Sep 3: two same-day devices flip-flopped
-      // Post 21's caption — the board-level guard passes same-day copies, so
-      // the device with the older board kept re-saving over the fresh edit).
-      // Every card edit (client sheet saves + server ops) stamps _touched;
-      // when an incoming board carries an OLDER copy of a card than what's
-      // stored, the stored card survives the save.
+      // Per-CARD merge, SERVER-CLOCK ONLY (her rule, Sep 7: "time should have
+      // nothing to do with this" — a teammate's wrong device clock must never
+      // block or lose her edits). The server assigns every _touched itself at
+      // store time; a client's clock is never consulted. The incoming card's
+      // _touched is used only as a BASELINE ECHO — "which version of this card
+      // did the client last see":
+      //   · content unchanged            → keep stored (no-op)
+      //   · baseline matches stored      → informed edit → accept, stamp now
+      //   · baseline differs ("blind")   → a real person edits 1-3 cards at a
+      //     time, so a few blind changes are accepted (arrival order wins,
+      //     stamp now); MANY blind changes in one save is a stale copy or the
+      //     shell generator replaying over unseen state → those cards keep the
+      //     stored version and the board is reported stale (client alerts and
+      //     auto-reloads).
       let bdM = bd;
       try {
         if (sb && bd && Array.isArray(bd.cards) && Array.isArray(sb.cards)) {
           const sMap = new Map(sb.cards.map((c0) => [c0.id, c0]));
           let kept = 0;
-          // only stamped-vs-stamped comparisons block: an UNSTAMPED incoming
-          // card is a not-yet-updated app build mid-edit — dropping it silently
-          // would eat live edits (her Post 21 report, minutes after rollout);
-          // legacy last-writer-wins applies until every device carries stamps
-          // Stamps from the future are poisoned (Sep 7: a device with a wrong
-          // clock stamped its blank shells hours ahead and beat every honest
-          // edit) — a stored or incoming _touched beyond now+5min carries no
-          // authority, and everything stored is clamped to server time below.
-          const nowMs = Date.now(), FUT = 5 * 60000;
-          const sane = (t) => (t && t > nowMs + FUT ? 0 : t || 0);
+          const nowMs = Date.now();
+          const cnorm = (x) => { const { _touched, _deleted, ...rest } = x || {}; return JSON.stringify(rest); };
+          const blind = [];
           let mc = bd.cards.map((c0) => {
-            const sc = sMap.get(c0 && c0.id); if (!sc) return c0;
+            if (!c0) return c0;
+            const sc = sMap.get(c0.id);
+            if (!sc) return c0._deleted ? c0 : { ...c0, _touched: nowMs }; // new card — stamped on arrival
+            if (cnorm(c0) === cnorm(sc)) return sc; // unchanged → keep stored (and its stamp)
             // an EMPTY card never replaces one that has content — no real edit
             // blanks caption, hashtags, cover, labels and done in one stroke;
-            // that shape is the shell generator (3rd strike, Sep 7)
-            const cEmpty = c0 && !(c0.desc || "").trim() && !(c0.tags || "").trim() && !c0.cover && !((c0.labels || []).length) && !c0.done;
+            // that shape is the shell generator
+            const cEmpty = !(c0.desc || "").trim() && !(c0.tags || "").trim() && !c0.cover && !((c0.labels || []).length) && !c0.done;
             const sHas = (sc.desc || "").trim() || sc.cover;
-            if (cEmpty && sHas) { kept++; return sc; }
-            if (c0 && c0._touched && sane(sc._touched) > sane(c0._touched)) { kept++; return sc; }
-            return c0;
+            if (cEmpty && sHas && !c0._deleted) { kept++; return sc; }
+            if ((c0._touched || 0) === (sc._touched || 0)) return { ...c0, _touched: nowMs }; // informed edit
+            blind.push(c0.id); return c0; // decided below by how many there are
           });
-          mc = mc.map((c0) => (c0 && c0._touched > nowMs + FUT ? { ...c0, _touched: nowMs } : c0));
+          const acceptBlind = blind.length > 0 && blind.length <= 3;
+          if (blind.length) {
+            const blindSet = new Set(blind);
+            mc = mc.map((c0) => { if (!c0 || !blindSet.has(c0.id)) return c0; if (acceptBlind) return { ...c0, _touched: nowMs }; kept++; return sMap.get(c0.id); });
+            if (!acceptBlind) staleBoards.push(bk);
+          }
+          // legacy stamps from the wrong-clock incident: clamp anything future
+          mc = mc.map((c0) => (c0 && c0._touched > nowMs + 60000 ? { ...c0, _touched: nowMs } : c0));
           // Cards can't disappear by OMISSION (Sep 3: a glitched local view
           // nearly saved a board missing Posts 1-21) — a save that simply
           // lacks a card the server has keeps the server's copy. Real deletes
@@ -5769,7 +5780,7 @@ export default async function handler(req, res) {
             if (empty) { shells++; return false; }
             return true;
           });
-          if (kept || back.length || hadTomb || shells) bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc };
+          bdM = { ...bd, cards: back.length ? [...mc, ...back] : mc }; // mc always carries server-assigned stamps
         }
       } catch (eMC) {}
       const norm = (x) => JSON.stringify({ ...x, _rev: 0, _stamp: 0 });
@@ -5867,14 +5878,21 @@ export default async function handler(req, res) {
     // Hand every stored board's rev back so the SAVING tab can adopt them —
     // without this a tab's own successful save left it one rev behind and its
     // very next save read as stale (her Approved-tag report, Aug 26).
-    const revs = {}, stamps = {};
+    const revs = {}, stamps = {}, cardStamps = {};
     for (const [bk, bd] of Object.entries(toStore.boards || {})) { if (bd && bd._rev) revs[bk] = bd._rev; if (bd && bd._stamp) stamps[bk] = bd._stamp; }
+    // per-card server stamps for the boards this client sent — the client
+    // adopts them so its next edits read as "informed" (server-clock design)
+    for (const bk of Object.keys((body && body.boards) || {})) {
+      const bd = (toStore.boards || {})[bk]; if (!bd || !Array.isArray(bd.cards)) continue;
+      const m = {}; for (const c of bd.cards) if (c && c.id && c._touched) m[c.id] = c._touched;
+      cardStamps[bk] = m;
+    }
     // A refusal must be UNMISSABLE. Old app bundles (a resumed phone PWA can
     // run one for days) ignore staleBoards in a 200 body and report success —
     // that silently ate her Post 3 video (Aug 27). 409 makes every client,
     // however old, show its NOT SAVED alert; new bundles parse the body for
     // the precise message. The accepted parts of the save ARE stored.
-    if (staleBoards.length || staleKeys.length) { res.status(409).json({ ok: false, staleBoards, staleKeys, revs, stamps, keyStamps }); return; }
-    res.json({ ok: true, staleBoards, staleKeys, revs, stamps, keyStamps });
+    if (staleBoards.length || staleKeys.length) { res.status(409).json({ ok: false, staleBoards, staleKeys, revs, stamps, keyStamps, cardStamps }); return; }
+    res.json({ ok: true, staleBoards, staleKeys, revs, stamps, keyStamps, cardStamps });
   }
 }

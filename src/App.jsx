@@ -87,6 +87,9 @@ async function dbSave(record) {
         if (dj && dj.revs && record && record.boards) for (const [bk, rv] of Object.entries(dj.revs)) if (record.boards[bk]) record.boards[bk]._rev = rv;
         if (dj && dj.stamps && record && record.boards) for (const [bk, st] of Object.entries(dj.stamps)) if (record.boards[bk]) record.boards[bk]._stamp = st;
         if (dj && dj.keyStamps && record) record._keyStamps = dj.keyStamps;
+        // adopt per-card SERVER stamps so this tab's next edits read as
+        // informed — the client never writes _touched itself (clock-independence)
+        if (dj && dj.cardStamps && record && record.boards) for (const [bk, m] of Object.entries(dj.cardStamps)) { const b = record.boards[bk]; if (b && Array.isArray(b.cards)) for (const c of b.cards) if (c && m[c.id] != null) c._touched = m[c.id]; }
         const KEY_LABELS = { actionsBoard: "Team & Action Items", prHub: "PR hub", gridPlanner: "Schedule", brandGrids: "Grids", comms: "Comms", teamMeetings: "Meetings", products: "Products", opsShoots: "Shoot calendar", calNotes: "Calendar notes", foldLedger: "Fold Ledger" };
         const staleAll = [
           ...(dj && Array.isArray(dj.staleBoards) ? dj.staleBoards.map((bk) => (record && record.boards && record.boards[bk] && record.boards[bk].name) || bk) : []),
