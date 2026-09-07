@@ -2025,6 +2025,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // saved-tags bank UI state: inline rename + tap-×-twice removal (no native dialogs)
   const [bankRename, setBankRename] = useState(null); // {from, to, c}
   const [bankRemove, setBankRemove] = useState(null); // tag name armed for removal
+  const [manageTags, setManageTags] = useState(false); // saved-tag management collapsed behind a toggle (dropdown handles adding)
   const commitBankRename = () => {
     if (!bankRename) return;
     const to = bankRename.to.trim();
@@ -2921,31 +2922,51 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </span>
           ))}
         </div>
-        {/* the house tag vocabulary — one tap adds it with its locked neutral;
-            free-typed tags below stay possible, but nobody has to invent names */}
-        <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>House tags — tap to add</div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-          {(opsMode ? [{ n: "Live", c: "#DCE3DC" }, { n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Pre-Order", c: "#D9CFC1" }, { n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "Shopify", c: "#C6CCCF" }, { n: "Amazon", c: "#E9E6DF" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }] : [
-            { n: "Courtney", c: "#FFFFFF" },
-            { n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Live", c: "#DCE3DC" },
-            { n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" },
-            { n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · B-roll", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" },
-          ]).filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
-            <button key={pr.n} onClick={() => setLabels([...labels, { n: pr.n, c: pr.c }])}
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: `1px dashed ${c.line}`, borderRadius: 1, padding: "4px 9px", fontFamily: sans, fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
-              {/^#fff/i.test(pr.c) && <span style={{ width: 6, height: 6, background: "#1A1A1A", display: "inline-block" }} />}+ {pr.n}
-            </button>
-          ))}
-        </div>
-        {/* her saved custom tags — remembered from any card on this board.
-            No window.confirm/prompt here: native dialogs are unreliable in the
-            iOS home-screen app (and wedge automation) — remove is tap-×-twice,
-            rename is an inline input. */}
-        {(tagBank || []).length > 0 && (
+        {/* one clean dropdown instead of chip sprawl (her ask, Sep 7), grouped
+            her way: Post status · Person assigned · Instagram · TikTok (each
+            platform its own folder) · other saved tags. Picking one adds it
+            and the select snaps back to the placeholder. */}
+        {(() => {
+          const statusPr = opsMode
+            ? [{ n: "Live", c: "#DCE3DC" }, { n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Pre-Order", c: "#D9CFC1" }, { n: "Ordered", c: "#D9CFC1" }, { n: "In Production", c: "#E9E6DF" }, { n: "Shipped", c: "#C6CCCF" }, { n: "Arrived", c: "#DCE3DC" }, { n: "Shopify", c: "#C6CCCF" }, { n: "Amazon", c: "#E9E6DF" }, { n: "On Hold", c: "#F3E6E3" }, { n: "Priority", c: "#1A1A1A" }]
+            : [{ n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Live", c: "#DCE3DC" }];
+          const igPr = opsMode ? [] : [{ n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" }];
+          const ttPr = opsMode ? [] : [{ n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" }]; // TT · B-roll retired (her rule Sep 7: a TT b-roll IS a reel)
+          // "person assigned" = Courtney + any saved tag matching a roster name
+          const firstNames = (memberPool || []).map((m) => String(m).split(" ")[0].toLowerCase());
+          const isPerson = (n0) => { const s = String(n0 || "").trim().toLowerCase(); return s === "courtney" || firstNames.includes(s) || (memberPool || []).some((m) => String(m).toLowerCase() === s); };
+          const personPr = [...(opsMode ? [] : [{ n: "Courtney", c: "#FFFFFF" }]), ...(tagBank || []).filter((pr) => isPerson(pr.n))];
+          const otherPr = (tagBank || []).filter((pr) => !isPerson(pr.n));
+          const onCard = (n0) => labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === String(n0).toLowerCase());
+          const GROUPS = [["Post status", statusPr], ["Person assigned", personPr], ["Instagram", igPr], ["TikTok", ttPr], ["Other saved tags", otherPr]]
+            .map(([g, list]) => [g, list.filter((pr) => !onCard(pr.n))]).filter(([, list]) => list.length);
+          const flat = {}; GROUPS.forEach(([g, list], gi) => list.forEach((pr, i9) => { flat[gi + ":" + i9] = pr; }));
+          return (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <select value="" style={{ ...input, flex: 1, marginBottom: 0 }}
+                onChange={(e) => { const pr = flat[e.target.value]; if (pr) setLabels([...labels, { n: pr.n, c: pr.c }]); }}>
+                <option value="">＋ Add a tag…</option>
+                {GROUPS.map(([g, list], gi) => (
+                  <optgroup key={g} label={g}>{list.map((pr, i9) => <option key={pr.n} value={gi + ":" + i9}>{pr.n}</option>)}</optgroup>
+                ))}
+              </select>
+              {(tagBank || []).length > 0 && (
+                <button onClick={() => setManageTags(!manageTags)}
+                  style={{ border: "none", background: "transparent", padding: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: manageTags ? c.ink : c.sub, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {manageTags ? "done managing" : "manage saved tags"}
+                </button>
+              )}
+            </div>
+          );
+        })()}
+        {/* saved-tag management (rename everywhere / remove from saved) —
+            collapsed behind the "manage saved tags" toggle. No native dialogs:
+            rename is inline, remove is tap-×-twice. */}
+        {manageTags && (tagBank || []).length > 0 && (
           <>
-            <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>Saved tags — tap to add · ✎ rename · × remove from saved</div>
+            <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, margin: "2px 0 5px" }}>Saved tags — ✎ rename everywhere · × remove from saved</div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-              {(tagBank || []).filter((pr) => !labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === pr.n.toLowerCase())).map((pr) => (
+              {(tagBank || []).map((pr) => (
                 bankRename && bankRename.from === pr.n ? (
                   <span key={pr.n} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${c.ink}`, borderRadius: 1, padding: "2px 4px" }}>
                     <input autoFocus value={bankRename.to} onChange={(e) => setBankRename({ ...bankRename, to: e.target.value })}

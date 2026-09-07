@@ -3148,7 +3148,7 @@ export default async function handler(req, res) {
       // REEL on TikTok — TT never gets a carousel on our posts.
       if (ig === "Static" || ig === "Carousel") tt = "Reel";
 
-      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "B-roll" : "FTC"; }
+      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "Reel" : "FTC"; } // "TT · B-roll" label retired (her rule Sep 7: a TT b-roll IS a reel) — the every-5th b-roll exception now just reads TT · Reel
       formats[n] = { ig, tt, note };
     }
     // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)
