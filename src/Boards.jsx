@@ -2734,7 +2734,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               )}
             </div>
           );
-          const reelLabel = isCarouselCard(card.name) && !isReelCard(card.name) ? "carousel" : "reel";
+          // "carousel link" vs "reel link" follows the card's format chips
+          // (IG ·/TT · labels), falling back to [carousel]/[reel] in the name
+          const lblNames = (labels || []).map((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase());
+          const reelLabel = (lblNames.some((n0) => n0.includes("carousel")) && !lblNames.some((n0) => /reel|ftc|b-roll/.test(n0))) || (isCarouselCard(card.name) && !isReelCard(card.name)) ? "carousel" : "reel";
           return (
             <div>
               {btnRow("cover photo", coverUrl, setCoverUrl, editCover, setEditCover, "coverUrl")}
@@ -2854,7 +2857,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           </>
         )}
 
-        {/* links */}
+        {/* links — HIDDEN on Post 1-42 schedule cards (her ask, Sep 7): those
+            cards link everything through the labeled "cover photo" +
+            "reel/carousel link" buttons in the Post Asset area instead; the
+            free-form Links section only serves non-post cards (Links card,
+            Hashtags, Theme…). Link data already on post cards stays stored. */}
+        {!(/^post\s*\d+\b/i.test(name || "") && !opsMode) && (<>
         <div style={label}>Links</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
           {links.map((L, i) => {
@@ -2876,6 +2884,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <button onClick={() => { if (!linkUrl.trim()) return; setLinks([...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }]); setLinkName(""); setLinkUrl(""); }}
             style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
         </div>
+        </>)}
 
         {/* tags — neutral palette */}
         {!opsMode && (labels || []).some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === "courtney") && (
