@@ -2932,13 +2932,17 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             : [{ n: "Approved", c: "#DCE3DC" }, { n: "Ready for review", c: "#E3DCCC" }, { n: "Live", c: "#DCE3DC" }];
           const igPr = opsMode ? [] : [{ n: "IG · Reel", c: "#E9E6DF" }, { n: "IG · Reel · face to camera", c: "#E9E6DF" }, { n: "IG · Reel · b-roll", c: "#E9E6DF" }, { n: "IG · Carousel", c: "#E9E6DF" }, { n: "IG · Static", c: "#E9E6DF" }];
           const ttPr = opsMode ? [] : [{ n: "TT · FTC", c: "#C6CCCF" }, { n: "TT · Reel", c: "#C6CCCF" }, { n: "TT · Carousel", c: "#C6CCCF" }]; // TT · B-roll retired (her rule Sep 7: a TT b-roll IS a reel)
-          // "person assigned" = Courtney + any saved tag matching a roster name
+          // "person assigned" = Courtney + any saved tag matching a roster name;
+          // status-flavored saved tags (Need to film, … ready for review, …)
+          // file under Post status (her ask, Sep 7)
           const firstNames = (memberPool || []).map((m) => String(m).split(" ")[0].toLowerCase());
           const isPerson = (n0) => { const s = String(n0 || "").trim().toLowerCase(); return s === "courtney" || firstNames.includes(s) || (memberPool || []).some((m) => String(m).toLowerCase() === s); };
+          const isStatusy = (n0) => /need to film|ready for review|approved|live|posted|filmed/i.test(String(n0 || ""));
           const personPr = [...(opsMode ? [] : [{ n: "Courtney", c: "#FFFFFF" }]), ...(tagBank || []).filter((pr) => isPerson(pr.n))];
-          const otherPr = (tagBank || []).filter((pr) => !isPerson(pr.n));
+          const statusAll = [...statusPr, ...(tagBank || []).filter((pr) => !isPerson(pr.n) && isStatusy(pr.n))];
+          const otherPr = (tagBank || []).filter((pr) => !isPerson(pr.n) && !isStatusy(pr.n));
           const onCard = (n0) => labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === String(n0).toLowerCase());
-          const GROUPS = [["Post status", statusPr], ["Person assigned", personPr], ["Instagram", igPr], ["TikTok", ttPr], ["Other saved tags", otherPr]]
+          const GROUPS = [["Post status", statusAll], ["Person assigned", personPr], ["Instagram", igPr], ["TikTok", ttPr], ["Other saved tags", otherPr]]
             .map(([g, list]) => [g, list.filter((pr) => !onCard(pr.n))]).filter(([, list]) => list.length);
           const flat = {}; GROUPS.forEach(([g, list], gi) => list.forEach((pr, i9) => { flat[gi + ":" + i9] = pr; }));
           return (
@@ -3005,11 +3009,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <button onClick={addLabel} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "0 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
         </div>
 
-        {/* board + list (move across boards) */}
-        <div style={label}>Board</div>
-        <select style={input} value={destBoard} onChange={(e) => { const k = e.target.value; setDestBoard(k); const ls = (boardsIndex[k] || {}).lists || []; setListId(ls.length ? ls[0].id : null); }}>
-          {Object.entries(boardsIndex).map(([k, b]) => <option key={k} value={k}>{b.name}</option>)}
-        </select>
+        {/* Board dropdown removed (her ask, Sep 7): a card is always edited
+            inside its own board — only the List move remains. destBoard stays
+            pinned to boardKey so saveCard's same-board path always runs. */}
         <div style={label}>List</div>
         <select style={input} value={listId || ""} onChange={(e) => setListId(e.target.value)}>
           {destLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
