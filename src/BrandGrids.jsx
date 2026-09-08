@@ -113,11 +113,14 @@ function arrangeByClasses(visible, lockedSlots, classes, pattern) {
 // Park uploads in the media store; the card keeps a short reference (inline
 // base64 in the blob is what once blew Vercel's 4.5MB save limit).
 async function storeImage(dataUrl) {
+  // NO silent dataUrl fallback: an inline base64 cover displays fine locally but
+  // the arrangement save then blows the payload cap or gets truncated server-side
+  // — the photo LOOKS placed and quietly never persists (Courtney's Post 15).
   try {
     const r = await fetch("/api/data?op=media_put", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) });
     const d = await r.json();
-    return r.ok && d.url ? d.url : dataUrl;
-  } catch { return dataUrl; }
+    return r.ok && d.url ? d.url : null;
+  } catch { return null; }
 }
 
 export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowedAccts = null, owner = false }) {
@@ -164,6 +167,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   const [sisLocked, setSisLocked] = useState(false);
   const [sisHist, setSisHist] = useState([]);
   const [sisFuture, setSisFuture] = useState([]);
+  const [sisMsg, setSisMsg] = useState(null); // { t: "ok" | "err", m } — save/upload feedback, never silent
+  const [sisDraft, setSisDraft] = useState(null); // unsaved pre-reload arrangement found on this device
   const sisTilesRef = useRef([]);
   // Reframe (zoom + pan) a grid tile; saving renders the crop to a new cover
   // URL on the tile — Save arrangement then writes it onto the card itself.
@@ -175,7 +180,18 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     setSisBusy(true);
     try {
       const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
-      if (d && d.tiles && d.tiles.length) { setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); setSisLocked(!!d.locked); setSisHist([]); setSisFuture([]); }
+      if (d && d.tiles && d.tiles.length) {
+        setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); setSisLocked(!!d.locked); setSisHist([]); setSisFuture([]); setSisMsg(null);
+        // a reload (crash, stale-board auto-refresh) mid-edit parks the work in
+        // localStorage — offer it back instead of silently showing the server copy
+        let draft = null;
+        try {
+          const dr = JSON.parse(localStorage.getItem("lh_sisdraft_" + sisGridNum) || "null");
+          if (dr && Array.isArray(dr.tiles) && dr.tiles.length && Date.now() - (dr.at || 0) < 7 * 86400000 && JSON.stringify(dr.tiles) !== JSON.stringify(d.tiles)) draft = dr;
+          else if (dr) localStorage.removeItem("lh_sisdraft_" + sisGridNum);
+        } catch {}
+        setSisDraft(draft);
+      }
       else { setSisTiles([]); setSisEdit(false); }
     } finally { setSisBusy(false); }
   };
@@ -187,6 +203,14 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acct, sisSel]);
   useEffect(() => { sisTilesRef.current = sisTiles; }, [sisTiles]);
+  // Park every local change as a device-side draft (cleared on successful save)
+  // so a reload can never eat unsaved grid work. Paused while a found draft is
+  // still waiting on Restore/Discard, so it can't overwrite itself.
+  useEffect(() => {
+    if (!sisEdit || !sisTiles.length || sisDraft) return;
+    try { localStorage.setItem("lh_sisdraft_" + sisGridNum, JSON.stringify({ at: Date.now(), tiles: sisTiles, tray: sisTray })); } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sisTiles, sisTray, sisEdit, sisDraft]);
   const pushSisHist = () => { setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture([]); };
   const sisUndo = () => { if (!sisHist.length) return; const last = sisHist[sisHist.length - 1]; setSisFuture((f) => [sisTilesRef.current, ...f].slice(0, 30)); setSisHist(sisHist.slice(0, -1)); setSisTiles(last); setSisPick(null); };
   const sisRedo = () => { if (!sisFuture.length) return; const nxt = sisFuture[0]; setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture(sisFuture.slice(1)); setSisTiles(nxt); setSisPick(null); };
@@ -303,13 +327,24 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     sisRectsRef.current = next;
   }, [sisTiles]);
   const saveSisEdit = async () => {
-    setSisBusy(true);
+    // NEVER fail silently: a refused save with no message reads as "the app
+    // reverted my grid" once the page reloads (Courtney's Post 15, Sep 6).
+    setSisBusy(true); setSisMsg(null);
     try {
-      const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles, tray: sisTray }) })).json();
-      if (d && d.ok) {
+      const r = await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles, tray: sisTray }) });
+      let d = null; try { d = await r.json(); } catch {}
+      if (r.ok && d && d.ok) {
+        try { localStorage.removeItem("lh_sisdraft_" + sisGridNum); } catch {}
+        setSisDraft(null);
+        setSisMsg({ t: "ok", m: "Saved" });
+        setTimeout(() => setSisMsg((m) => (m && m.t === "ok" ? null : m)), 4000);
         const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
         if (l && l.archive) { setSisGrids({ pregrid: null, archive: l.archive }); const hit = l.archive.find((a) => a.name.startsWith(sisGridNum)); if (hit) setSisSel(hit.fileId); }
+      } else {
+        setSisMsg({ t: "err", m: "NOT SAVED — " + ((d && d.error) || "the server said " + r.status) + " Your arrangement is still on screen; press Save arrangement again once it's resolved." });
       }
+    } catch (e) {
+      setSisMsg({ t: "err", m: "NOT SAVED — the connection failed. Your arrangement is still on screen; press Save arrangement again." });
     } finally { setSisBusy(false); }
   };
   useEffect(() => {
@@ -460,6 +495,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
         cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
         cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
         const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+        if (!u) { setMsg("That photo didn't upload — check your connection and try again."); return; }
         const bk = it.key.slice(0, it.key.indexOf(":")), cardId = it.key.slice(it.key.indexOf(":") + 1);
         if (onSaveBoards && boards && boards[bk]) onSaveBoards({ ...boards, [bk]: { ...boards[bk], cards: boards[bk].cards.map((cd) => (cd.id === cardId ? { ...cd, tiktokCover: u } : cd)) } });
         setMsg("TikTok cover set for " + (it.name || "this post") + " — the Instagram grid keeps its own.");
@@ -513,11 +549,12 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
           cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
           const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
-          made.push({ id: guid(), listId: list.id, name: "Post — new upload", cover: u, labels: [], members: [], desc: "", done: false, comments: [] });
+          if (u) made.push({ id: guid(), listId: list.id, name: "Post — new upload", cover: u, labels: [], members: [], desc: "", done: false, comments: [] });
           done++;
           if (done === arr.length && onSaveBoards) {
-            onSaveBoards({ ...boards, [bk]: { ...b, cards: [...b.cards, ...made] } });
-            setMsg(made.length + " photo" + (made.length === 1 ? "" : "s") + " added to the grid — they're real cards on " + b.name + "'s Schedule 1-21, so they can publish like any post.");
+            if (made.length) onSaveBoards({ ...boards, [bk]: { ...b, cards: [...b.cards, ...made] } });
+            const failed = arr.length - made.length;
+            setMsg(made.length + " photo" + (made.length === 1 ? "" : "s") + " added to the grid — they're real cards on " + b.name + "'s Schedule 1-21, so they can publish like any post." + (failed ? " " + failed + " didn't upload — add those again." : ""));
           }
         };
         img.src = fr.result;
@@ -847,6 +884,20 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
             )}
             <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub }}>press and hold a tile, then drag it onto another to swap · tap a tile, then tap "Reframe / zoom" on it to crop</span>
           </div>
+          {sisMsg && (
+            <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: sisMsg.t === "err" ? "#8C3B2E" : c.green, padding: "2px 0 10px" }}>{sisMsg.m}</div>
+          )}
+          {sisDraft && !sisLocked && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: `1px solid ${c.line}`, background: c.card, padding: "9px 12px", margin: "0 0 12px" }}>
+              <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: c.ink }}>
+                Unsaved grid changes from {new Date(sisDraft.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} were found on this device
+              </span>
+              <button onClick={() => { pushSisHist(); setSisTiles(sisDraft.tiles); if (Array.isArray(sisDraft.tray)) setSisTray(sisDraft.tray); setSisDraft(null); setSisMsg({ t: "ok", m: "Draft restored — press Save arrangement to keep it" }); }}
+                style={{ border: `1px solid ${c.green}`, background: c.green, color: "#fff", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Restore</button>
+              <button onClick={() => { try { localStorage.removeItem("lh_sisdraft_" + sisGridNum); } catch {} setSisDraft(null); }}
+                style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Discard</button>
+            </div>
+          )}
           {sisReframe && (() => {
             const tile = sisTiles[sisReframe.idx]; if (!tile) return null;
             const z = sisReframe.z;
@@ -862,12 +913,14 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
                     <img src={tile.cover} alt="" draggable={false} style={{ position: "absolute", left: "50%", top: "50%", width: "100%", height: "100%", objectFit: "cover", transform: `translate(-50%, -50%) translate(${z.x}%, ${z.y}%) scale(${z.s})`, transformOrigin: "center", pointerEvents: "none" }} />
                   </div>
                   <input type="range" min="1" max="3" step="0.01" value={z.s} onChange={(e) => setZ({ ...z, s: Number(e.target.value) })} style={{ width: "100%", margin: "10px 0" }} />
+                  {sisReframe.err && <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 0.5, color: "#8C3B2E", marginBottom: 8 }}>{sisReframe.err}</div>}
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                     <button onClick={() => setSisReframe(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
                     <button onClick={async () => {
                       try {
                         const cv = await renderCoverCrop(tile.cover, z, 1080);
                         const url = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+                        if (!url) { setSisReframe({ ...sisReframe, err: "The crop didn't upload — check your connection and try Save crop again." }); return; }
                         pushSisHist();
                         setSisTiles((prev) => { const t = [...prev]; t[sisReframe.idx] = { ...t[sisReframe.idx], cover: url }; return t; });
                         setSisReframe(null); setSisPick(null);
@@ -902,6 +955,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
                         cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
                         cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
                         const u = await storeImage(cv.toDataURL("image/jpeg", 0.9));
+                        if (!u) { setSisMsg({ t: "err", m: "A photo didn't upload — check your connection and add it again." }); return; }
                         setSisTray((p) => [...p, u]);
                       };
                       img.src = fr.result;

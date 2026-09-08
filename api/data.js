@@ -3505,6 +3505,11 @@ export default async function handler(req, res) {
     if (!authT2) { res.status(401).json({ error: "Locked." }); return; }
     if (req.method === "GET") {
       const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
+      if (req.query.hist) {
+        // per-save history ring (who/when + the arrangement each save replaced)
+        res.json({ grid: g, hist: (await kvGet("sisters_grid_hist_" + g + SBOARD.kvSuffix)) || [] });
+        return;
+      }
       const t = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || null;
       const tray = (await kvGet("sisters_grid_tray" + SBOARD.kvSuffix)) || [];
       res.json({ grid: g, tiles: t && t.tiles ? t.tiles : [], tray, view: t && t.mid ? "/cover/" + t.mid + ".jpg" : null, locked: !!(t && t.locked) });
@@ -3512,6 +3517,14 @@ export default async function handler(req, res) {
     }
     const bT = req.body || {};
     const g = String(bT.grid || "1").replace(/[^12]/g, "") || "1";
+    // A data: URL here means a photo upload silently failed client-side — the
+    // 300-char slice below would store it truncated (a permanently broken tile,
+    // the Sep 6 pool rot). Refuse loudly instead so the editor can say so.
+    const hasDataUrl = (arr, pick) => Array.isArray(arr) && arr.some((x) => /^data:/i.test(String(pick ? pick(x) : x || "")));
+    if (hasDataUrl(bT.tiles, (t) => t && t.cover) || hasDataUrl(bT.tray)) {
+      res.status(400).json({ error: "a photo in this arrangement never finished uploading. Re-add it to the photo pool, place it, and save again." });
+      return;
+    }
     // the tray (her photo pool) is shared across both grids and can be saved
     // alone — deleting or adding pool photos shouldn't force a re-render
     if (Array.isArray(bT.tray) && !Array.isArray(bT.tiles) && !Array.isArray(bT.order)) {
@@ -3691,6 +3704,14 @@ export default async function handler(req, res) {
     await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
     rec.mid = midT;
     await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, rec);
+    // History ring: who saved, when, and the arrangement this save REPLACED —
+    // the live key always holds the current one. Reader: GET ?op=sisters_grid_tiles&grid=g&hist=1
+    try {
+      const hk = "sisters_grid_hist_" + g + SBOARD.kvSuffix;
+      const ringH = (await kvGet(hk)) || [];
+      ringH.unshift({ at: new Date().toISOString(), who: (authT2 && (authT2.email || authT2.name)) || "house", prev: prevTilesW });
+      await kvSet(hk, ringH.slice(0, 30));
+    } catch (eHist) {}
     // replace the Drive archive file for this grid (sisters-only; Fold archives live in Social Media/<Month>/grid)
     try {
       const gtT = SBOARD.hasCourtney ? await googleToken() : null;
