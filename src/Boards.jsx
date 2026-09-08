@@ -2949,7 +2949,14 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           return (
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
               <select value="" style={{ ...input, flex: 1, marginBottom: 0 }}
-                onChange={(e) => { const pr = flat[e.target.value]; if (pr) setLabels([...labels, { n: pr.n, c: pr.c }]); }}>
+                onChange={(e) => {
+                  const pr = flat[e.target.value]; if (!pr) return;
+                  // Platform formats are exclusive (her rule, Sep 8): picking an
+                  // IG · … chip replaces the card's current IG · … chip, same for
+                  // TT · … — a post has ONE format per platform, never a stack.
+                  const excl = /^IG · /.test(pr.n) ? /^IG · / : /^TT · /.test(pr.n) ? /^TT · / : null;
+                  setLabels([...(excl ? labels.filter((l) => !excl.test(l.n || "")) : labels), { n: pr.n, c: pr.c }]);
+                }}>
                 <option value="">＋ Add a tag…</option>
                 {GROUPS.map(([g, list], gi) => (
                   <optgroup key={g} label={g}>{list.map((pr, i9) => <option key={pr.n} value={gi + ":" + i9}>{pr.n}</option>)}</optgroup>
