@@ -3017,11 +3017,11 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <select style={input} value={listId || ""} onChange={(e) => setListId(e.target.value)}>
           {destLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
-        <div style={label}>Launch month <span style={{ textTransform: "none", letterSpacing: 0, color: c.sub }}>· groups this look in the Lookbook</span></div>
-        <input style={input} type="month" value={launchMonth} onChange={(e) => setLaunchMonth(e.target.value)} />
-
-        <div style={label}>Due date</div>
-        <input style={input} type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+        {/* Launch month + Due date removed from the sheet (her ask, Sep 8):
+            Lookbook collections are assembled by hand and launch-month
+            attribution moves to the Fold flow. Stored due/launchMonth values
+            stay on cards (Ops Calendar keeps reading them); the state and
+            autosave wiring remain so nothing existing is cleared. */}
 
         <button onClick={() => {
           if (!name.trim() || !listId) return;
