@@ -128,8 +128,13 @@ const BG_PRESETS = [
 // Swipeable cover carousel — used when a card carries several image
 // attachments (the Sisters "Grid" card: 1–9, 1–21, 22–30, 31–42). Swipe or
 // drag sideways to move through them; tap still opens the card.
-function CoverCarousel({ images, alt }) {
-  const [i, setI] = React.useState(0);
+function CoverCarousel({ images, alt, cover }) {
+  // open on the card's COVER page (the Grid card's current window), not page 1 —
+  // a deck that resets to "Grid 1–9" on every load reads as "the cover reverted"
+  const coverIdx = Math.max(0, images.findIndex((a) => cover && a.url === cover));
+  const [i, setI] = React.useState(coverIdx);
+  React.useEffect(() => { setI(coverIdx); /* cover advanced (window completed) → follow it */ // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverIdx]);
   const [full, setFull] = React.useState(false);
   // frame follows the image's real shape — a fixed 4:5 letterboxed landscape
   // deck pages behind wide borders (her note, Aug 26)
@@ -1642,7 +1647,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
                         style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300, position: "relative", overflow: "visible" }) : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {statsHoverOk && statsFor === card.name && <StatsHover name={card.name} onClose={() => setStatsFor(null)} />}
-                        {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={folderMode && opsFocus ? { display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover" } : { display: "block", width: "100%", height: "auto" }} />; })()}
+                        {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} cover={card.cover} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={folderMode && opsFocus ? { display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover" } : { display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
                         <div style={{ padding: "9px 11px" }}>
                           {/* live unit counts on the card face (from the sync's ⟳ lines) */}
