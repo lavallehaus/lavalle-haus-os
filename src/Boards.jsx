@@ -1903,6 +1903,9 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  // App.jsx's stale-tab self-heal must never reload the page out from under an
+  // open card — this flag holds it off until the sheet closes.
+  React.useEffect(() => { window.__lhCardSheetOpen = true; return () => { window.__lhCardSheetOpen = false; }; }, []);
   const [name, setName] = useState(card.name);
   // Internal ops board (LH Operations): cards are data entry — status, notes,
   // owner, dates, photos — with every posting/Instagram feature switched off.

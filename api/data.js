@@ -1096,6 +1096,20 @@ export default async function handler(req, res) {
   // because kvSet never checked the response, the app kept answering "saved".
   // kv_health surfaces the raw SET response; media_gc deletes media_* keys no
   // other key references (dry run unless {apply:true}; {keep:[ids]} protects ids).
+  // Lightweight freshness probe: per-board _stamp map so an open tab can tell
+  // it's gone stale BEFORE the user types into it (Courtney's chronic mass-blind
+  // refusals came from a Chrome tab left open for days — visible tabs never hit
+  // the hidden>10min resume reload). Any signed-in member may ask.
+  if (op === "revs" && req.method === "GET") {
+    const authRV = await getAuthEarly(req);
+    if (!authRV) { res.status(401).json({ error: "Locked." }); return; }
+    const rawRV = await kvGet("lavalle_data");
+    const blobRV = Array.isArray(rawRV) ? rawRV[0] : rawRV;
+    const out = {};
+    for (const [bk, b] of Object.entries((blobRV && blobRV.boards) || {})) { if (!bk.startsWith("_") && b && b._stamp) out[bk] = b._stamp; }
+    res.json({ boards: out });
+    return;
+  }
   if (op === "kv_health" && req.method === "POST") {
     const authKH = await getAuthEarly(req);
     if (!ownerRole(authKH)) { res.status(403).json({ error: "Owner only." }); return; }

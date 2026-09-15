@@ -2825,19 +2825,54 @@ const clampZoom = () => {
     m.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover");
   } catch (eZ) {}
 };
+const stampsRef = useRef({});
+useEffect(() => {
+  const m = {};
+  for (const [bk, b] of Object.entries(dbState.boards || {})) if (b && b._stamp) m[bk] = b._stamp;
+  stampsRef.current = m;
+}, [dbState]);
 useEffect(() => {
   clampZoom();
   let hiddenAt = 0;
+  // Stale-tab self-heal (Sep 15 — Courtney's chronic mass-blind refusals): a tab
+  // left VISIBLE for days never hits the hidden>10min reload below, and only
+  // learned it was stale when a save was refused — losing whatever was typed.
+  // Now the tab probes op=revs on focus and every few minutes, and reloads
+  // itself BEFORE anyone types into stale state. Never mid-typing or with a
+  // card sheet open (the next tick catches it after they finish).
+  let lastFresh = Date.now(), checking = false;
+  const checkFresh = async () => {
+    if (checking || document.visibilityState === "hidden") return;
+    checking = true;
+    try {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 10000);
+      const r = await fetch("/api/data?op=revs", { signal: ac.signal });
+      clearTimeout(tm);
+      if (!r.ok) return;
+      const j = await r.json();
+      const local = stampsRef.current || {};
+      const behind = Object.entries((j && j.boards) || {}).some(([bk, st]) => local[bk] && st > local[bk]);
+      if (!behind) { lastFresh = Date.now(); return; }
+      const ae = document.activeElement;
+      const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+      if (typing || window.__lhCardSheetOpen) return;
+      window.location.reload();
+    } catch (eF) {} finally { checking = false; }
+  };
+  const ivFresh = setInterval(checkFresh, 4 * 60 * 1000);
+  const onFocus = () => { if (Date.now() - lastFresh > 60 * 1000) checkFresh(); };
+  window.addEventListener("focus", onFocus);
   const resume = () => {
     clampZoom();
     if (hiddenAt && Date.now() - hiddenAt > 10 * 60 * 1000) { window.location.reload(); return; }
     hiddenAt = 0;
+    checkFresh();
   };
   const onVis = () => { if (document.visibilityState === "hidden") hiddenAt = Date.now(); else resume(); };
   const onShow = (e) => { if (e.persisted) window.location.reload(); }; // bfcache restore = stale by definition
   document.addEventListener("visibilitychange", onVis);
   window.addEventListener("pageshow", onShow);
-  return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("pageshow", onShow); };
+  return () => { clearInterval(ivFresh); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("pageshow", onShow); };
 }, []);
 const [loaded, setLoaded] = useState(false);
 const [showPrivacy, setShowPrivacy] = useState(false);
