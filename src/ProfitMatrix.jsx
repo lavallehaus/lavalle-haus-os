@@ -71,15 +71,15 @@ const SEED_PRODUCTS = [
     shipShopify:7.0, fbaFee:0, storage:0, ad:{amazon:0,shopify:5},
     units:{amazon:0,shopify:2,b2b:0}, prev:{amazon:0,shopify:1,b2b:0},
     inv:{amazon:0,shopify:18,b2b:4}, inbound:0, leadWeeks:4, reorderLink:"" },
-  // Bath Salts Unscented — her Sep 16 2026 launch economics (per-pouch): $19
-  // list, $5 all-in COGS, $3–$5 FBA/warehouse (mid $4 entered; edit when the
-  // real fee lands), $1 Amazon PPC. The matrix adds the 15% referral the
-  // ChatGPT sketch left out, so true net ≈ $5.77–$7.77/unit pre-ad at $19.
-  // Planned 20% Prime promo ($15.20): net thins to ≈ $2.62–$4.62 pre-ad —
-  // the promo runs on roughly HALF the full-price margin.
-  { id:6, name:"Bath Salts Unscented", sku:"LH-BATH-SALT-UN", asin:"TBD",
+  // Bath Salts Unscented (LIVE ASIN B0HFGY83VP, Seller SKU 69-WY59-1M4G, 16oz
+  // pouch) — fees are AMAZON'S OWN estimate for this SKU (SP-API, Sep 16 2026):
+  // FBA fulfillment $5.22/unit (size/weight-based — above her $3–5 guess),
+  // referral 15% ($2.85 at $19 / $2.28 at the 20%-off $15.20). With $5 COGS +
+  // $1 PPC: net ≈ $4.93/unit at $19 vs ≈ $1.70/unit during the 20% Prime promo
+  // — the promo is a near-break-even review/velocity play, not profit volume.
+  { id:6, name:"Bath Salts Unscented", sku:"69-WY59-1M4G", asin:"B0HFGY83VP",
     channels:["amazon"], retail:19, wholesale:9.5, cogs:5.0, packaging:0, freight:0,
-    shipShopify:0, fbaFee:4.0, storage:0, ad:{amazon:1,shopify:0},
+    shipShopify:0, fbaFee:5.22, storage:0, ad:{amazon:1,shopify:0},
     units:{amazon:0,shopify:0,b2b:0}, prev:{amazon:0,shopify:0,b2b:0},
     inv:{amazon:0,shopify:0,b2b:0}, inbound:0, leadWeeks:3, reorderLink:"" },
 ];
