@@ -1859,6 +1859,8 @@ export default async function handler(req, res) {
     ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file."],
     ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
     ["Next-month Theme card", "Monthly + the moment anyone posts feedback on it", "Reads our top-performing Instagram posts (likes, comments, saves, reach), explains its reasoning with the numbers on the card, and proposes next month's theme. Team feedback re-evaluates the theme immediately; each adjustment is credited in bold to whoever asked for it."],
+    ["Sarah's script notes \u2192 proposed rewrites", "Every 15 min (re-runs when Sarah leaves or edits a comment in the FTC Scripts sheet)", "Reads Sarah's comments on the Lavalle Sisters - FTC Scripts sheet, works out which post and which line each one sits on, and writes a PROPOSED rewrite onto that card \u2014 script title, on-screen hook, spoken hook, nugget 1, nugget 2, close or caption. Nothing is replaced: the current words stay until you accept, and nothing is ever written back into Sarah's sheet. A filming direction (\u201cactually show this\u201d) is listed as a direction, not turned into a rewrite. Her note also lands on the matching beat under Pre-production, and the card links straight to her row."],
+    ["Courtney's 12 \u2014 the ask", "The 24th of each month", "Posts a dated card asking Courtney for the following month's 12, due the 7th, with the creative deck linked. Two weeks of runway so the 12 get read before the shoot \u2014 and the deck page, not Slack, is where she delivers them."],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
     ["Loft strategy PDF from Slack", "Every 15 min until Oct 2026 (needs Slack files permission)", "Files the Loft's monthly strategy PDF into Drive → Strategy & Reports → Strategy Outline."],
@@ -3340,6 +3342,309 @@ export default async function handler(req, res) {
     res.json({ ok: true, label, posts: rows.length, styleDbg, theme: tc.themeData && tc.themeData.theme, adjustments: tc.themeData && tc.themeData.adjustments ? tc.themeData.adjustments.length : 0 });
     return;
   }
+  // ── Sarah's sheet comments → proposed script rewrites on the cards ────────
+  // "Lavalle Sisters - FTC Scripts" is the script source for every face-to-
+  // camera post. Sarah reviews it inside Google Sheets and leaves anchored
+  // comments on cells. This reads those comments, works out which post and
+  // which field each one is about, and writes a PROPOSED rewrite onto the card.
+  // Her two rules (Sep 16 2026): PROPOSE, NEVER REPLACE — the live text is left
+  // alone until she accepts it; and CARD ONLY — nothing is ever written back
+  // into Sarah's sheet.
+  // Not every comment is a rewrite: "actually SHOW THIS ie you tying the top on
+  // yourself" is a filming direction. Those are classified out and listed as
+  // directions instead of quietly rewriting copy nobody asked to change.
+  const FTC_SHEET_ID = "1kU0-LuI68MgjqPKYzTXdmI1FLCs24lnbJW_m1kY1oTQ";
+  // Matched against the sheet's OWN header row, so an inserted column can't
+  // silently shift the mapping the way a hard-coded letter would.
+  const FTC_FIELDS = [
+    { rx: /script title/i,   key: "name",   label: "Script title" },
+    { rx: /on screen/i,      key: "hook",   label: "On-screen hook" },
+    { rx: /open \(spoken/i,  key: "intro",  label: "Open (spoken hook)" },
+    { rx: /nugget\s*1/i,     key: "point1", label: "Nugget 1" },
+    { rx: /nugget\s*2/i,     key: "point2", label: "Nugget 2" },
+    { rx: /^close/i,         key: "close",  label: "Close" },
+    { rx: /caption/i,        key: "desc",   label: "Caption + hashtags" },
+  ];
+  const FTC_BEAT = { intro: "intro", point1: "point1", point2: "point2", close: "close" };
+  const colA1 = (i) => { let s = "", n = i; for (;;) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; if (n < 0) break; } return s; };
+
+  if (op === "sisters_ftc_sync" && req.method === "POST") {
+    const okKeyF = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authF = okKeyF ? null : await getAuthEarly(req);
+    if (!okKeyF && !ownerRole(authF)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtF = await googleToken(); if (!gtF) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const gjF = async (u) => { try { const r = await fetch(u, { headers: { Authorization: "Bearer " + gtF } }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+
+    // 1. Tabs. Only the two script tabs carry post rows; "Sarah's questions" is
+    //    research and has no cards behind it.
+    const metaF = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}?fields=sheets(properties(sheetId,title))`);
+    const tabsF = ((metaF && metaF.sheets) || []).map((s) => s.properties).filter((p) => /kiabeth|kiaredza/i.test(p.title || ""));
+    if (!tabsF.length) { res.json({ ok: false, error: "no_script_tabs" }); return; }
+
+    // 2. Values per tab, and the header row located by name.
+    const grids = {};
+    for (const t of tabsF) {
+      const vr = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}/values/${encodeURIComponent("'" + t.title + "'!A1:Z400")}`);
+      const rows = (vr && vr.values) || [];
+      const hIdx = rows.findIndex((r) => (r || []).some((c) => /script title/i.test(String(c || ""))));
+      if (hIdx < 0) continue;
+      const header = rows[hIdx].map((c) => String(c || "").trim());
+      const colOf = {};
+      for (const f of FTC_FIELDS) { const i = header.findIndex((h) => f.rx.test(h)); if (i >= 0) colOf[i] = f; }
+      const postCol = header.findIndex((h) => /^post$/i.test(h));
+      grids[String(t.sheetId)] = { title: t.title, rows, hIdx, colOf, postCol };
+    }
+
+    // 3. Sarah's comments. Anchors on Sheets carry the gid + cell range, but the
+    //    format is not contractual — so every anchor is checked against the
+    //    quoted cell text, and anything that doesn't line up is located by
+    //    searching for the quoted text instead.
+    let cm = [], pageF = null;
+    do {
+      const u = `https://www.googleapis.com/drive/v3/comments?fileId=${FTC_SHEET_ID}&fields=nextPageToken,comments(id,content,resolved,modifiedTime,anchor,quotedFileContent/value,author/displayName,replies(content,author/displayName))&pageSize=100&includeDeleted=false` + (pageF ? "&pageToken=" + pageF : "");
+      const d = await gjF(u); if (!d) break;
+      cm = cm.concat(d.comments || []); pageF = d.nextPageToken || null;
+    } while (pageF && cm.length < 400);
+
+    const locate = (c) => {
+      const quoted = String((c.quotedFileContent && c.quotedFileContent.value) || "").trim();
+      const nums = String(c.anchor || "").match(/"range"\s*:\s*"([\d.]+)"/);
+      if (nums) {
+        const p = nums[1].split(".").map((n) => parseInt(n, 10));
+        const g = grids[String(p[0])];
+        if (g && p.length >= 5) {
+          const r = p[1], col = p[3];
+          const cell = String(((g.rows[r] || [])[col]) || "").trim();
+          if (!quoted || (cell && (cell === quoted || cell.includes(quoted) || quoted.includes(cell)))) return { gid: String(p[0]), row: r, col };
+        }
+      }
+      if (!quoted) return null;
+      for (const gid of Object.keys(grids)) {
+        const g = grids[gid];
+        for (let r = g.hIdx + 1; r < g.rows.length; r++) {
+          const row = g.rows[r] || [];
+          for (let col = 0; col < row.length; col++) {
+            const v = String(row[col] || "").trim();
+            if (v && (v === quoted || v.includes(quoted))) return { gid, row: r, col };
+          }
+        }
+      }
+      return null;
+    };
+
+    // 4. Group the live comments by post row.
+    const stF = (await kvGet("sisters_ftc_state")) || { seen: {} };
+    const seen = stF.seen || {};
+    const byRow = new Map();
+    let unplaced = 0;
+    for (const c of cm) {
+      if (c.resolved) continue;
+      const loc = locate(c); if (!loc) { unplaced++; continue; }
+      const g = grids[loc.gid]; if (!g || loc.row <= g.hIdx) continue;
+      const k = loc.gid + ":" + loc.row;
+      if (!byRow.has(k)) byRow.set(k, { gid: loc.gid, row: loc.row, items: [] });
+      byRow.get(k).items.push({
+        id: c.id, at: c.modifiedTime || "", col: loc.col,
+        field: (g.colOf[loc.col] && g.colOf[loc.col].key) || null,
+        fieldLabel: (g.colOf[loc.col] && g.colOf[loc.col].label) || (g.rows[g.hIdx] || [])[loc.col] || "the row",
+        cell: colA1(loc.col) + (loc.row + 1),
+        by: (c.author && c.author.displayName) || "Sarah",
+        text: [String(c.content || "").trim(), ...((c.replies || []).map((r) => ((r.author && r.author.displayName) || "") + ": " + String(r.content || "").trim()))].filter(Boolean).join("\n"),
+      });
+    }
+
+    // 5. Only rows carrying comment traffic we haven't already proposed against.
+    const rawF = await kvGet("lavalle_data"); const blobF = Array.isArray(rawF) ? rawF[0] : rawF;
+    const bdF = blobF && blobF.boards && blobF.boards["lavalle-sisters"];
+    if (!bdF) { res.json({ ok: false, error: "no_board" }); return; }
+    // 5a. Seed. A freshly written post card starts empty and the sheet is the
+    //     script source, so fill it in — but only fields that are still blank,
+    //     and only once per row revision, so nothing typed by hand is lost.
+    const seeded = stF.seeded || {};
+    let filled = 0;
+    for (const gid of Object.keys(grids)) {
+      const g = grids[gid];
+      for (let r = g.hIdx + 1; r < g.rows.length; r++) {
+        const row = g.rows[r] || []; if (!row.length) continue;
+        const postLbl = String((g.postCol >= 0 ? row[g.postCol] : "") || "").trim();
+        const num = (postLbl.match(/(\d+)/) || [])[1]; if (!num) continue;
+        const cardS = (bdF.cards || []).find((c) => new RegExp("^Post\\s+" + num + "\\b").test(c.name || ""));
+        if (!cardS) continue;
+        const vals = {};
+        for (const ci of Object.keys(g.colOf)) vals[g.colOf[ci].key] = String(row[ci] || "").trim();
+        const sig = Object.values(vals).join("|").slice(0, 400);
+        if (seeded[cardS.id] === sig) continue;
+        seeded[cardS.id] = sig;
+        const patchS = {};
+        if (vals.hook && !String(cardS.hook || "").trim()) patchS.hook = vals.hook;
+        if (vals.desc && !String(cardS.desc || "").trim()) patchS.desc = vals.desc;
+        const beatsS = {};
+        for (const bk of ["intro", "point1", "point2", "close"]) if (vals[bk] && !String((cardS.draft || {})[bk] || "").trim()) beatsS[bk] = vals[bk];
+        if (!Object.keys(patchS).length && !Object.keys(beatsS).length) continue;
+        filled++;
+        const rowUrlS = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit#gid=${gid}&range=A${r + 1}`;
+        await patchBoardCards("lavalle-sisters", [{ id: cardS.id, apply: (fc) => {
+          Object.assign(fc, patchS);
+          if (Object.keys(beatsS).length) fc.draft = { ...(fc.draft || {}), ...beatsS };
+          fc.ftcRow = rowUrlS; // shown inside the Pre-production dropdown, next to the rough draft it came from
+        } }]);
+      }
+    }
+    const key = process.env.ANTHROPIC_API_KEY;
+    const out = []; let considered = 0, skipped = 0;
+    for (const grp of byRow.values()) {
+      const fresh = grp.items.filter((i) => seen[i.id] !== (i.at || "1"));
+      if (!fresh.length) { skipped++; continue; }
+      considered++;
+      const g = grids[grp.gid];
+      const row = g.rows[grp.row] || [];
+      const postLbl = String((g.postCol >= 0 ? row[g.postCol] : "") || "").trim();
+      const num = (postLbl.match(/(\d+)/) || [])[1];
+      const card = num ? (bdF.cards || []).find((c) => new RegExp("^Post\\s+" + num + "\\b").test(c.name || "")) : null;
+      if (!card) { out.push({ row: grp.row + 1, post: postLbl || "?", error: "no_card" }); continue; }
+      const current = {};
+      for (const ci of Object.keys(g.colOf)) current[g.colOf[ci].key] = String(row[ci] || "").trim();
+      if (!key) { out.push({ post: postLbl, error: "no_anthropic_key" }); continue; }
+
+      const prompt = [
+        "You are the copy editor for @lavallesisters, a quiet-luxury sister account for The Fold (womenswear) and Lavalle Haus (home fragrance).",
+        "Sarah, the strategy reviewer, left comments on this face-to-camera script in the shared sheet. Work out what she is actually asking for.",
+        "",
+        "HER COMMENTS (each names the field it sits on):",
+        ...grp.items.map((i) => "- [" + i.fieldLabel + " · " + i.cell + "] " + i.by + ": " + i.text),
+        "",
+        "THE SCRIPT AS IT STANDS:",
+        ...FTC_FIELDS.filter((f) => current[f.key]).map((f) => f.label + ": " + current[f.key]),
+        "",
+        "RULES:",
+        "- Classify each comment first. A copy edit changes words. A filming direction ('actually SHOW this', 'hold the bottle up') changes how we shoot and must NOT trigger a rewrite — return it under directions.",
+        "- Rewrite ONLY the fields her comments actually bear on. Leave everything else out of changes.",
+        "- On-screen hook is 3 to 5 words.",
+        "- Captions and spoken copy use plain punctuation — never an em dash or en dash.",
+        "- Keep her voice: plain, unhurried, no hype, no exclamation marks.",
+        "",
+        'Return ONLY JSON: {"changes":{"<field>":{"to":"...","why":"one short line"}},"directions":[{"cell":"J7","note":"..."}]}',
+        "Valid field names: " + FTC_FIELDS.filter((f) => f.key !== "name").map((f) => f.key).join(", ") + ". The script title is context only — never return it as a change.",
+      ].join("\n");
+      let parsed = null;
+      try {
+        const rC = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: prompt }] }) });
+        const dC = await rC.json();
+        const txt = ((dC.content || []).map((x) => x.text || "").join("") || "").replace(/```json|```/g, "");
+        parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+      } catch (eC) { out.push({ post: postLbl, error: "model_failed" }); continue; }
+      const changes = {};
+      for (const [k2, v] of Object.entries((parsed && parsed.changes) || {})) {
+        if (!FTC_FIELDS.some((f) => f.key === k2)) continue;
+        // Script title is context only. The card title is already owned by the
+        // cycle writer ("Post 12 Oct 6 […] — Kiabeth · Beauty") and by the
+        // card-concepts pass; a rewrite here would wipe the post number.
+        if (k2 === "name") continue;
+        const to = String((v && v.to) || "").trim(); if (!to) continue;
+        const from = k2 === "name" ? String(card.name || "") : k2 === "hook" ? String(card.hook || "") : k2 === "desc" ? String(card.desc || "") : String((card.draft || {})[k2] || "");
+        if (to === from.trim()) continue;
+        changes[k2] = { from, to, why: String((v && v.why) || "").trim().slice(0, 200) };
+      }
+      const directions = ((parsed && parsed.directions) || []).map((d) => ({ cell: String((d && d.cell) || "").slice(0, 8), note: String((d && d.note) || "").trim().slice(0, 400) })).filter((d) => d.note);
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit#gid=${grp.gid}&range=A${grp.row + 1}`;
+      const proposal = { at: new Date().toISOString(), sheetUrl, post: postLbl, tab: g.title, changes, directions, notes: grp.items.map((i) => ({ cell: i.cell, field: i.fieldLabel, by: i.by, text: i.text })) };
+      // Her feedback also belongs where the beat lives, so it reads in context
+      // next to the line she is talking about. Keyed off the Google comment id
+      // so a re-run can never duplicate a note.
+      const noteAdds = grp.items.filter((i) => FTC_BEAT[i.field]).map((i) => ({ beat: FTC_BEAT[i.field], n: { id: "g" + i.id.slice(-12), by: i.by, text: i.text, at: i.at || new Date().toISOString() } }));
+      await patchBoardCards("lavalle-sisters", [{ id: card.id, apply: (fc) => {
+        fc.ftcProposal = proposal;
+        fc.ftcRow = sheetUrl;
+        fc.draftNotes = fc.draftNotes || {};
+        for (const a of noteAdds) {
+          fc.draftNotes[a.beat] = fc.draftNotes[a.beat] || [];
+          if (!fc.draftNotes[a.beat].some((x) => x.id === a.n.id)) fc.draftNotes[a.beat].push(a.n);
+        }
+        fc.labels = (fc.labels || []).filter((lb) => !/rewrite proposed/i.test((typeof lb === "string" ? lb : (lb && lb.n)) || ""));
+        if (Object.keys(changes).length) fc.labels = [{ n: "Sarah · rewrite proposed", c: "#FFFFFF" }, ...fc.labels];
+      } }]);
+      for (const i of grp.items) seen[i.id] = i.at || "1";
+      out.push({ post: postLbl, card: card.id, changed: Object.keys(changes), directions: directions.length });
+    }
+    await kvSet("sisters_ftc_state", { seen, seeded, at: Date.now() });
+    res.json({ ok: true, comments: cm.length, unplaced, rows: byRow.size, seeded: filled, considered, skipped, results: out });
+    return;
+  }
+
+  // Accept or dismiss a proposed rewrite. Accepting copies the proposed text
+  // into the live field; nothing leaves the card either way.
+  if (op === "sisters_ftc_apply" && req.method === "POST") {
+    const authFA = await getAuthEarly(req);
+    if (!authFA) { res.status(401).json({ error: "Locked." }); return; }
+    const bFA = req.body || {};
+    const cid = String(bFA.cardId || "");
+    if (!cid) { res.status(400).json({ error: "cardId required" }); return; }
+    const want = Array.isArray(bFA.fields) ? bFA.fields.map(String) : null; // null = all
+    let applied = [];
+    await patchBoardCards("lavalle-sisters", [{ id: cid, apply: (fc) => {
+      const p = fc.ftcProposal; if (!p) return;
+      if (!bFA.dismiss) {
+        for (const [k2, v] of Object.entries(p.changes || {})) {
+          if (want && !want.includes(k2)) continue;
+          if (k2 === "name") continue; // the card title is not Sarah's to rewrite (see sisters_ftc_sync)
+          if (k2 === "hook") fc.hook = v.to;
+          else if (k2 === "desc") fc.desc = v.to;
+          else { fc.draft = fc.draft || {}; fc.draft[k2] = v.to; }
+          applied.push(k2);
+        }
+      }
+      const left = Object.fromEntries(Object.entries(p.changes || {}).filter(([k2]) => !applied.includes(k2) && !bFA.dismiss));
+      if (bFA.dismiss || !Object.keys(left).length) {
+        delete fc.ftcProposal;
+        fc.labels = (fc.labels || []).filter((lb) => !/rewrite proposed/i.test((typeof lb === "string" ? lb : (lb && lb.n)) || ""));
+      } else { fc.ftcProposal = { ...p, changes: left }; }
+    } }]);
+    res.json({ ok: true, applied, dismissed: !!bFA.dismiss });
+    return;
+  }
+
+  // ── Courtney's 12 — the sweep that runs before the deadline, not after ────
+  // Her rule after Sept: Courtney delivers by the 7th, and the ask has to land
+  // two weeks earlier so there is room to review. From the 24th of each month
+  // this posts (once) a dated ask card for the FOLLOWING month's 12 and links
+  // the deck page, so nobody is waiting on a Slack message nobody saw.
+  if (op === "sisters_courtney_sweep" && req.method === "POST") {
+    const okKeyCS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCS = okKeyCS ? null : await getAuthEarly(req);
+    if (!okKeyCS && !ownerRole(authCS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const DECK_URL = "https://docs.google.com/document/d/1cxxK0Asr7HWko7lUizVhTmDw7h5UfsxPqoxfccC1sQY/edit";
+    const nCS = new Date();
+    const force = !!(req.body && req.body.force);
+    if (nCS.getUTCDate() < 24 && !force) { res.json({ ok: true, skipped: "before the 24th" }); return; }
+    const MONCS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    // On/after the 24th we are asking for the month AFTER next month's shoot —
+    // i.e. the 12 due on the 7th of next month.
+    const due = new Date(Date.UTC(nCS.getUTCFullYear(), nCS.getUTCMonth() + 1, 7));
+    const label = MONCS[due.getUTCMonth()] + " " + due.getUTCFullYear();
+    const stCS = (await kvGet("sisters_courtney_sweep")) || {};
+    if (stCS.label === label && !force) { res.json({ ok: true, skipped: "already asked", label }); return; }
+    const rawCS = await kvGet("lavalle_data"); const blobCS = Array.isArray(rawCS) ? rawCS[0] : rawCS;
+    const bdCS = blobCS && blobCS.boards && blobCS.boards["lavalle-sisters"];
+    if (!bdCS) { res.json({ ok: false }); return; }
+    const listCS = bdCS.lists.find((l) => /to ?do/i.test(l.name || "")) || bdCS.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdCS.lists[0];
+    const nameCS = "Courtney — 12 posts for " + label;
+    const exists = (bdCS.cards || []).find((c) => c.listId === listCS.id && (c.name || "") === nameCS);
+    const desc = [
+      "Due Monday the 7th — " + MONCS[due.getUTCMonth()] + " 7. Asked on the 24th so there are two weeks to read them before the shoot.",
+      "",
+      "Courtney posts to the deck, not to Slack: " + DECK_URL,
+      "Her 12 go under " + label + " → 12 Post Ideas. That page is the record; a Slack message is not.",
+    ].join("\n");
+    if (exists) {
+      await patchBoardCards("lavalle-sisters", [{ id: exists.id, apply: (fc) => { fc.desc = desc; fc.due = due.toISOString(); } }]);
+    } else {
+      const newId = "c" + Math.random().toString(36).slice(2, 10);
+      await patchBoardCards("lavalle-sisters", [{ id: newId, append: { id: newId, listId: listCS.id, name: nameCS, desc, due: due.toISOString(), labels: [{ n: "Courtney", c: "#FFFFFF" }], members: ["Courtney"], attachments: [], links: [{ id: "l" + Math.random().toString(36).slice(2, 8), n: "Creative deck — " + label, u: DECK_URL }], comments: [], done: false } }]);
+    }
+    await kvSet("sisters_courtney_sweep", { label, at: Date.now() });
+    res.json({ ok: true, label, due: due.toISOString().slice(0, 10), created: !exists });
+    return;
+  }
   // ── Links card → current month's Drive folders ───────────────────────────
   if (op === "sisters_links_card" && req.method === "POST") {
     const okKeyL3 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
@@ -3381,8 +3686,17 @@ export default async function handler(req, res) {
     // Clean hyperlinks only (her rule): the card shows just the word — "Carousels",
     // "Reels" — each a click straight into its Drive folder. No raw URLs anywhere.
     // Deduped by label: Drive sometimes holds two folders with the same name.
+    // Hand-added links SURVIVE the rebuild (her rule, Sep 16 2026). Links this
+    // function generates are stamped a:1, so a rebuild drops only what it made
+    // and keeps anything typed onto the card by hand. Links written before the
+    // stamp existed are matched by URL against the fresh set, so the first run
+    // after this change doesn't leave duplicates behind.
     const seenLb = new Set();
-    lc.links = links.filter((l) => { const k = String(l.label).toLowerCase(); if (seenLb.has(k)) return false; seenLb.add(k); return true; }).map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), n: l.label, u: l.url }));
+    const freshLb = links.filter((l) => { const k = String(l.label).toLowerCase(); if (seenLb.has(k)) return false; seenLb.add(k); return true; })
+      .map((l) => ({ id: "l" + Math.random().toString(36).slice(2, 8), n: l.label, u: l.url, a: 1 }));
+    const autoUrls = new Set(freshLb.map((l) => String(l.u)));
+    const keptLb = (lc.links || []).filter((l) => !l.a && !autoUrls.has(String(l.u)));
+    lc.links = [...freshLb, ...keptLb];
     lc.desc = "Drive shortcuts for the month we're working in — tap a link below. Updates itself when the working month changes.";
     await kvSet("lavalle_data", blobL3);
     res.json({ ok: true, month: wm3, links: links.length });

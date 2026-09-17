@@ -269,56 +269,46 @@ function fileToCover(file, cb, maxW = 1440, q = 0.9) {
 }
 
 // ── Planned cycle generator ──────────────────────────────────────────────────
-// Kiabeth plans in blocks of 21 because it's the grid she can hold in her head,
-// even though the real cadence (2x/day) posts more than that a month.
-// The rules she set:
-//   • niche alternates in PAIRS — a whole day stays on one topic before it
-//     switches — starting on beauty, which lands 11 beauty / 10 fashion over 21.
-//   • 5 carousels, always on TikTok; 2 of those 5 also run as a single static
-//     image on Instagram (her existing "[IG static / TikTok carousel]" tag).
-//   • the other 16 are reels, split b-roll vs face-to-camera on her 15:20 ratio
-//     → 7 b-roll and 9 face-to-camera, alternating between the two sisters.
-// Everything generated is a starting point: titles and tags are ordinary fields
-// she or the copy editor can rename.
-// A "day" is a pair of posts (2x/day), and she requires a face to camera EVERY
-// day. That's the binding constraint: 21 posts = 10 pairs + 1, so 11 slots must
-// be face to camera, leaving 10 for everything else. Holding her 5 carousels
-// fixed, b-roll lands at 5 — her original 7 b-roll simply can't coexist with a
-// face to camera every single day.
-function buildPlannedCycle(faces = ["Kiabeth", "Kiaredza"]) {
-  const N = 21, DAYS = 10;
-  // Deliberately NOT every-other-day: even days are beauty and odd days are
-  // fashion, so an alternating pattern would have put every carousel on beauty
-  // and every b-roll on fashion. These land 3 carousels on beauty days, 2 on
-  // fashion, and the b-roll days fall the other way.
-  const carouselDays = [0, 3, 4, 7, 8];
-  const igStaticDays = [3, 8];            // one fashion, one beauty
+// Planned cycle — rewritten Sep 16 2026 (Kiabeth): the old recipe built two
+// posts a day over ten notional days with a carousel/b-roll format mix. The
+// real rhythm is one post a day, seven days a week — Courtney on Mon/Wed/Fri,
+// the two of us face to camera on Tue/Thu/Sat/Sun — so 21 posts is three clean
+// weeks. Everything generated is a starting point: titles, labels and members
+// are ordinary fields she or the copy editor can rename.
+function buildPlannedCycle(faces = ["Kiabeth", "Kiaredza"], opts = {}) {
+  // One post a day, seven days a week, so 21 posts is exactly three weeks.
+  // Courtney weaves in on Mon/Wed/Fri (9 of the 21); Tue/Thu/Sat/Sun are ours
+  // and are always face to camera, alternating between the two of us (12).
+  // The month's focus (Beauty or Fashion) now runs across the WHOLE cycle
+  // rather than alternating day to day — that's what the deck's month tabs
+  // encode, and Oct '26 Beauty / Nov '26 Fashion sets the alternation.
+  const N = 21;
+  // Owner per weekday, straight off row 1 of the FTC Scripts sheet:
+  // "KIABETH posts Tuesdays and Sundays. Courtney Mon/Wed/Fri. Kiaredza Thu/Sat."
+  // Fixed per person — NOT alternating — so over 21 days it lands
+  // Courtney 9, Kiabeth 6, Kiaredza 6.
+  const DOW_OWNER = { 0: "Kiabeth", 1: "Courtney", 2: "Kiabeth", 3: "Courtney", 4: "Kiaredza", 5: "Courtney", 6: "Kiaredza" };
+  const MON3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const start = opts.start ? new Date(opts.start) : (() => {
+    const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    x.setDate(x.getDate() + ((8 - x.getDay()) % 7 || 7)); return x;   // next Monday
+  })();
+  // Even calendar months are Beauty, odd are Fashion (Oct = 10 → Beauty).
+  const niche = opts.niche || ((start.getMonth() + 1) % 2 === 0 ? "Beauty" : "Fashion");
   const cards = [];
-  let faceTurn = 0;
-  const push = (n, kind, niche) => {
-    let title, member = null, tag;
-    if (kind === "carousel" || kind === "igstatic") {
-      tag = kind === "igstatic" ? "IG static / TikTok carousel" : "carousel";
-      title = `Post ${n} [${tag}] · ${niche}`;
-    } else if (kind === "broll") {
-      title = `Post ${n} [reel] B-roll · ${niche}`;
+  for (let i = 0; i < N; i++) {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const stamp = MON3[day.getMonth()] + " " + day.getDate();
+    const n = i + 1;
+    const owner = DOW_OWNER[day.getDay()];
+    if (owner === "Courtney") {
+      cards.push({ n, title: `Post ${n} ${stamp} — Courtney · ${niche}`, niche, member: null, courtney: true });
     } else {
-      member = faces[faceTurn % faces.length];
-      faceTurn++;
-      title = `Post ${n} [reel] Face to camera — ${member} · ${niche}`;
+      // Platform tag matches the sheet's E column so a card and its script row
+      // are recognisably the same thing.
+      cards.push({ n, title: `Post ${n} ${stamp} [IG · Reel · face to camera / TT · FTC] — ${owner} · ${niche}`, niche, member: owner, courtney: false });
     }
-    cards.push({ n, title, niche, member });
-  };
-  for (let d = 0; d < DAYS; d++) {
-    const niche = d % 2 === 0 ? "Beauty" : "Fashion"; // whole day on one topic
-    const other = carouselDays.includes(d) ? (igStaticDays.includes(d) ? "igstatic" : "carousel") : "broll";
-    const first = d * 2 + 1;
-    // alternate which half of the day carries the face to camera so it isn't
-    // always the morning post
-    if (d % 2 === 0) { push(first, "face", niche); push(first + 1, other, niche); }
-    else { push(first, other, niche); push(first + 1, "face", niche); }
   }
-  push(N, "face", "Beauty"); // 21st post closes the cycle on beauty
   return cards;
 }
 
@@ -1429,7 +1419,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 const made = sisters
                   ? buildPlannedCycle().map((p) => ({
                       id: uid(), listId, name: p.title,
-                      labels: [p.niche],                    // rename or recolour like any label
+                      // Courtney's Mon/Wed/Fri days carry her chip so the weave
+                      // is readable at a glance and the strategy PDF can tell
+                      // her posts from ours (it scores only ours).
+                      labels: p.courtney ? ["Courtney", p.niche] : [p.niche],
                       members: p.member ? [p.member] : [],
                       desc: "", done: false, comments: [],
                     }))
@@ -1935,6 +1928,29 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   };
   const [desc, setDesc] = useState(card.desc || "");
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
+  // Sarah's sheet comments come back as a PROPOSAL, never as a replacement —
+  // the live words stay put until they're accepted here.
+  const [ftcProp, setFtcProp] = useState(card.ftcProposal || null);
+  const [ftcBusy, setFtcBusy] = useState(false);
+  const FTC_LABELS = { name: "Script title", hook: "On-screen hook", intro: "Open (spoken hook)", point1: "Nugget 1", point2: "Nugget 2", point3: "Nugget 3", close: "Close", desc: "Caption" };
+  const clearFtcChip = () => setLabels((cur) => cur.filter((L) => !/rewrite proposed/i.test((typeof L === "string" ? L : (L && L.n)) || "")));
+  const ftcResolve = async (accept) => {
+    if (ftcBusy || !ftcProp) return; setFtcBusy(true);
+    if (accept) {
+      const ch = ftcProp.changes || {};
+      if (ch.name) setName(ch.name.to);
+      if (ch.hook) setHook(ch.hook.to);
+      if (ch.desc) setDesc(ch.desc.to);
+      const beats = Object.fromEntries(Object.entries(ch).filter(([k]) => !["name", "hook", "desc"].includes(k)).map(([k, v]) => [k, v.to]));
+      if (Object.keys(beats).length) setDraft((d) => ({ ...d, ...beats }));
+    }
+    clearFtcChip();
+    setFtcProp(null);
+    // the text above is saved by the sheet's own autosave; this only clears the
+    // pending proposal on the stored card so it can't come back on refresh
+    try { await fetch("/api/data?op=sisters_ftc_apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cardId: card.id, dismiss: true }) }); } catch (e) {}
+    setFtcBusy(false);
+  };
   // PR/UGC auto-title: on a PR + UGC board, resolve the creator @handle from the
   // linked TikTok/IG video and title the card "PR N [@handle]" (or "UGC N […]").
   // Only fills blank or already-auto titles, so a custom name is never clobbered.
@@ -2602,6 +2618,46 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
 
         <div style={label}>Title</div>
         <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
+        {/* SARAH'S NOTES — a proposed rewrite, sitting above Pre-production so
+            it can't be missed. Nothing here is live until Accept is pressed. */}
+        {ftcProp && (
+          <div style={{ border: `1px solid #E8DFD0`, background: "#FBF7F0", borderRadius: 2, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink }}>Sarah's notes — proposed rewrite</span>
+              {ftcProp.sheetUrl && (
+                <a href={ftcProp.sheetUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub }}>her row in the sheet ↗</a>
+              )}
+            </div>
+            {(ftcProp.notes || []).map((n, i) => (
+              <div key={i} style={{ fontFamily: sans, fontSize: 11.5, color: c.sub, marginBottom: 4 }}>
+                <span style={{ fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase" }}>{n.by} · {n.field}</span>
+                <div style={{ color: c.ink, whiteSpace: "pre-wrap" }}>{n.text}</div>
+              </div>
+            ))}
+            {Object.entries(ftcProp.changes || {}).map(([k, v]) => (
+              <div key={k} style={{ borderTop: `1px solid #E8DFD0`, paddingTop: 8, marginTop: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 3 }}>{FTC_LABELS[k] || k}</div>
+                {v.from ? <div style={{ fontFamily: "Georgia, serif", fontSize: 12, color: c.sub, textDecoration: "line-through", marginBottom: 2 }}>{v.from}</div> : null}
+                <div style={{ fontFamily: "Georgia, serif", fontSize: 12.5, color: c.ink }}>{v.to}</div>
+                {v.why ? <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 2 }}>{v.why}</div> : null}
+              </div>
+            ))}
+            {(ftcProp.directions || []).length > 0 && (
+              <div style={{ borderTop: `1px solid #E8DFD0`, paddingTop: 8, marginTop: 8 }}>
+                <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginBottom: 3 }}>Filming directions — not a copy change</div>
+                {ftcProp.directions.map((d, i) => (
+                  <div key={i} style={{ fontFamily: "Georgia, serif", fontSize: 12, color: c.ink }}>· {d.note}</div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button disabled={ftcBusy || !Object.keys(ftcProp.changes || {}).length} onClick={() => ftcResolve(true)}
+                style={{ border: `1px solid ${c.ink}`, background: c.ink, color: "#fff", borderRadius: 1, padding: "6px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Accept rewrite</button>
+              <button disabled={ftcBusy} onClick={() => ftcResolve(false)}
+                style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Keep mine</button>
+            </div>
+          </div>
+        )}
         {/* PRE-PRODUCTION — example video + rough draft, collapsed at the top
             (her ask, Sep 7: it's the first step of creating a card, tucked
             behind a clearly named dropdown) */}
@@ -2624,6 +2680,14 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
               style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>▷ Open</a>
           )}
         </div>
+        {/* The script this draft came from — Sarah's sheet row, one click away
+            from the beats it feeds, which is where she asked for it. */}
+        {card.ftcRow && (
+          <div style={{ marginBottom: 10 }}>
+            <a href={card.ftcRow} target="_blank" rel="noopener noreferrer"
+              style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>Script row in Sarah's sheet ↗</a>
+          </div>
+        )}
         {/* Rough draft — the beat sheet Kiabeth writes off the example video so
             the copy editor can see the intent before writing the real caption.
             Each beat carries its own comment thread, Google-Docs style. */}
