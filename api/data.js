@@ -3378,23 +3378,58 @@ export default async function handler(req, res) {
 
     // 1. Tabs. Only the two script tabs carry post rows; "Sarah's questions" is
     //    research and has no cards behind it.
+    //    The Sheets API is the clean read, but it is a separate API that has to
+    //    be switched on in the Google Cloud project. Until it is, fall back to
+    //    the CSV export, which the plain Drive scope already allows — hence the
+    //    two named tabs below rather than a live tab listing.
     const metaF = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}?fields=sheets(properties(sheetId,title))`);
-    const tabsF = ((metaF && metaF.sheets) || []).map((s) => s.properties).filter((p) => /kiabeth|kiaredza/i.test(p.title || ""));
-    if (!tabsF.length) { res.json({ ok: false, error: "no_script_tabs", detail: lastErrF }); return; }
+    const sheetsApi = !!(metaF && metaF.sheets);
+    const tabsF = sheetsApi
+      ? metaF.sheets.map((s) => s.properties).filter((p) => /kiabeth|kiaredza/i.test(p.title || "")).map((p) => ({ title: p.title, gid: String(p.sheetId) }))
+      : [{ title: "Kiabeth", gid: "1100820638" }, { title: "Kiaredza", gid: null }];
+    // Minimal CSV reader: quoted fields, doubled quotes, newlines inside cells.
+    const parseCsv = (txt) => {
+      const rows = []; let row = [], cell = "", q = false;
+      for (let i = 0; i < txt.length; i++) {
+        const ch = txt[i];
+        if (q) { if (ch === '"') { if (txt[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+        else if (ch === '"') q = true;
+        else if (ch === ",") { row.push(cell); cell = ""; }
+        else if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+        else if (ch !== "\r") cell += ch;
+      }
+      if (cell.length || row.length) { row.push(cell); rows.push(row); }
+      return rows;
+    };
+    const csvF = async (t) => {
+      const urls = t.gid
+        ? [`https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/export?format=csv&gid=${t.gid}`, `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(t.title)}`]
+        : [`https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(t.title)}`];
+      for (const u of urls) {
+        try { const r = await fetch(u, { headers: { Authorization: "Bearer " + gtF } }); if (!r.ok) { lastErrF = r.status + " csv " + u.slice(-40); continue; } const txt = await r.text(); if (txt && /script title/i.test(txt)) return parseCsv(txt); } catch (e) { lastErrF = String(e && e.message || e); }
+      }
+      return null;
+    };
 
     // 2. Values per tab, and the header row located by name.
     const grids = {};
     for (const t of tabsF) {
-      const vr = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}/values/${encodeURIComponent("'" + t.title + "'!A1:Z400")}`);
-      const rows = (vr && vr.values) || [];
+      let rows = null;
+      if (sheetsApi) {
+        const vr = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}/values/${encodeURIComponent("'" + t.title + "'!A1:Z400")}`);
+        rows = (vr && vr.values) || null;
+      }
+      if (!rows) rows = await csvF(t);
+      if (!rows) continue;
       const hIdx = rows.findIndex((r) => (r || []).some((c) => /script title/i.test(String(c || ""))));
       if (hIdx < 0) continue;
       const header = rows[hIdx].map((c) => String(c || "").trim());
       const colOf = {};
       for (const f of FTC_FIELDS) { const i = header.findIndex((h) => f.rx.test(h)); if (i >= 0) colOf[i] = f; }
       const postCol = header.findIndex((h) => /^post$/i.test(h));
-      grids[String(t.sheetId)] = { title: t.title, rows, hIdx, colOf, postCol };
+      grids[t.gid || t.title] = { title: t.title, rows, hIdx, colOf, postCol };
     }
+    if (!Object.keys(grids).length) { res.json({ ok: false, error: "no_script_tabs", detail: lastErrF }); return; }
 
     // 3. Sarah's comments. Anchors on Sheets carry the gid + cell range, but the
     //    format is not contractual — so every anchor is checked against the
@@ -3483,7 +3518,7 @@ export default async function handler(req, res) {
         for (const bk of ["intro", "point1", "point2", "close"]) if (vals[bk] && !String((cardS.draft || {})[bk] || "").trim()) beatsS[bk] = vals[bk];
         if (!Object.keys(patchS).length && !Object.keys(beatsS).length) continue;
         filled++;
-        const rowUrlS = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit#gid=${gid}&range=A${r + 1}`;
+        const rowUrlS = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit` + (/^\d+$/.test(gid) ? `#gid=${gid}&range=A${r + 1}` : "");
         await patchBoardCards("lavalle-sisters", [{ id: cardS.id, apply: (fc) => {
           Object.assign(fc, patchS);
           if (Object.keys(beatsS).length) fc.draft = { ...(fc.draft || {}), ...beatsS };
@@ -3547,7 +3582,7 @@ export default async function handler(req, res) {
         changes[k2] = { from, to, why: String((v && v.why) || "").trim().slice(0, 200) };
       }
       const directions = ((parsed && parsed.directions) || []).map((d) => ({ cell: String((d && d.cell) || "").slice(0, 8), note: String((d && d.note) || "").trim().slice(0, 400) })).filter((d) => d.note);
-      const sheetUrl = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit#gid=${grp.gid}&range=A${grp.row + 1}`;
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit` + (/^\d+$/.test(grp.gid) ? `#gid=${grp.gid}&range=A${grp.row + 1}` : "");
       const proposal = { at: new Date().toISOString(), sheetUrl, post: postLbl, tab: g.title, changes, directions, notes: grp.items.map((i) => ({ cell: i.cell, field: i.fieldLabel, by: i.by, text: i.text })) };
       // Her feedback also belongs where the beat lives, so it reads in context
       // next to the line she is talking about. Keyed off the Google comment id
