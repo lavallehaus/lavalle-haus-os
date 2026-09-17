@@ -3435,10 +3435,10 @@ export default async function handler(req, res) {
     //    format is not contractual — so every anchor is checked against the
     //    quoted cell text, and anything that doesn't line up is located by
     //    searching for the quoted text instead.
-    let cm = [], pageF = null;
+    let cm = [], pageF = null, cmErr = null;
     do {
-      const u = `https://www.googleapis.com/drive/v3/comments?fileId=${FTC_SHEET_ID}&fields=nextPageToken,comments(id,content,resolved,modifiedTime,anchor,quotedFileContent/value,author/displayName,replies(content,author/displayName))&pageSize=100&includeDeleted=false` + (pageF ? "&pageToken=" + pageF : "");
-      const d = await gjF(u); if (!d) break;
+      const u = `https://www.googleapis.com/drive/v3/comments?fileId=${FTC_SHEET_ID}&fields=nextPageToken,comments(id,content,resolved,modifiedTime,anchor,quotedFileContent(value),author(displayName),replies(content,author(displayName)))&pageSize=100&includeDeleted=false` + (pageF ? "&pageToken=" + pageF : "");
+      const d = await gjF(u); if (!d) { cmErr = lastErrF; break; }
       cm = cm.concat(d.comments || []); pageF = d.nextPageToken || null;
     } while (pageF && cm.length < 400);
 
@@ -3603,7 +3603,7 @@ export default async function handler(req, res) {
       out.push({ post: postLbl, card: card.id, changed: Object.keys(changes), directions: directions.length });
     }
     await kvSet("sisters_ftc_state", { seen, seeded, at: Date.now() });
-    res.json({ ok: true, comments: cm.length, unplaced, rows: byRow.size, seeded: filled, considered, skipped, sheetsApi, lastErr: lastErrF, results: out });
+    res.json({ ok: true, comments: cm.length, commentsErr: cmErr, unplaced, rows: byRow.size, seeded: filled, considered, skipped, sheetsApi, results: out });
     return;
   }
 
