@@ -122,6 +122,17 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 const unitCost = (p) => num(p.cogs) + num(p.packaging) + num(p.freight);
 
+// Hypothetical promo economics (her ask, Sep 16 — the bath-salts coupon math):
+// net per unit AFTER per-unit ads at 10% off list, so the true cost of running
+// a coupon is visible at a glance. Same channel math as unitEconomics; "all"
+// uses Amazon when the product sells there; B2B has no retail promos → null.
+function promoNet10(p, ch) {
+  const ch2 = ch === "all" ? (p.channels.includes("amazon") ? "amazon" : p.channels.find((x) => x !== "b2b")) : ch;
+  if (!ch2 || ch2 === "b2b") return null;
+  const u = unitEconomics({ ...p, retail: num(p.retail) * 0.9 }, ch2);
+  return u.cm - num(u.ad);
+}
+
 function unitEconomics(p, ch) {
   const landed = unitCost(p);
   if (ch === "amazon") {
@@ -1089,6 +1100,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
           <thead><tr>
             <th style={{ ...S.th, ...S.thL }}>Product<div style={faintEs}>Producto</div></th><th style={S.th}>Units<div style={faintEs}>Unidades</div></th><th style={S.th}>Revenue<div style={faintEs}>Ingreso</div></th>
             <th style={S.th}>CM / Unit<div style={faintEs}>MC / unidad</div></th><th style={S.th}>Net Margin<div style={faintEs}>Margen neto</div></th><th style={S.th}>Profit / Unit<div style={faintEs}>Ganancia / unidad</div></th>
+            <th style={S.th}>10% Off Net<div style={faintEs}>Neto con 10% desc.</div></th>
             <th style={S.th}>Wk Profit<div style={faintEs}>Ganancia sem.</div></th><th style={S.th}>B/E ROAS<div style={faintEs}>ROAS equil.</div></th><th style={S.th}>ROAS</th>
             <th style={S.th}>Score<div style={faintEs}>Puntaje</div></th><th style={{ ...S.th, ...S.thL }}>Decision<div style={faintEs}>Decisión</div></th>
           </tr></thead>
@@ -1105,6 +1117,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
                   <td style={S.td}>{money2(m.cmPerUnit)}<span style={{ color:c.sub, fontSize:11 }}> {pct(m.cmPct)}</span></td>
                   <td style={{ ...S.td, color:m.netMargin>=0.2?c.green:m.netMargin>0?c.ink:c.red }}>{pct(m.netMargin)}</td>
                   <td style={{ ...S.td, color:m.profitPerUnit>=0?c.ink:c.red }}>{money2(m.profitPerUnit)}</td>
+                  {(() => { const pn = promoNet10(p, channel); return <td style={{ ...S.td, color:pn==null?c.sub:pn>=0?c.ink:c.red }}>{pn==null?"—":money2(pn)}</td>; })()}
                   <td style={{ ...S.td, color:m.netAfterAds>=0?c.ink:c.red }}>{money(m.netAfterAds)}</td>
                   <td style={S.td}>{m.breakevenRoas===Infinity?"—":m.breakevenRoas.toFixed(1)+"x"}</td>
                   <td style={{ ...S.td, color:m.roas==null?c.sub:m.roas>=m.breakevenRoas?c.green:c.red }}>{m.roas==null?"—":m.roas.toFixed(1)+"x"}</td><td style={S.td}><span style={{ fontFamily:sans, fontSize:13 }}>{sc}</span>
@@ -1113,7 +1126,7 @@ export default function ProfitMatrix({ data, onSave, liveSales }) {
                   <td style={{ ...S.td, ...S.tdL }}><Tag text={d.tag} color={d.color} />{status&&<span style={{ marginLeft:6, fontFamily:sans, fontSize:10.5, letterSpacing:0.4, textTransform:"uppercase", color:status==="keep"?c.green:status==="maybe"?c.gold:c.red }}>· {status}</span>}</td>
                 </tr>
                 {open===p.id&&(
-                  <tr><td colSpan={11} style={{ background:c.bg, padding:"14px 16px", borderBottom:`1px solid ${c.line}` }}>
+                  <tr><td colSpan={12} style={{ background:c.bg, padding:"14px 16px", borderBottom:`1px solid ${c.line}` }}>
                     <div style={{ fontSize:13.5, fontStyle:"italic", marginBottom:10 }}>{d.why}</div>
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:10, fontSize:12.5 }}>
                       <D k="Retail / Wholesale" v={`${money2(num(p.retail))} / ${money2(num(p.wholesale))}`} />
