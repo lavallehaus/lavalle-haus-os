@@ -1211,9 +1211,13 @@ export default async function handler(req, res) {
             const status = result && result.Status;
             const details = (est && est.FeeDetailList) || [];
             const feeTypes = details.map((f) => f.FeeType);
-            let fba = 0, found = false;
+            let fba = 0, found = false, referralAmt = 0;
             for (const f of details) {
               const t = f.FeeType || "";
+              if (/Referral/i.test(t)) {
+                const aR = (f.FeeAmount && f.FeeAmount.Amount != null) ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount);
+                if (aR != null) referralAmt += Number(aR);
+              }
               if (/FBA|Fulfillment/i.test(t) && !/Referral/i.test(t)) {
                 const a = (f.FeeAmount && f.FeeAmount.Amount != null) ? f.FeeAmount.Amount : (f.FinalFee && f.FinalFee.Amount);
                 if (a != null) { fba += Number(a); found = true; }
@@ -1226,7 +1230,7 @@ export default async function handler(req, res) {
               if (derived > 0) { fba = derived; found = true; }
             }
             const errMsg = result && result.Error ? (result.Error.Message || result.Error.Code) : null;
-            return { found, fba, status, feeTypes, error: errMsg, raw: found ? undefined : JSON.stringify(d).slice(0, 350) };
+            return { found, fba, referral: referralAmt || null, status, feeTypes, error: errMsg, raw: found ? undefined : JSON.stringify(d).slice(0, 350) };
           } catch (e) {
             return { found: false, error: String(e).slice(0, 220) };
           }
@@ -1247,6 +1251,7 @@ export default async function handler(req, res) {
           out.push({
             id: it.id, asin, sku,
             fbaFee: r && r.found ? Number(r.fba.toFixed(2)) : null,
+            referral: r && r.referral != null ? Number(Number(r.referral).toFixed(2)) : null,
             status: r && r.status, feeTypes: r && r.feeTypes, error: r && r.error,
             idUsed: used, debug: (r && r.found) ? undefined : (r && r.raw),
           });
