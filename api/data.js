@@ -3373,13 +3373,14 @@ export default async function handler(req, res) {
     const authF = okKeyF ? null : await getAuthEarly(req);
     if (!okKeyF && !ownerRole(authF)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const gtF = await googleToken(); if (!gtF) { res.json({ ok: false, error: "google_not_connected" }); return; }
-    const gjF = async (u) => { try { const r = await fetch(u, { headers: { Authorization: "Bearer " + gtF } }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+    let lastErrF = null;
+    const gjF = async (u) => { try { const r = await fetch(u, { headers: { Authorization: "Bearer " + gtF } }); if (!r.ok) { lastErrF = r.status + " " + (await r.text()).slice(0, 300); return null; } return await r.json(); } catch (e) { lastErrF = String(e && e.message || e); return null; } };
 
     // 1. Tabs. Only the two script tabs carry post rows; "Sarah's questions" is
     //    research and has no cards behind it.
     const metaF = await gjF(`https://sheets.googleapis.com/v4/spreadsheets/${FTC_SHEET_ID}?fields=sheets(properties(sheetId,title))`);
     const tabsF = ((metaF && metaF.sheets) || []).map((s) => s.properties).filter((p) => /kiabeth|kiaredza/i.test(p.title || ""));
-    if (!tabsF.length) { res.json({ ok: false, error: "no_script_tabs" }); return; }
+    if (!tabsF.length) { res.json({ ok: false, error: "no_script_tabs", detail: lastErrF }); return; }
 
     // 2. Values per tab, and the header row located by name.
     const grids = {};
