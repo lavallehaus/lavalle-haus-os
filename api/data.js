@@ -3603,7 +3603,7 @@ export default async function handler(req, res) {
       out.push({ post: postLbl, card: card.id, changed: Object.keys(changes), directions: directions.length });
     }
     await kvSet("sisters_ftc_state", { seen, seeded, at: Date.now() });
-    res.json({ ok: true, comments: cm.length, unplaced, rows: byRow.size, seeded: filled, considered, skipped, results: out });
+    res.json({ ok: true, comments: cm.length, unplaced, rows: byRow.size, seeded: filled, considered, skipped, sheetsApi, lastErr: lastErrF, results: out });
     return;
   }
 
