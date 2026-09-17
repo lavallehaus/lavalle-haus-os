@@ -3527,7 +3527,38 @@ export default async function handler(req, res) {
       }
     }
     const key = process.env.ANTHROPIC_API_KEY;
+    // Sarah's feedback is reviewed IN THE SHEET first, then goes live to the
+    // cards — not the other way round. Until the Sheets API is switched on in
+    // the Cloud project we cannot write a proposal back into her sheet, so the
+    // comments are parked here instead of being pushed onto cards. Nothing
+    // reaches a card unreviewed. Set FTC_CARD_PROPOSALS=1 to restore the old
+    // behaviour, and note that the parked comments are deliberately NOT marked
+    // seen, so they will be picked up whole once the write-back exists.
+    const cardProposals = process.env.FTC_CARD_PROPOSALS === "1";
     const out = []; let considered = 0, skipped = 0;
+    if (!cardProposals) {
+      const parked = [];
+      for (const grp of byRow.values()) {
+        const fresh = grp.items.filter((i) => seen[i.id] !== (i.at || "1"));
+        if (!fresh.length) { skipped++; continue; }
+        considered++;
+        const g = grids[grp.gid];
+        const row = g.rows[grp.row] || [];
+        const postLbl = String((g.postCol >= 0 ? row[g.postCol] : "") || "").trim();
+        parked.push({
+          tab: g.title, gid: grp.gid, row: grp.row + 1, post: postLbl || "?",
+          sheetUrl: `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit` + (/^\d+$/.test(grp.gid) ? `#gid=${grp.gid}&range=A${grp.row + 1}` : ""),
+          comments: fresh.map((i) => ({ id: i.id, cell: i.cell, field: i.fieldLabel, by: i.by, text: i.text, at: i.at || null })),
+        });
+      }
+      await kvSet("sisters_ftc_parked", { at: Date.now(), rows: parked });
+      await kvSet("sisters_ftc_state", { seen, seeded, at: Date.now() });
+      res.json({ ok: true, mode: "sheet_review", cardProposals: false,
+        note: "Sarah's comments are parked for review in the sheet. Card proposals are off, and the Sheets API is needed before they can be written back into her sheet.",
+        sheetsApi, comments: cm.length, commentsErr: cmErr, unplaced, rows: byRow.size,
+        seeded: filled, considered, skipped, parked });
+      return;
+    }
     for (const grp of byRow.values()) {
       const fresh = grp.items.filter((i) => seen[i.id] !== (i.at || "1"));
       if (!fresh.length) { skipped++; continue; }
