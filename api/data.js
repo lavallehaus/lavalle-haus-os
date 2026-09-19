@@ -1716,6 +1716,64 @@ export default async function handler(req, res) {
     res.json({ ok: true, checked, saved, lastSaved, apiErr });
     return;
   }
+  // ── Slack channel reader (owner) ─────────────────────────────────────────
+  // Lifts a channel's recent messages + attached files out of Slack (the
+  // Loft's grid-photo drops in #lavalle-haus) without opening the Slack UI.
+  // ?channel=<name> (default lavalle-haus), ?limit, ?thread=<ts> for replies.
+  if (op === "slack_channel_pull" && req.method === "GET") {
+    const authSP = await getAuthEarly(req);
+    if (!ownerRole(authSP)) { res.status(403).json({ error: "Owner only." }); return; }
+    const want = String(req.query.channel || "lavalle-haus").toLowerCase();
+    const lim = Math.min(100, Number(req.query.limit) || 40);
+    const mapSP = (await kvGet("slack_oauth")) || {};
+    const out = [];
+    for (const [tid, team] of Object.entries(mapSP)) {
+      if (!team || !team.token) continue;
+      const H = { Authorization: "Bearer " + team.token };
+      const cl = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: H })).json();
+      if (!cl.ok) { out.push({ team: team.name || tid, error: cl.error }); continue; }
+      const ch = (cl.channels || []).find((c) => (c.name || "").toLowerCase() === want);
+      if (!ch) { out.push({ team: team.name || tid, error: "no #" + want, channels: (cl.channels || []).map((c) => c.name).slice(0, 40) }); continue; }
+      const url = req.query.thread
+        ? `https://slack.com/api/conversations.replies?channel=${ch.id}&ts=${encodeURIComponent(req.query.thread)}&limit=${lim}`
+        : `https://slack.com/api/conversations.history?channel=${ch.id}&limit=${lim}`;
+      const hi = await (await fetch(url, { headers: H })).json();
+      if (!hi.ok) { out.push({ team: team.name || tid, channelId: ch.id, error: hi.error }); continue; }
+      const names = {};
+      const uname = async (u) => { if (!u) return "?"; if (!names[u]) { try { const ur = await (await fetch("https://slack.com/api/users.info?user=" + u, { headers: H })).json(); names[u] = (ur.user && (ur.user.real_name || ur.user.name)) || u; } catch (eU) { names[u] = u; } } return names[u]; };
+      const msgs = [];
+      for (const m of hi.messages || []) {
+        msgs.push({ ts: m.ts, at: new Date(parseFloat(m.ts) * 1000).toISOString(), user: await uname(m.user), text: (m.text || "").slice(0, 900), replies: m.reply_count || 0, files: (m.files || []).map((f) => ({ id: f.id, name: f.name, mime: f.mimetype, w: f.original_w, h: f.original_h })) });
+      }
+      out.push({ team: team.name || tid, channelId: ch.id, msgs });
+    }
+    res.json({ teams: out });
+    return;
+  }
+  // Stream one Slack file (owner) — url_private needs the bot bearer, so the
+  // browser can't load it directly; this proxies it through the app session.
+  if (op === "slack_file" && req.method === "GET") {
+    const authSF = await getAuthEarly(req);
+    if (!ownerRole(authSF)) { res.status(403).json({ error: "Owner only." }); return; }
+    const fid = String(req.query.file || "").replace(/[^A-Za-z0-9]/g, "");
+    if (!fid) { res.status(400).json({ error: "file id required" }); return; }
+    const mapSF = (await kvGet("slack_oauth")) || {};
+    for (const team of Object.values(mapSF)) {
+      if (!team || !team.token) continue;
+      const H = { Authorization: "Bearer " + team.token };
+      const fi = await (await fetch("https://slack.com/api/files.info?file=" + fid, { headers: H })).json();
+      if (!fi.ok || !fi.file) continue;
+      const dl = await fetch(fi.file.url_private_download || fi.file.url_private, { headers: H });
+      if (!dl.ok) continue;
+      const bufSF = Buffer.from(await dl.arrayBuffer());
+      res.setHeader("Content-Type", fi.file.mimetype || "application/octet-stream");
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.send(bufSF);
+      return;
+    }
+    res.status(404).json({ error: "file not found in any connected workspace" });
+    return;
+  }
   // ── Loft → Sisters "Courtney to edit" auto-copy ──────────────────────────
   // Her rule (until the Loft contract ends Oct 2026): every new file the Loft
   // delivers under RH "Content by The Loft" mirrors into Lavalle Sisters /
