@@ -1730,6 +1730,15 @@ export default async function handler(req, res) {
     for (const [tid, team] of Object.entries(mapSP)) {
       if (!team || !team.token) continue;
       const H = { Authorization: "Bearer " + team.token };
+      if (req.query.files) {
+        // files.list sees what the bot token can access even in channels it
+        // can't list (the strategy-PDF watcher relies on this) — use it to
+        // find the Loft's photo drops without channel membership.
+        const fl = await (await fetch("https://slack.com/api/files.list?types=" + encodeURIComponent(String(req.query.files)) + "&count=60", { headers: H })).json();
+        if (!fl.ok) { out.push({ team: team.name || tid, error: fl.error }); continue; }
+        out.push({ team: team.name || tid, files: (fl.files || []).map((f) => ({ id: f.id, name: f.name, mime: f.mimetype, at: new Date((f.created || 0) * 1000).toISOString(), title: f.title, user: f.user, channels: (f.channels || []).concat(f.groups || []), w: f.original_w, h: f.original_h })) });
+        continue;
+      }
       const cl = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: H })).json();
       if (!cl.ok) { out.push({ team: team.name || tid, error: cl.error }); continue; }
       const ch = (cl.channels || []).find((c) => (c.name || "").toLowerCase() === want);
