@@ -2759,10 +2759,18 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
         <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        {/* Sisters (her rule Sep 26): NO separate hashtags box — caption + the
+            post's 2 hashtags are written together here and post as one. */}
+        {!opsMode && boardKey === "lavalle-sisters" && (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
+            Caption + 2 hashtags all go in this box together — everything here posts as one.
+          </div>
+        )}
         <NotesLinks text={desc} />
         {/* hashtags go to BOTH platforms (her rule Sep 7 — was TikTok-only);
-            stored apart from the caption, appended to the IG post at publish */}
-        {!opsMode && (<>
+            stored apart from the caption, appended to the IG post at publish.
+            Hidden on Lavalle Sisters (Sep 26): hashtags live in the caption box. */}
+        {!opsMode && boardKey !== "lavalle-sisters" && (<>
         <div style={label}>Hashtags</div>
         <input style={input} placeholder="#cozyhome #candle" value={tags} onChange={(e) => setTags(e.target.value)} />
         {tags.trim() && (
