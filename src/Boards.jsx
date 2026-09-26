@@ -2759,25 +2759,16 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
         <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
-        {/* Sisters (her rule Sep 26): NO separate hashtags box — caption + the
-            post's 2 hashtags are written together here and post as one. */}
-        {!opsMode && boardKey === "lavalle-sisters" && (
+        {/* Her rule Sep 26 (all brand boards): NO separate hashtags box — the
+            caption + the post's 2 hashtags are written together here and post
+            as one. Legacy card.tags still get appended at publish if present. */}
+        {!opsMode && (
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
             Caption + 2 hashtags all go in this box together — everything here posts as one.
           </div>
         )}
         <NotesLinks text={desc} />
-        {/* hashtags go to BOTH platforms (her rule Sep 7 — was TikTok-only);
-            stored apart from the caption, appended to the IG post at publish.
-            Hidden on Lavalle Sisters (Sep 26): hashtags live in the caption box. */}
-        {!opsMode && boardKey !== "lavalle-sisters" && (<>
-        <div style={label}>Hashtags</div>
-        <input style={input} placeholder="#cozyhome #candle" value={tags} onChange={(e) => setTags(e.target.value)} />
-        {tags.trim() && (
-          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
-            {(tags.match(/#/g) || []).length} hashtag{(tags.match(/#/g) || []).length === 1 ? "" : "s"} — added to Instagram + TikTok
-          </div>
-        )}
+        {!opsMode && (<>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0 12px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: approved ? "#5a7a5a" : c.sub, cursor: "pointer" }}>
           <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
