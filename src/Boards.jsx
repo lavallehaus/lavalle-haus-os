@@ -125,6 +125,43 @@ const BG_PRESETS = [
   { id: "slate", css: "linear-gradient(165deg,#D6DBDE,#AEB8BE)" },
   { id: "night", css: "linear-gradient(165deg,#3A3A38,#1E1E1D)" },
 ];
+// Save an image to the device WITHOUT navigating anywhere (her ask, Sep 27):
+// the old plain <a> links took over the installed app's whole view with no way
+// back — she had to force-quit the app after every cover download. Phones get
+// the share sheet ("Save Image" → Photos); desktops download silently. The
+// button itself reports Saving… / ✓ Saved, and no page ever opens.
+function SaveImageButton({ url, filename, label, style }) {
+  const [st, setSt] = React.useState(null);
+  const save = async () => {
+    if (st === "busy") return;
+    setSt("busy");
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("fetch " + r.status);
+      const blob = await r.blob();
+      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+      let done = false;
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); done = true; }
+        catch (eS) { if (eS && eS.name === "AbortError") done = true; }
+      }
+      if (!done) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      }
+      setSt("done"); setTimeout(() => setSt((s) => (s === "done" ? null : s)), 2200);
+    } catch (e2) { setSt("err"); setTimeout(() => setSt((s) => (s === "err" ? null : s)), 2600); }
+  };
+  return (
+    <button onClick={save} disabled={st === "busy"} style={{ background: "transparent", cursor: "pointer", ...style }}>
+      {st === "busy" ? "Saving…" : st === "done" ? "✓ Saved" : st === "err" ? "Couldn't save — tap again" : label}
+    </button>
+  );
+}
+
 // Swipeable cover carousel — used when a card carries several image
 // attachments (the Sisters "Grid" card: 1–9, 1–21, 22–30, 31–42). Swipe or
 // drag sideways to move through them; tap still opens the card.
@@ -2560,16 +2597,13 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) fileToCover(f, applyCover); }} />
           </label>
           {cover && (
-            <a href={cover} download={(card.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"}
-              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, textDecoration: "none" }}>
-              ⤓ Download
-            </a>
+            <SaveImageButton url={cover} filename={(card.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} label="⤓ Download"
+              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }} />
           )}
           {cover && boardKey && (
-            <a href={"/api/data?op=cover_download&board=" + encodeURIComponent(boardKey) + "&card=" + encodeURIComponent(card.id)} title="Highest-resolution copy: the Drive original (cover link, or this month's Cover photos/<n>.jpg), else the stored cover"
-              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, textDecoration: "none" }}>
-              ⤓ Original (Drive)
-            </a>
+            <SaveImageButton url={"/api/data?op=cover_download&board=" + encodeURIComponent(boardKey) + "&card=" + encodeURIComponent(card.id)}
+              filename={(card.name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + "-original.jpg"} label="⤓ Original (Drive)"
+              style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }} />
           )}
           {cover && <button onClick={() => applyCover(null)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.red, cursor: "pointer" }}>Remove</button>}
         </div>
@@ -2943,7 +2977,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
                   {plannCopied ? "✓ Caption copied — opening TikTok Studio…" : "Copy caption & open TikTok Studio"}</button>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {assetUrlState && <a href={assetUrlState} target="_blank" rel="noopener noreferrer" style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>▶ Video in Drive</a>}
-                  {cover && <a href={cover} download={(name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px", textDecoration: "none" }}>⤓ Cover</a>}
+                  {cover && <SaveImageButton url={cover} filename={(name || "cover").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".jpg"} label="⤓ Cover"
+                    style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 4, padding: "5px 9px" }} />}
                 </div>
               </div>
             )}
