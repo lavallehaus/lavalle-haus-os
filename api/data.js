@@ -3846,7 +3846,7 @@ export default async function handler(req, res) {
     let cmCQ = [], pgCQ = null, cmErrCQ = null;
     try {
       do {
-        const uC = "https://www.googleapis.com/drive/v3/files/" + DECK_CQ + "/comments?fields=nextPageToken,comments(content,resolved,quotedFileContent(value),replies(content))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
+        const uC = "https://www.googleapis.com/drive/v3/files/" + DECK_CQ + "/comments?fields=nextPageToken,comments(id,content,resolved,modifiedTime,author(displayName),quotedFileContent(value),replies(id,content,modifiedTime,author(displayName)))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
         const rC = await fetch(uC, { headers: { Authorization: "Bearer " + gtCQ } });
         const tC = await rC.text();
         if (!rC.ok) { cmErrCQ = "http_" + rC.status + ":" + tC.slice(0, 220).replace(/\s+/g, " "); break; }
@@ -3855,16 +3855,22 @@ export default async function handler(req, res) {
       } while (pgCQ && cmCQ.length < 300);
     } catch (eC) { cmErrCQ = String(eC).slice(0, 200); }
     if (bodyCQ.debug === "cm") { res.json({ n: cmCQ.length, err: cmErrCQ, cm: cmCQ.slice(0, 12).map((c0) => ({ res: !!c0.resolved, q: String((c0.quotedFileContent && c0.quotedFileContent.value) || "").slice(0, 60), c: String(c0.content || "").slice(0, 60) })) }); return; }
-    const notesByPost = {};
+    // Her rule (Sep 28): review notes live in the card's COMMENTS, attributed —
+    // Sarah's say Sarah, hers say Kiabeth — one card comment per doc comment
+    // (replies too), keyed by the doc comment id so sweeps update, not repeat.
+    const cmtsByPost = {};
+    const firstNameCQ = (a0) => { const d0 = String((a0 && a0.displayName) || "").trim(); return d0 ? d0.split(/\s+/)[0] : "Reviewer"; };
+    const stripCQ = (s0) => String(s0 || "").replace(/@[\w.+-]+@[\w.-]+/g, "").replace(/[ \t]+/g, " ").trim();
     for (const c0 of cmCQ) {
       if (c0.resolved) continue;
       const q0 = normCQ(c0.quotedFileContent && c0.quotedFileContent.value).slice(0, 60);
       if (!q0) continue;
       const hit = postsCQ.find((p0) => normCQ("POST " + p0.nn + " " + p0.bucket + " " + p0.topic + " " + p0.desc).includes(q0));
       if (!hit) continue;
-      const strip = (s) => String(s || "").replace(/@[\w.+-]+@[\w.-]+/g, "").replace(/\s+/g, " ").trim();
-      const line = strip(c0.content); if (!line) continue;
-      (notesByPost[hit.nn] = notesByPost[hit.nn] || []).push("- " + line + (c0.replies || []).map((r0) => " · reply: " + strip(r0.content)).join(""));
+      const line = stripCQ(c0.content); if (!line) continue;
+      const bag = (cmtsByPost[hit.nn] = cmtsByPost[hit.nn] || []);
+      bag.push({ id: "dc_" + c0.id, by: firstNameCQ(c0.author), text: line + " (from the deck)", at: c0.modifiedTime || new Date().toISOString() });
+      (c0.replies || []).forEach((r0, ri0) => { const t0 = stripCQ(r0.content); if (t0) bag.push({ id: "dc_" + c0.id + "_r" + (r0.id || ri0), by: firstNameCQ(r0.author), text: t0 + " (from the deck)", at: r0.modifiedTime || new Date().toISOString() }); });
     }
     // 5. upsert into her column; covers read live off the scheduled Post cards
     const rawCQ = await kvGet("lavalle_data"); const blobCQ = Array.isArray(rawCQ) ? rawCQ[0] : rawCQ;
@@ -3897,8 +3903,18 @@ export default async function handler(req, res) {
         "POST " + p0.nn + (p0.fmt ? " · " + p0.fmt : "") + (p0.bucket ? " · " + p0.bucket : ""),
         p0.topic ? '"' + p0.topic + '"' : "",
         p0.desc, "", coverLine,
-        (notesByPost[p0.nn] || []).length ? "\nReview notes:\n" + notesByPost[p0.nn].join("\n") : "",
-      ].filter((s0) => s0 !== "").join("\n").replace(/\n{3,}/g, "\n\n");
+      ].filter((s0) => s0 !== "").join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+Review notes:[\s\S]*$/, "");
+      const wantCmts = cmtsByPost[p0.nn] || [];
+      const mergeCmts = (cur0) => {
+        // keep every human comment; upsert the deck-synced ones by their id
+        const out0 = (cur0 || []).filter((x0) => !String(x0.id || "").startsWith("dc_") || wantCmts.some((w0) => w0.id === x0.id));
+        for (const w0 of wantCmts) {
+          const i0 = out0.findIndex((x0) => x0.id === w0.id);
+          if (i0 < 0) out0.push({ ...w0 });
+          else if (out0[i0].text !== w0.text || out0[i0].by !== w0.by) out0[i0] = { ...out0[i0], text: w0.text, by: w0.by };
+        }
+        return out0;
+      };
       const nameCQ = "C" + Number(p0.nn) + " — " + (p0.topic || p0.bucket || "Post " + p0.nn).slice(0, 70);
       const linksCQ = [];
       if (p0.example) linksCQ.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Example video", u: p0.example.startsWith("http") ? p0.example : "https://" + p0.example, a: 1 });
@@ -3906,12 +3922,13 @@ export default async function handler(req, res) {
       const ex0 = colCards.find((c0) => !removeIds.has(c0.id) && (c0.deckN === p0.nn || new RegExp("^C" + Number(p0.nn) + "\\b").test(c0.name || "")));
       const coverV = pc && pc.cover ? pc.cover : null;
       if (ex0) {
-        const same = ex0.desc === descCQ && ex0.name === nameCQ && (!coverV || ex0.cover === coverV) && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u));
-        if (!same) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; } }); }
+        const mergedC = mergeCmts(ex0.comments);
+        const same = ex0.desc === descCQ && ex0.name === nameCQ && (!coverV || ex0.cover === coverV) && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u)) && JSON.stringify(mergedC) === JSON.stringify(ex0.comments || []);
+        if (!same) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; fc.comments = mergeCmts(fc.comments); } }); }
       } else {
         madeCQ++;
         const nid = "cq" + Math.random().toString(36).slice(2, 10);
-        patchesCQ.push({ id: nid, append: { id: nid, listId: colCQ.id, name: nameCQ, desc: descCQ, labels: [], members: [], attachments: [], links: linksCQ, cover: coverV, done: false, comments: [], deckN: p0.nn, cBatch: batchCQ.label } });
+        patchesCQ.push({ id: nid, append: { id: nid, listId: colCQ.id, name: nameCQ, desc: descCQ, labels: [], members: [], attachments: [], links: linksCQ, cover: coverV, done: false, comments: wantCmts.map((w0) => ({ ...w0 })), deckN: p0.nn, cBatch: batchCQ.label } });
       }
     }
     if (patchesCQ.length || removeIds.size) {
@@ -3920,7 +3937,7 @@ export default async function handler(req, res) {
       });
     }
     await kvSet("courtney_twelve_state", { batch: batchCQ.label, at: Date.now() });
-    res.json({ ok: true, batch: batchCQ.label, posts: postsCQ.length, created: madeCQ, updated: updCQ, removed: removeIds.size, withNotes: Object.keys(notesByPost).length });
+    res.json({ ok: true, batch: batchCQ.label, posts: postsCQ.length, created: madeCQ, updated: updCQ, removed: removeIds.size, withNotes: Object.keys(cmtsByPost).length });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
