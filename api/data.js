@@ -3851,6 +3851,7 @@ export default async function handler(req, res) {
         cmCQ = cmCQ.concat(dC.comments || []); pgCQ = dC.nextPageToken || null;
       } while (pgCQ && cmCQ.length < 300);
     } catch (eC) {}
+    if (bodyCQ.debug === "cm") { res.json({ n: cmCQ.length, cm: cmCQ.slice(0, 12).map((c0) => ({ res: !!c0.resolved, q: String((c0.quotedFileContent && c0.quotedFileContent.value) || "").slice(0, 60), c: String(c0.content || "").slice(0, 60) })) }); return; }
     const notesByPost = {};
     for (const c0 of cmCQ) {
       if (c0.resolved) continue;
