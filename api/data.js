@@ -2894,12 +2894,13 @@ export default async function handler(req, res) {
     if (rangeS) postCards = postCards.filter((p) => p.n >= rangeS[0] && p.n <= rangeS[1]);
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
-    const tilesHashS = "w5" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // must match sisters_grid_card's views-cache key
+    const tilesHashS = "w5" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // matches sisters_grid_card's covers-only key (cacheW.coverHash)
     const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     const views = (cacheS.views || {});
     const winRanges = [[1, 9], [10, 21], [22, 30], [31, 42]];
     const winNeeded = [0, 1, 2, 3].filter((i) => !rangeS || (winRanges[i][0] <= rangeS[1] && winRanges[i][1] >= rangeS[0]));
-    const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && winNeeded.every((i) => views[i]));
+    const activeS = Array.isArray(cacheS.active) ? cacheS.active : [0, 1, 2, 3]; // completed windows never render (they left the Grid card)
+    const viewsReady = tilesS.length < 21 || ((cacheS.coverHash || cacheS.hash) === tilesHashS && winNeeded.every((i) => views[i] || !activeS.includes(i)));
     if (!viewsReady) { res.json({ ok: true, skipped: true, waiting: "grid windows still rendering for this arrangement" }); return; }
     const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     theme.body = noDash(theme.body);
@@ -4048,16 +4049,28 @@ export default async function handler(req, res) {
       const t = (await Jimp.read(Buffer.from(await r.arrayBuffer()))).cover(360, 480);
       tileCache[cover] = t; return t.clone();
     };
+    const rangeOf = (a, b) => {
+      const ds = [];
+      for (let n0 = a; n0 <= b; n0++) if (dateP[n0]) ds.push(dateP[n0]);
+      if (!ds.length) return "";
+      ds.sort((x, y) => x.t - y.t);
+      return ds[0].label + (ds.length > 1 ? " \u2013 " + ds[ds.length - 1].label : "");
+    };
+    const HDR = 64;
     const render = async (from, to) => {
       const slice = all.slice(from - 1, to);
       const n = slice.length, rows = Math.ceil(n / 3);
-      const cv = await new Jimp(1080, rows * 480, 0xf2efe9ff);
+      const rng = rangeOf(from, to);
+      const cv = await new Jimp(1080, rows * 480 + HDR, 0xf2efe9ff);
+      const hdrTxt = ("Posts " + from + "\u2013" + to + (rng ? "  \u00b7  " + rng : "")).replace(/&/g, "&amp;");
+      const hdrSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${HDR}"><text x="24" y="42" font-family="Inter" font-size="30" fill="#787268">${hdrTxt}</text></svg>`;
+      try { cv.composite(await Jimp.read(Buffer.from(new ResvgN(hdrSvg, { fitTo: { mode: "original" }, font: { fontBuffers: [interN], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng())), 0, 0); } catch (eH) {}
       for (let i = 0; i < n; i++) {
         try {
           const t = await getTile(slice[i].cover); if (!t) continue;
           await drawNum(t, from + i);
           if (slice[i].tag === "C") { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
-          cv.composite(t, (2 - (i % 3)) * 360, (rows - 1 - Math.floor(i / 3)) * 480);
+          cv.composite(t, (2 - (i % 3)) * 360, HDR + (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
       }
       cv.quality(86);
@@ -4072,16 +4085,17 @@ export default async function handler(req, res) {
     // one window per invocation (each render is ~10-20s on serverless); results
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
-    const tilesHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // w4 = the 1-9/10-21/22-30/31-42 window set
+    const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
+    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",")).digest("hex").slice(0, 12); // w6 = date strip above each window
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
-    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, views: {} };
+    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, coverHash, views: {} };
     // which window are we in? computed FIRST so the window the card DISPLAYS
     // renders first — a tile change shows on the card after ONE render call.
     // HER RULE (Sep 3): the card's cover follows COMPLETION, not the calendar —
     // the first post not yet checked off decides the window, so the moment a
     // window's posts are all done the cover advances to the next set.
     let postN = 0;
-    const doneP = new Set(), presentP = new Set();
+    const doneP = new Set(), presentP = new Set(), dateP = {};
     try {
       const rawP = await kvGet("lavalle_data"); const blobP = Array.isArray(rawP) ? rawP[0] : rawP;
       const bdP = blobP && blobP.boards && blobP.boards[SBOARD.key];
@@ -4093,16 +4107,17 @@ export default async function handler(req, res) {
         const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
         presentP.add(n);
+        const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
+        if (mD && MO_W[mD[1].toLowerCase()] != null) {
+          const mo = MO_W[mD[1].toLowerCase()];
+          dateP[n] = { t: Date.UTC(mo >= 6 ? 2026 : 2027, mo, Number(mD[2])), label: mD[1].slice(0, 3).replace(/^./, (ch) => ch.toUpperCase()) + " " + Number(mD[2]) };
+        }
         if (c.done) { doneP.add(n); continue; }
         // Sep 27 2026 (cycle rollover): numbers restart each cycle, so "first
         // undone number" lies while two cycles overlap — the current post is
         // the undone card with the EARLIEST date in its name.
-        const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
-        if (mD && MO_W[mD[1].toLowerCase()] != null) {
-          const mo = MO_W[mD[1].toLowerCase()];
-          const tD = Date.UTC(mo >= 6 ? 2026 : 2027, mo, Number(mD[2]));
-          if (tD < bestT) { bestT = tD; bestN = n; }
-        } else undated.push(n);
+        if (dateP[n]) { if (dateP[n].t < bestT) { bestT = dateP[n].t; bestN = n; } }
+        else undated.push(n);
       }
       postN = bestN || 0;
       if (!postN) { postN = 1; while (postN <= 42 && doneP.has(postN)) postN++; }
@@ -4124,10 +4139,11 @@ export default async function handler(req, res) {
       if (cacheW.views[wi] || rendered != null) continue;
       const [a, b] = WINDOWS[wi];
       cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi;
+      cacheW.coverHash = coverHash; cacheW.active = activeW;
       await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW);
     }
     const missingW = activeW.filter((wi) => !cacheW.views[wi]);
-    const views = WINDOWS.map(([a, b], wi) => ({ label: "Grid " + a + "–" + b, url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }));
+    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + a + "–" + b + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.
     if (views[cur].url) {

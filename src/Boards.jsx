@@ -1627,6 +1627,16 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 8px", position: "relative", cursor: "grab", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                     <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, fontWeight: 500, color: c.ink }}>
                       {l.name} <span style={{ color: c.sub, fontSize: 11 }}>{cards.length}</span>
+                      {(() => {
+                        // her rule (Sep 28): a Schedule column says what dates it spans, so the team never guesses
+                        if (!/^schedule/i.test((l.name || "").trim())) return null;
+                        const MO_L = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+                        const ds = cards.map((cd) => /^Post\s*\d+\s+(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(cd.name || "")).filter(Boolean)
+                          .map((m) => { const mo = MO_L.indexOf(m[1].toLowerCase()); return mo < 0 ? null : { t: (mo >= 6 ? mo : mo + 12) * 40 + Number(m[2]), lb: m[1].slice(0, 3) + " " + Number(m[2]) }; })
+                          .filter(Boolean).sort((a, b) => a.t - b.t);
+                        if (!ds.length) return null;
+                        return <div style={{ fontFamily: sans, fontSize: 10.5, fontWeight: 400, color: c.sub, marginTop: 1 }}>{ds[0].lb}{ds.length > 1 ? " – " + ds[ds.length - 1].lb : ""}</div>;
+                      })()}
                     </div>
                     <button onClick={() => setListMenu(listMenu === l.id ? null : l.id)} title="List actions" style={{ background: "none", border: "none", cursor: "pointer", color: c.sub, fontSize: 14, padding: "0 4px", lineHeight: 1 }}>⋯</button>
                     {listMenu === l.id && (
