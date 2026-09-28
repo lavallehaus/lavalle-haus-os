@@ -786,6 +786,9 @@ export default async function handler(req, res) {
       await kvSet("publish_last", { at: new Date().toISOString(), ...out });
       // ride the sweep: two-way captions-doc sync (sig-guarded, cheap when idle)
       try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 15000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
+      // ride the sweep: Courtney's deck twelve → her column (adds new topics,
+      // refreshes notes/covers, rolls the batch once the previous 12 are done)
+      try { const acCQ = new AbortController(); setTimeout(() => acCQ.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=courtney_deck_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCQ.signal }).catch(() => {}); } catch (eCQ) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -3777,6 +3780,139 @@ export default async function handler(req, res) {
     }
     await kvSet("sisters_courtney_sweep", { label, at: Date.now() });
     res.json({ ok: true, label, due: due.toISOString().slice(0, 10), created: !exists });
+    return;
+  }
+  // ── Courtney's twelve — deck tab → her column (her rule, Sep 28) ──────────
+  // The deck page is where Courtney states her 12 (topic, description, example
+  // video). Once they're on the deck, her column mirrors them: one card per
+  // post with the example link, the review comments from the doc (unnamed, for
+  // her reference), and the cover it ties to — the cover is read LIVE from the
+  // scheduled Post card, so a later grid re-pick flows through on the next
+  // sweep. The previous batch's cards leave only when ALL of them are checked
+  // off; until then the fresh twelve wait.
+  if (op === "courtney_deck_sync" && req.method === "POST") {
+    const okKeyCQ = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCQ = okKeyCQ ? null : await getAuthEarly(req);
+    if (!okKeyCQ && !ownerRole(authCQ)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtCQ = await googleToken(); if (!gtCQ) { res.json({ ok: false, error: "google_not_connected" }); return; }
+    const DECK_CQ = "1cxxK0Asr7HWko7lUizVhTmDw7h5UfsxPqoxfccC1sQY";
+    const bodyCQ = req.body || {};
+    // cover assignments live in KV; seed/replace by POSTing {covers:{batch, assign}}
+    if (bodyCQ.covers && bodyCQ.covers.assign) await kvSet("courtney_twelve_covers", bodyCQ.covers);
+    const covCQ = (await kvGet("courtney_twelve_covers")) || { assign: {} };
+    // 1. doc text with links kept inline as {{url}} (HTML export carries every tab)
+    const rHCQ = await fetch("https://www.googleapis.com/drive/v3/files/" + DECK_CQ + "/export?mimeType=text/html&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCQ } });
+    if (!rHCQ.ok) { res.json({ ok: false, error: "doc_export_" + rHCQ.status }); return; }
+    let htCQ = await rHCQ.text();
+    htCQ = htCQ.replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gis, (m0, h0, t0) => {
+      const q0 = /[?&]q=([^&]+)/.exec(h0); let u0 = q0 ? decodeURIComponent(q0[1]) : h0;
+      return " " + t0 + " {{" + u0 + "}} ";
+    });
+    const txtCQ = htCQ.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, "\n").replace(/&amp;/g, "&").replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n");
+    // 2. twelve-sections: a MONTH YYYY header with POST 01 within reach
+    const MONQ = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+    const secsCQ = [];
+    const secRx = new RegExp("(?:^|\\n)\\s*(" + MONQ.join("|") + ")\\s+(\\d{4})\\s*(?:\\n|$)", "gi");
+    let mS; const marks = [];
+    while ((mS = secRx.exec(txtCQ))) marks.push({ label: mS[1].toUpperCase() + " " + mS[2], ord: Number(mS[2]) * 12 + MONQ.indexOf(mS[1].toUpperCase()), at: mS.index });
+    for (let i = 0; i < marks.length; i++) {
+      const seg = txtCQ.slice(marks[i].at, marks[i + 1] ? marks[i + 1].at : txtCQ.length);
+      if (/POST\s+0?1\b/i.test(seg)) secsCQ.push({ ...marks[i], seg });
+    }
+    if (!secsCQ.length) { res.json({ ok: false, error: "no_twelve_section" }); return; }
+    secsCQ.sort((a, b) => a.ord - b.ord);
+    const newestCQ = secsCQ[secsCQ.length - 1];
+    const stCQ = (await kvGet("courtney_twelve_state")) || {};
+    let batchCQ = secsCQ.find((s) => s.label === stCQ.batch) || newestCQ;
+    // 3. parse the batch's posts
+    const partsCQ = batchCQ.seg.split(/(?=POST\s+\d{1,2}\s*[·•]?)/i).slice(1);
+    const postsCQ = [];
+    for (const pB of partsCQ) {
+      const h0 = /^POST\s+(\d{1,2})\s*[·•]?\s*(REEL|CAROUSEL)?/i.exec(pB); if (!h0) continue;
+      const nn = h0[1].padStart(2, "0");
+      const topic = ((/[“"]([^”"]{3,120})[”"]/.exec(pB) || [])[1] || "").trim();
+      const linkM = [...pB.matchAll(/\{\{([^}]+)\}\}/g)].map((x) => x[1]).filter((u) => !/docs\.google|drive\.google/i.test(u));
+      let body0 = pB.replace(/\{\{[^}]+\}\}/g, " ").replace(/^POST[^\n]*\n?/i, "").replace(/[“"][^”"]{3,120}[”"]/, " ");
+      const lines0 = body0.split("\n").map((s) => s.trim()).filter((s) => s && !/^Example video$/i.test(s));
+      const bucket = (lines0.find((s) => /^[A-Z0-9 &\/'’-]{6,60}$/.test(s) && !/^POST/.test(s)) || "").trim();
+      const descL = lines0.filter((s) => s !== bucket && !/^\[[a-z]\]/.test(s)).join(" ").replace(/\s+/g, " ").slice(0, 420).trim();
+      postsCQ.push({ nn, fmt: (h0[2] || "").toUpperCase(), bucket, topic, desc: descL, example: linkM[0] || "" });
+    }
+    if (postsCQ.length < 3) { res.json({ ok: false, error: "parse_thin", found: postsCQ.length }); return; }
+    // 4. review comments from the doc, matched to posts by their quoted text
+    const normCQ = (s) => String(s || "").toLowerCase().replace(/[“”"']/g, "").replace(/\s+/g, " ").trim();
+    let cmCQ = [], pgCQ = null;
+    try {
+      do {
+        const uC = "https://www.googleapis.com/drive/v3/comments?fileId=" + DECK_CQ + "&fields=nextPageToken,comments(content,resolved,quotedFileContent(value),replies(content))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
+        const dC = await (await fetch(uC, { headers: { Authorization: "Bearer " + gtCQ } })).json();
+        cmCQ = cmCQ.concat(dC.comments || []); pgCQ = dC.nextPageToken || null;
+      } while (pgCQ && cmCQ.length < 300);
+    } catch (eC) {}
+    const notesByPost = {};
+    for (const c0 of cmCQ) {
+      if (c0.resolved) continue;
+      const q0 = normCQ(c0.quotedFileContent && c0.quotedFileContent.value).slice(0, 60);
+      if (!q0) continue;
+      const hit = postsCQ.find((p0) => normCQ("POST " + p0.nn + " " + p0.bucket + " " + p0.topic + " " + p0.desc).includes(q0));
+      if (!hit) continue;
+      const strip = (s) => String(s || "").replace(/@[\w.+-]+@[\w.-]+/g, "").replace(/\s+/g, " ").trim();
+      const line = strip(c0.content); if (!line) continue;
+      (notesByPost[hit.nn] = notesByPost[hit.nn] || []).push("- " + line + (c0.replies || []).map((r0) => " · reply: " + strip(r0.content)).join(""));
+    }
+    // 5. upsert into her column; covers read live off the scheduled Post cards
+    const rawCQ = await kvGet("lavalle_data"); const blobCQ = Array.isArray(rawCQ) ? rawCQ[0] : rawCQ;
+    const bdCQ = blobCQ && blobCQ.boards && blobCQ.boards["lavalle-sisters"];
+    if (!bdCQ) { res.json({ ok: false, error: "no_board" }); return; }
+    const colCQ = bdCQ.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
+    if (!colCQ) { res.json({ ok: false, error: "no_column" }); return; }
+    const schedIds = bdCQ.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const postCard = (n0) => bdCQ.cards.find((c0) => schedIds.includes(c0.listId) && new RegExp("^Post\\s*" + n0 + "\\b").exec(c0.name || ""));
+    const colCards = bdCQ.cards.filter((c0) => c0.listId === colCQ.id);
+    // rollover: the fresh twelve land only after the previous batch is all done
+    const curBatchCards = colCards.filter((c0) => c0.cBatch && c0.cBatch !== batchCQ.label);
+    if (stCQ.batch && stCQ.batch !== newestCQ.label && batchCQ.label === stCQ.batch) {
+      const mine = colCards.filter((c0) => c0.cBatch === stCQ.batch);
+      if (mine.length && mine.every((c0) => c0.done)) {
+        batchCQ = newestCQ; // fall through: old removed below, fresh ingested now
+      }
+    }
+    const removeIds = new Set(colCards.filter((c0) => (c0.cBatch && c0.cBatch !== batchCQ.label && colCards.filter((x0) => x0.cBatch === c0.cBatch).every((x0) => x0.done)) || (bodyCQ.migrate && !c0.cBatch)).map((c0) => c0.id));
+    const patchesCQ = []; let madeCQ = 0, updCQ = 0;
+    for (const p0 of postsCQ) {
+      const asn = (covCQ.assign || {})[p0.nn] || null;
+      const pc = asn && asn.post ? postCard(asn.post) : null;
+      const coverLine = asn && asn.post
+        ? "Tied cover: Post " + asn.post + (asn.date ? " - " + asn.date : "") + (asn.why ? " (" + asn.why + ")" : "")
+        : "Cover: picked with the next grid" + (asn && asn.date ? " - posts " + asn.date : "");
+      const descCQ = [
+        "POST " + p0.nn + (p0.fmt ? " · " + p0.fmt : "") + (p0.bucket ? " · " + p0.bucket : ""),
+        p0.topic ? '"' + p0.topic + '"' : "",
+        p0.desc, "", coverLine,
+        (notesByPost[p0.nn] || []).length ? "\nReview notes:\n" + notesByPost[p0.nn].join("\n") : "",
+      ].filter((s0) => s0 !== "").join("\n").replace(/\n{3,}/g, "\n\n");
+      const nameCQ = "C" + Number(p0.nn) + " — " + (p0.topic || p0.bucket || "Post " + p0.nn).slice(0, 70);
+      const linksCQ = [];
+      if (p0.example) linksCQ.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Example video", u: p0.example.startsWith("http") ? p0.example : "https://" + p0.example, a: 1 });
+      linksCQ.push({ id: "l" + Math.random().toString(36).slice(2, 8), n: "Courtney drafted (Drive)", u: "https://drive.google.com/drive/folders/1woGS7L4PQwFcNOu3sxBtTXP2ZIo8DMkc", a: 1 });
+      const ex0 = colCards.find((c0) => !removeIds.has(c0.id) && (c0.deckN === p0.nn || new RegExp("^C" + Number(p0.nn) + "\\b").test(c0.name || "")));
+      const coverV = pc && pc.cover ? pc.cover : null;
+      if (ex0) {
+        const same = ex0.desc === descCQ && ex0.name === nameCQ && (ex0.cover || null) === coverV && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u));
+        if (!same) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; } }); }
+      } else {
+        madeCQ++;
+        const nid = "cq" + Math.random().toString(36).slice(2, 10);
+        patchesCQ.push({ id: nid, append: { id: nid, listId: colCQ.id, name: nameCQ, desc: descCQ, labels: [], members: [], attachments: [], links: linksCQ, cover: coverV, done: false, comments: [], deckN: p0.nn, cBatch: batchCQ.label } });
+      }
+    }
+    if (patchesCQ.length || removeIds.size) {
+      await patchBoardCards("lavalle-sisters", patchesCQ, (blob9, bd9) => {
+        if (removeIds.size) bd9.cards = bd9.cards.filter((c0) => !removeIds.has(c0.id));
+      });
+    }
+    await kvSet("courtney_twelve_state", { batch: batchCQ.label, at: Date.now() });
+    res.json({ ok: true, batch: batchCQ.label, posts: postsCQ.length, created: madeCQ, updated: updCQ, removed: removeIds.size, withNotes: Object.keys(notesByPost).length });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
