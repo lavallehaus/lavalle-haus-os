@@ -3818,7 +3818,7 @@ export default async function handler(req, res) {
     while ((mS = secRx.exec(txtCQ))) marks.push({ label: mS[1].toUpperCase() + " " + mS[2], ord: Number(mS[2]) * 12 + MONQ.indexOf(mS[1].toUpperCase()), at: mS.index });
     for (let i = 0; i < marks.length; i++) {
       const seg = txtCQ.slice(marks[i].at, marks[i + 1] ? marks[i + 1].at : txtCQ.length);
-      if (/POST\s+0?1\b/i.test(seg)) secsCQ.push({ ...marks[i], seg });
+      if (((seg.match(/POST\s+\d{1,2}/g) || []).length) >= 3) secsCQ.push({ ...marks[i], seg });
     }
     if (!secsCQ.length) { res.json({ ok: false, error: "no_twelve_section", marks: marks.length }); return; }
     secsCQ.sort((a, b) => a.ord - b.ord);
