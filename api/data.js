@@ -4085,10 +4085,6 @@ export default async function handler(req, res) {
     // one window per invocation (each render is ~10-20s on serverless); results
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
-    const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
-    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",")).digest("hex").slice(0, 12); // w6 = date strip above each window
-    let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
-    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, coverHash, views: {} };
     // which window are we in? computed FIRST so the window the card DISPLAYS
     // renders first — a tile change shows on the card after ONE render call.
     // HER RULE (Sep 3): the card's cover follows COMPLETION, not the calendar —
@@ -4126,6 +4122,10 @@ export default async function handler(req, res) {
       const start = Date.UTC(2026, 7, 26);
       postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
     }
+    const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
+    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",")).digest("hex").slice(0, 12); // w6 = date strip above each window
+    let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
+    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, coverHash, views: {} };
     // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
     // card entirely — no slide, no render. A window counts as complete when it
     // has cards on the board and every one of them is done.
