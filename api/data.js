@@ -2249,7 +2249,7 @@ export default async function handler(req, res) {
     }
     const cCP = bdCP && (bdCP.cards || []).find((c) => c.id === bCP.cardId);
     if (!cCP) { res.status(404).json({ error: "No such card." }); return; }
-    const FIELDS_CP = ["name", "desc", "labels", "members", "cover", "due", "links", "listId"];
+    const FIELDS_CP = ["name", "desc", "labels", "members", "cover", "due", "links", "listId", "tags", "approved"];
     for (const k of FIELDS_CP) if (bCP.patch && Object.prototype.hasOwnProperty.call(bCP.patch, k)) cCP[k] = bCP.patch[k];
     await kvSet("lavalle_data", blobCP);
     res.json({ ok: true, card: { id: cCP.id, name: cCP.name } });
