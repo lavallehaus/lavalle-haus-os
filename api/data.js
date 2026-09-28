@@ -2811,7 +2811,10 @@ export default async function handler(req, res) {
     const startP = Date.UTC(2026, 7, 26); // posting cycle starts Wed Aug 26 (her call, Aug 25)
     const dayP = Math.max(0, Math.floor((Date.now() - startP) / 86400000));
     let postNP = 0; let dP = new Date(startP); for (let i = 0; i <= dayP && postNP < 42; i++) { postNP++; if ([1, 3, 5].includes(dP.getUTCDay())) postNP++; dP = new Date(dP.getTime() + 86400000); }
-    const gridNum = postNP <= 21 ? "1" : "2";
+    const themePre = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
+    // a theme with a post range (Oct 2026 on: 21-post cycles) names its grid outright;
+    // the date walk above only decides for the original Aug-Sep 42-post cycle
+    const gridNum = Array.isArray(themePre.range) ? (themePre.range[0] <= 21 ? "1" : "2") : (postNP <= 21 ? "1" : "2");
     const recP = (await kvGet("sisters_grid_tiles_" + gridNum + SBOARD.kvSuffix)) || { tiles: [] };
     const tilesP = (recP.tiles || []).slice(0, 21);
     if (tilesP.length < 9) { res.json({ ok: false, error: "grid " + gridNum + " not seeded" }); return; }
@@ -2867,6 +2870,10 @@ export default async function handler(req, res) {
     const authS2 = okKeyS2 ? null : await getAuthEarly(req);
     if (!okKeyS2 && !ownerRole(authS2)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const bS2 = req.body || {};
+    if (bS2.setTheme && (bS2.setTheme.title || bS2.setTheme.body || bS2.setTheme.range)) {
+      const curT = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
+      await kvSet("sisters_strategy_theme" + SBOARD.kvSuffix, { ...curT, ...bS2.setTheme, at: Date.now() });
+    }
     const rawS2 = await kvGet("lavalle_data"); const blobS2 = Array.isArray(rawS2) ? rawS2[0] : rawS2;
     const bdS2 = blobS2 && blobS2.boards && blobS2.boards[SBOARD.key];
     if (!bdS2) { res.json({ ok: false, error: "no board" }); return; }
@@ -2876,16 +2883,23 @@ export default async function handler(req, res) {
     const tagAt = (n) => (tilesS[n - 1] ? tilesS[n - 1].tag : null);
     const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
-    const postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+\b/.test(c.name || ""))
+    let postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+\b/.test(c.name || ""))
       .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
+    // From Oct 2026 the outline covers ONE cycle (theme.range, e.g. [1,21]) while the
+    // other Schedule column still holds the previous cycle for Courtney to finish.
+    const themeR = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
+    const rangeS = Array.isArray(themeR.range) && themeR.range.length === 2 ? themeR.range : null;
+    if (rangeS) postCards = postCards.filter((p) => p.n >= rangeS[0] && p.n <= rangeS[1]);
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
     const tilesHashS = "w5" + createHash("sha256").update(JSON.stringify(tilesS.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // must match sisters_grid_card's views-cache key
     const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     const views = (cacheS.views || {});
-    const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && [0, 1, 2, 3].every((i) => views[i]));
+    const winRanges = [[1, 9], [10, 21], [22, 30], [31, 42]];
+    const winNeeded = [0, 1, 2, 3].filter((i) => !rangeS || (winRanges[i][0] <= rangeS[1] && winRanges[i][1] >= rangeS[0]));
+    const viewsReady = tilesS.length < 21 || (cacheS.hash === tilesHashS && winNeeded.every((i) => views[i]));
     if (!viewsReady) { res.json({ ok: true, skipped: true, waiting: "grid windows still rendering for this arrangement" }); return; }
     const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     theme.body = noDash(theme.body);
