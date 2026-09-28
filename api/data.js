@@ -4050,17 +4050,18 @@ export default async function handler(req, res) {
     // the first post not yet checked off decides the window, so the moment a
     // window's posts are all done the cover advances to the next set.
     let postN = 0;
+    const doneP = new Set(), presentP = new Set();
     try {
       const rawP = await kvGet("lavalle_data"); const blobP = Array.isArray(rawP) ? rawP[0] : rawP;
       const bdP = blobP && blobP.boards && blobP.boards[SBOARD.key];
       const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
-      const doneP = new Set();
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
         if (!schedP.includes(c.listId)) continue;
         const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
+        presentP.add(n);
         if (c.done) { doneP.add(n); continue; }
         // Sep 27 2026 (cycle rollover): numbers restart each cycle, so "first
         // undone number" lies while two cycles overlap — the current post is
@@ -4079,16 +4080,23 @@ export default async function handler(req, res) {
       const start = Date.UTC(2026, 7, 26);
       postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
     }
-    const cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
+    // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
+    // card entirely — no slide, no render. A window counts as complete when it
+    // has cards on the board and every one of them is done.
+    const winDone = (a, b) => { let any = false; for (let n0 = a; n0 <= b; n0++) { if (presentP.has(n0)) { any = true; if (!doneP.has(n0)) return false; } } return any; };
+    let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]));
+    let cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
+    if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
+    if (!activeW.includes(cur)) cur = activeW.find((wi) => wi > cur) != null ? activeW.find((wi) => wi > cur) : activeW[activeW.length - 1];
     let rendered = null;
-    for (const wi of [cur, ...[0, 1, 2, 3].filter((x) => x !== cur)]) {
+    for (const wi of [cur, ...activeW.filter((x) => x !== cur)]) {
       if (cacheW.views[wi] || rendered != null) continue;
       const [a, b] = WINDOWS[wi];
       cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi;
       await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW);
     }
-    const missingW = [0, 1, 2, 3].filter((wi) => !cacheW.views[wi]);
-    const views = WINDOWS.map(([a, b], wi) => ({ label: "Grid " + a + "–" + b, url: cacheW.views[wi] || null }));
+    const missingW = activeW.filter((wi) => !cacheW.views[wi]);
+    const views = WINDOWS.map(([a, b], wi) => ({ label: "Grid " + a + "–" + b, url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }));
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.
     if (views[cur].url) {
@@ -4101,13 +4109,14 @@ export default async function handler(req, res) {
           let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
           if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
           const wantName = "Grid — " + views[cur].label + " (auto)";
+          const activeLabels = activeW.map((wi) => WINDOWS[wi][0] + "–" + WINDOWS[wi][1]).join(", ");
           const atts = views.filter((v) => v.url).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
           const changedC = card.name !== wantName || card.cover !== views[cur].url || JSON.stringify((card.attachments || []).map((x) => x.url)) !== JSON.stringify(atts.map((x) => x.url));
           if (changedC) {
             card.name = wantName;
             card.cover = views[cur].url;
             card.attachments = atts;
-            card.desc = "Auto-updating grid preview. Swipe through the grid in its four windows (the standing rule for this card): 1–9, 10–21, 22–30, 31–42. White dot = Courtney's post. Numbers = post order.";
+            card.desc = "Auto-updating grid preview. Swipe through the remaining grid windows (" + activeLabels + ") — a window drops off once all its posts are crossed off. White dot = Courtney's post. Numbers = post order.";
             await kvSet("lavalle_data", blobC);
           }
         }
