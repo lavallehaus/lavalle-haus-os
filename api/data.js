@@ -3846,7 +3846,7 @@ export default async function handler(req, res) {
     let cmCQ = [], pgCQ = null, cmErrCQ = null;
     try {
       do {
-        const uC = "https://www.googleapis.com/drive/v3/comments?fileId=" + DECK_CQ + "&fields=nextPageToken,comments(content,resolved,quotedFileContent(value),replies(content))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
+        const uC = "https://www.googleapis.com/drive/v3/files/" + DECK_CQ + "/comments?fields=nextPageToken,comments(content,resolved,quotedFileContent(value),replies(content))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
         const rC = await fetch(uC, { headers: { Authorization: "Bearer " + gtCQ } });
         const tC = await rC.text();
         if (!rC.ok) { cmErrCQ = "http_" + rC.status + ":" + tC.slice(0, 220).replace(/\s+/g, " "); break; }
