@@ -3808,7 +3808,8 @@ export default async function handler(req, res) {
       const q0 = /[?&]q=([^&]+)/.exec(h0); let u0 = q0 ? decodeURIComponent(q0[1]) : h0;
       return " " + t0 + " {{" + u0 + "}} ";
     });
-    const txtCQ = htCQ.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, "\n").replace(/&amp;/g, "&").replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n");
+    const txtCQ = htCQ.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, "\n").replace(/&amp;/g, "&").replace(/&#(\d+);/g, (m0, d0) => String.fromCharCode(Number(d0))).replace(/&#39;|&rsquo;/g, "'").replace(/&quot;|&ldquo;|&rdquo;/g, '"').replace(/&nbsp;/g, " ").replace(/&middot;|&bull;/g, "·").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n");
+    if (bodyCQ.debug === "raw") { res.json({ len: txtCQ.length, sample: txtCQ.slice(Number(bodyCQ.at || 0), Number(bodyCQ.at || 0) + 2500) }); return; }
     // 2. twelve-sections: a MONTH YYYY header with POST 01 within reach
     const MONQ = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
     const secsCQ = [];
@@ -3819,8 +3820,9 @@ export default async function handler(req, res) {
       const seg = txtCQ.slice(marks[i].at, marks[i + 1] ? marks[i + 1].at : txtCQ.length);
       if (/POST\s+0?1\b/i.test(seg)) secsCQ.push({ ...marks[i], seg });
     }
-    if (!secsCQ.length) { res.json({ ok: false, error: "no_twelve_section" }); return; }
+    if (!secsCQ.length) { res.json({ ok: false, error: "no_twelve_section", marks: marks.length }); return; }
     secsCQ.sort((a, b) => a.ord - b.ord);
+    if (bodyCQ.debug === "secs") { res.json({ secs: secsCQ.map((s) => ({ label: s.label, at: s.at, len: s.seg.length, heads: (s.seg.match(/POST\s+\d{1,2}/g) || []).length, head: s.seg.slice(0, 400) })) }); return; }
     const newestCQ = secsCQ[secsCQ.length - 1];
     const stCQ = (await kvGet("courtney_twelve_state")) || {};
     let batchCQ = secsCQ.find((s) => s.label === stCQ.batch) || newestCQ;
