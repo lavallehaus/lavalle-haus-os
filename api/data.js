@@ -3890,7 +3890,9 @@ export default async function handler(req, res) {
       const pc = asn && asn.post ? postCard(asn.post) : null;
       const coverLine = asn && asn.post
         ? "Tied cover: Post " + asn.post + (asn.date ? " - " + asn.date : "") + (asn.why ? " (" + asn.why + ")" : "")
-        : "Cover: picked with the next grid" + (asn && asn.date ? " - posts " + asn.date : "");
+        : (asn && asn.why
+          ? "Cover: pre-picked for the next grid (" + asn.why + ")" + (asn.date ? " - posts " + asn.date : "")
+          : "Cover: picked with the next grid" + (asn && asn.date ? " - posts " + asn.date : ""));
       const descCQ = [
         "POST " + p0.nn + (p0.fmt ? " · " + p0.fmt : "") + (p0.bucket ? " · " + p0.bucket : ""),
         p0.topic ? '"' + p0.topic + '"' : "",
@@ -3904,7 +3906,7 @@ export default async function handler(req, res) {
       const ex0 = colCards.find((c0) => !removeIds.has(c0.id) && (c0.deckN === p0.nn || new RegExp("^C" + Number(p0.nn) + "\\b").test(c0.name || "")));
       const coverV = pc && pc.cover ? pc.cover : null;
       if (ex0) {
-        const same = ex0.desc === descCQ && ex0.name === nameCQ && (ex0.cover || null) === coverV && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u));
+        const same = ex0.desc === descCQ && ex0.name === nameCQ && (!coverV || ex0.cover === coverV) && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u));
         if (!same) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; } }); }
       } else {
         madeCQ++;
