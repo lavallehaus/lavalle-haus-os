@@ -3842,7 +3842,7 @@ export default async function handler(req, res) {
     }
     if (postsCQ.length < 3) { res.json({ ok: false, error: "parse_thin", found: postsCQ.length }); return; }
     // 4. review comments from the doc, matched to posts by their quoted text
-    const normCQ = (s) => String(s || "").toLowerCase().replace(/[“”"']/g, "").replace(/\s+/g, " ").trim();
+    const normCQ = (s) => String(s || "").replace(/&#39;|&rsquo;/g, "'").replace(/&amp;/g, "&").replace(/&#\d+;|&[a-z]+;/gi, " ").toLowerCase().replace(/[“”"']/g, "").replace(/\s+/g, " ").trim();
     let cmCQ = [], pgCQ = null, cmErrCQ = null;
     try {
       do {
