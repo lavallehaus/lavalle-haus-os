@@ -3911,8 +3911,25 @@ export default async function handler(req, res) {
       const bdP = blobP && blobP.boards && blobP.boards[SBOARD.key];
       const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
       const doneP = new Set();
-      for (const c of (bdP ? bdP.cards : [])) { if (!schedP.includes(c.listId)) continue; const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0); if (n && c.done) doneP.add(n); }
-      postN = 1; while (postN <= 42 && doneP.has(postN)) postN++;
+      const undated = []; let bestN = 0, bestT = Infinity;
+      const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+      for (const c of (bdP ? bdP.cards : [])) {
+        if (!schedP.includes(c.listId)) continue;
+        const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
+        if (!n) continue;
+        if (c.done) { doneP.add(n); continue; }
+        // Sep 27 2026 (cycle rollover): numbers restart each cycle, so "first
+        // undone number" lies while two cycles overlap — the current post is
+        // the undone card with the EARLIEST date in its name.
+        const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
+        if (mD && MO_W[mD[1].toLowerCase()] != null) {
+          const mo = MO_W[mD[1].toLowerCase()];
+          const tD = Date.UTC(mo >= 6 ? 2026 : 2027, mo, Number(mD[2]));
+          if (tD < bestT) { bestT = tD; bestN = n; }
+        } else undated.push(n);
+      }
+      postN = bestN || 0;
+      if (!postN) { postN = 1; while (postN <= 42 && doneP.has(postN)) postN++; }
     } catch (eDN) {}
     if (!postN) { // fallback: date walk (one post per day from Aug 26, doubles on 26+28)
       const start = Date.UTC(2026, 7, 26);
@@ -4075,7 +4092,10 @@ export default async function handler(req, res) {
           for (let i = 0; i < tags.length; i++) {
             let t;
             const ex = existing && existing[i];
-            if (ex != null && ex <= TODAY_W) t = ex;
+            // Sep 27 2026 (new-cycle rollover): a card that already carries ANY
+            // date keeps it — cycles are dated at creation now (Oct 5+ cycle),
+            // and the Aug-26-anchored walk must never re-date them.
+            if (ex != null) t = ex;
             else if (i < ANCHORS.length) t = ANCHORS[i];
             else if (tags[i] === "C") t = nextMWF(prev);
             else t = prev + 86400000;
