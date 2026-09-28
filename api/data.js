@@ -3843,15 +3843,17 @@ export default async function handler(req, res) {
     if (postsCQ.length < 3) { res.json({ ok: false, error: "parse_thin", found: postsCQ.length }); return; }
     // 4. review comments from the doc, matched to posts by their quoted text
     const normCQ = (s) => String(s || "").toLowerCase().replace(/[“”"']/g, "").replace(/\s+/g, " ").trim();
-    let cmCQ = [], pgCQ = null;
+    let cmCQ = [], pgCQ = null, cmErrCQ = null;
     try {
       do {
         const uC = "https://www.googleapis.com/drive/v3/comments?fileId=" + DECK_CQ + "&fields=nextPageToken,comments(content,resolved,quotedFileContent(value),replies(content))&pageSize=100&includeDeleted=false" + (pgCQ ? "&pageToken=" + pgCQ : "");
-        const dC = await (await fetch(uC, { headers: { Authorization: "Bearer " + gtCQ } })).json();
+        const rC = await fetch(uC, { headers: { Authorization: "Bearer " + gtCQ } });
+        const dC = await rC.json();
+        if (!rC.ok) { cmErrCQ = "http_" + rC.status + ":" + JSON.stringify(dC).slice(0, 200); break; }
         cmCQ = cmCQ.concat(dC.comments || []); pgCQ = dC.nextPageToken || null;
       } while (pgCQ && cmCQ.length < 300);
-    } catch (eC) {}
-    if (bodyCQ.debug === "cm") { res.json({ n: cmCQ.length, cm: cmCQ.slice(0, 12).map((c0) => ({ res: !!c0.resolved, q: String((c0.quotedFileContent && c0.quotedFileContent.value) || "").slice(0, 60), c: String(c0.content || "").slice(0, 60) })) }); return; }
+    } catch (eC) { cmErrCQ = String(eC).slice(0, 200); }
+    if (bodyCQ.debug === "cm") { res.json({ n: cmCQ.length, err: cmErrCQ, cm: cmCQ.slice(0, 12).map((c0) => ({ res: !!c0.resolved, q: String((c0.quotedFileContent && c0.quotedFileContent.value) || "").slice(0, 60), c: String(c0.content || "").slice(0, 60) })) }); return; }
     const notesByPost = {};
     for (const c0 of cmCQ) {
       if (c0.resolved) continue;
