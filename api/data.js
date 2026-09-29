@@ -4032,9 +4032,47 @@ export default async function handler(req, res) {
         } catch (eCV) { errsCV.push(n + ":" + String(eCV).slice(0, 40)); }
       }
     }
+    // Drive retouch pass (her rule Sep 29): the coverUrl's Drive file is the
+    // original of record — when she replaces/retouches it in place, the new
+    // version becomes the cover everywhere. Detected by the file's md5 changing
+    // against the fingerprint recorded at the last sync; first sighting only
+    // records (the one-off Sep 29 ingestion left everything in sync).
+    const retouched = [];
+    if (gtCV && !dryCV) {
+      const md5s = (await kvGet("sisters_cover_drive_md5")) || {};
+      let md5Dirty = false;
+      for (const c of bdCV.cards) {
+        if (!schedCV.includes(c.listId)) continue;
+        const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
+        if (!n || !/\/cover\//.test(c.cover || "")) continue;
+        const fid = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
+        if (!fid) continue;
+        try {
+          const mr = await fetch("https://www.googleapis.com/drive/v3/files/" + fid + "?fields=md5Checksum&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
+          const meta1 = await mr.json();
+          const md5 = mr.ok && meta1.md5Checksum;
+          if (!md5) continue;
+          if (!md5s[fid]) { md5s[fid] = md5; md5Dirty = true; continue; }
+          if (md5s[fid] === md5) continue;
+          // the Drive original changed — ingest it as the new cover
+          const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + fid + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
+          if (!ir.ok) { errsCV.push(n + ":dl"); continue; }
+          const buf = Buffer.from(await ir.arrayBuffer());
+          const midR = "m" + createHash("sha256").update(buf).digest("hex").slice(0, 20);
+          await kvSet("media_" + midR, { type: "image/jpeg", b64: buf.toString("base64"), at: new Date().toISOString() });
+          const cvR = "/cover/" + midR + ".jpg";
+          patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = cvR; } });
+          const gr = n <= 21 ? grids[0] : grids[1];
+          const tile = gr.g && gr.g.tiles && gr.g.tiles[n - gr.base];
+          if (tile) { tile.cover = cvR; gr.dirty = true; }
+          md5s[fid] = md5; md5Dirty = true; retouched.push(n);
+        } catch (eR) { errsCV.push(n + ":" + String(eR).slice(0, 30)); }
+      }
+      if (md5Dirty) await kvSet("sisters_cover_drive_md5", md5s);
+    }
     for (const gr of grids) if (gr.dirty) { gr.g.at = Date.now(); await kvSet(gr.key, gr.g); }
     if (patchesCV.length) await patchBoardCards("lavalle-sisters", patchesCV);
-    res.json({ ok: true, dry: dryCV, plan, synced, relinked, errors: errsCV });
+    res.json({ ok: true, dry: dryCV, plan, synced, relinked, retouched, errors: errsCV });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
