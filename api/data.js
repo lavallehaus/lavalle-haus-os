@@ -3979,7 +3979,12 @@ export default async function handler(req, res) {
     for (const gr of grids) gr.g = (await kvGet(gr.key)) || null;
     const normCV = (u) => String(u || "").replace(/^https?:\/\/[^/]+/, "");
     const gtCV = await googleToken();
-    const synced = [], relinked = [], errsCV = [];
+    for (const gr of grids) {
+      gr.at = (gr.g && gr.g.at) || 0;
+      if (!gr.at) { try { const h0 = (await kvGet(gr.key.replace("sisters_grid_tiles_", "sisters_grid_hist_"))) || []; gr.at = (h0[0] && h0[0].at) || 0; } catch (e0) {} }
+    }
+    const dryCV = !!(req.body && req.body.dry);
+    const synced = [], relinked = [], errsCV = [], plan = [];
     const patchesCV = [];
     for (const c of bdCV.cards) {
       if (!schedCV.includes(c.listId)) continue;
@@ -3990,8 +3995,14 @@ export default async function handler(req, res) {
       const tile = tiles && tiles[n - gr.base];
       if (!tile) continue;
       if (normCV(tile.cover) === normCV(c.cover)) continue;
-      // the card changed after the last grid save — the card wins
-      tile.cover = normCV(c.cover); gr.dirty = true; synced.push(n);
+      // newer side wins: the card's own edit time vs the grid's last save
+      const cardWins = (c._touched || 0) > gr.at;
+      plan.push({ n, dir: cardWins ? "card\u2192tile" : "tile\u2192card", cardAgoMin: c._touched ? Math.round((Date.now() - c._touched) / 60000) : null, gridAgoMin: gr.at ? Math.round((Date.now() - gr.at) / 60000) : null });
+      if (dryCV) continue;
+      let winCover;
+      if (cardWins) { winCover = normCV(c.cover); tile.cover = winCover; gr.dirty = true; }
+      else { winCover = normCV(tile.cover); patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = winCover; } }); }
+      synced.push(n + (cardWins ? "\u2192grid" : "\u2192card"));
       // replace the Drive original in place (same folder, same file name)
       const oldId = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
       if (oldId && gtCV) {
@@ -3999,7 +4010,7 @@ export default async function handler(req, res) {
           const mr = await fetch("https://www.googleapis.com/drive/v3/files/" + oldId + "?fields=name,parents&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
           const meta0 = await mr.json();
           if (mr.ok && meta0.name) {
-            const ir = await fetch(APP_ORIGIN + normCV(c.cover));
+            const ir = await fetch(APP_ORIGIN + winCover);
             if (ir.ok) {
               const buf = Buffer.from(await ir.arrayBuffer());
               const boundary = "lhc" + buf.length.toString(36);
@@ -4021,9 +4032,9 @@ export default async function handler(req, res) {
         } catch (eCV) { errsCV.push(n + ":" + String(eCV).slice(0, 40)); }
       }
     }
-    for (const gr of grids) if (gr.dirty) await kvSet(gr.key, gr.g);
+    for (const gr of grids) if (gr.dirty) { gr.g.at = Date.now(); await kvSet(gr.key, gr.g); }
     if (patchesCV.length) await patchBoardCards("lavalle-sisters", patchesCV);
-    res.json({ ok: true, synced, relinked, errors: errsCV });
+    res.json({ ok: true, dry: dryCV, plan, synced, relinked, errors: errsCV });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
@@ -4456,6 +4467,7 @@ export default async function handler(req, res) {
     const midT = "sg" + createHash("sha256").update(bufT).digest("hex").slice(0, 14);
     await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
     rec.mid = midT;
+    rec.at = Date.now(); // when this arrangement was saved — the cover-sync tiebreak
     await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, rec);
     // History ring: who saved, when, and the arrangement this save REPLACED —
     // the live key always holds the current one. Reader: GET ?op=sisters_grid_tiles&grid=g&hist=1
