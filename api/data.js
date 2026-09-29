@@ -789,6 +789,8 @@ export default async function handler(req, res) {
       // ride the sweep: Courtney's deck twelve → her column (adds new topics,
       // refreshes notes/covers, rolls the batch once the previous 12 are done)
       try { const acCQ = new AbortController(); setTimeout(() => acCQ.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=courtney_deck_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCQ.signal }).catch(() => {}); } catch (eCQ) {}
+      // ride the sweep: card-side cover edits flow back to the grid + Drive
+      try { const acCV = new AbortController(); setTimeout(() => acCV.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCV.signal }).catch(() => {}); } catch (eCV) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -3954,6 +3956,74 @@ export default async function handler(req, res) {
     }
     await kvSet("courtney_twelve_state", { batch: batchCQ.label, at: Date.now() });
     res.json({ ok: true, batch: batchCQ.label, posts: postsCQ.length, created: madeCQ, updated: updCQ, removed: removeIds.size, withNotes: Object.keys(cmtsByPost).length });
+    return;
+  }
+  // ── Card cover → grid tiles + Drive (her rule, Sep 29) ────────────────────
+  // The grid editor already writes covers DOWN to cards; this is the missing
+  // reverse direction: when someone (Courtney) changes a Post card's cover in
+  // the app, the matching grid tile follows, the Grid card re-renders on the
+  // next sweep (its cache keys off tile covers), and the card's Drive original
+  // is replaced in place so the "Original (Drive)" link downloads the new photo.
+  if (op === "sisters_card_cover_sync" && req.method === "POST") {
+    const okKeyCV = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCV = okKeyCV ? null : await getAuthEarly(req);
+    if (!okKeyCV && !ownerRole(authCV)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawCV = await kvGet("lavalle_data"); const blobCV = Array.isArray(rawCV) ? rawCV[0] : rawCV;
+    const bdCV = blobCV && blobCV.boards && blobCV.boards["lavalle-sisters"];
+    if (!bdCV) { res.json({ ok: false }); return; }
+    const schedCV = bdCV.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const grids = [
+      { key: "sisters_grid_tiles_1" + SBOARD.kvSuffix, base: 1, g: null, dirty: false },
+      { key: "sisters_grid_tiles_2" + SBOARD.kvSuffix, base: 22, g: null, dirty: false },
+    ];
+    for (const gr of grids) gr.g = (await kvGet(gr.key)) || null;
+    const normCV = (u) => String(u || "").replace(/^https?:\/\/[^/]+/, "");
+    const gtCV = await googleToken();
+    const synced = [], relinked = [], errsCV = [];
+    const patchesCV = [];
+    for (const c of bdCV.cards) {
+      if (!schedCV.includes(c.listId)) continue;
+      const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
+      if (!n || !c.cover) continue;
+      const gr = n <= 21 ? grids[0] : grids[1];
+      const tiles = gr.g && gr.g.tiles;
+      const tile = tiles && tiles[n - gr.base];
+      if (!tile) continue;
+      if (normCV(tile.cover) === normCV(c.cover)) continue;
+      // the card changed after the last grid save — the card wins
+      tile.cover = normCV(c.cover); gr.dirty = true; synced.push(n);
+      // replace the Drive original in place (same folder, same file name)
+      const oldId = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
+      if (oldId && gtCV) {
+        try {
+          const mr = await fetch("https://www.googleapis.com/drive/v3/files/" + oldId + "?fields=name,parents&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
+          const meta0 = await mr.json();
+          if (mr.ok && meta0.name) {
+            const ir = await fetch(APP_ORIGIN + normCV(c.cover));
+            if (ir.ok) {
+              const buf = Buffer.from(await ir.arrayBuffer());
+              const boundary = "lhc" + buf.length.toString(36);
+              const metaJ = JSON.stringify({ name: meta0.name, parents: meta0.parents && meta0.parents.length ? [meta0.parents[0]] : undefined });
+              const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaJ}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`;
+              const bodyU = Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
+              const ur = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", {
+                method: "POST", headers: { Authorization: "Bearer " + gtCV, "Content-Type": `multipart/related; boundary=${boundary}` }, body: bodyU,
+              });
+              const ud = await ur.json();
+              if (ur.ok && ud.id) {
+                await fetch("https://www.googleapis.com/drive/v3/files/" + oldId + "?supportsAllDrives=true", { method: "PATCH", headers: { Authorization: "Bearer " + gtCV, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
+                const nu = "https://drive.google.com/file/d/" + ud.id + "/view";
+                patchesCV.push({ id: c.id, apply: (fc) => { fc.coverUrl = nu; } });
+                relinked.push(n);
+              } else errsCV.push(n + ":upload");
+            } else errsCV.push(n + ":cover_fetch");
+          } else errsCV.push(n + ":meta");
+        } catch (eCV) { errsCV.push(n + ":" + String(eCV).slice(0, 40)); }
+      }
+    }
+    for (const gr of grids) if (gr.dirty) await kvSet(gr.key, gr.g);
+    if (patchesCV.length) await patchBoardCards("lavalle-sisters", patchesCV);
+    res.json({ ok: true, synced, relinked, errors: errsCV });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
