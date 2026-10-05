@@ -4137,8 +4137,8 @@ export default async function handler(req, res) {
     // (her ask, Aug 26) — the "<month> → X" label is what nests them in the
     // Links sheet, and they follow the working month automatically.
     if (SBOARD.key === "lavalle-sisters") links.push({ label: wm3 + " → Captions + Hashtags", url: "https://docs.google.com/document/d/1Do98h-x2dl4Wj8suLLHTXrm_2GSOmfN9nyUQhFRXLrI/edit" });
-    links.push({ label: wm3 + " → Grid", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
-    links.push({ label: "Lavalle Sisters (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
+    if (SBOARD.key === "lavalle-sisters") links.push({ label: wm3 + " → Grid", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
+    links.push({ label: (SBOARD.key === "the-fold" ? "The Fold" : "Lavalle Sisters") + " (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
     // Pinned links survive every rebuild (the card's links are REPLACED each
     // run, so anything hand-added would vanish on the next pinger tick).
     // Owner POST {extra:[{label,url}...]} stores the pinned list.
