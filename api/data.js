@@ -2942,20 +2942,23 @@ export default async function handler(req, res) {
     const stAU = (await kvGet("sisters_audit_state" + SBOARD.kvSuffix)) || {};
     if (!(req.body || {}).force && Date.now() - (stAU.at || 0) < 3 * 86400000) { res.json({ ok: true, skipped: true, nextIn: Math.round((3 * 86400000 - (Date.now() - stAU.at)) / 3600000) + "h" }); return; }
     const sinceAU = Date.now() - 32 * 86400000;
-    const rowsAU = [];
+    const rowsAU = []; let igNote = null, sawIg = false;
     const baseAU = "https://graph.instagram.com/v23.0";
     for (const t of Object.values(igAccounts(await kvGet("instagram_oauth")))) {
       if (!SBOARD.igMatch.test(t.username || "")) continue;
+      sawIg = true;
       try {
         const media = await (await fetch(`${baseAU}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=40&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        if (media.error) igNote = "Instagram connection for @" + (t.username || "this account") + " needs reconnecting (Settings → Instagram): " + String(media.error.message || media.error.type || "token error").slice(0, 120);
         for (const m of (media.data || [])) {
           if (m.timestamp && Date.parse(m.timestamp) < sinceAU) continue;
           let saved = null, reach = null;
           try { const d = await (await fetch(`${baseAU}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch (e0) {}
           rowsAU.push({ ch: "IG", kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 140), likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, url: m.permalink || null, at: m.timestamp });
         }
-      } catch (eIG) {}
+      } catch (eIG) { igNote = igNote || "Instagram read failed — will retry."; }
     }
+    if (!sawIg) igNote = "No Instagram account matching this board is connected yet (Settings → Instagram).";
     // TikTok: read-only video list — works as soon as the brand account is
     // connected (posting stays a Studio hand-off; the read scope is separate).
     let ttNote = null;
@@ -2986,7 +2989,7 @@ export default async function handler(req, res) {
     const igCount = rowsAU.filter((r) => r.ch === "IG").length, ttCount = rowsAU.filter((r) => r.ch === "TT").length;
     const top3 = rowsAU.slice(0, 3).filter((r) => r.url).map((r, i) => (i + 1) + ". " + (r.caption || r.kind).slice(0, 60) + " — " + r.url);
     const descAU = "Findings · " + windowAU + " (refreshes every 3 days; next month's Strategy Outline is drawn from this)\n" +
-      "Read: " + igCount + " Instagram posts" + (ttCount ? " + " + ttCount + " TikToks" : "") + "." + (ttNote ? " " + ttNote : "") + "\n\n" +
+      "Read: " + igCount + " Instagram posts" + (ttCount ? " + " + ttCount + " TikToks" : "") + "." + (igNote ? " ⚠ " + igNote : "") + (ttNote ? " " + ttNote : "") + "\n\n" +
       (findingsAU ? (findingsAU.headline ? findingsAU.headline + "\n\n" : "") +
         (findingsAU.findings || []).map((x) => "• " + x).join("\n") +
         ((findingsAU.carry || []).length ? "\n\nCarry into next month:\n" + findingsAU.carry.map((x) => "• " + x).join("\n") : "") +
@@ -3002,7 +3005,7 @@ export default async function handler(req, res) {
       ac.desc = descAU;
     });
     await kvSet("sisters_audit_state" + SBOARD.kvSuffix, { at: Date.now(), sig: sigAU });
-    res.json({ ok: true, ig: igCount, tiktok: ttCount, ttNote, sig: sigAU });
+    res.json({ ok: true, ig: igCount, tiktok: ttCount, igNote, ttNote, sig: sigAU });
     return;
   }
   // ── Hashtag bank self-update (her rule, Oct 5 2026) ───────────────────────
