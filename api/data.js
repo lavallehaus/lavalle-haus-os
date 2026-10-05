@@ -4084,11 +4084,49 @@ export default async function handler(req, res) {
     const gtL3 = await googleToken(); if (!gtL3) { res.json({ ok: false, error: "google_not_connected" }); return; }
     const lsL3 = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [];
     const SIS3 = SBOARD.driveRootId;
-    const wm3 = (await kvGet(SBOARD.monthDefaultKv)) || "September";
+    let wm3 = (await kvGet(SBOARD.monthDefaultKv)) || "September";
+    // Auto-advance the working month (her rule, Oct 5 2026): the moment every
+    // dated post of the stored month is checked off, the card follows the
+    // earliest still-unchecked post's month — and the KV advances with it so
+    // cover sync, strategy naming and the other month-keyed ops follow too.
+    try {
+      const MONTHS_L3 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+      const rawM3 = await kvGet("lavalle_data"); const blobM3 = Array.isArray(rawM3) ? rawM3[0] : rawM3;
+      const bdM3 = blobM3 && blobM3.boards && blobM3.boards[SBOARD.key];
+      if (bdM3) {
+        const schedM3 = bdM3.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+        const dated = [];
+        for (const c of bdM3.cards.filter((c) => !c._deleted && schedM3.includes(c.listId))) {
+          const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
+          if (!m) continue;
+          const mo = MONTHS_L3.indexOf(m[1].toLowerCase()); if (mo < 0) continue;
+          dated.push({ t: Date.UTC(mo >= 6 ? 2026 : 2027, mo, +m[2]), mo, done: !!c.done });
+        }
+        const curMo = MONTHS_L3.indexOf(wm3.toLowerCase());
+        const curAllDone = !dated.some((p) => p.mo === curMo && !p.done);
+        const nextUp = dated.filter((p) => !p.done).sort((a, b) => a.t - b.t)[0];
+        if (curAllDone && nextUp && nextUp.mo !== curMo) {
+          wm3 = MONTHS_L3[nextUp.mo][0].toUpperCase() + MONTHS_L3[nextUp.mo].slice(1);
+          await kvSet(SBOARD.monthDefaultKv, wm3);
+        }
+      }
+    } catch (eM3) {}
     const top = await lsL3(SIS3);
     const mF = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === wm3.toLowerCase());
     if (!mF) { res.json({ ok: false, error: "month folder missing: " + wm3 }); return; }
-    const subs = (await lsL3(mF.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    let subs = (await lsL3(mF.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    // The Fold's month folders always carry Cover Photos / Carousel / Reels
+    // (her rule, Oct 5 2026) — create whichever is missing so a fresh month
+    // links complete from day one.
+    if (SBOARD.key === "the-fold") {
+      for (const need of ["Cover Photos", "Carousel", "Reels"]) {
+        if (subs.some((f) => (f.name || "").trim().toLowerCase() === need.toLowerCase())) continue;
+        try {
+          const mk3 = await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,mimeType", { method: "POST", headers: { Authorization: "Bearer " + gtL3, "Content-Type": "application/json" }, body: JSON.stringify({ name: need, mimeType: "application/vnd.google-apps.folder", parents: [mF.id] }) })).json();
+          if (mk3.id) subs.push({ id: mk3.id, name: need, mimeType: "application/vnd.google-apps.folder" });
+        } catch (eMk3) {}
+      }
+    }
     const order = ["cover photos", "courtney to edit", "reels", "carousels", "strategy outline", "grid"];
     subs.sort((a, b) => { const ia = order.indexOf((a.name || "").trim().toLowerCase()), ib = order.indexOf((b.name || "").trim().toLowerCase()); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
     // "Courtney to edit" renders as "Courtney drafted" and points at her
