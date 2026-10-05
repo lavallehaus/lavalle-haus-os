@@ -2851,14 +2851,19 @@ export default async function handler(req, res) {
     // 2 · captions
     const bankFA = bdFA.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
     const bankTags = ((bankFA && bankFA.desc || "").match(/#[\w]+/g) || []).filter((t) => !/fold|lavalle/i.test(t));
-    const capsFA = (await kvGet("fold_auto_caps")) || { byN: {}, sigByN: {} };
+    const capsFA = (await kvGet("fold_auto_caps")) || { byN: {}, sigByN: {}, seeded: {} };
+    capsFA.seeded = capsFA.seeded || {};
     const needsCap = [];
     for (const cy of cycles) for (const p of cy.posts) {
       const c = p.card;
       if (!c.cover || c.done) continue;
       const cur = String(c.desc || "").trim();
       const mine = capsFA.byN[p.d.n];
-      if (!cur || (mine && cur === mine && capsFA.sigByN[p.d.n] !== auditSig)) needsCap.push({ n: p.d.n, cy, card: c });
+      // 22-42 were rearranged Oct 5 2026: captions written against the old
+      // grid describe the wrong photos, so each gets ONE reseed; after that
+      // only empty or still-ours captions ever refresh (hand edits are final).
+      const seedCap = cy.range[0] >= 22 && !mine && !capsFA.seeded[p.d.n];
+      if (!cur || seedCap || (mine && cur === mine && capsFA.sigByN[p.d.n] !== auditSig)) needsCap.push({ n: p.d.n, cy, card: c, seed: seedCap });
     }
     if (needsCap.length) {
       const batch = needsCap.slice(0, 6);
@@ -2887,14 +2892,14 @@ export default async function handler(req, res) {
               const hit = batch.find((b) => b.n === Number(pc.n)); if (!hit || !pc.caption) continue;
               const cap = noDashF(pc.caption).slice(0, 300);
               const tags = (String(pc.tags || "").match(/#[\w]+/g) || []).filter((t) => bankTags.some((bt) => bt.toLowerCase() === t.toLowerCase())).slice(0, 2).join(" ");
-              capsFA.byN[hit.n] = cap; capsFA.sigByN[hit.n] = auditSig;
-              patchesFA.push({ id: hit.card.id, apply: (fc) => { const curD = String(fc.desc || "").trim(); if (!curD || curD === String(capsFA.byN[hit.n] || "")) { /* still ours */ } fc.desc = cap; if (tags) fc.tags = tags; } });
+              capsFA.byN[hit.n] = cap; capsFA.sigByN[hit.n] = auditSig; capsFA.seeded[hit.n] = 1;
+              patchesFA.push({ id: hit.card.id, apply: (fc) => { fc.desc = cap; if (tags) fc.tags = tags; } });
             }
             // guard: only write onto cards whose desc is still empty or still ours
             const freshRaw = await kvGet("lavalle_data"); const freshBlob = Array.isArray(freshRaw) ? freshRaw[0] : freshRaw;
             const freshBd = freshBlob && freshBlob.boards && freshBlob.boards["the-fold"];
             const writable = new Set();
-            for (const b of batch) { const fcd = freshBd && freshBd.cards.find((c) => c.id === b.card.id); const cur = String((fcd && fcd.desc) || "").trim(); if (!cur || cur === String(b.card.desc || "").trim()) writable.add(b.card.id); }
+            for (const b of batch) { const fcd = freshBd && freshBd.cards.find((c) => c.id === b.card.id); const cur = String((fcd && fcd.desc) || "").trim(); if (!cur || cur === String(b.card.desc || "").trim() || b.seed) writable.add(b.card.id); }
             await patchBoardCards("the-fold", patchesFA.filter((p) => writable.has(p.id)));
             await kvSet("fold_auto_caps", capsFA);
             res.json({ ok: true, did: "captions", wrote: patchesFA.filter((p) => writable.has(p.id)).length, remaining: needsCap.length - batch.length });
