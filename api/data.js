@@ -1926,19 +1926,22 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the numbered windows (split 1–9, 10–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in, and a window drops off the card entirely once every post in it is crossed off. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
-    ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page."],
-    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes."],
-    ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten."],
-    ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file."],
-    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days."],
-    ["Sarah's script notes \u2192 proposed rewrites", "Every 15 min (re-runs when Sarah leaves or edits a comment in the FTC Scripts sheet)", "Reads Sarah's comments on the Lavalle Sisters - FTC Scripts sheet, works out which post and which line each one sits on, and writes a PROPOSED rewrite onto that card \u2014 script title, on-screen hook, spoken hook, nugget 1, nugget 2, close or caption. Nothing is replaced: the current words stay until you accept, and nothing is ever written back into Sarah's sheet. A filming direction (\u201cactually show this\u201d) is listed as a direction, not turned into a rewrite. Her note also lands on the matching beat under Pre-production, and the card links straight to her row."],
-    ["Courtney's 12 \u2014 the ask", "The 24th of each month", "Posts a dated card asking Courtney for the following month's 12, due the 7th, with the creative deck linked. Two weeks of runway so the 12 get read before the shoot \u2014 and the deck page, not Slack, is where she delivers them."],
-    ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards."],
-    ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft."],
-    ["Loft strategy PDF from Slack", "Every 15 min until Oct 2026 (needs Slack files permission)", "Files the Loft's monthly strategy PDF into Drive → Strategy & Reports → Strategy Outline."],
-    ["Reel / cover link-up (The Fold)", "Every 15 min", "A reel named “3” or “reel 3” dropped into a month's Reels folder links to Post 3; numbered cover photos dress their cards; board backgrounds follow designated picks."],
-    ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in: the month folder, Cover photos, Courtney to edit, Reels, Carousels, Strategy outline, plus the Grid Archive."],
-    ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above)."],
+    ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page.", ["lavalle-sisters"]],
+    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
+    ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten.", ["lavalle-sisters"]],
+    ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file.", ["lavalle-sisters"]],
+    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days.", ["lavalle-sisters"]],
+    ["Sarah's script notes \u2192 proposed rewrites", "Every 15 min (re-runs when Sarah leaves or edits a comment in the FTC Scripts sheet)", "Reads Sarah's comments on the Lavalle Sisters - FTC Scripts sheet, works out which post and which line each one sits on, and writes a PROPOSED rewrite onto that card \u2014 script title, on-screen hook, spoken hook, nugget 1, nugget 2, close or caption. Nothing is replaced: the current words stay until you accept, and nothing is ever written back into Sarah's sheet. A filming direction (\u201cactually show this\u201d) is listed as a direction, not turned into a rewrite. Her note also lands on the matching beat under Pre-production, and the card links straight to her row.", ["lavalle-sisters"]],
+    ["Courtney's 12 \u2014 the ask", "The 24th of each month", "Posts a dated card asking Courtney for the following month's 12, due the 7th, with the creative deck linked. Two weeks of runway so the 12 get read before the shoot \u2014 and the deck page, not Slack, is where she delivers them.", ["lavalle-sisters"]],
+    ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards.", ["lavalle-sisters"]],
+    ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft.", ["lavalle-sisters"]],
+    ["Loft strategy PDF from Slack", "Every 15 min until Oct 2026 (needs Slack files permission)", "Files the Loft's monthly strategy PDF into Drive → Strategy & Reports → Strategy Outline.", ["lavalle-sisters"]],
+    ["Reel / cover link-up (The Fold)", "Every 15 min", "A reel named “3” or “reel 3” dropped into a month's Reels folder links to Post 3; numbered cover photos dress their cards; board backgrounds follow designated picks.", ["the-fold"]],
+    ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in, and the working month advances itself: the moment the previous month's last scheduled post is checked off, the links (and every month-keyed automation) move to the next month's folders. The Fold's month folders always carry Cover Photos, Carousel and Reels; missing ones are created, plus the Grid Archive."],
+    ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above).", ["lavalle-sisters"]],
+    ["Channel audit (auto)", "Every 15 min; refreshes every 3 days", "The Audit card under Strategy Outline re-reads @thefoldlabel's trailing 30 days (Instagram now, TikTok as soon as that account is connected) and writes short findings plus what to carry into next month. Next month's theme and captions are drawn from it.", ["the-fold"]],
+    ["Hashtag bank self-update", "Every 15 min", "Any new hashtag typed onto a post card joins the Hashtags card's FROM CARDS line, so the bank always holds the full vocabulary. The brand name never joins it.", ["the-fold"]],
+    ["Theme, captions + Strategy Outline (per cycle)", "Every 15 min, one step per tick", "Each cycle (October = Posts 5-21, November = Posts 22-42, and so on) gets its own theme (1-2 sentences from the live site's products, the audit and current quiet-luxury direction), 1-2 sentence captions with 2 bank hashtags per post (hand-written captions are never overwritten), and its own Strategy Outline card + PDF, which rebuilds whenever the theme, a caption or the audit changes. The outline builds once the cycle's grid is complete; both cycles' outlines sit in Strategy Outline, the live month on top.", ["the-fold"]],
     ["Save arrangement", "When you hit Save in the grid editor", "The grid IS the sequence: tile 1 is Post 1 … tile 42 is Post 42 (grid 1 = Schedule 1-21, grid 2 = Schedule 22-42). Swapping two tiles swaps their cards too — caption, hashtags, approval and Courtney concept travel with the photo; a tray photo dropped in keeps the slot's caption. Dates re-flow from the slot (each of our posts advances a day, Courtney's share the day before it). The montage, the Grid card and the Strategy Outline follow."],
   ];
   // ── Team roster: remove a member everywhere (admin) ───────────────────────
@@ -2782,6 +2785,261 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── The Fold strategy brain (her rules, Oct 5 2026) ───────────────────────
+  // One unit of work per pinger tick, in this order:
+  //  1. THEMES — one per cycle (posts 5-21 = October, 22-42 = November…), 1-2
+  //     sentences drawn from the live site's products, the channel audit and
+  //     current quiet-luxury direction. Regenerates when the audit changes, so
+  //     late-October findings reshape November before its posts run.
+  //  2. CAPTIONS — every dated post with a cover gets a 1-2 sentence caption +
+  //     exactly 2 hashtags from the Hashtags card. Hand-written captions are
+  //     never touched: only empty ones, or ones still exactly as this op wrote
+  //     them, refresh when the audit moves.
+  //  3. BUILDS — a cycle whose theme or captions changed gets its Strategy
+  //     Outline rebuilt (upcoming cycle first, current cycle last so it tops
+  //     the column). Both outlines sit in Strategy Outline, one card each.
+  if (op === "fold_strategy_auto" && req.method === "POST") {
+    const okKeyFA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authFA = okKeyFA ? null : await getAuthEarly(req);
+    if (!okKeyFA && !ownerRole(authFA)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (SBOARD.key !== "the-fold") { res.json({ ok: false, error: "fold only" }); return; }
+    const keyFA = process.env.ANTHROPIC_API_KEY;
+    if (!keyFA) { res.json({ ok: false, error: "ANTHROPIC_API_KEY not set" }); return; }
+    const noDashF = (x) => String(x || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").trim();
+    const auditFA = (await kvGet("sisters_audit_findings" + SBOARD.kvSuffix)) || null;
+    const auditSig = (auditFA && auditFA.sig) || "none";
+    const rawFA = await kvGet("lavalle_data"); const blobFA = Array.isArray(rawFA) ? rawFA[0] : rawFA;
+    const bdFA = blobFA && blobFA.boards && blobFA.boards["the-fold"];
+    if (!bdFA) { res.json({ ok: false }); return; }
+    const MONTHS_FA = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const parseFA = (nm) => { const m = /^post\s*(\d+)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(nm || ""); if (!m) return null; const mo = MONTHS_FA.findIndex((x) => x.toLowerCase() === m[3].toLowerCase()); if (mo < 0) return null; return { n: +m[1], mo, day: +m[4], yr: mo >= 6 ? 2026 : 2027 }; };
+    const cycles = [];
+    for (const l of bdFA.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim()))) {
+      const ps = bdFA.cards.filter((c) => !c._deleted && c.listId === l.id).map((c) => ({ card: c, d: parseFA(c.name) })).filter((x) => x.d);
+      if (!ps.length) continue;
+      ps.sort((a, b) => a.d.n - b.d.n);
+      const first = ps[0].d;
+      cycles.push({ title: MONTHS_FA[first.mo] + " " + first.yr, range: [ps[0].d.n, ps[ps.length - 1].d.n], posts: ps });
+    }
+    if (!cycles.length) { res.json({ ok: false, error: "no dated cycles" }); return; }
+    // live products (cached a day) — the captions and themes speak to what is
+    // actually purchasable on thefoldlabel.com
+    let prodsFA = (await kvGet("fold_products_cache")) || null;
+    if (!prodsFA || Date.now() - (prodsFA.at || 0) > 86400000) {
+      try {
+        const pj = await (await fetch("https://thefoldlabel.com/products.json?limit=250")).json();
+        prodsFA = { at: Date.now(), items: (pj.products || []).map((p) => ({ title: p.title, type: p.product_type || "" })).slice(0, 80) };
+        await kvSet("fold_products_cache", prodsFA);
+      } catch (ePJ) { prodsFA = prodsFA || { items: [] }; }
+    }
+    const prodLine = (prodsFA.items || []).map((p) => p.title).join(", ");
+    const auditLine = auditFA ? (auditFA.headline ? auditFA.headline + " " : "") + (auditFA.carry || []).join(" ") : "No audit yet.";
+    // 1 · themes
+    const themesFA = (await kvGet("fold_cycle_themes")) || {};
+    for (const cy of cycles) {
+      const th = themesFA[cy.title];
+      if (th && th.auditSig === auditSig && th.body) continue;
+      const promptT = "You set the monthly theme for The Fold (thefoldlabel.com), a quiet-luxury womenswear label. Live products: " + (prodLine || "(catalog unavailable)") + ". Last channel audit: " + auditLine + " Current quiet-luxury direction you know of for " + cy.title + " (textures, palettes, silhouettes trending upward). Write the " + cy.title + " strategy theme: ONE statement, maximum 2 sentences, calm and specific to what we sell. Plain punctuation, never an em dash, no hashtags. Return ONLY JSON: {\"body\":\"the 1-2 sentence theme\"}";
+      try {
+        const rT = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyFA, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 300, messages: [{ role: "user", content: promptT }] }) });
+        const jT = await rT.json(); const tT = (jT.content || []).map((c) => c.text || "").join("");
+        const mT = tT.match(/\{[\s\S]*\}/);
+        if (mT) { themesFA[cy.title] = { body: noDashF(JSON.parse(mT[0]).body).slice(0, 400), auditSig, at: Date.now() }; await kvSet("fold_cycle_themes", themesFA); res.json({ ok: true, did: "theme", cycle: cy.title, body: themesFA[cy.title].body }); return; }
+      } catch (eTh) {}
+      res.json({ ok: false, did: "theme", cycle: cy.title, error: "theme generation failed, will retry" }); return;
+    }
+    // 2 · captions
+    const bankFA = bdFA.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
+    const bankTags = ((bankFA && bankFA.desc || "").match(/#[\w]+/g) || []).filter((t) => !/fold|lavalle/i.test(t));
+    const capsFA = (await kvGet("fold_auto_caps")) || { byN: {}, sigByN: {} };
+    const needsCap = [];
+    for (const cy of cycles) for (const p of cy.posts) {
+      const c = p.card;
+      if (!c.cover || c.done) continue;
+      const cur = String(c.desc || "").trim();
+      const mine = capsFA.byN[p.d.n];
+      if (!cur || (mine && cur === mine && capsFA.sigByN[p.d.n] !== auditSig)) needsCap.push({ n: p.d.n, cy, card: c });
+    }
+    if (needsCap.length) {
+      const batch = needsCap.slice(0, 6);
+      const JimpF = (await import("jimp")).default;
+      const contentFA = [];
+      for (const b of batch) {
+        try {
+          const u = /^https?:/.test(b.card.cover) ? b.card.cover : APP_ORIGIN + b.card.cover;
+          const rb = await fetch(u); if (!rb.ok) continue;
+          const im = await JimpF.read(Buffer.from(await rb.arrayBuffer()));
+          im.resize(280, JimpF.AUTO); im.quality(70);
+          contentFA.push({ type: "text", text: "Post " + b.n + " (" + (b.card.name || "") + "):" });
+          contentFA.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await im.getBufferAsync(JimpF.MIME_JPEG)).toString("base64") } });
+        } catch (eIm) {}
+      }
+      if (contentFA.length) {
+        contentFA.push({ type: "text", text: "You write Instagram captions for The Fold (thefoldlabel.com), quiet-luxury womenswear. Live products: " + (prodLine || "(catalog unavailable)") + ". This cycle's theme: " + ((themesFA[batch[0].cy.title] || {}).body || "") + ". Audit notes: " + auditLine + " Hashtag bank (choose from these ONLY): " + bankTags.join(" ") + "\n\nFor each post photo above: a caption of MAXIMUM 2 short sentences in the brand's calm register, naming the live product when the photo clearly shows one; plain punctuation, never an em dash, no emojis, no hashtags inside the caption. Then exactly 2 hashtags from the bank, varied across posts. Return ONLY JSON: {\"posts\":[{\"n\":22,\"caption\":\"…\",\"tags\":\"#a #b\"}]}" });
+        try {
+          const rC = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyFA, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: contentFA }] }) });
+          const jC = await rC.json(); const tC = (jC.content || []).map((c) => c.text || "").join("");
+          const mC = tC.match(/\{[\s\S]*\}/);
+          if (mC) {
+            const outC = JSON.parse(mC[0]);
+            const patchesFA = [];
+            for (const pc of (outC.posts || [])) {
+              const hit = batch.find((b) => b.n === Number(pc.n)); if (!hit || !pc.caption) continue;
+              const cap = noDashF(pc.caption).slice(0, 300);
+              const tags = (String(pc.tags || "").match(/#[\w]+/g) || []).filter((t) => bankTags.some((bt) => bt.toLowerCase() === t.toLowerCase())).slice(0, 2).join(" ");
+              capsFA.byN[hit.n] = cap; capsFA.sigByN[hit.n] = auditSig;
+              patchesFA.push({ id: hit.card.id, apply: (fc) => { const curD = String(fc.desc || "").trim(); if (!curD || curD === String(capsFA.byN[hit.n] || "")) { /* still ours */ } fc.desc = cap; if (tags) fc.tags = tags; } });
+            }
+            // guard: only write onto cards whose desc is still empty or still ours
+            const freshRaw = await kvGet("lavalle_data"); const freshBlob = Array.isArray(freshRaw) ? freshRaw[0] : freshRaw;
+            const freshBd = freshBlob && freshBlob.boards && freshBlob.boards["the-fold"];
+            const writable = new Set();
+            for (const b of batch) { const fcd = freshBd && freshBd.cards.find((c) => c.id === b.card.id); const cur = String((fcd && fcd.desc) || "").trim(); if (!cur || cur === String(b.card.desc || "").trim()) writable.add(b.card.id); }
+            await patchBoardCards("the-fold", patchesFA.filter((p) => writable.has(p.id)));
+            await kvSet("fold_auto_caps", capsFA);
+            res.json({ ok: true, did: "captions", wrote: patchesFA.filter((p) => writable.has(p.id)).length, remaining: needsCap.length - batch.length });
+            return;
+          }
+        } catch (eCp) {}
+        res.json({ ok: false, did: "captions", error: "caption pass failed, will retry" }); return;
+      }
+    }
+    // 3 · builds — upcoming cycles first, current last so it tops the column
+    const stFA = (await kvGet("fold_strategy_auto_state")) || { builds: {} };
+    const todayFA = new Date(); const todayUTC = Date.UTC(todayFA.getUTCFullYear(), todayFA.getUTCMonth(), todayFA.getUTCDate());
+    const curIdx = cycles.findIndex((cy) => cy.posts.some((p) => !p.card.done && Date.UTC(p.d.yr, p.d.mo, p.d.day) >= todayUTC));
+    const ordered = [...cycles.filter((_, i) => i !== curIdx), ...(curIdx >= 0 ? [cycles[curIdx]] : [])];
+    for (const cy of ordered) {
+      const capsOf = cy.posts.map((p) => String(p.card.desc || "") + "|" + String(p.card.tags || "")).join("~");
+      const bSig = createHash("sha256").update(JSON.stringify([themesFA[cy.title] && themesFA[cy.title].body, capsOf, cy.range])).digest("hex").slice(0, 12);
+      if (stFA.builds[cy.title] === bSig) continue;
+      await kvSet("sisters_strategy_theme_tf", { title: cy.title, body: (themesFA[cy.title] || {}).body || "", range: cy.range, at: Date.now() });
+      try { const acFA = new AbortController(); setTimeout(() => acFA.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_strategy_pdf&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ force: true }), signal: acFA.signal }).catch(() => {}); } catch (eBd) {}
+      stFA.builds[cy.title] = bSig;
+      await kvSet("fold_strategy_auto_state", stFA);
+      res.json({ ok: true, did: "build", cycle: cy.title }); return;
+    }
+    // 4 · once an auto outline exists the old hand card retires
+    const autoCard = bdFA.cards.find((c) => !c._deleted && /^strategy outline — /i.test(c.name || ""));
+    const mayCard = bdFA.cards.find((c) => !c._deleted && /^may strategy outline$/i.test((c.name || "").trim()));
+    if (autoCard && mayCard) {
+      await patchBoardCards("the-fold", [{ id: mayCard.id, apply: (fc) => { fc._deleted = true; fc._removedAt = Date.now(); } }]);
+      res.json({ ok: true, did: "retired May Strategy Outline" }); return;
+    }
+    res.json({ ok: true, did: "idle", cycles: cycles.map((c) => c.title + " [" + c.range + "]") });
+    return;
+  }
+  // ── Channel audit card (her rule, Oct 5 2026) ─────────────────────────────
+  // The "Audit" card under Strategy Outline refreshes itself with the brand's
+  // channel findings over the trailing 30 days — Instagram now, TikTok too the
+  // moment that account is connected — so next month's Strategy Outline is
+  // drawn from real performance, not memory. Board-generic; the pinger runs it
+  // for The Fold (@thefoldlabel).
+  if (op === "sisters_audit_card" && req.method === "POST") {
+    const okKeyAU = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authAU = okKeyAU ? null : await getAuthEarly(req);
+    if (!okKeyAU && !ownerRole(authAU)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const stAU = (await kvGet("sisters_audit_state" + SBOARD.kvSuffix)) || {};
+    if (!(req.body || {}).force && Date.now() - (stAU.at || 0) < 3 * 86400000) { res.json({ ok: true, skipped: true, nextIn: Math.round((3 * 86400000 - (Date.now() - stAU.at)) / 3600000) + "h" }); return; }
+    const sinceAU = Date.now() - 32 * 86400000;
+    const rowsAU = [];
+    const baseAU = "https://graph.instagram.com/v23.0";
+    for (const t of Object.values(igAccounts(await kvGet("instagram_oauth")))) {
+      if (!SBOARD.igMatch.test(t.username || "")) continue;
+      try {
+        const media = await (await fetch(`${baseAU}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=40&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        for (const m of (media.data || [])) {
+          if (m.timestamp && Date.parse(m.timestamp) < sinceAU) continue;
+          let saved = null, reach = null;
+          try { const d = await (await fetch(`${baseAU}/${m.id}/insights?metric=saved,reach&access_token=${encodeURIComponent(t.access_token)}`)).json(); (d.data || []).forEach((x) => { if (x.name === "saved") saved = x.values?.[0]?.value ?? null; if (x.name === "reach") reach = x.values?.[0]?.value ?? null; }); } catch (e0) {}
+          rowsAU.push({ ch: "IG", kind: m.media_product_type === "REELS" || m.media_type === "VIDEO" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carousel" : "Static", caption: (m.caption || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 140), likes: m.like_count || 0, comments: m.comments_count || 0, saved, reach, url: m.permalink || null, at: m.timestamp });
+        }
+      } catch (eIG) {}
+    }
+    // TikTok: read-only video list — works as soon as the brand account is
+    // connected (posting stays a Studio hand-off; the read scope is separate).
+    let ttNote = null;
+    const ttAcct = Object.values(tiktokAccounts(await kvGet("tiktok_oauth"))).find((t) => SBOARD.igMatch.test(t.display_name || ""));
+    if (ttAcct) {
+      try {
+        const vr = await (await fetch("https://open.tiktokapis.com/v2/video/list/?fields=id,title,create_time,like_count,comment_count,share_count,view_count", { method: "POST", headers: { Authorization: "Bearer " + ttAcct.access_token, "Content-Type": "application/json" }, body: JSON.stringify({ max_count: 20 }) })).json();
+        const vids = ((vr.data || {}).videos || []).filter((v) => !v.create_time || v.create_time * 1000 >= sinceAU);
+        for (const v of vids) rowsAU.push({ ch: "TT", kind: "TikTok", caption: (v.title || "").replace(/#[\wÀ-ɏ]+/g, "").slice(0, 140), likes: v.like_count || 0, comments: v.comment_count || 0, saved: v.share_count || null, reach: v.view_count || null, url: null, at: v.create_time ? new Date(v.create_time * 1000).toISOString() : null });
+        if (!vids.length && vr.error && vr.error.code && vr.error.code !== "ok") ttNote = "TikTok connected but the video read was refused (" + vr.error.code + ").";
+      } catch (eTT) { ttNote = "TikTok read failed — will retry."; }
+    } else ttNote = "TikTok not connected for this account yet. Connect it under Settings → TikTok and these numbers fold in on the next pass.";
+    const scoreAU = (r) => (r.saved || 0) * 3 + r.likes + r.comments * 2;
+    rowsAU.sort((a, b) => scoreAU(b) - scoreAU(a));
+    let findingsAU = null;
+    const keyAU = process.env.ANTHROPIC_API_KEY;
+    if (keyAU && rowsAU.length) {
+      try {
+        const promptAU = "You are auditing last month's social performance for " + SBOARD.themeLabelBrand + ". Posts from the trailing 30 days, best first (score = saves*3 + likes + comments*2):\n" + rowsAU.slice(0, 30).map((r, i) => `${i + 1}) [${r.ch} ${r.kind}] likes ${r.likes}, comments ${r.comments}, ${r.ch === "TT" ? "shares" : "saved"} ${r.saved ?? "?"}, ${r.ch === "TT" ? "views" : "reach"} ${r.reach ?? "?"}: ${r.caption || "(no caption)"}`).join("\n") + "\n\nWrite the month's audit. SHORT lines, nothing over ~15 words, plain punctuation, never an em dash. Return ONLY JSON: {\"headline\":\"one line on the month\",\"findings\":[\"4-6 short findings with numbers\"],\"carry\":[\"3-4 short directives to carry into next month's content\"],\"formatMix\":\"one line on reels vs carousels vs statics\"}";
+        const rA = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyAU, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: promptAU }] }) });
+        const jA = await rA.json(); const tA = (jA.content || []).map((c) => c.text || "").join("");
+        const mA = tA.match(/\{[\s\S]*\}/); if (mA) findingsAU = JSON.parse(mA[0]);
+      } catch (eAN) {}
+    }
+    const sigAU = createHash("sha256").update(JSON.stringify(findingsAU || rowsAU.slice(0, 10))).digest("hex").slice(0, 12);
+    const fmtD = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    const windowAU = fmtD(new Date(sinceAU)) + " – " + fmtD(new Date());
+    const igCount = rowsAU.filter((r) => r.ch === "IG").length, ttCount = rowsAU.filter((r) => r.ch === "TT").length;
+    const top3 = rowsAU.slice(0, 3).filter((r) => r.url).map((r, i) => (i + 1) + ". " + (r.caption || r.kind).slice(0, 60) + " — " + r.url);
+    const descAU = "Findings · " + windowAU + " (refreshes every 3 days; next month's Strategy Outline is drawn from this)\n" +
+      "Read: " + igCount + " Instagram posts" + (ttCount ? " + " + ttCount + " TikToks" : "") + "." + (ttNote ? " " + ttNote : "") + "\n\n" +
+      (findingsAU ? (findingsAU.headline ? findingsAU.headline + "\n\n" : "") +
+        (findingsAU.findings || []).map((x) => "• " + x).join("\n") +
+        ((findingsAU.carry || []).length ? "\n\nCarry into next month:\n" + findingsAU.carry.map((x) => "• " + x).join("\n") : "") +
+        (findingsAU.formatMix ? "\n\nFormat mix: " + findingsAU.formatMix : "")
+        : "No findings could be drawn yet" + (rowsAU.length ? " (analysis unavailable this pass)." : " — no posts returned for the window.")) +
+      (top3.length ? "\n\nTop posts:\n" + top3.join("\n") : "");
+    await kvSet("sisters_audit_findings" + SBOARD.kvSuffix, { at: Date.now(), sig: sigAU, window: windowAU, headline: findingsAU && findingsAU.headline, findings: (findingsAU && findingsAU.findings) || [], carry: (findingsAU && findingsAU.carry) || [], formatMix: findingsAU && findingsAU.formatMix, top: rowsAU.slice(0, 8).map((r) => ({ ch: r.ch, kind: r.kind, caption: r.caption, likes: r.likes, comments: r.comments })) });
+    await patchBoardCards(SBOARD.key, [], (blobAU, bdAU) => {
+      const soAU = bdAU.lists.find((l) => /strategy outline/i.test(l.name || "")) || bdAU.lists[0];
+      let ac = bdAU.cards.find((c) => !c._deleted && /audit/i.test(c.name || "") && !/^post\b/i.test(c.name || ""));
+      if (!ac) { ac = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soAU.id, name: "", labels: [], members: [], attachments: [], links: [], done: false }; bdAU.cards.push(ac); }
+      ac.name = "Audit — channels (auto)";
+      ac.desc = descAU;
+    });
+    await kvSet("sisters_audit_state" + SBOARD.kvSuffix, { at: Date.now(), sig: sigAU });
+    res.json({ ok: true, ig: igCount, tiktok: ttCount, ttNote, sig: sigAU });
+    return;
+  }
+  // ── Hashtag bank self-update (her rule, Oct 5 2026) ───────────────────────
+  // Any hashtag Courtney (or anyone) types onto a post card that the Hashtags
+  // card doesn't know yet is appended to a FROM CARDS line on the bank, so the
+  // bank is always the full vocabulary. Never the brand name.
+  if (op === "sisters_hashtags_sync" && req.method === "POST") {
+    const okKeyHS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authHS = okKeyHS ? null : await getAuthEarly(req);
+    if (!okKeyHS && !ownerRole(authHS)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawHS = await kvGet("lavalle_data"); const blobHS = Array.isArray(rawHS) ? rawHS[0] : rawHS;
+    const bdHS = blobHS && blobHS.boards && blobHS.boards[SBOARD.key];
+    if (!bdHS) { res.json({ ok: false }); return; }
+    const bankHS = bdHS.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
+    if (!bankHS) { res.json({ ok: false, error: "no hashtags card" }); return; }
+    const known = new Set((String(bankHS.desc || "").match(/#[\w]+/g) || []).map((t) => t.toLowerCase()));
+    const schedHS = bdHS.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const fresh = [];
+    for (const c of bdHS.cards.filter((c) => !c._deleted && schedHS.includes(c.listId))) {
+      for (const t of (String(c.tags || "").match(/#[\w]+/g) || [])) {
+        const lo = t.toLowerCase();
+        if (known.has(lo) || /fold|lavalle/i.test(lo)) continue; // never the brand name
+        known.add(lo); fresh.push(t);
+      }
+    }
+    if (fresh.length) {
+      const lineRx = /\nFROM CARDS \(auto\):.*$/;
+      const m = lineRx.exec(bankHS.desc || "");
+      const cur = m ? m[0].replace("\nFROM CARDS (auto):", "").trim() : "";
+      const line = "\nFROM CARDS (auto): " + (cur ? cur + " " : "") + fresh.join(" ");
+      bankHS.desc = m ? bankHS.desc.replace(lineRx, line) : (bankHS.desc || "") + "\n" + line;
+      bankHS._touched = Date.now();
+      await kvSet("lavalle_data", blobHS);
+    }
+    res.json({ ok: true, added: fresh });
+    return;
+  }
   if (op === "automations_card" && req.method === "POST") {
     const okKeyA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authA = okKeyA ? null : await getAuthEarly(req);
@@ -2793,7 +3051,8 @@ export default async function handler(req, res) {
     let cardA = bdA.cards.find((c) => /^automations\b/i.test(c.name || ""));
     if (!cardA) { cardA = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listA.id, name: "Automations — what runs on its own", labels: [], members: [], attachments: [], links: [], done: false }; bdA.cards.unshift(cardA); }
     cardA.name = "Automations — what runs on its own";
-    cardA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + AUTOMATIONS.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
+    const rowsA = AUTOMATIONS.filter((r) => !r[3] || r[3].includes(SBOARD.key));
+    cardA.desc = "Plain-English map of everything automated on this board. Each line: WHAT · WHEN it triggers · what it does.\n\n" + rowsA.map(([w, t, d]) => "• " + w + "\n  Trigger: " + t + "\n  " + d).join("\n\n") + "\n\n(Updated automatically whenever an automation is added or changed.)";
     await kvSet("lavalle_data", blobA);
     res.json({ ok: true, automations: AUTOMATIONS.length });
     return;
@@ -2893,6 +3152,9 @@ export default async function handler(req, res) {
     // other Schedule column still holds the previous cycle for Courtney to finish.
     const themeR = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
     const rangeS = Array.isArray(themeR.range) && themeR.range.length === 2 ? themeR.range : null;
+    // The Fold builds per cycle and only from a real theme — fold_strategy_auto
+    // writes {title, body, range} per cycle; until then there is nothing to build.
+    if (SBOARD.key === "the-fold" && !(themeR.title && rangeS)) { res.json({ ok: false, waiting: "no cycle theme set yet (fold_strategy_auto writes it)" }); return; }
     if (rangeS) postCards = postCards.filter((p) => p.n >= rangeS[0] && p.n <= rangeS[1]);
     const ours = postCards.filter((p) => !p.isC);
     const allApproved = ours.length > 0 && ours.every((p) => p.approved);
@@ -2908,9 +3170,11 @@ export default async function handler(req, res) {
     theme.body = noDash(theme.body);
     const pickSig = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || {};
     const sig = createHash("sha256").update(JSON.stringify([postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover, p.isC]), tilesHashS, views[0], views[1], views[2], views[3], theme.title, theme.body, pickSig.pick, pickSig.ranked])).digest("hex").slice(0, 12);
-    const prev = (await kvGet("sisters_strategy_pdf_state" + SBOARD.kvSuffix)) || {};
+    const stateKeyS = "sisters_strategy_pdf_state" + SBOARD.kvSuffix + (SBOARD.key === "the-fold" ? "_" + String(themeR.title).replace(/\W+/g, "_") : "");
+    const prev = (await kvGet(stateKeyS)) || {};
     const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid/theme edits
-    if (!bS2.force && !staleRebuild && (!allApproved || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
+    const gateS = SBOARD.key === "the-fold" ? (postCards.length > 0 && postCards.every((p) => p.cover)) : allApproved; // her rule Oct 5 2026: the Fold outline builds once the full grid is complete
+    if (!bS2.force && !staleRebuild && (!gateS || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, gate: gateS, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
     // shared renderer (lib/strategy-pages.mjs): Cormorant + Inter, cream pages,
     // tracked cover, Loft-style in-feed pages with the numbered 3x3 grid crop.
     // Same ops drive the page JPEGs (resvg-wasm) and the PDF (pdf-lib + fontkit).
@@ -2918,10 +3182,12 @@ export default async function handler(req, res) {
     const pageUrls = []; let pageErr = null; let pdfBuf = null;
     {
       const { renderStrategyPages } = await import("../lib/strategy-pages.mjs");
+      let logoS = null;
+      if (SBOARD.key === "the-fold") { try { const fsL = await import("node:fs"); const pathL = await import("node:path"); logoS = fsL.readFileSync(pathL.join(process.cwd(), "assets", "fold-logo.png")); } catch (eLg) {} }
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
       const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesS.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
       const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
-      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
@@ -2958,7 +3224,7 @@ export default async function handler(req, res) {
       sc9.cover = pageUrls[0] || sc9.cover; sc9.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
       sc9.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc9.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
     });
-    await kvSet("sisters_strategy_pdf_state" + SBOARD.kvSuffix, { sig, at: Date.now(), pdfUrl, pages: pageUrls });
+    await kvSet(stateKeyS, { sig, at: Date.now(), pdfUrl, pages: pageUrls });
     // captions changed → refresh the Google Doc backup too (her rule after the
     // Aug 26 caption loss: the doc is the standing off-app copy)
     if (process.env.PUBLISH_KEY) { try { const acCD = new AbortController(); setTimeout(() => acCD.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=sisters_captions_doc", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY }, signal: acCD.signal }).catch(() => {}); } catch (eCD) {} }

@@ -55,7 +55,7 @@ jobs:
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       - name: Fold board cards
         run: |
-          for op in automations_card sisters_links_card sisters_strategy_pdf; do
+          for op in automations_card sisters_links_card sisters_audit_card sisters_hashtags_sync fold_strategy_auto sisters_strategy_pdf; do
             curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=$op&board=the-fold" \
               -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 150 -o /dev/null || true
           done
