@@ -3153,7 +3153,7 @@ export default async function handler(req, res) {
     const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
     const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
     let postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+\b/.test(c.name || ""))
-      .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")) }; })
+      .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")), courtney: (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney") }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     // From Oct 2026 the outline covers ONE cycle (theme.range, e.g. [1,21]) while the
@@ -3193,7 +3193,8 @@ export default async function handler(req, res) {
       let logoS = null;
       if (SBOARD.key === "the-fold") { try { const fsL = await import("node:fs"); const pathL = await import("node:path"); logoS = fsL.readFileSync(pathL.join(process.cwd(), "assets", "fold-logo.png")); } catch (eLg) {} }
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
-      const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesS.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
+      const tilesInRange = rangeS ? tilesS.slice(rangeS[0] - 1, rangeS[1]) : tilesS;
+      const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
       const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
       const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       pdfBuf = out.pdf;
