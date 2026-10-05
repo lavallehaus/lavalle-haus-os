@@ -789,8 +789,9 @@ export default async function handler(req, res) {
       // ride the sweep: Courtney's deck twelve → her column (adds new topics,
       // refreshes notes/covers, rolls the batch once the previous 12 are done)
       try { const acCQ = new AbortController(); setTimeout(() => acCQ.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=courtney_deck_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCQ.signal }).catch(() => {}); } catch (eCQ) {}
-      // ride the sweep: card-side cover edits flow back to the grid + Drive
+      // ride the sweep: card-side cover edits flow back to the grid + Drive (both brands)
       try { const acCV = new AbortController(); setTimeout(() => acCV.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCV.signal }).catch(() => {}); } catch (eCV) {}
+      try { const acCF = new AbortController(); setTimeout(() => acCF.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCF.signal }).catch(() => {}); } catch (eCF) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -3969,7 +3970,7 @@ export default async function handler(req, res) {
     const authCV = okKeyCV ? null : await getAuthEarly(req);
     if (!okKeyCV && !ownerRole(authCV)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const rawCV = await kvGet("lavalle_data"); const blobCV = Array.isArray(rawCV) ? rawCV[0] : rawCV;
-    const bdCV = blobCV && blobCV.boards && blobCV.boards["lavalle-sisters"];
+    const bdCV = blobCV && blobCV.boards && blobCV.boards[SBOARD.key];
     if (!bdCV) { res.json({ ok: false }); return; }
     const schedCV = bdCV.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
     const grids = [
@@ -4039,7 +4040,7 @@ export default async function handler(req, res) {
     // records (the one-off Sep 29 ingestion left everything in sync).
     const retouched = [];
     if (gtCV && !dryCV) {
-      const md5s = (await kvGet("sisters_cover_drive_md5")) || {};
+      const md5s = (await kvGet("sisters_cover_drive_md5" + SBOARD.kvSuffix)) || {};
       let md5Dirty = false;
       for (const c of bdCV.cards) {
         if (!schedCV.includes(c.listId)) continue;
@@ -4068,11 +4069,11 @@ export default async function handler(req, res) {
           md5s[fid] = md5; md5Dirty = true; retouched.push(n);
         } catch (eR) { errsCV.push(n + ":" + String(eR).slice(0, 30)); }
       }
-      if (md5Dirty) await kvSet("sisters_cover_drive_md5", md5s);
+      if (md5Dirty) await kvSet("sisters_cover_drive_md5" + SBOARD.kvSuffix, md5s);
     }
     for (const gr of grids) if (gr.dirty) { gr.g.at = Date.now(); await kvSet(gr.key, gr.g); }
-    if (patchesCV.length) await patchBoardCards("lavalle-sisters", patchesCV);
-    res.json({ ok: true, dry: dryCV, plan, synced, relinked, retouched, errors: errsCV });
+    if (patchesCV.length) await patchBoardCards(SBOARD.key, patchesCV);
+    res.json({ ok: true, board: SBOARD.key, dry: dryCV, plan, synced, relinked, retouched, errors: errsCV });
     return;
   }
   // ── Links card → current month's Drive folders ───────────────────────────
