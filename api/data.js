@@ -2820,10 +2820,13 @@ export default async function handler(req, res) {
       const ps = bdFA.cards.filter((c) => !c._deleted && c.listId === l.id).map((c) => ({ card: c, d: parseFA(c.name) })).filter((x) => x.d);
       if (!ps.length) continue;
       ps.sort((a, b) => a.d.n - b.d.n);
-      // title by the first still-undone post (a post that already went out —
-      // Post 5's Sep 2 — is history and must not drag the cycle's month back)
-      const first = (ps.find((x) => !x.card.done) || ps[0]).d;
-      cycles.push({ title: MONTHS_FA[first.mo] + " " + first.yr, range: [ps[0].d.n, ps[ps.length - 1].d.n], posts: ps });
+      // Title spans the cycle's months (her rule Oct 5: "October – November"),
+      // anchored on the first still-undone post — a post that already went out
+      // (Post 5's Sep 2) is history and must not drag the span back.
+      const first = (ps.find((x) => !x.card.done) || ps[0]).d; const last = ps[ps.length - 1].d;
+      const MON3_FA = MONTHS_FA.map((m) => m.slice(0, 3));
+      const titleFA = MONTHS_FA[first.mo] + (last.mo !== first.mo ? " – " + MONTHS_FA[last.mo] : "") + " " + last.yr;
+      cycles.push({ title: titleFA, dates: MON3_FA[first.mo] + " " + first.day + " – " + MON3_FA[last.mo] + " " + last.day, range: [ps[0].d.n, ps[ps.length - 1].d.n], posts: ps });
     }
     if (!cycles.length) { res.json({ ok: false, error: "no dated cycles" }); return; }
     // live products (cached a day) — the captions and themes speak to what is
@@ -2922,7 +2925,7 @@ export default async function handler(req, res) {
       const capsOf = cy.posts.map((p) => String(p.card.name || "") + "|" + String(p.card.desc || "") + "|" + String(p.card.tags || "")).join("~");
       const bSig = createHash("sha256").update(JSON.stringify([themesFA[cy.title] && themesFA[cy.title].body, capsOf, cy.range])).digest("hex").slice(0, 12);
       if (stFA.builds[cy.title] === bSig) continue;
-      await kvSet("sisters_strategy_theme_tf", { title: cy.title, body: (themesFA[cy.title] || {}).body || "", range: cy.range, at: Date.now() });
+      await kvSet("sisters_strategy_theme_tf", { title: cy.title, body: (themesFA[cy.title] || {}).body || "", range: cy.range, dates: cy.dates, at: Date.now() });
       try { const acFA = new AbortController(); setTimeout(() => acFA.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_strategy_pdf&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ force: true }), signal: acFA.signal }).catch(() => {}); } catch (eBd) {}
       stFA.builds[cy.title] = bSig;
       await kvSet("fold_strategy_auto_state", stFA);
@@ -3207,9 +3210,25 @@ export default async function handler(req, res) {
       if (SBOARD.key === "the-fold") { try { const fsL = await import("node:fs"); const pathL = await import("node:path"); logoS = fsL.readFileSync(pathL.join(process.cwd(), "assets", "fold-logo.png")); } catch (eLg) {} }
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
       const tilesInRange = rangeS ? tilesS.slice(rangeS[0] - 1, rangeS[1]) : tilesS;
-      const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
-      const collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
-      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      let collage = [], monthGridS = null;
+      if (SBOARD.key === "the-fold") {
+        // the strategy page shows the whole cycle grid at a glance (her rule)
+        monthGridS = [];
+        const JimpG = (await import("jimp")).default;
+        for (const p of postCards) {
+          if (!p.cover) continue;
+          try {
+            const bG = await getBuf(p.cover + (String(p.cover).includes("?") ? "&" : "?") + "fit=400");
+            if (!bG) continue;
+            const imG = (await JimpG.read(bG)).cover(176, 236); imG.quality(84);
+            monthGridS.push({ n: p.n, jpg: await imG.getBufferAsync(JimpG.MIME_JPEG) });
+          } catch (eG) {}
+        }
+      } else {
+        const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
+        collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
+      }
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, monthGrid: monthGridS, dates: theme.dates || null, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
