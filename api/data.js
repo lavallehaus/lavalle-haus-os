@@ -6832,13 +6832,21 @@ export default async function handler(req, res) {
         const url = String(b.url || "");
         const parent = (b.parentId || "").replace(/[^a-zA-Z0-9_-]/g, "");
         const name = String(b.name || "cover.jpg").slice(0, 120);
-        if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: "bad url" }); return; }
-        const ir = await fetch(url);
-        if (!ir.ok) { res.status(400).json({ error: "fetch_image_failed " + ir.status }); return; }
-        const ct = ir.headers.get("content-type") || "image/jpeg";
-        const buf = Buffer.from(await ir.arrayBuffer());
+        let ct, buf;
+        if (b.dataB64) { // inline bytes (e.g. a built spreadsheet) instead of a fetchable URL
+          buf = Buffer.from(String(b.dataB64), "base64");
+          ct = String(b.contentType || "application/octet-stream");
+        } else {
+          if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: "bad url" }); return; }
+          const ir = await fetch(url);
+          if (!ir.ok) { res.status(400).json({ error: "fetch_image_failed " + ir.status }); return; }
+          ct = ir.headers.get("content-type") || "image/jpeg";
+          buf = Buffer.from(await ir.arrayBuffer());
+        }
         const boundary = "lhb" + buf.length.toString(36);
-        const meta = JSON.stringify({ name, parents: parent ? [parent] : undefined });
+        // b.googleType (e.g. application/vnd.google-apps.spreadsheet) makes
+        // Drive CONVERT the upload into a native Google file
+        const meta = JSON.stringify({ name, parents: parent ? [parent] : undefined, mimeType: b.googleType ? String(b.googleType) : undefined });
         const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${ct}\r\n\r\n`;
         const body = Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
         const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", {
