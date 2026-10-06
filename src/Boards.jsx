@@ -1041,6 +1041,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const folderMode = open === "rh-operations";
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent("lh-board-state", { detail: !!open })); } catch {}
     try {
       if (open) {
         localStorage.setItem("lh_boards_open", open);

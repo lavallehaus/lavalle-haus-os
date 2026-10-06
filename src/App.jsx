@@ -1500,41 +1500,34 @@ function SegTabs({ id, segments }) {
   }, [id, segments]);
   const active = segments.find((s) => s.id === seg) || segments[0];
   const sansF = "'Helvetica Neue', Helvetica, Arial, sans-serif";
-  // the Boards chip is a dropdown (her ask Oct 6 2026): jump straight between
-  // the brand boards, or go Home to the all-boards view — no more guessing
-  // that the Marketing tab is the way back.
-  const [bMenu, setBMenu] = useState(false);
+  // Her ask Oct 6 2026: a HOME chip opens the all-boards view, and the brand
+  // chip ("The Fold Board") opens that board DIRECTLY — no detour through the
+  // boards page, no guessing that the Marketing tab is the way back.
+  const BRAND2BOARD = { "the-fold": "the-fold", "lavalle-sisters": "lavalle-sisters", "lavalle-haus": "refillery-haus" };
+  const [bNav, setBNav] = useState(() => { try { return localStorage.getItem("lh_boards_open") ? "board" : "home"; } catch { return "home"; } });
+  useEffect(() => { const h = (e) => setBNav(e.detail ? "board" : "home"); window.addEventListener("lh-board-state", h); return () => window.removeEventListener("lh-board-state", h); }, []);
   const goBoard = (key) => {
     try { if (key) localStorage.setItem("lh_boards_open", key); else localStorage.removeItem("lh_boards_open"); } catch {}
-    setSeg("boards"); setBMenu(false);
+    setSeg("boards"); setBNav(key ? "board" : "home");
     window.dispatchEvent(new CustomEvent("lh-open-board", { detail: key || null }));
   };
-  const BOARD_OPTS = [[null, "⌂ All boards — home"], ["lavalle-sisters", "Lavalle Sisters Board"], ["the-fold", "The Fold Board"], ["refillery-haus", "Lavalle Haus Board"]];
+  const chipStyle = (on) => ({ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${on ? "#1A1A1A" : "#E0E0DD"}`, background: on ? "#1A1A1A" : "transparent", color: on ? "#FFFFFF" : "#71716C" });
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+        {id === "content" && (
+          <button onClick={() => goBoard(null)} title="All boards, every brand" style={chipStyle(active.id === "boards" && bNav === "home")}>⌂ Home</button>
+        )}
         {segments.map((s) => {
           if (id === "content" && s.id === "boards") return (
-            <span key={s.id} style={{ position: "relative", display: "inline-block" }}>
-              <button onClick={() => setBMenu(!bMenu)}
-                style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${s.id === active.id ? "#1A1A1A" : "#E0E0DD"}`, background: s.id === active.id ? "#1A1A1A" : "transparent", color: s.id === active.id ? "#FFFFFF" : "#71716C" }}>
-                {(brandTabLbl || s.label) + " ▾"}
-              </button>
-              {bMenu && (
-                <div style={{ position: "absolute", zIndex: 120, top: "calc(100% + 4px)", left: 0, minWidth: 210, background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 3, boxShadow: "0 12px 30px rgba(26,26,26,0.14)", padding: 6 }}>
-                  {BOARD_OPTS.map(([k, lb]) => (
-                    <button key={k || "home"} onClick={() => goBoard(k)}
-                      style={{ display: "block", width: "100%", textAlign: "left", background: (k && bvTab === { "refillery-haus": "lavalle-haus" }[k]) || bvTab === k ? "#F4F4F3" : "transparent", border: "none", borderRadius: 2, padding: "8px 10px", fontFamily: sansF, fontSize: 10.5, letterSpacing: 1.5, textTransform: "uppercase", color: k ? "#1A1A1A" : "#8F8676", cursor: "pointer" }}>
-                      {lb}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </span>
+            <button key={s.id} onClick={() => goBoard(BRAND2BOARD[bvTab] || null)}
+              title={brandTabLbl ? "Open " + brandTabLbl : "All boards"} style={chipStyle(active.id === "boards" && bNav === "board")}>
+              {brandTabLbl || s.label}
+            </button>
           );
           return (
-          <button key={s.id} onClick={() => { setSeg(s.id); setBMenu(false); window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id, seg: s.id } })); }}
-            style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${s.id === active.id ? "#1A1A1A" : "#E0E0DD"}`, background: s.id === active.id ? "#1A1A1A" : "transparent", color: s.id === active.id ? "#FFFFFF" : "#71716C" }}>
+          <button key={s.id} onClick={() => { setSeg(s.id); window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id, seg: s.id } })); }}
+            style={chipStyle(s.id === active.id)}>
             {s.label}
           </button>
           );
