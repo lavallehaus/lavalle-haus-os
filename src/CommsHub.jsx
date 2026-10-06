@@ -18,6 +18,10 @@ const input = { width: "100%", boxSizing: "border-box", border: `1px solid ${c.l
 const uid = () => "cm" + Math.random().toString(36).slice(2, 9);
 
 const NOTE_TAGS = ["Marketing", "R&D", "Newsletter", "Scripts", "Stories", "Ops", "Courtney"];
+const NOTE_STATUSES = [["not-started", "Not started", "#EEECE6", "#71716C"], ["in-progress", "In progress", "#E3DCCC", "#6E5F3F"], ["done", "Done", "#DFE8DF", "#5a7a5a"]];
+const itemStatus = (it) => it.done ? "done" : (it.status || "not-started");
+const assignedOf = (it, note) => it.assignedAt || (note && note.date ? note.date + "T12:00" : null);
+const weeksBehind = (it, note) => { const a = assignedOf(it, note); if (!a || it.done) return 0; return Math.floor((Date.now() - new Date(a).getTime()) / (7 * 86400000)); };
 
 // Meeting Notes (her ask, Oct 5 2026) — the notes she keeps per meeting date,
 // mirrored both ways with her phone's Notes app by the daily notes-comms-sync
@@ -72,8 +76,24 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
               {list.map((it) => (
                 <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: `1px solid ${c.line}`, opacity: it.done ? 0.55 : 1 }}>
                   <input type="checkbox" checked={!!it.done} style={{ marginTop: 3 }}
-                    onChange={() => patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, done: !q.done, doneAt: !q.done ? new Date().toISOString() : undefined } : q)) })} />
-                  <span style={{ flex: 1, fontFamily: sans, fontSize: 12, lineHeight: 1.55, color: c.ink, textDecoration: it.done ? "line-through" : "none" }}>{it.text}</span>
+                    onChange={() => patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, done: !q.done, status: !q.done ? "done" : "in-progress", doneAt: !q.done ? new Date().toISOString() : undefined } : q)) })} />
+                  <span style={{ flex: 1, fontFamily: sans, fontSize: 12, lineHeight: 1.55, color: c.ink, textDecoration: it.done ? "line-through" : "none" }}>
+                    {it.text}
+                    {(() => {
+                      // assigned date + how far behind (her ask Oct 5 2026)
+                      const a = assignedOf(it, note); if (!a) return null;
+                      const wk = weeksBehind(it, note);
+                      return <span style={{ display: "block", fontFamily: sans, fontSize: 9.5, color: wk >= 2 ? c.red : wk >= 1 ? "#8a6d3b" : c.sub, marginTop: 1 }}>
+                        assigned {new Date(a).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{it.done ? "" : wk >= 1 ? ` · ${wk} week${wk === 1 ? "" : "s"} behind` : " · this week"}
+                      </span>;
+                    })()}
+                  </span>
+                  {(() => { const st = NOTE_STATUSES.find(([k]) => k === itemStatus(it)) || NOTE_STATUSES[0]; return (
+                    <select value={itemStatus(it)} onChange={(e) => { const v = e.target.value; patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, status: v, done: v === "done", doneAt: v === "done" ? new Date().toISOString() : undefined } : q)) }); }}
+                      style={{ border: "none", borderRadius: 10, padding: "3px 6px", fontFamily: sans, fontSize: 9, color: st[3], background: st[2], cursor: "pointer" }}>
+                      {NOTE_STATUSES.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
+                    </select>
+                  ); })()}
                   <select value={it.tag || ""} onChange={(e) => patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, tag: e.target.value || null } : q)) })}
                     style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "3px 5px", fontFamily: sans, fontSize: 9.5, color: it.tag ? c.ink : c.sub, background: "#fff" }}>
                     <option value="">tag…</option>
@@ -87,8 +107,8 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
           ))}
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <input style={{ ...input, flex: 1 }} placeholder="Add a line to this meeting's notes…" value={itemText} onChange={(e) => setItemText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, src: "app", at: new Date().toISOString() }] }); setItemText(""); } }} />
-            <button onClick={() => { if (itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, src: "app", at: new Date().toISOString() }] }); setItemText(""); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" && itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, status: "not-started", assignedAt: new Date().toISOString(), src: "app", at: new Date().toISOString() }] }); setItemText(""); } }} />
+            <button onClick={() => { if (itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, status: "not-started", assignedAt: new Date().toISOString(), src: "app", at: new Date().toISOString() }] }); setItemText(""); } }}
               style={{ border: `1px solid ${c.ink}`, background: c.ink, color: "#fff", borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Add</button>
           </div>
           <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 8 }}>
