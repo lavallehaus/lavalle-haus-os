@@ -2924,7 +2924,8 @@ export default async function handler(req, res) {
     for (const cy of ordered) {
       const capsOf = cy.posts.map((p) => String(p.card.name || "") + "|" + String(p.card.desc || "") + "|" + String(p.card.tags || "")).join("~");
       const bSig = createHash("sha256").update(JSON.stringify([themesFA[cy.title] && themesFA[cy.title].body, capsOf, cy.range])).digest("hex").slice(0, 12);
-      if (stFA.builds[cy.title] === bSig) continue;
+      const haveCardFA = bdFA.cards.some((c) => !c._deleted && (c.name || "").startsWith("Strategy Outline — " + cy.title));
+      if (stFA.builds[cy.title] === bSig && haveCardFA) continue; // state says built AND the card is really there
       await kvSet("sisters_strategy_theme_tf", { title: cy.title, body: (themesFA[cy.title] || {}).body || "", range: cy.range, dates: cy.dates, at: Date.now() });
       try { const acFA = new AbortController(); setTimeout(() => acFA.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_strategy_pdf&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ force: true }), signal: acFA.signal }).catch(() => {}); } catch (eBd) {}
       stFA.builds[cy.title] = bSig;
