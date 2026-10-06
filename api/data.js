@@ -6964,11 +6964,15 @@ export default async function handler(req, res) {
         const boundary = "lhb" + buf.length.toString(36);
         // b.googleType (e.g. application/vnd.google-apps.spreadsheet) makes
         // Drive CONVERT the upload into a native Google file
-        const meta = JSON.stringify({ name, parents: parent ? [parent] : undefined, mimeType: b.googleType ? String(b.googleType) : undefined });
+        const meta = JSON.stringify(b.fileId ? {} : { name, parents: parent ? [parent] : undefined, mimeType: b.googleType ? String(b.googleType) : undefined });
         const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${ct}\r\n\r\n`;
         const body = Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
-        const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", {
-          method: "POST", headers: { ...AUTH, "Content-Type": `multipart/related; boundary=${boundary}` }, body,
+        // b.fileId → replace that file's CONTENT in place (same id, same links)
+        const upUrl = b.fileId
+          ? "https://www.googleapis.com/upload/drive/v3/files/" + String(b.fileId).replace(/[^a-zA-Z0-9_-]/g, "") + "?uploadType=multipart&supportsAllDrives=true&fields=id,name,md5Checksum,size"
+          : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name";
+        const r = await fetch(upUrl, {
+          method: b.fileId ? "PATCH" : "POST", headers: { ...AUTH, "Content-Type": `multipart/related; boundary=${boundary}` }, body,
         });
         const d = await r.json();
         if (!r.ok) { res.status(400).json({ error: (d.error && d.error.message) || "upload_error", detail: d.error }); return; }
