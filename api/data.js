@@ -2825,7 +2825,7 @@ export default async function handler(req, res) {
       // (Post 5's Sep 2) is history and must not drag the span back.
       const first = (ps.find((x) => !x.card.done) || ps[0]).d; const last = ps[ps.length - 1].d;
       const MON3_FA = MONTHS_FA.map((m) => m.slice(0, 3));
-      const titleFA = MONTHS_FA[first.mo] + (last.mo !== first.mo ? " – " + MONTHS_FA[last.mo] : "") + " " + last.yr;
+      const titleFA = MONTHS_FA[first.mo] + (last.mo !== first.mo ? "-" + MONTHS_FA[last.mo] : "") + " " + last.yr; // plain hyphen: the title survives the no-dash caption sanitiser
       cycles.push({ title: titleFA, dates: MON3_FA[first.mo] + " " + first.day + " – " + MON3_FA[last.mo] + " " + last.day, range: [ps[0].d.n, ps[ps.length - 1].d.n], posts: ps });
     }
     if (!cycles.length) { res.json({ ok: false, error: "no dated cycles" }); return; }
