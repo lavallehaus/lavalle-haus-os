@@ -3105,6 +3105,15 @@ export default async function handler(req, res) {
       const hasLive = (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "live");
       if (c.done && !hasLive) { c.labels = [{ n: "Live", c: "#DCE3DC" }, ...(c.labels || [])]; liveFlips++; }
       else if (!c.done && hasLive) { c.labels = (c.labels || []).filter((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() !== "live"); liveFlips++; }
+      // format lives in the TAG, never the title (her rule): any [reel]/[carousel]/
+      // [IG static] marker that sneaks back into a name is stripped and tagged
+      const mkHS = /\s*\[\s*(reel|carousel|ig\s*static)\s*\]/i.exec(c.name || "");
+      if (mkHS) {
+        c.name = c.name.replace(/\s*\[[^\]]*\]/g, "").replace(/\s+$/, "");
+        const wantHS = /reel/i.test(mkHS[1]) ? "Reel" : /carousel/i.test(mkHS[1]) ? "Carousel" : null;
+        if (wantHS && !(c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === wantHS.toLowerCase())) c.labels = [...(c.labels || []), { n: wantHS, c: "#E9E6DF" }];
+        liveFlips++;
+      }
     }
     if (liveFlips) await kvSet("lavalle_data", blobHS);
     if (fresh.length) {
@@ -4689,14 +4698,22 @@ export default async function handler(req, res) {
     if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
     if (!activeW.includes(cur)) cur = activeW.find((wi) => wi > cur) != null ? activeW.find((wi) => wi > cur) : activeW[activeW.length - 1];
     let rendered = null;
+    // Render EVERY missing window the time budget allows (a rename/re-date used
+    // to leave the card one slide for up to an hour — her complaint, Oct 5 2026),
+    // and self-kick for whatever is left so the card converges in ~a minute.
+    const t0W = Date.now();
     for (const wi of [cur, ...activeW.filter((x) => x !== cur)]) {
-      if (cacheW.views[wi] || rendered != null) continue;
+      if (cacheW.views[wi]) continue;
+      if (rendered != null && Date.now() - t0W > 36000) break;
       const [a, b] = WINDOWS[wi];
       cacheW.views[wi] = await render(a, Math.min(b, all.length)); rendered = wi;
       cacheW.coverHash = coverHash; cacheW.active = activeW;
       await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW);
     }
     const missingW = activeW.filter((wi) => !cacheW.views[wi]);
+    if (missingW.length && process.env.PUBLISH_KEY) {
+      try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
+    }
     const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + a + "–" + b + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.

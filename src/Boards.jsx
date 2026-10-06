@@ -1321,7 +1321,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           <div style={{ position: "relative", zIndex: 30, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: board.bg ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: board.bg ? "blur(6px)" : "none", WebkitBackdropFilter: board.bg ? "blur(6px)" : "none", borderRadius: 8, padding: board.bg ? "8px 12px" : "0 0 2px" }}>
             <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0 }}>← All boards</button>
             <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
-            <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{board.cards.length} cards</div>
+            <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{(() => {
+              // her ask Oct 5 2026: show how far the posting is planned, not a card count
+              const MO_H = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+              const ds = (board.cards || []).filter((cd) => !cd._deleted).map((cd) => /^Post\s*\d+\s+(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(cd.name || "")).filter(Boolean)
+                .map((m) => { const mo = MO_H[m[1].toLowerCase()]; return mo == null ? null : { t: (mo >= 6 ? mo : mo + 12) * 40 + Number(m[2]), lb: m[1].slice(0, 3) + " " + Number(m[2]) }; })
+                .filter(Boolean).sort((a, b) => a.t - b.t);
+              if (ds.length > 1) return "planned " + ds[0].lb + " – " + ds[ds.length - 1].lb;
+              return board.cards.length + " cards";
+            })()}</div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", position: "relative", flexWrap: "wrap", justifyContent: "flex-end", rowGap: 6, minWidth: 0 }}>
               {(() => {
                 const members = board.access && board.access.length ? team.filter((t) => board.access.includes(t.name)) : team;
@@ -1442,7 +1450,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               {/* the 15-min automations already link assets + flow covers on the brand boards (her ask, Oct 5 2026) */}
               {!["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "Link assets"}</button>}
               {viewer.owner && !["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
-              <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>
+              {open !== "the-fold" && <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>}
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => {
                 const existing = board.lists.find((l) => /^planned\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
@@ -1878,7 +1886,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           onComment={(text) => addComment(editCard.boardKey, editCard.cardId, text)}
         />
       )}
-      {lookbook && board && <LookbookView board={board} shoots={shoots} onClose={() => setLookbook(false)} />}
+      {lookbook && board && <LookbookView board={/marketing pr/i.test((board.name || "")) && boards["the-fold"] ? boards["the-fold"] : board} shoots={shoots} onClose={() => setLookbook(false)} />}
     </div>
   );
 }
