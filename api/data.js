@@ -3237,7 +3237,7 @@ export default async function handler(req, res) {
       if (e["RECURRENCE-ID"]) continue;
       const uid = (e.UID && e.UID.v) || ""; const title = ((e.SUMMARY && e.SUMMARY.v) || "Meeting").replace(/\\,/g, ",").replace(/\\;/g, ";");
       const loc = ((e.LOCATION && e.LOCATION.v) || "").replace(/\\,/g, ",");
-      if (/^(appointment |canceled event|cancell?ed[:\s])/i.test(title)) continue; // cancellation notices aren't meetings
+      if (/^(appointment cancell?ed|cancell?ed( event)?\b)/i.test(title)) continue; // cancellation notices aren't meetings
       const st = parseDt(e.DTSTART); if (st == null) continue;
       const ex = new Set((e.EXDATE || []).map((x) => parseDt(x)).filter(Boolean));
       const push = (ms) => { if (ms >= w0 && ms <= w1 && !ex.has(ms)) occs[uid + "|" + ms] = { uid, ms, title, loc }; };
