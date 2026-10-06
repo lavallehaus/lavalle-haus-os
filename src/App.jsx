@@ -1486,6 +1486,10 @@ function GlobalSearch({ nav, dbState, onGo }) {
 
 function SegTabs({ id, segments }) {
   const [seg, setSeg] = useState(() => { try { return localStorage.getItem("lh_seg_" + id) || segments[0].id; } catch { return segments[0].id; } });
+  // the Boards chip names the brand you're in — "The Fold Board", not "Boards" (her ask Oct 5 2026)
+  const [bvTab, setBvTab] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+  useEffect(() => { const h = (e) => setBvTab(e.detail || "all"); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
+  const brandTabLbl = { "the-fold": "The Fold Board", "lavalle-sisters": "Sisters Board", "lavalle-haus": "Lavalle Haus Board" }[bvTab];
   useEffect(() => { try { localStorage.setItem("lh_seg_" + id, seg); } catch {} }, [id, seg]);
   // Global search deep-links into a segment via this event (works when the
   // group is already mounted; fresh mounts pick the target up from localStorage).
@@ -1502,7 +1506,7 @@ function SegTabs({ id, segments }) {
         {segments.map((s) => (
           <button key={s.id} onClick={() => { setSeg(s.id); window.dispatchEvent(new CustomEvent("lh-seg-click", { detail: { id, seg: s.id } })); }}
             style={{ padding: "8px 16px", borderRadius: 1, cursor: "pointer", fontFamily: sansF, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", border: `1px solid ${s.id === active.id ? "#1A1A1A" : "#E0E0DD"}`, background: s.id === active.id ? "#1A1A1A" : "transparent", color: s.id === active.id ? "#FFFFFF" : "#71716C" }}>
-            {s.label}
+            {id === "content" && s.id === "boards" && brandTabLbl ? brandTabLbl : s.label}
           </button>
         ))}
       </div>

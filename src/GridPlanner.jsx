@@ -105,7 +105,13 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   const feedsAll = (state && state.feeds) || [];
   // board-access scoping: a feed is visible only if its board came through the
   // server (access allows it) or its account is one of the person's brands.
-  const feeds = feedsAll.filter((f) => !allowedAccts || (f.boardKey && boards && boards[f.boardKey]) || (f.account && allowedAccts.has(String(f.account).toLowerCase())));
+  const feedsVis = feedsAll.filter((f) => !allowedAccts || (f.boardKey && boards && boards[f.boardKey]) || (f.account && allowedAccts.has(String(f.account).toLowerCase())));
+  // ONE feed per brand (her rule Oct 5 2026): board-backed feeds mirror the live
+  // board, so the old per-planning-month copies ("The Fold — July") collapse to
+  // the first one and the month suffix comes off the name.
+  const seenFd = new Set();
+  const feeds = feedsVis.filter((f) => { const k = f.boardKey || String(f.account || f.id).toLowerCase(); if (seenFd.has(k)) return false; seenFd.add(k); return true; })
+    .map((f) => ({ ...f, name: String(f.name || "").replace(/\s*[—–-]\s*(January|February|March|April|May|June|July|August|September|October|November|December)\s*$/i, "") }));
   const feed = feeds.find((f) => f.id === feedId) || feeds[0] || null;
   const board = feed && boards ? boards[feed.boardKey] : null;
   const cardById = useMemo(() => {

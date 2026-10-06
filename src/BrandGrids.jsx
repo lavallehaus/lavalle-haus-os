@@ -128,7 +128,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   const VISIBLE_BRANDS = BRANDS.filter((b) => !allowedAccts || allowedAccts.has(b.acct));
   const WS2IG = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
   const [acct, setAcct] = useState(() => { try { const ig = WS2IG[localStorage.getItem("lh_brand_view")]; if (ig && (VISIBLE_BRANDS.length ? VISIBLE_BRANDS : BRANDS).some((b) => b.acct === ig)) return ig; } catch {} return (VISIBLE_BRANDS[0] || BRANDS[0]).acct; });
-  useEffect(() => { const h = (e) => { const ig = WS2IG[e.detail]; if (ig && (VISIBLE_BRANDS.length ? VISIBLE_BRANDS : BRANDS).some((b) => b.acct === ig)) setAcct(ig); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
+  const [brandViewBG, setBrandViewBG] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+  useEffect(() => { const h = (e) => { setBrandViewBG(e.detail || "all"); const ig = WS2IG[e.detail]; if (ig && (VISIBLE_BRANDS.length ? VISIBLE_BRANDS : BRANDS).some((b) => b.acct === ig)) setAcct(ig); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
+  const brandLockedBG = !!WS2IG[brandViewBG]; // in a brand view, only that brand's grids show (her rule Oct 5 2026)
   // Lavalle Sisters runs TWO grids: Instagram and TikTok. Same 21 cards, but
   // the TikTok side keeps its own covers (card.tiktokCover, falling back to the
   // IG cover), its own order, its own zoom crops and its own lock — all stored
@@ -809,9 +811,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   return (
     <div style={{ fontFamily: sans, maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-        {VISIBLE_BRANDS.map((b) => (
+        {(brandLockedBG ? VISIBLE_BRANDS.filter((b) => b.acct === WS2IG[brandViewBG]) : VISIBLE_BRANDS).map((b) => (
           <button key={b.acct} onClick={() => { setAcct(b.acct); setPlatform("ig"); setMsg(null); setPickIdx(null); setEditKey(null); }}
-            style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>
+            style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: brandLockedBG ? "default" : "pointer" }}>
             {b.label}
           </button>
         ))}
