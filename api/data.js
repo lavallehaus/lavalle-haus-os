@@ -3177,6 +3177,111 @@ export default async function handler(req, res) {
     res.json({ ok: true, added: fresh });
     return;
   }
+  // ── Outlook calendar → Comms meetings (her ask Oct 5 2026) ────────────────
+  // The published ICS feed of the Lavalle Haus Outlook calendar (titles +
+  // locations only) keeps the Comms calendar stocked with real meetings —
+  // the weekly Sarah coaching call above all. Feed URL lives in KV; POST
+  // {ics} once to set it. Outlook-sourced items (id ol_*) are replaced
+  // wholesale each run inside the sync window; hand-added and Fathom
+  // meetings are never touched.
+  if (op === "outlook_cal_sync" && req.method === "POST") {
+    const okKeyO = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authO = okKeyO ? null : await getAuthEarly(req);
+    if (!okKeyO && !ownerRole(authO)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const bodyO = req.body || {};
+    if (bodyO.ics) {
+      if (!/^https:\/\/outlook\.(office365|live)\.com\/owa\/calendar\/.+\.ics$/.test(String(bodyO.ics))) { res.status(400).json({ error: "Not an Outlook published .ics link." }); return; }
+      await kvSet("outlook_ics_url", { url: String(bodyO.ics), setAt: new Date().toISOString() });
+    }
+    const icsRec = (await kvGet("outlook_ics_url")) || null;
+    if (!icsRec || !icsRec.url) { res.json({ ok: false, error: "No ICS url stored — POST {ics} once." }); return; }
+    let text = "";
+    try {
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 20000);
+      const r = await fetch(icsRec.url, { signal: ctl.signal }); clearTimeout(tm);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      text = await r.text();
+    } catch (e) { res.json({ ok: false, error: "ICS fetch failed: " + String(e && e.message).slice(0, 120) }); return; }
+    // unfold wrapped lines, then split into VEVENT blocks
+    const lines = text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").split(/\r?\n/);
+    const events = []; let cur = null;
+    for (const ln of lines) {
+      if (ln === "BEGIN:VEVENT") { cur = {}; continue; }
+      if (ln === "END:VEVENT") { if (cur) events.push(cur); cur = null; continue; }
+      if (!cur) continue;
+      const ci = ln.indexOf(":"); if (ci < 0) continue;
+      const left = ln.slice(0, ci), val = ln.slice(ci + 1);
+      const [prop, ...params] = left.split(";");
+      const tzP = params.find((p) => p.startsWith("TZID="));
+      const rec = { v: val, tz: tzP ? tzP.slice(5) : null };
+      if (prop === "EXDATE") (cur.EXDATE = cur.EXDATE || []).push(rec);
+      else cur[prop] = rec;
+    }
+    // Windows-timezone → IANA (the few Outlook actually emits for her)
+    const TZMAP = { "Pacific Standard Time": "America/Los_Angeles", "Mountain Standard Time": "America/Denver", "Central Standard Time": "America/Chicago", "Eastern Standard Time": "America/New_York", "W. Europe Standard Time": "Europe/Berlin", "GMT Standard Time": "Europe/London", "UTC": "UTC" };
+    const tzOffMin = (iana, utcMs) => { try { const dtf = new Intl.DateTimeFormat("en-US", { timeZone: iana, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }); const pp = {}; for (const q of dtf.formatToParts(new Date(utcMs))) pp[q.type] = q.value; return (Date.UTC(+pp.year, +pp.month - 1, +pp.day, +pp.hour % 24, +pp.minute) - utcMs) / 60000; } catch { return 0; } };
+    const parseDt = (rec) => {
+      if (!rec || !rec.v) return null;
+      const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(rec.v.trim());
+      if (!m) return null;
+      const [y, mo, d, h, mi] = [+m[1], +m[2], +m[3], +(m[4] || 0), +(m[5] || 0)];
+      if (m[7] || !rec.tz) return Date.UTC(y, mo - 1, d, h, mi);
+      const iana = TZMAP[rec.tz] || "America/Los_Angeles";
+      const guess = Date.UTC(y, mo - 1, d, h, mi);
+      return guess - tzOffMin(iana, guess) * 60000; // local wall time → UTC
+    };
+    const now = Date.now(); const w0 = now - 21 * 86400000, w1 = now + 90 * 86400000;
+    const occs = {}; // "uid|startMs" → {uid,ms,title,loc}
+    const overrides = events.filter((e) => e["RECURRENCE-ID"]);
+    for (const e of events) {
+      if (e["RECURRENCE-ID"]) continue;
+      const uid = (e.UID && e.UID.v) || ""; const title = ((e.SUMMARY && e.SUMMARY.v) || "Meeting").replace(/\\,/g, ",").replace(/\\;/g, ";");
+      const loc = ((e.LOCATION && e.LOCATION.v) || "").replace(/\\,/g, ",");
+      const st = parseDt(e.DTSTART); if (st == null) continue;
+      const ex = new Set((e.EXDATE || []).map((x) => parseDt(x)).filter(Boolean));
+      const push = (ms) => { if (ms >= w0 && ms <= w1 && !ex.has(ms)) occs[uid + "|" + ms] = { uid, ms, title, loc }; };
+      const rr = e.RRULE && e.RRULE.v;
+      if (!rr) { push(st); continue; }
+      const parts = Object.fromEntries(rr.split(";").map((kv) => kv.split("=")));
+      const until = parts.UNTIL ? parseDt({ v: parts.UNTIL }) : w1;
+      const iv = Math.max(1, +(parts.INTERVAL || 1)); const cnt = parts.COUNT ? +parts.COUNT : Infinity;
+      if (parts.FREQ === "WEEKLY") {
+        const DOW = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+        const byday = (parts.BYDAY ? parts.BYDAY.split(",") : []).map((d2) => DOW[d2]).filter((x) => x != null);
+        const stDay = new Date(st).getUTCDay(); const days = byday.length ? byday : [stDay];
+        let n = 0;
+        for (let wk = 0; wk < 80 && n < cnt; wk += iv) {
+          for (const dow of days) {
+            const ms = st + (wk * 7 + ((dow - stDay + 7) % 7)) * 86400000;
+            if (ms > until || ms > w1 || n >= cnt) continue;
+            n++; if (ms >= st) push(ms);
+          }
+        }
+      } else if (parts.FREQ === "DAILY") {
+        let n = 0; for (let ms = st; ms <= Math.min(until, w1) && n < cnt; ms += iv * 86400000) { n++; push(ms); }
+      } else { push(st); } // monthly/yearly: at least the anchor shows
+    }
+    for (const o of overrides) {
+      const uid = (o.UID && o.UID.v) || ""; const orig = parseDt(o["RECURRENCE-ID"]);
+      if (orig != null) delete occs[uid + "|" + orig];
+      const st = parseDt(o.DTSTART); if (st == null || st < w0 || st > w1) continue;
+      const st2 = (o.STATUS && /CANCELLED/i.test(o.STATUS.v)) ? null : st;
+      if (st2 != null) occs[uid + "|" + st2] = { uid, ms: st2, title: ((o.SUMMARY && o.SUMMARY.v) || "Meeting").replace(/\\,/g, ","), loc: ((o.LOCATION && o.LOCATION.v) || "").replace(/\\,/g, ",") };
+    }
+    const fresh = Object.values(occs).sort((a, b) => a.ms - b.ms).map((x) => ({
+      id: "ol" + createHash("sha256").update(x.uid + "|" + x.ms).digest("hex").slice(0, 10),
+      title: x.title, date: new Date(x.ms).toISOString(), src: "outlook",
+      ...( /^https?:\/\//.test(x.loc) ? { url: x.loc } : {}),
+    }));
+    const rawO = await kvGet("lavalle_data"); const blobO = Array.isArray(rawO) ? rawO[0] : rawO;
+    if (!blobO) { res.json({ ok: false, error: "no data blob" }); return; }
+    const tmO = blobO.teamMeetings || { recipients: [], items: [] };
+    const kept = (tmO.items || []).filter((it) => !/^ol[0-9a-f]{10}$/.test(String(it.id || "")));
+    blobO.teamMeetings = { ...tmO, items: [...fresh, ...kept] };
+    await kvSet("lavalle_data", blobO);
+    res.json({ ok: true, outlook: fresh.length, kept: kept.length, window: [new Date(w0).toISOString().slice(0, 10), new Date(w1).toISOString().slice(0, 10)] });
+    return;
+  }
   if (op === "automations_card" && req.method === "POST") {
     const okKeyA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authA = okKeyA ? null : await getAuthEarly(req);

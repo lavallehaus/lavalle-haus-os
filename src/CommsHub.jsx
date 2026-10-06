@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // LAVALLE HAUS OS — Content → Communications
 // Meeting-relationship tracker, styled after the PR hub. The left rail lists
@@ -28,7 +28,7 @@ const weeksBehind = (it, note) => { const a = assignedOf(it, note); if (!a || it
 // routine on her Mac. Private by default: only Kiabeth + Kiaredza see a note
 // unless someone is granted on it (Courtney sees her own). Items carry a tag
 // (R&D / Newsletter / Marketing…) so each line files where it impacts.
-function MeetingNotes({ notes, onSave, team, viewer }) {
+function MeetingNotes({ notes, onSave, team, viewer, meetings = [] }) {
   // brand scoping (her rule Oct 5 2026): a note tagged for a brand shows only
   // in that brand's view — sisters items never appear under The Fold's comms
   const [bvMN, setBvMN] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
@@ -39,7 +39,6 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
   const [selId, setSelId] = useState(visible[0] ? visible[0].id : null);
   const note = visible.find((n) => n.id === selId) || visible[0] || null;
   const [itemText, setItemText] = useState("");
-  const [mnView, setMnView] = useState("list"); // list | calendar (her ask Oct 5 2026)
   const [mnPerson, setMnPerson] = useState("All");
   const [mnMonth, setMnMonth] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; });
   const people = [...new Set(visible.map((n) => n.title || "Meeting"))];
@@ -66,17 +65,6 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
           {!visible.length && <option value="">No notes yet</option>}
         </select>
         <button onClick={addNote} style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>+ New</button>
-        {[["list", "List"], ["calendar", "Calendar"]].map(([k, lb]) => (
-          <button key={k} onClick={() => setMnView(k)}
-            style={{ border: `1px solid ${mnView === k ? c.ink : c.line}`, background: mnView === k ? c.ink : "transparent", color: mnView === k ? "#fff" : c.sub, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
-        ))}
-        {mnView === "calendar" && viewer.owner && (
-          <select value={mnPerson} onChange={(e) => setMnPerson(e.target.value)}
-            style={{ border: `1px solid ${c.line}`, background: "#fff", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 11 }}>
-            <option value="All">Everyone</option>
-            {people.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        )}
         <span style={{ flex: 1 }} />
         {note && viewer.owner && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -90,50 +78,7 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
         )}
       </div>
       {!note && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Notes from your phone's Notes app land here each morning, filed by meeting date.</div>}
-      {mnView === "calendar" && (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <button onClick={() => setMnMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>←</button>
-            <span style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: c.ink }}>{new Date(mnMonth.y, mnMonth.m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-            <button onClick={() => setMnMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>→</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => <div key={w} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, padding: "0 2px 4px" }}>{w}</div>)}
-            {(() => {
-              const first = new Date(mnMonth.y, mnMonth.m, 1);
-              const days = new Date(mnMonth.y, mnMonth.m + 1, 0).getDate();
-              const all = [];
-              for (const n of visible) { if (mnPerson !== "All" && (n.title || "Meeting") !== mnPerson) continue; for (const it of (n.items || [])) { const dk = dueOf(it, n); if (dk) all.push({ it, n, dk }); } }
-              const cells = [];
-              for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"p" + i} />);
-              const todayK = new Date().toISOString().slice(0, 10);
-              for (let dd = 1; dd <= days; dd++) {
-                const k = mnMonth.y + "-" + String(mnMonth.m + 1).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
-                const dayItems = all.filter((x) => x.dk === k);
-                cells.push(
-                  <div key={k} style={{ border: `1px solid ${c.line}`, borderRadius: 3, minHeight: 72, padding: "3px 4px", background: k === todayK ? c.card : "#fff" }}>
-                    <div style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, textAlign: "right" }}>{dd}</div>
-                    {dayItems.slice(0, 3).map(({ it, n }, ii) => { const stC = it.done ? ["#5a7a5a", "#DFE8DF"] : itemStatus(it) === "in-progress" ? ["#8a6d3b", "#EADFC3"] : ["#9b5e5e", "#F3E3E0"]; return (
-                      <div key={ii} title={(n.title || "") + " — " + it.text} onClick={() => { setSelId(n.id); setMnView("list"); }}
-                        style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: stC[0], background: stC[1], borderLeft: `3px solid ${stC[0]}`, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: "pointer", textDecoration: it.done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                        {(it.done ? "\u2713 " : "") + (n.title || "") + ": " + it.text}
-                      </div>
-                    ); })}
-                    {dayItems.length > 3 && <div style={{ fontFamily: sans, fontSize: 8.5, color: c.sub }}>+{dayItems.length - 3} more</div>}
-                  </div>
-                );
-              }
-              return cells;
-            })()}
-          </div>
-          <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, marginTop: 6 }}>
-            <span style={{ marginRight: 12 }}><span style={{ color: "#9b5e5e" }}>●</span> not started</span>
-            <span style={{ marginRight: 12 }}><span style={{ color: "#8a6d3b" }}>●</span> in progress</span>
-            <span><span style={{ color: "#5a7a5a" }}>●</span> ✓ done</span>
-          </div>
-        </div>
-      )}
-      {mnView === "list" && note && (
+      {note && (
         <div>
           {grouped.map(([tg, list]) => (
             <div key={tg || "untagged"} style={{ marginBottom: 10 }}>
@@ -192,11 +137,85 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
           </div>
         </div>
       )}
+
+      {/* calendar — always its own section under the notes (her ask Oct 5 2026):
+          due-date pills colored by status, meetings as dark chips, and a person
+          dropdown so each calendar can be viewed per person (Sarah / Courtney) */}
+      <div style={{ marginTop: 16, borderTop: `1px solid ${c.line}`, paddingTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+          <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.ink }}>Calendar</span>
+          {viewer.owner && (
+            <select value={mnPerson} onChange={(e) => setMnPerson(e.target.value)}
+              style={{ border: `1px solid ${c.line}`, background: "#fff", color: c.ink, borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 11 }}>
+              <option value="All">Everyone</option>
+              {people.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+          <span style={{ flex: 1 }} />
+          <button onClick={() => setMnMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>←</button>
+          <span style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: c.ink }}>{new Date(mnMonth.y, mnMonth.m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+          <button onClick={() => setMnMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>→</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => <div key={w} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, padding: "0 2px 4px" }}>{w}</div>)}
+          {(() => {
+            const first = new Date(mnMonth.y, mnMonth.m, 1);
+            const days = new Date(mnMonth.y, mnMonth.m + 1, 0).getDate();
+            const all = [];
+            for (const n of visible) { if (mnPerson !== "All" && (n.title || "Meeting") !== mnPerson) continue; for (const it of (n.items || [])) { const dk = dueOf(it, n); if (dk) all.push({ it, n, dk }); } }
+            // meetings (Fathom / Outlook) land as dark chips; non-owners only see
+            // meetings that carry their own name — each person gets their calendar
+            const myFirst = String(viewer.name || "").toLowerCase().split(" ")[0];
+            const mByDay = {};
+            for (const mt of (meetings || [])) {
+              const t = String(mt.title || "");
+              if (!viewer.owner && myFirst && !t.toLowerCase().includes(myFirst)) continue;
+              if (viewer.owner && mnPerson !== "All" && !t.toLowerCase().includes(mnPerson.toLowerCase())) continue;
+              const d0 = new Date(mt.date); if (isNaN(d0)) continue;
+              if (d0.getFullYear() !== mnMonth.y || d0.getMonth() !== mnMonth.m) continue;
+              (mByDay[d0.getDate()] = mByDay[d0.getDate()] || []).push(mt);
+            }
+            const cells = [];
+            for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"p" + i} />);
+            const todayK = new Date().toISOString().slice(0, 10);
+            for (let dd = 1; dd <= days; dd++) {
+              const k = mnMonth.y + "-" + String(mnMonth.m + 1).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+              const dayItems = all.filter((x) => x.dk === k);
+              const dayMeets = mByDay[dd] || [];
+              cells.push(
+                <div key={k} style={{ border: `1px solid ${c.line}`, borderRadius: 3, minHeight: 72, padding: "3px 4px", background: k === todayK ? c.card : "#fff" }}>
+                  <div style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, textAlign: "right" }}>{dd}</div>
+                  {dayMeets.map((mt, mi) => (
+                    <div key={"m" + mi} title={mt.title + (mt.url ? " — click for the recording" : "")} onClick={() => { if (mt.url) window.open(mt.url, "_blank"); }}
+                      style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: "#fff", background: c.ink, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: mt.url ? "pointer" : "default", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {new Date(mt.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(":00", "")} {mt.title}
+                    </div>
+                  ))}
+                  {dayItems.slice(0, 3).map(({ it, n }, ii) => { const stC = it.done ? ["#5a7a5a", "#DFE8DF"] : itemStatus(it) === "in-progress" ? ["#8a6d3b", "#EADFC3"] : ["#9b5e5e", "#F3E3E0"]; return (
+                    <div key={ii} title={(n.title || "") + " — " + it.text} onClick={() => setSelId(n.id)}
+                      style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: stC[0], background: stC[1], borderLeft: `3px solid ${stC[0]}`, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: "pointer", textDecoration: it.done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                      {(it.done ? "\u2713 " : "") + (n.title || "") + ": " + it.text}
+                    </div>
+                  ); })}
+                  {dayItems.length > 3 && <div style={{ fontFamily: sans, fontSize: 8.5, color: c.sub }}>+{dayItems.length - 3} more</div>}
+                </div>
+              );
+            }
+            return cells;
+          })()}
+        </div>
+        <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, marginTop: 6 }}>
+          <span style={{ marginRight: 12 }}><span style={{ color: c.ink }}>■</span> meeting</span>
+          <span style={{ marginRight: 12 }}><span style={{ color: "#9b5e5e" }}>●</span> not started</span>
+          <span style={{ marginRight: 12 }}><span style={{ color: "#8a6d3b" }}>●</span> in progress</span>
+          <span><span style={{ color: "#5a7a5a" }}>●</span> ✓ done</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default function CommsHub({ data, onSave, team = [], viewer = { name: "", owner: true } }) {
+export default function CommsHub({ data, onSave, team = [], viewer = { name: "", owner: true }, meetings = [] }) {
   const contacts = (data && data.contacts) || [];
   const channels = (data && data.channels) || [];
   const [openId, setOpenId] = useState(channels[0] ? channels[0].id : null);
@@ -245,7 +264,7 @@ export default function CommsHub({ data, onSave, team = [], viewer = { name: "",
 
   return (
     <div>
-    <MeetingNotes notes={(data && data.meetingNotes) || []} team={team} viewer={viewer} onSave={(mn) => save({ meetingNotes: mn })} />
+    <MeetingNotes notes={(data && data.meetingNotes) || []} team={team} viewer={viewer} meetings={meetings} onSave={(mn) => save({ meetingNotes: mn })} />
     <div style={{ fontFamily: sans, display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
       {/* left rail — switch between communications */}
       <div style={{ flex: "0 0 210px", minWidth: 170 }}>

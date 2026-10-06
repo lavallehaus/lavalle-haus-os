@@ -18,7 +18,6 @@ export default function TeamMeetings({ data, onSave, iAmOwner }) {
   const [email, setEmail] = useState("");
   const [urls, setUrls] = useState(null);
   const [openId, setOpenId] = useState(null);
-  const [ym, setYm] = useState(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); });
   useEffect(() => { if (iAmOwner) fetch("/api/data?op=meetings_urls").then((r) => r.json()).then(setUrls).catch(() => {}); }, [iAmOwner]);
 
   const save = (next) => onSave({ recipients, items, ...(data || {}), ...next });
@@ -28,13 +27,6 @@ export default function TeamMeetings({ data, onSave, iAmOwner }) {
     save({ recipients: [...recipients, e2] }); setEmail("");
   };
 
-  const [y, m] = ym.split("-").map(Number);
-  const shift = (d2) => { let mm = m - 1 + d2, yy = y; while (mm < 0) { mm += 12; yy--; } while (mm > 11) { mm -= 12; yy++; } setYm(yy + "-" + String(mm + 1).padStart(2, "0")); };
-  const byDay = {};
-  items.forEach((it) => { const d2 = new Date(it.date); if (d2.getFullYear() === y && d2.getMonth() === m - 1) (byDay[d2.getDate()] = byDay[d2.getDate()] || []).push(it); });
-  const firstDow = new Date(y, m - 1, 1).getDay();
-  const daysIn = new Date(y, m, 0).getDate();
-  const cells = []; for (let i = 0; i < firstDow; i++) cells.push(null); for (let d2 = 1; d2 <= daysIn; d2++) cells.push(d2); while (cells.length % 7) cells.push(null);
 
   return (
     <div style={{ fontFamily: sans, maxWidth: 920 }}>
@@ -66,24 +58,6 @@ export default function TeamMeetings({ data, onSave, iAmOwner }) {
           <input readOnly value={urls.ics} onFocus={(e) => e.target.select()} style={{ ...input, fontSize: 11 }} />
         </div>
       )}
-
-      {/* month view */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
-        <button onClick={() => shift(-1)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "4px 11px", cursor: "pointer", color: c.sub }}>‹</button>
-        <div style={{ fontFamily: sans, fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>{MONTHS[m - 1]} {y}</div>
-        <button onClick={() => shift(1)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "4px 11px", cursor: "pointer", color: c.sub }}>›</button>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", border: `1px solid ${c.line}`, borderRight: "none", borderBottom: "none", marginBottom: 18 }}>
-        {cells.map((d2, i) => (
-          <div key={i} style={{ minHeight: 54, borderRight: `1px solid ${c.line}`, borderBottom: `1px solid ${c.line}`, padding: 4, background: d2 ? "#fff" : "#FAFAF9" }}>
-            {d2 && <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{d2}</div>}
-            {(byDay[d2] || []).map((it) => (
-              <button key={it.id} onClick={() => setOpenId(openId === it.id ? null : it.id)} title={it.title}
-                style={{ display: "block", width: "100%", textAlign: "left", border: "none", borderRadius: 1, background: c.ink, color: "#fff", fontFamily: sans, fontSize: 8.5, padding: "2px 4px", marginTop: 2, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</button>
-            ))}
-          </div>
-        ))}
-      </div>
 
       {/* meeting list */}
       {!items.length && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>No meetings yet — they appear here automatically once the Fathom webhook is connected.</div>}
