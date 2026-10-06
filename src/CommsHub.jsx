@@ -65,7 +65,7 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
           <button key={k} onClick={() => setMnView(k)}
             style={{ border: `1px solid ${mnView === k ? c.ink : c.line}`, background: mnView === k ? c.ink : "transparent", color: mnView === k ? "#fff" : c.sub, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
         ))}
-        {mnView === "calendar" && (
+        {mnView === "calendar" && viewer.owner && (
           <select value={mnPerson} onChange={(e) => setMnPerson(e.target.value)}
             style={{ border: `1px solid ${c.line}`, background: "#fff", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 11 }}>
             <option value="All">Everyone</option>
@@ -108,12 +108,12 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
                 cells.push(
                   <div key={k} style={{ border: `1px solid ${c.line}`, borderRadius: 3, minHeight: 72, padding: "3px 4px", background: k === todayK ? c.card : "#fff" }}>
                     <div style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, textAlign: "right" }}>{dd}</div>
-                    {dayItems.slice(0, 3).map(({ it, n }, ii) => (
+                    {dayItems.slice(0, 3).map(({ it, n }, ii) => { const stC = it.done ? ["#5a7a5a", "#DFE8DF"] : itemStatus(it) === "in-progress" ? ["#8a6d3b", "#EADFC3"] : ["#9b5e5e", "#F3E3E0"]; return (
                       <div key={ii} title={(n.title || "") + " — " + it.text} onClick={() => { setSelId(n.id); setMnView("list"); }}
-                        style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: it.done ? "#5a7a5a" : "#4b463d", background: it.done ? "#DFE8DF" : (PERSON_C[n.title] ? PERSON_C[n.title] + "33" : "#EEECE6"), borderLeft: `3px solid ${it.done ? "#5a7a5a" : PERSON_C[n.title] || "#B4AFA4"}`, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: "pointer", textDecoration: it.done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                        {(n.title || "") + ": " + it.text}
+                        style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: stC[0], background: stC[1], borderLeft: `3px solid ${stC[0]}`, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: "pointer", textDecoration: it.done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                        {(it.done ? "\u2713 " : "") + (n.title || "") + ": " + it.text}
                       </div>
-                    ))}
+                    ); })}
                     {dayItems.length > 3 && <div style={{ fontFamily: sans, fontSize: 8.5, color: c.sub }}>+{dayItems.length - 3} more</div>}
                   </div>
                 );
@@ -122,7 +122,9 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
             })()}
           </div>
           <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, marginTop: 6 }}>
-            {people.map((p) => <span key={p} style={{ marginRight: 12 }}><span style={{ color: PERSON_C[p] || "#B4AFA4" }}>●</span> {p}</span>)}<span><span style={{ color: "#5a7a5a" }}>●</span> done</span>
+            <span style={{ marginRight: 12 }}><span style={{ color: "#9b5e5e" }}>●</span> not started</span>
+            <span style={{ marginRight: 12 }}><span style={{ color: "#8a6d3b" }}>●</span> in progress</span>
+            <span><span style={{ color: "#5a7a5a" }}>●</span> ✓ done</span>
           </div>
         </div>
       )}

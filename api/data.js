@@ -877,12 +877,14 @@ export default async function handler(req, res) {
         if (team) {
           let userName = ev.user || "";
           let chName = ev.channel || "";
+          let loftCh = false;
           try {
             const ur = await (await fetch("https://slack.com/api/users.info?user=" + ev.user, { headers: { Authorization: "Bearer " + team.token } })).json();
             if (ur.ok) userName = ur.user.profile.display_name || ur.user.real_name || ur.user.name;
             const cr = await (await fetch("https://slack.com/api/conversations.info?channel=" + ev.channel, { headers: { Authorization: "Bearer " + team.token } })).json();
-            if (cr.ok) chName = "#" + cr.channel.name;
+            if (cr.ok) { chName = "#" + cr.channel.name; loftCh = /loft/.test((cr.channel.name || "").toLowerCase()) || (cr.channel.name || "").toLowerCase() === "lavalle-haus" || !!cr.channel.is_ext_shared || !!cr.channel.is_shared; }
           } catch {}
+          if (loftCh) { res.json({ ok: true }); return; } // her rule Oct 5 2026: the Loft's shared channel stays out of the app
           // Slack markup → readable: <@U123|kia> and <http://x|label> keep the label.
           const text = String(ev.text)
             .replace(/<[@#]([UWC][A-Z0-9]+)\|([^>]+)>/g, "@$2")
@@ -913,7 +915,7 @@ export default async function handler(req, res) {
       }
       // Channels made after install still reach the bell: join them on sight,
       // otherwise the bot only ever sees what existed on the day it was added.
-      if (ev.type === "channel_created" && ev.channel && ev.channel.id) {
+      if (ev.type === "channel_created" && ev.channel && ev.channel.id && !/loft/.test((ev.channel.name || "").toLowerCase()) && (ev.channel.name || "").toLowerCase() !== "lavalle-haus") {
         const map = (await kvGet("slack_oauth")) || {};
         const team = map[b.team_id];
         if (team) {
@@ -942,6 +944,14 @@ export default async function handler(req, res) {
     const teamSA = mapSA[bSA.teamId];
     if (!teamSA) { res.status(404).json({ error: "No token for that workspace." }); return; }
     const wantCh = String(bSA.channel || "general").replace(/^#/, "").toLowerCase();
+    if (/loft|^lavalle-haus$/.test(wantCh)) { res.status(400).json({ error: "That channel is shared with the Loft — the bot stays out of it." }); return; }
+    if (bSA.pinTs) { // pin an already-posted message
+      const lr0 = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
+      const ch0 = ((lr0.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
+      if (!ch0) { res.status(404).json({ error: "channel not found" }); return; }
+      const pn0 = await (await fetch("https://slack.com/api/pins.add", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: ch0.id, timestamp: String(bSA.pinTs) }) })).json();
+      res.json({ ok: !!pn0.ok, pinned: pn0.ok || pn0.error }); return;
+    }
     const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
     const chSA = ((lr.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
     if (!chSA) { res.status(404).json({ error: "channel not found", channels: (lr.channels || []).map((c0) => c0.name) }); return; }
