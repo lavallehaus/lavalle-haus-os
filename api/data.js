@@ -4450,7 +4450,7 @@ export default async function handler(req, res) {
       for (const gr of grids) {
         if (!gr.dirty || !gr.g || !Array.isArray(gr.g.tiles) || !gr.g.tiles.length) continue;
         const gNum = gr.base === 1 ? "1" : "2";
-        try { const acTS = new AbortController(); setTimeout(() => acTS.abort(), 1500); fetch(APP_ORIGIN + "/api/data?op=sisters_grid_tiles" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ grid: gNum, tiles: gr.g.tiles.map((t) => ({ cover: t.cover, tag: t.tag })) }), signal: acTS.signal }).catch(() => {}); } catch (eTS) {}
+        try { const acTS = new AbortController(); setTimeout(() => acTS.abort(), 1500); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_tiles" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ grid: gNum, tiles: gr.g.tiles.map((t) => ({ cover: t.cover, tag: t.tag })) }), signal: acTS.signal }).catch(() => {}); } catch (eTS) {}
       }
     }
     if (patchesCV.length) await patchBoardCards(SBOARD.key, patchesCV);
@@ -4722,7 +4722,7 @@ export default async function handler(req, res) {
     }
     const missingW = activeW.filter((wi) => !cacheW.views[wi]);
     if (missingW.length && process.env.PUBLISH_KEY) {
-      try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
+      try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
     }
     const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + a + "–" + b + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
     // The card updates on EVERY call that has the current window — even while
@@ -7234,7 +7234,7 @@ export default async function handler(req, res) {
     // right now — the 15-min sweep stays as the safety net.
     if (coverSyncKick.size && process.env.PUBLISH_KEY) {
       for (const bkCS of coverSyncKick) {
-        try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 1200); fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync" + (bkCS === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
+        try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync" + (bkCS === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
       }
     }
     // (Sep 7: the instant caption→doc push trigger was REMOVED — the doc is
