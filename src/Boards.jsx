@@ -1439,8 +1439,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   {viewer.owner && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 8 }}>Untick someone and the board disappears for them. Photos show wherever members appear.</div>}
                 </div>
               )}
-              <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "Link assets"}</button>
-              {viewer.owner && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
+              {/* the 15-min automations already link assets + flow covers on the brand boards (her ask, Oct 5 2026) */}
+              {!["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "Link assets"}</button>}
+              {viewer.owner && !["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
               <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => {
@@ -1468,7 +1469,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       labels: [], members: [], desc: "", done: false, comments: [],
                     }));
                 patchBoard(open, { lists, cards: [...board.cards, ...made] });
-              }} style={ghost} title="Create the next 21 planned posts — niche paired by day, formats balanced">✦ Plan next 21</button>
+              }} style={{ ...ghost, display: ["the-fold", "lavalle-sisters"].includes(open) ? "none" : undefined }} title="Create the next 21 planned posts — niche paired by day, formats balanced">✦ Plan next 21</button>
               <button onClick={() => { const name = prompt("New list name"); if (name && name.trim()) patchBoard(open, { lists: [...board.lists, { id: uid(), name: name.trim() }] }); }}
                 style={ghost}>+ List</button>
               {bgMenu && (
@@ -1686,7 +1687,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                           if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 8) clearTimeout(touchTimer.current);
                         }}
                         onTouchEnd={() => { if (!touchDrag) clearTimeout(touchTimer.current); }}
-                        style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300, position: "relative", overflow: "visible" }) : {}), flexShrink: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                        style={{ ...(folderMode && opsFocus ? (/^(—|⚠|pre-orders|automations)/i.test((card.name || "").trim()) ? { width: "100%" } : { flex: "0 0 300px", minWidth: 300, position: "relative", overflow: "visible" }) : {}), flexShrink: 0, background: /^—[\s\S]*—$/.test((card.name || "").trim()) ? "#E7E2D7" : c.bg, border: `1px solid ${/^—[\s\S]*—$/.test((card.name || "").trim()) ? "#D6CFBF" : c.line}`, borderRadius: 8, cursor: "pointer", opacity: (dragCard === card.id || touchDrag === card.id) ? 0.4 : card.done ? 0.62 : 1, overflow: "hidden", boxShadow: "0 1px 2px rgba(26,26,26,0.06)", outline: dropHint === card.id ? "2px solid #A39B8B" : "none", outlineOffset: 2, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
                         {statsHoverOk && statsFor === card.name && <StatsHover name={card.name} onClose={() => setStatsFor(null)} />}
                         {(() => { const imgs = (card.attachments || []).filter((a) => a && a.url && /^image\//.test(a.type || "") ); const coverIsPage = !card.cover || imgs.some((a) => a.url === card.cover); if (imgs.length >= 2 && coverIsPage) return <CoverCarousel images={imgs} alt={card.name} cover={card.cover} />; if (card.cover && imgs.length >= 2) return <CoverPresent cover={card.cover} images={imgs} alt={card.name} />; return card.cover && <img src={card.cover} alt="" style={folderMode && opsFocus ? { display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover" } : { display: "block", width: "100%", height: "auto" }} />; })()}
                         {card.approved && <div style={{ position: "absolute", top: 6, right: 6, background: "#5a7a5a", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 7px", borderRadius: 2 }}>Approved</div>}
@@ -1714,13 +1715,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             </div>
                           )}
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                            <button
+                            {!/^—[\s\S]*—$/.test((card.name || "").trim()) && <button
                               onClick={(e) => { e.stopPropagation(); toggleDone(open, card.id); }}
                               title={card.done ? "Mark not done" : "Mark done — posted"}
                               style={{ flexShrink: 0, width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${(card.done || (card.pub && card.pub.status === "published")) ? c.green : c.line}`, background: (card.done || (card.pub && card.pub.status === "published")) ? c.green : "transparent", color: c.bg, fontSize: 10, lineHeight: 1, cursor: "pointer", padding: 0, marginTop: 1 }}>
                               {(card.done || (card.pub && card.pub.status === "published")) ? "✓" : ""}
-                            </button>
-                            <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}</div>
+                            </button>}
+                            {/^—[\s\S]*—$/.test((card.name || "").trim())
+                              ? <div style={{ flex: 1, textAlign: "center", fontFamily: sans, fontSize: 10.5, letterSpacing: 4, textTransform: "uppercase", color: "#6E675C", padding: "2px 0" }}>{(card.name || "").trim().replace(/^—\s*|\s*—$/g, "")}</div>
+                              : <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}</div>}
                           </div>
                           {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>

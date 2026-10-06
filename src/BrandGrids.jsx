@@ -134,21 +134,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   // IG cover), its own order, its own zoom crops and its own lock — all stored
   // under the separate "lavallesisters:tiktok" key.
   const [platform, setPlatform] = useState("ig");
-  // Generated monthly grids (The Fold): archives at Social Media/<Month>/grid,
-  // listed once and viewable via the month dropdown.
-  const [genGrids, setGenGrids] = useState([]);
-  const [genSel, setGenSel] = useState("");
-  useEffect(() => {
-    let dead = false;
-    fetch("/api/data?op=fold_grid_list").then((r) => r.json()).then((d) => {
-      if (dead || !d || !d.grids) return;
-      setGenGrids(d.grids);
-      // Default straight to the newest generated month — the live planner
-      // duplicates what the generated grid already shows.
-      if (d.grids.length) setGenSel(d.grids[d.grids.length - 1].fileId);
-    }).catch(() => {});
-    return () => { dead = true; };
-  }, []);
+  // The Fold shows its two LIVE grids (1-21, 22-42) exactly as the Grid and
+  // Contributions card renders them — numbered windows, dots, date strips.
+  // (Her rule Oct 5 2026; the old generated-months dropdown is retired.)
+  const [foldSel, setFoldSel] = useState("1");
   // Lavalle Sisters pre-grid + cycle archive (Courtney's hand-off view).
   const [sisGrids, setSisGrids] = useState({ pregrid: null, archive: [] });
   const [sisSel, setSisSel] = useState("");
@@ -837,13 +826,13 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           ))}
         </div>
       )}
-      {acct === "thefoldlabel" && genGrids.length > 0 && (
+      {acct === "thefoldlabel" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Generated grids</span>
-          <select value={genSel} onChange={(e) => setGenSel(e.target.value)}
-            style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
-            {genGrids.map((g) => <option key={g.fileId} value={g.fileId}>{g.month}</option>)}
-          </select>
+          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Grids</span>
+          {[["1", "Grid 1–21"], ["2", "Grid 22–42"]].map(([k, lb]) => (
+            <button key={k} onClick={() => setFoldSel(k)}
+              style={{ border: `1px solid ${c.line}`, background: foldSel === k ? c.ink : "transparent", color: foldSel === k ? "#FFFFFF" : c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
+          ))}
         </div>
       )}
       {acct === "lavallesisters" && sisGrids.archive.length > 0 && (
@@ -1019,15 +1008,23 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
       {acct === "lavallesisters" && sisSel && !sisEdit && sisBusy && (
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 10 }}>Loading the grid…</div>
       )}
-      {acct === "thefoldlabel" && genSel && (
-        <div style={{ marginBottom: 14 }}>
-          <img src={"/api/data?op=drive_img&id=" + genSel} alt="Generated grid"
-            style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
-          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 6 }}>
-            {genGrids.find((g) => g.fileId === genSel)?.month} — generated grid. Reads top-left to bottom-right; Post 1 is the bottom-right tile.
+      {acct === "thefoldlabel" && (() => {
+        const bdF = boards && boards["the-fold"];
+        const gcF = bdF && (bdF.cards || []).find((cd) => !cd._deleted && /^grid\b/i.test(cd.name || ""));
+        const attsF = ((gcF && gcF.attachments) || []).filter((a) => a && a.url && /^Grid\s/.test(a.name || ""));
+        const setF = foldSel === "2" ? attsF.filter((a) => /^Grid\s(22|31)/.test(a.name || "")) : attsF.filter((a) => /^Grid\s(1–9|10)/.test(a.name || ""));
+        if (!setF.length) return null;
+        return (
+          <div style={{ marginBottom: 14 }}>
+            {setF.map((a) => (
+              <div key={a.url} style={{ marginBottom: 12 }}>
+                <img src={a.url} alt={a.name} style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
+                <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 4 }}>{a.name} — Post 1 of the window sits bottom right.</div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        );
+      })()}
       {!sisFocus && <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
           {brand.handle}{acct === "lavallesisters" ? (tt ? " · TikTok" : " · Instagram") : ""} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
