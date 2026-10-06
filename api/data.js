@@ -3056,7 +3056,8 @@ export default async function handler(req, res) {
   // notes. TikTok renders on top, Instagram below; all of it feeds the next
   // Strategy Outline.
   if (op === "sisters_analytics" && req.method === "GET") {
-    if (!ownerRole(auth)) { res.status(403).json({ error: "Analytics are only available to the owner." }); return; }
+    const authAN = await getAuthEarly(req);
+    if (!ownerRole(authAN)) { res.status(403).json({ error: "Analytics are only available to the owner." }); return; }
     const histAN = (await kvGet("sisters_audit_history" + SBOARD.kvSuffix)) || {};
     const growthAN = (await kvGet("sisters_growth" + SBOARD.kvSuffix)) || [];
     const monthsAN = Object.keys(histAN).sort();
