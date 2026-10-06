@@ -1504,7 +1504,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           {folderMode && !opsFocus && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 88vw), 1fr))", gap: 16, padding: "0 14px 20px", maxWidth: 1140, position: "relative", zIndex: 20 }}>
               {board.lists.map((l) => {
-                const csF = board.cards.filter((x) => x.listId === l.id && (viewer.owner || !/^automations\b/i.test(x.name || "")));
+                const csF = board.cards.filter((x) => x.listId === l.id && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")));
                 const covF = (csF.find((x) => x.cover) || {}).cover;
                 return (
                   <button key={l.id} onClick={() => setOpsFocus(l.id)}
@@ -1557,7 +1557,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           })()}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
             {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : board.lists).map((l) => {
-              let cards = board.cards.filter((x) => x.listId === l.id);
+              // the Automations card is for the owners' eyes only (her rule Oct 5 2026)
+              let cards = board.cards.filter((x) => x.listId === l.id && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")));
               // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
               // its month cards + schedule note feed the calendar instead of
               // the normal stack. Anything else (paired film items…) stays a card.
