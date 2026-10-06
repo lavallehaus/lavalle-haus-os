@@ -129,7 +129,7 @@ function ProductTimeline({ boards, notes, onSaveNotes, brand = "all" }) {
     ((rnd || {})["the-fold"] || []).forEach((f) => {
       const u = "/api/data?op=drive_img&id=" + f.id + "&fit=thumb";
       if (matchedRnd.has(u)) return;
-      pipeline.push({ key: "rnd:" + f.id, title: f.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " "), image: u, fullSrc: "/api/data?op=drive_img&id=" + f.id + "&fit=igfeed", month: null, cat: "rd" });
+      pipeline.push({ key: "rnd:" + f.id, title: f.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " "), image: u, fullSrc: "/api/data?op=drive_img&id=" + f.id, month: null, cat: "rd" });
     });
   }
   pipeline.sort((a, b2) => (!a.month ? 1 : !b2.month ? -1 : a.month < b2.month ? -1 : 1));
