@@ -1782,7 +1782,23 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                         </div>
                       </div>
                       );
-                      if (!(folderMode && opsFocus)) return cards.map(renderCard);
+                      if (!(folderMode && opsFocus)) {
+                        if (!/^schedule/i.test((l.name || "").trim())) return cards.map(renderCard);
+                        // month dividers inside the Schedule columns (her ask Oct 5
+                        // 2026) — synthesized from the card dates so a re-date can
+                        // never leave a stale divider behind
+                        const moOfS = (cd) => { const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+\d+/i.exec(cd.name || ""); return m ? m[1].toUpperCase() : null; };
+                        const outS = []; let prevMoS = null;
+                        cards.forEach((cd, iS) => {
+                          const moS = moOfS(cd);
+                          if (moS && moS !== prevMoS) outS.push(
+                            <div key={"mo" + iS} style={{ flexShrink: 0, background: "#E7E2D7", border: "1px solid #D6CFBF", borderRadius: 8, padding: "8px 10px", textAlign: "center", fontFamily: sans, fontSize: 10.5, letterSpacing: 4, textTransform: "uppercase", color: "#6E675C" }}>{moS}</div>
+                          );
+                          if (moS) prevMoS = moS;
+                          outS.push(renderCard(cd));
+                        });
+                        return outS;
+                      }
                       // one row per category: dividers/banners break the flow; each
                       // run of products becomes a single sideways-scrolling strip
                       const out = []; let run = [];
