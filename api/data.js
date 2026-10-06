@@ -6795,7 +6795,7 @@ export default async function handler(req, res) {
   // ── Drive write ops (owner-only) — build the numbered cover folders without
   // 40 manual copy/rename clicks. drive.readonly reads the source, drive.file
   // owns the copies + the new folder, so files.copy / files.create both work.
-  if (op === "drive_meta" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session" || op === "drive_revisions") {
+  if (op === "drive_meta" || op === "drive_shortcut" || op === "drive_move" || op === "drive_mkdir" || op === "drive_copy" || op === "drive_upload_url" || op === "drive_trash" || op === "drive_rename" || op === "drive_upload_session" || op === "drive_revisions" || op === "drive_access_token") {
     if (!ownerRole(auth)) { res.status(403).json({ error: "Owner only." }); return; }
     const gstate = (await kvGet("google_oauth")) || {};
     if (!gstate.refresh_token) { res.status(400).json({ error: "google_not_connected" }); return; }
@@ -6809,6 +6809,8 @@ export default async function handler(req, res) {
       if (!td.access_token) { res.status(400).json({ error: "google_token_failed" }); return; }
       const AUTH = { Authorization: "Bearer " + td.access_token };
       const b = req.body || {};
+      // short-lived Drive token for the owner's own tooling (expires ~1h)
+      if (op === "drive_access_token") { res.json({ token: td.access_token, expires_in: td.expires_in }); return; }
       if (op === "drive_meta") {
         const id = (b.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
         const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,parents,mimeType,thumbnailLink&supportsAllDrives=true`, { headers: AUTH });
