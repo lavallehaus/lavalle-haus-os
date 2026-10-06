@@ -35,6 +35,8 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   const [state, setState] = useState(data || null);
   const WS2IGP = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
   const [feedId, setFeedId] = useState(null);
+  const [bvGP, setBvGP] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+  useEffect(() => { const h = (e) => setBvGP(e.detail || "all"); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
   useEffect(() => { const pick = (v) => { const ig = WS2IGP[v]; if (!ig || !state || !state.feeds) return; const f0 = state.feeds.find((f) => String(f.account || "").toLowerCase() === ig || f.boardKey === Object.keys(WS2IGP).find((k) => WS2IGP[k] === ig)); if (f0) setFeedId(f0.id); }; try { pick(localStorage.getItem("lh_brand_view")); } catch {} const h = (e) => pick(e.detail); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, [state && (state.feeds || []).length]);
   const [aspect, setAspect] = useState("3 / 4"); // Instagram's current portrait grid; toggle to 1:1
   const [openItem, setOpenItem] = useState(null); // cardId
@@ -111,7 +113,11 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   // the first one and the month suffix comes off the name.
   const seenFd = new Set();
   const feeds = feedsVis.filter((f) => { const k = f.boardKey || String(f.account || f.id).toLowerCase(); if (seenFd.has(k)) return false; seenFd.add(k); return true; })
-    .map((f) => ({ ...f, name: String(f.name || "").replace(/\s*[—–-]\s*(January|February|March|April|May|June|July|August|September|October|November|December)\s*$/i, "") }));
+    .map((f) => ({ ...f, name: String(f.name || "").replace(/\s*[—–-]\s*(January|February|March|April|May|June|July|August|September|October|November|December)\s*$/i, "") }))
+    .filter((f) => { // in a brand view only that brand's schedule shows (her rule Oct 5 2026)
+      if (!WS2IGP[bvGP]) return true;
+      return f.boardKey === bvGP || String(f.account || "").toLowerCase() === WS2IGP[bvGP];
+    });
   const feed = feeds.find((f) => f.id === feedId) || feeds[0] || null;
   const board = feed && boards ? boards[feed.boardKey] : null;
   const cardById = useMemo(() => {
@@ -256,7 +262,12 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   // ── schedule model ── card.due ("YYYY-MM-DD…") drives everything
   const keyOf = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   const today = keyOf(new Date());
-  const dueKey = (card) => (card && card.due ? String(card.due).slice(0, 10) : null);
+  const MO_GP = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+  // her rule (Oct 5 2026): an approved post just POPULATES the schedule — the
+  // date in the card's name is the schedule, no manual arming needed (Courtney
+  // mostly posts by hand). pub.at / card.due still override when set.
+  const nameDue = (card) => { const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+(\d+)/i.exec((card && card.name) || ""); if (!m) return null; const mo = MO_GP[m[1].toLowerCase()]; if (mo == null) return null; const y = mo >= 6 ? 2026 : 2027; return y + "-" + String(mo + 1).padStart(2, "0") + "-" + String(+m[2]).padStart(2, "0"); };
+  const dueKey = (card) => (card && card.due ? String(card.due).slice(0, 10) : nameDue(card));
   const withCards = items.map((it) => ({ it, card: cardById[it.cardId] || {} }));
   const byDay = {};
   withCards.forEach(({ it, card }) => { const k = dueKey(card); if (k) (byDay[k] = byDay[k] || []).push({ it, card }); });
@@ -429,6 +440,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
         <div style={{ flex: 1, minWidth: 300, maxWidth: 640 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe }}>Posting schedule</span>
+            <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub }}><span style={{ color: c.green }}>●</span> approved · <span style={{ color: "#C9A96A" }}>●</span> needs review</span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
               {["week", "month"].map((m) => (
                 <button key={m} onClick={() => setCalMode(m)}
@@ -452,7 +464,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
                     {posts.map(({ it, card }) => (
                       <div key={it.cardId} onClick={() => setOpenItem(it.cardId)} title={card.name} style={{ position: "relative", cursor: "pointer" }}>
-                        <img src={imgOf(it, 200)} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, opacity: card.done ? 0.5 : 1, border: `1px solid ${c.line}`, display: "block" }} />
+                        <img src={imgOf(it, 200)} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1, opacity: card.done ? 0.5 : 1, border: `2px solid ${card.done || card.approved ? c.green : "#C9A96A"}`, display: "block" }} />
                         {it.n != null && <span style={{ position: "absolute", left: 1, bottom: 1, fontFamily: sans, fontSize: 7.5, color: "#FFF", background: "rgba(26,26,26,0.7)", borderRadius: 1, padding: "0 3px", lineHeight: 1.4 }}>#{it.n}</span>}
                       </div>
                     ))}
@@ -504,7 +516,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
                     const bPosts = boardPubsByDay[k] || [];
                     const rows = [];
                     gridPosts.forEach(({ it, card }) => rows.push(
-                      <PostRow key={it.cardId} cover={imgOf(it, 200)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done ? c.green : c.taupe} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
+                      <PostRow key={it.cardId} cover={imgOf(it, 200)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done || card.approved ? c.green : "#C9A96A"} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
                     ));
                     bPosts.forEach(({ card: cd }, bi) => rows.push(
                       <PostRow key={"bp" + bi} cover={cd.cover} num={(cd.name.match(/post\s*(\d+)/i) || [])[1]} name={"@" + (cd.pub.account || "?")} time={timeOf(cd.pub.at)} tone={cd.pub.status === "published" ? c.green : c.taupe} title={pubTitle(cd)} />

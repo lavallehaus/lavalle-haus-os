@@ -34,6 +34,12 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
   const [selId, setSelId] = useState(visible[0] ? visible[0].id : null);
   const note = visible.find((n) => n.id === selId) || visible[0] || null;
   const [itemText, setItemText] = useState("");
+  const [mnView, setMnView] = useState("list"); // list | calendar (her ask Oct 5 2026)
+  const [mnPerson, setMnPerson] = useState("All");
+  const [mnMonth, setMnMonth] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; });
+  const people = [...new Set(visible.map((n) => n.title || "Meeting"))];
+  const PERSON_C = { Sarah: "#8F8676", Courtney: "#C9A96A" };
+  const dueOf = (it, n) => { if (it.due) return String(it.due).slice(0, 10); const m = /^(Oct|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep)[a-z]*\s+(\d{1,2})/i.exec(it.text || ""); if (m) { const mo = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[1].slice(0,3).toLowerCase()); const y = mo >= 5 ? 2026 : 2027; return y + "-" + String(mo + 1).padStart(2, "0") + "-" + String(+m[2]).padStart(2, "0"); } return n.date || null; };
   const patchNote = (id, patch) => onSave((notes || []).map((n) => (n.id === id ? { ...n, ...patch } : n)));
   const lbl = (n) => { const d = n.date ? new Date(n.date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "undated"; return d + " · " + (n.title || "Meeting"); };
   const addNote = () => {
@@ -55,6 +61,17 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
           {!visible.length && <option value="">No notes yet</option>}
         </select>
         <button onClick={addNote} style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>+ New</button>
+        {[["list", "List"], ["calendar", "Calendar"]].map(([k, lb]) => (
+          <button key={k} onClick={() => setMnView(k)}
+            style={{ border: `1px solid ${mnView === k ? c.ink : c.line}`, background: mnView === k ? c.ink : "transparent", color: mnView === k ? "#fff" : c.sub, borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
+        ))}
+        {mnView === "calendar" && (
+          <select value={mnPerson} onChange={(e) => setMnPerson(e.target.value)}
+            style={{ border: `1px solid ${c.line}`, background: "#fff", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 11 }}>
+            <option value="All">Everyone</option>
+            {people.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
         <span style={{ flex: 1 }} />
         {note && viewer.owner && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -68,7 +85,48 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
         )}
       </div>
       {!note && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Notes from your phone's Notes app land here each morning, filed by meeting date.</div>}
-      {note && (
+      {mnView === "calendar" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <button onClick={() => setMnMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>←</button>
+            <span style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: c.ink }}>{new Date(mnMonth.y, mnMonth.m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+            <button onClick={() => setMnMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "3px 10px", cursor: "pointer", color: c.sub }}>→</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => <div key={w} style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, padding: "0 2px 4px" }}>{w}</div>)}
+            {(() => {
+              const first = new Date(mnMonth.y, mnMonth.m, 1);
+              const days = new Date(mnMonth.y, mnMonth.m + 1, 0).getDate();
+              const all = [];
+              for (const n of visible) { if (mnPerson !== "All" && (n.title || "Meeting") !== mnPerson) continue; for (const it of (n.items || [])) { const dk = dueOf(it, n); if (dk) all.push({ it, n, dk }); } }
+              const cells = [];
+              for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"p" + i} />);
+              const todayK = new Date().toISOString().slice(0, 10);
+              for (let dd = 1; dd <= days; dd++) {
+                const k = mnMonth.y + "-" + String(mnMonth.m + 1).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+                const dayItems = all.filter((x) => x.dk === k);
+                cells.push(
+                  <div key={k} style={{ border: `1px solid ${c.line}`, borderRadius: 3, minHeight: 72, padding: "3px 4px", background: k === todayK ? c.card : "#fff" }}>
+                    <div style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, textAlign: "right" }}>{dd}</div>
+                    {dayItems.slice(0, 3).map(({ it, n }, ii) => (
+                      <div key={ii} title={(n.title || "") + " — " + it.text} onClick={() => { setSelId(n.id); setMnView("list"); }}
+                        style={{ fontFamily: sans, fontSize: 9, lineHeight: 1.35, color: it.done ? "#5a7a5a" : "#4b463d", background: it.done ? "#DFE8DF" : (PERSON_C[n.title] ? PERSON_C[n.title] + "33" : "#EEECE6"), borderLeft: `3px solid ${it.done ? "#5a7a5a" : PERSON_C[n.title] || "#B4AFA4"}`, borderRadius: 2, padding: "2px 4px", marginTop: 2, cursor: "pointer", textDecoration: it.done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                        {(n.title || "") + ": " + it.text}
+                      </div>
+                    ))}
+                    {dayItems.length > 3 && <div style={{ fontFamily: sans, fontSize: 8.5, color: c.sub }}>+{dayItems.length - 3} more</div>}
+                  </div>
+                );
+              }
+              return cells;
+            })()}
+          </div>
+          <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub, marginTop: 6 }}>
+            {people.map((p) => <span key={p} style={{ marginRight: 12 }}><span style={{ color: PERSON_C[p] || "#B4AFA4" }}>●</span> {p}</span>)}<span><span style={{ color: "#5a7a5a" }}>●</span> done</span>
+          </div>
+        </div>
+      )}
+      {mnView === "list" && note && (
         <div>
           {grouped.map(([tg, list]) => (
             <div key={tg || "untagged"} style={{ marginBottom: 10 }}>
@@ -87,7 +145,18 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
                         assigned {new Date(a).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{it.done ? "" : wk >= 1 ? ` · ${wk} week${wk === 1 ? "" : "s"} behind` : " · this week"}
                       </span>;
                     })()}
+                    {((it.links || []).length > 0 || true) && (
+                      <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 3 }}>
+                        {(it.links || []).map((lk, li) => (
+                          <a key={li} href={lk.u} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                            style={{ fontFamily: sans, fontSize: 9.5, color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 10, padding: "2px 9px", textDecoration: "none", background: "#fff" }}>↗ {lk.n || "link"}</a>
+                        ))}
+                        <button onClick={() => { const u = prompt("Link URL"); if (!u) return; const n0 = prompt("Label for this link", "Drive folder") || "link"; patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, links: [...(q.links || []), { n: n0, u }] } : q)) }); }}
+                          style={{ fontFamily: sans, fontSize: 9.5, color: c.sub, border: `1px dashed ${c.line}`, borderRadius: 10, padding: "2px 8px", background: "transparent", cursor: "pointer" }}>+ link</button>
+                      </span>
+                    )}
                   </span>
+                  {false}
                   {(() => { const st = NOTE_STATUSES.find(([k]) => k === itemStatus(it)) || NOTE_STATUSES[0]; return (
                     <select value={itemStatus(it)} onChange={(e) => { const v = e.target.value; patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, status: v, done: v === "done", doneAt: v === "done" ? new Date().toISOString() : undefined } : q)) }); }}
                       style={{ border: "none", borderRadius: 10, padding: "3px 6px", fontFamily: sans, fontSize: 9, color: st[3], background: st[2], cursor: "pointer" }}>
