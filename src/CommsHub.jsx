@@ -29,8 +29,13 @@ const weeksBehind = (it, note) => { const a = assignedOf(it, note); if (!a || it
 // unless someone is granted on it (Courtney sees her own). Items carry a tag
 // (R&D / Newsletter / Marketing…) so each line files where it impacts.
 function MeetingNotes({ notes, onSave, team, viewer }) {
+  // brand scoping (her rule Oct 5 2026): a note tagged for a brand shows only
+  // in that brand's view — sisters items never appear under The Fold's comms
+  const [bvMN, setBvMN] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+  useEffect(() => { const h = (e) => setBvMN(e.detail || "all"); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
   const canSee = (n) => viewer.owner || (n.access || []).some((a) => String(a).toLowerCase().split(" ")[0] === String(viewer.name || "").toLowerCase().split(" ")[0]);
-  const visible = (notes || []).filter(canSee).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (a.title || "").localeCompare(b.title || ""));
+  const inBrand = (n) => !n.brand || bvMN === "all" || !["the-fold", "lavalle-sisters", "lavalle-haus"].includes(bvMN) || n.brand === bvMN;
+  const visible = (notes || []).filter((n) => canSee(n) && inBrand(n)).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (a.title || "").localeCompare(b.title || ""));
   const [selId, setSelId] = useState(visible[0] ? visible[0].id : null);
   const note = visible.find((n) => n.id === selId) || visible[0] || null;
   const [itemText, setItemText] = useState("");
@@ -47,7 +52,7 @@ function MeetingNotes({ notes, onSave, team, viewer }) {
     if (!date) return;
     const title = prompt("Who / what is this meeting?", "Sarah");
     if (!title) return;
-    const nn = { id: uid(), date: date.trim(), title: title.trim(), access: [], items: [], src: "app" };
+    const nn = { id: uid(), date: date.trim(), title: title.trim(), access: [], items: [], src: "app", brand: ["the-fold", "lavalle-sisters", "lavalle-haus"].includes(bvMN) ? bvMN : null };
     onSave([...(notes || []), nn]); setSelId(nn.id);
   };
   const grouped = note ? NOTE_TAGS.concat([null]).map((tg) => [tg, (note.items || []).filter((it) => (tg === null ? !NOTE_TAGS.includes(it.tag) : it.tag === tg))]).filter(([, l]) => l.length) : [];
