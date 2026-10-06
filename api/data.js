@@ -2919,7 +2919,7 @@ export default async function handler(req, res) {
     const curIdx = cycles.findIndex((cy) => cy.posts.some((p) => !p.card.done && Date.UTC(p.d.yr, p.d.mo, p.d.day) >= todayUTC));
     const ordered = [...cycles.filter((_, i) => i !== curIdx), ...(curIdx >= 0 ? [cycles[curIdx]] : [])];
     for (const cy of ordered) {
-      const capsOf = cy.posts.map((p) => String(p.card.desc || "") + "|" + String(p.card.tags || "")).join("~");
+      const capsOf = cy.posts.map((p) => String(p.card.name || "") + "|" + String(p.card.desc || "") + "|" + String(p.card.tags || "")).join("~");
       const bSig = createHash("sha256").update(JSON.stringify([themesFA[cy.title] && themesFA[cy.title].body, capsOf, cy.range])).digest("hex").slice(0, 12);
       if (stFA.builds[cy.title] === bSig) continue;
       await kvSet("sisters_strategy_theme_tf", { title: cy.title, body: (themesFA[cy.title] || {}).body || "", range: cy.range, at: Date.now() });
