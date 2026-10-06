@@ -140,6 +140,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   // Contributions card renders them — numbered windows, dots, date strips.
   // (Her rule Oct 5 2026; the old generated-months dropdown is retired.)
   const [foldSel, setFoldSel] = useState("1");
+  const [zoomW, setZoomW] = useState(468); // her ask Oct 5: zoom the grid out to whole-view or in close, same 1-21/22-42 structure
   // Lavalle Sisters pre-grid + cycle archive (Courtney's hand-off view).
   const [sisGrids, setSisGrids] = useState({ pregrid: null, archive: [] });
   const [sisSel, setSisSel] = useState("");
@@ -348,7 +349,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     return () => { dead = true; };
   }, []);
   const tt = acct === "lavallesisters" && platform === "tt";
-  const gk = tt ? "lavallesisters:tiktok" : acct;
+  const foldGrid2 = acct === "thefoldlabel" && foldSel === "2";
+  const schedRxBG = foldGrid2 ? /^schedule\s*22\s*[-\u2013]\s*42$/i : /^schedule\s*1\s*[-\u2013]\s*21$/i;
+  const slotBaseBG = foldGrid2 ? 21 : 0; // slot numbers read 22-42 on the second fold grid
+  const gk = tt ? "lavallesisters:tiktok" : foldGrid2 ? "thefoldlabel:2" : acct;
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const [pickIdx, setPickIdx] = useState(null); // tap-to-move still works as a fallback
@@ -373,7 +377,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     for (const [bk, board] of Object.entries(boards || {})) {
       if (bk.startsWith("_") || !board || !board.cards) continue;
       if (GRID_BOARDS[bk] !== acct) continue;
-      const schedLists = new Set((board.lists || []).filter((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim())).map((l) => l.id));
+      const schedLists = new Set((board.lists || []).filter((l) => schedRxBG.test((l.name || "").trim())).map((l) => l.id));
       let seq = 0;
       for (const card of board.cards) {
         if (!card.cover || !schedLists.has(card.listId)) continue;
@@ -386,7 +390,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
       }
     }
     return map;
-  }, [boards, acct, tt]);
+  }, [boards, acct, tt, foldSel]);
 
   // Saved order merged with reality: dead refs drop out, new covers append
   // (append = next slot up — position 1 stays the earliest planned post).
@@ -526,8 +530,8 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     const bk = Object.keys(GRID_BOARDS).find((k) => GRID_BOARDS[k] === acct);
     const b = bk && boards && boards[bk];
     if (!b) { setMsg("No board found for this account."); return; }
-    const list = (b.lists || []).find((l) => /^schedule\s*1\s*[-\u2013]\s*21$/i.test((l.name || "").trim()));
-    if (!list) { setMsg('This board needs a "Schedule 1-21" list first.'); return; }
+    const list = (b.lists || []).find((l) => schedRxBG.test((l.name || "").trim()));
+    if (!list) { setMsg(foldGrid2 ? 'This board needs a "Schedule 22-42" list first.' : 'This board needs a "Schedule 1-21" list first.'); return; }
     const arr = [...files].slice(0, 21);
     let done = 0; const made = [];
     arr.forEach((f) => {
@@ -809,7 +813,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   };
 
   return (
-    <div style={{ fontFamily: sans, maxWidth: 560, margin: "0 auto" }}>
+    <div style={{ fontFamily: sans, maxWidth: acct === "thefoldlabel" ? Math.max(560, zoomW + 92) : 560, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
         {(brandLockedBG ? VISIBLE_BRANDS.filter((b) => b.acct === WS2IG[brandViewBG]) : VISIBLE_BRANDS).map((b) => (
           <button key={b.acct} onClick={() => { setAcct(b.acct); setPlatform("ig"); setMsg(null); setPickIdx(null); setEditKey(null); }}
@@ -829,11 +833,17 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
         </div>
       )}
       {acct === "thefoldlabel" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Grids</span>
           {[["1", "Grid 1–21"], ["2", "Grid 22–42"]].map(([k, lb]) => (
             <button key={k} onClick={() => setFoldSel(k)}
               style={{ border: `1px solid ${c.line}`, background: foldSel === k ? c.ink : "transparent", color: foldSel === k ? "#FFFFFF" : c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
+          ))}
+          <span style={{ flex: 1 }} />
+          <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Zoom</span>
+          {[["\u2212", -156], ["+", 156]].map(([lb, dz]) => (
+            <button key={lb} onClick={() => setZoomW((z) => Math.max(312, Math.min(936, z + dz)))}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, width: 30, height: 30, fontFamily: sans, fontSize: 13, cursor: "pointer" }}>{lb}</button>
           ))}
         </div>
       )}
@@ -1010,26 +1020,10 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
       {acct === "lavallesisters" && sisSel && !sisEdit && sisBusy && (
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 10 }}>Loading the grid…</div>
       )}
-      {acct === "thefoldlabel" && (() => {
-        const bdF = boards && boards["the-fold"];
-        const gcF = bdF && (bdF.cards || []).find((cd) => !cd._deleted && /^grid\b/i.test(cd.name || ""));
-        const attsF = ((gcF && gcF.attachments) || []).filter((a) => a && a.url && /^Grid\s/.test(a.name || ""));
-        const setF = foldSel === "2" ? attsF.filter((a) => /^Grid\s(22|31)/.test(a.name || "")) : attsF.filter((a) => /^Grid\s(1–9|10)/.test(a.name || ""));
-        if (!setF.length) return null;
-        return (
-          <div style={{ marginBottom: 14 }}>
-            {setF.map((a) => (
-              <div key={a.url} style={{ marginBottom: 12 }}>
-                <img src={a.url} alt={a.name} style={{ width: "100%", maxWidth: 420, display: "block", border: `1px solid ${c.line}` }} />
-                <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginTop: 4 }}>{a.name} — Post 1 of the window sits bottom right.</div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+
       {!sisFocus && <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>
-          {brand.handle}{acct === "lavallesisters" ? (tt ? " · TikTok" : " · Instagram") : ""} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · 1 starts bottom-right
+          {brand.handle}{acct === "lavallesisters" ? (tt ? " · TikTok" : " · Instagram") : ""} · {items.length} cover{items.length === 1 ? "" : "s"}{items.length > SLOTS ? ` · showing newest ${SLOTS}` : ""} · {1 + slotBaseBG} starts bottom-right
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {/* Finalised grids get locked so a second founder can't nudge the
@@ -1137,7 +1131,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) moveItem(dragIdx, Math.min(visible.length - 1, slot)); setDragIdx(null); setOverIdx(null); }}
             onClick={() => tapCell(slot, false)}
             style={{ aspectRatio: "3 / 4", border: `1px dashed ${c.line}`, cursor: pickIdx != null ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", color: c.line, fontFamily: sans, fontSize: 10 }}>
-            {slot + windowStart + 1 <= items.length + SLOTS ? slot + 1 : ""}
+            {slot + windowStart + 1 <= items.length + SLOTS ? slot + 1 + slotBaseBG : ""}
           </div>
         ))}
       </div>}
@@ -1171,7 +1165,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
         };
         return (
           <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 120, background: "#fff", borderTop: `1px solid ${c.line}`, boxShadow: "0 -8px 30px rgba(0,0,0,0.12)", padding: "10px 14px calc(10px + env(safe-area-inset-bottom))" }}>
-            <div style={{ maxWidth: 560, margin: "0 auto" }}>
+            <div style={{ maxWidth: acct === "thefoldlabel" ? zoomW + 92 : 560, margin: "0 auto" }}>
               <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>
                 Reframing post {(() => { const i = visible.findIndex((v) => v.key === editKey); return i >= 0 ? windowStart + i + 1 : ""; })()} — pinch or slide to zoom · drag to position
               </div>
