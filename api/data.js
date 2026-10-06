@@ -947,7 +947,11 @@ export default async function handler(req, res) {
     if (!chSA) { res.status(404).json({ error: "channel not found", channels: (lr.channels || []).map((c0) => c0.name) }); return; }
     const pr = await (await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chSA.id, text: String(bSA.text || "Open Lavalle Haus OS: https://lavalle-haus-os.vercel.app"), unfurl_links: false }) })).json();
     if (!pr.ok) { res.status(400).json({ error: pr.error || "post failed" }); return; }
-    res.json({ ok: true, channel: "#" + chSA.name, ts: pr.ts });
+    let pinned = null;
+    if (bSA.pin) {
+      try { const pnr = await (await fetch("https://slack.com/api/pins.add", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chSA.id, timestamp: pr.ts }) })).json(); pinned = pnr.ok ? true : (pnr.error || "pin failed"); } catch (ePn) { pinned = "pin failed"; }
+    }
+    res.json({ ok: true, channel: "#" + chSA.name, ts: pr.ts, pinned });
     return;
   }
   // ── TikTok OAuth (Content Posting API) ───────────────────────────────────────
