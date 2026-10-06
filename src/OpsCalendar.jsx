@@ -69,6 +69,9 @@ function ProductTimeline({ boards, notes, onSaveNotes, brand = "all" }) {
   const [rnd, setRnd] = useState(null); // {brandKey: [{id,name}]} — R&D mockups from Drive
   const [editNote, setEditNote] = useState(null); // blip key being annotated
   const [noteText, setNoteText] = useState("");
+  const [lightbox, setLightbox] = useState(null); // {src, title, sub} — click a blip for the full view
+  const [editTl, setEditTl] = useState(null); // blip key whose arrival/launch months are being set
+  const [tlA, setTlA] = useState(""); const [tlL, setTlL] = useState("");
   // Live-now follows the brand in view (her rule Oct 5 2026): The Fold shows
   // only what is live on thefoldlabel.com, Lavalle Haus its Shopify catalog.
   useEffect(() => {
@@ -126,19 +129,46 @@ function ProductTimeline({ boards, notes, onSaveNotes, brand = "all" }) {
     ((rnd || {})["the-fold"] || []).forEach((f) => {
       const u = "/api/data?op=drive_img&id=" + f.id + "&fit=thumb";
       if (matchedRnd.has(u)) return;
-      pipeline.push({ key: "rnd:" + f.id, title: f.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " "), image: u, month: null, cat: "rd" });
+      pipeline.push({ key: "rnd:" + f.id, title: f.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " "), image: u, fullSrc: "/api/data?op=drive_img&id=" + f.id + "&fit=igfeed", month: null, cat: "rd" });
     });
   }
   pipeline.sort((a, b2) => (!a.month ? 1 : !b2.month ? -1 : a.month < b2.month ? -1 : 1));
   const note = (k) => (notes || {})[k] || "";
   const saveNote = (k) => { onSaveNotes({ ...(notes || {}), [k]: noteText.trim() || undefined }); setEditNote(null); };
+  // projected timing per blip (her ask Oct 5 2026): arrival month + launch month,
+  // stored alongside the notes as "tla:<key>" / "tll:<key>" = "YYYY-MM"
+  const tlOf = (k) => ({ a: (notes || {})["tla:" + k] || "", l: (notes || {})["tll:" + k] || "" });
+  const saveTl = (k) => { onSaveNotes({ ...(notes || {}), ["tla:" + k]: tlA || undefined, ["tll:" + k]: tlL || undefined }); setEditTl(null); };
+  const moLbl = (ym) => (ym ? MONTHS[Number(ym.slice(5)) - 1].slice(0, 3).toUpperCase() + (Number(ym.slice(0, 4)) !== new Date().getFullYear() ? " '" + ym.slice(2, 4) : "") : "");
+  pipeline.forEach((b2) => { const t = tlOf(b2.key); b2.sortKey = t.l || b2.month || "9999"; });
+  pipeline.sort((a, b2) => (a.sortKey < b2.sortKey ? -1 : 1));
   const blip = (b2) => (
     <div key={b2.key} style={{ flex: "0 0 92px", textAlign: "center", position: "relative" }}>
       {b2.image
-        ? <img src={b2.image} alt="" style={{ width: 58, height: 58, borderRadius: "50%", objectFit: "cover", border: `2px solid ${b2.cat ? catMeta(b2.cat).color : c.green}` }} />
+        ? <img src={b2.image} alt="" onClick={() => setLightbox({ src: b2.fullSrc || b2.image, title: b2.title, sub: (() => { const t = tlOf(b2.key); return t.a || t.l ? ["arrives " + moLbl(t.a), t.l ? "launches " + moLbl(t.l) : ""].filter(Boolean).join(" · ") : ""; })() })}
+            title="Click for the full view" style={{ width: 58, height: 58, borderRadius: "50%", objectFit: "cover", border: `2px solid ${b2.cat ? catMeta(b2.cat).color : c.green}`, cursor: "zoom-in" }} />
         : <div style={{ width: 58, height: 58, borderRadius: "50%", margin: "0 auto", background: b2.cat ? catMeta(b2.cat).color : c.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontSize: 8, padding: 4, boxSizing: "border-box" }}>{(b2.title || "").slice(0, 16)}</div>}
       <div style={{ fontFamily: sans, fontSize: 9, color: c.ink, lineHeight: 1.25, marginTop: 4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{b2.title}</div>
-      {b2.month && <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.sub }}>{MONTHS[Number(b2.month.slice(5)) - 1].slice(0, 3).toUpperCase()}</div>}
+      {(() => { const t = tlOf(b2.key); if (!t.a && !t.l && !b2.month) return b2.tl !== false && b2.cat ? (
+        <button onClick={() => { setEditTl(b2.key); setTlA(""); setTlL(""); }} style={{ border: "none", background: "transparent", fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.line, cursor: "pointer", padding: 0 }}>+ dates</button>
+      ) : null; return (
+        <div onClick={() => { setEditTl(b2.key); setTlA(t.a); setTlL(t.l); }} title="Projected arrival → launch (click to edit)"
+          style={{ fontFamily: sans, fontSize: 8, letterSpacing: 0.8, color: c.taupe, cursor: "pointer", lineHeight: 1.4 }}>
+          {t.a || t.l ? <>{t.a ? "ARR " + moLbl(t.a) : ""}{t.a && t.l ? " → " : ""}{t.l ? "LAUNCH " + moLbl(t.l) : ""}</> : MONTHS[Number(b2.month.slice(5)) - 1].slice(0, 3).toUpperCase()}
+        </div>
+      ); })()}
+      {editTl === b2.key && (
+        <div style={{ position: "absolute", zIndex: 41, top: "100%", left: "50%", transform: "translateX(-50%)", width: 180, background: "#fff", border: `1px solid ${c.line}`, borderRadius: 3, boxShadow: "0 10px 26px rgba(0,0,0,0.16)", padding: 8 }}>
+          <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: c.sub, marginBottom: 3 }}>First arrival</div>
+          <input type="month" value={tlA} onChange={(e) => setTlA(e.target.value)} style={{ ...input, fontSize: 11, padding: "5px 7px", marginBottom: 6 }} />
+          <div style={{ fontFamily: sans, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: c.sub, marginBottom: 3 }}>Launch</div>
+          <input type="month" value={tlL} onChange={(e) => setTlL(e.target.value)} style={{ ...input, fontSize: 11, padding: "5px 7px", marginBottom: 6 }} />
+          <div style={{ display: "flex", gap: 5 }}>
+            <button onClick={() => saveTl(b2.key)} style={{ flex: 1, border: "none", background: c.ink, color: "#fff", borderRadius: 1, padding: "5px 0", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditTl(null)} style={{ flex: 1, border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "5px 0", fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      )}
       {note(b2.key)
         ? <div title={note(b2.key)} onClick={() => { setEditNote(b2.key); setNoteText(note(b2.key)); }} style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 8.5, color: c.taupe, cursor: "pointer", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{note(b2.key)}</div>
         : <button onClick={() => { setEditNote(b2.key); setNoteText(""); }} style={{ border: "none", background: "transparent", fontFamily: sans, fontSize: 8, letterSpacing: 1, color: c.line, cursor: "pointer", padding: 0 }}>+ note</button>}
@@ -162,9 +192,16 @@ function ProductTimeline({ boards, notes, onSaveNotes, brand = "all" }) {
       <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
         {(shop || []).map((p) => blip({ key: "shop:" + p.id, title: p.title, image: p.image, cat: null }))}
       </div>
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(20,19,17,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "zoom-out", padding: 20 }}>
+          <img src={lightbox.src} alt="" style={{ maxWidth: "min(620px, 92vw)", maxHeight: "78vh", objectFit: "contain", borderRadius: 3, boxShadow: "0 24px 70px rgba(0,0,0,0.5)" }} />
+          <div style={{ marginTop: 12, fontFamily: sans, fontSize: 13, letterSpacing: 1, color: "#EDE9E2" }}>{lightbox.title}</div>
+          {lightbox.sub && <div style={{ marginTop: 3, fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#B9B2A6" }}>{lightbox.sub}</div>}
+        </div>
+      )}
       {pipeline.length > 0 && (
         <>
-          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "8px 0" }}>Coming · pipeline by month</div>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "8px 0" }}>Coming · {brand === "the-fold" ? "spring/summer drop — in launch order, pieces drop separately" : "pipeline by month"}</div>
           <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
             {pipeline.map(blip)}
           </div>

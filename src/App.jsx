@@ -3279,6 +3279,8 @@ const visibleNav = NAV
   // gated strictly by the person's pages/role — Business Brain included
   // (a member whose pages exclude "brain" never sees the business signals).
   .filter(n => iAmOwner || myPages.includes(n.id))
+  // the Operations Calendar is owners-only (her rule Oct 5 2026)
+  .filter(n => n.id !== "calendar" || iAmOwner)
   .filter(n => !chiefTabs || chiefTabs.includes(n.id))
   .filter(n => !brandNavTabs || brandNavTabs.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
