@@ -64,15 +64,38 @@ const uid = () => "s" + Math.random().toString(36).slice(2, 9);
 const input = { width: "100%", padding: "9px 10px", border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 13, color: c.ink, boxSizing: "border-box", background: c.bg };
 
 // ── Product timeline: live catalog (Shopify, current images) + pipeline ──────
-function ProductTimeline({ boards, notes, onSaveNotes }) {
+function ProductTimeline({ boards, notes, onSaveNotes, brand = "all" }) {
   const [shop, setShop] = useState(null);
+  const [rnd, setRnd] = useState(null); // {brandKey: [{id,name}]} — R&D mockups from Drive
   const [editNote, setEditNote] = useState(null); // blip key being annotated
   const [noteText, setNoteText] = useState("");
+  // Live-now follows the brand in view (her rule Oct 5 2026): The Fold shows
+  // only what is live on thefoldlabel.com, Lavalle Haus its Shopify catalog.
   useEffect(() => {
     let dead = false;
-    fetch("/api/data?op=shop_products").then((r) => r.json()).then((d) => { if (!dead) setShop(d.products || []); }).catch(() => setShop([]));
+    const opN = brand === "the-fold" ? "fold_products" : "shop_products";
+    if (brand === "lavalle-sisters") { setShop([]); return; }
+    setShop(null);
+    fetch("/api/data?op=" + opN).then((r) => r.json()).then((d) => { if (!dead) setShop(d.products || []); }).catch(() => setShop([]));
+    return () => { dead = true; };
+  }, [brand]);
+  useEffect(() => {
+    let dead = false;
+    fetch("/api/data?op=rnd_images").then((r) => r.json()).then((d) => { if (!dead) setRnd((d && d.folders) || {}); }).catch(() => setRnd({}));
     return () => { dead = true; };
   }, []);
+  // match a launch title against the brand's R&D mockup file names
+  const rndImgFor = (title, bk) => {
+    const files = (rnd || {})[bk] || []; if (!files.length) return null;
+    const words = String(title || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 3 && !["launch"].includes(w));
+    let best = null, bestN = 0;
+    for (const f of files) {
+      const fn = f.name.toLowerCase();
+      const n = words.filter((w) => fn.includes(w)).length;
+      if (n > bestN) { bestN = n; best = f; }
+    }
+    return bestN ? "/api/data?op=drive_img&id=" + best.id + "&fit=thumb" : null;
+  };
   // Pipeline = PRODUCTS only: the Launch Timeline and the R&D list. The Fold's
   // R&D "looks" feed the content grid and the monthly tray — they are NOT the
   // operations product schedule and stay out of this strip.
@@ -81,15 +104,32 @@ function ProductTimeline({ boards, notes, onSaveNotes }) {
     (bk === "rd" && /^r\s*&?\s*d$/i.test((listName || "").trim()));
   const nowYm = (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();
   const pipeline = [];
+  const matchedRnd = new Set();
   Object.entries(boards || {}).forEach(([bk, b]) => {
     if (!b || !b.cards || bk.startsWith("_")) return;
+    const br = boardBrand(bk, boards);
+    if (brand !== "all" && br !== brand) return;
     const listName = {}; (b.lists || []).forEach((l) => (listName[l.id] = l.name));
     b.cards.forEach((cd) => {
-      if (cd.launchMonth && cd.launchMonth >= nowYm && PRODUCT_SOURCES(bk, listName[cd.listId]))
-        pipeline.push({ key: "card:" + bk + ":" + cd.id, title: cd.name, image: cd.cover || null, month: cd.launchMonth, cat: cd.calCat || (bk === "rd" ? "rd" : "launch") });
+      if (cd.launchMonth && cd.launchMonth >= nowYm && PRODUCT_SOURCES(bk, listName[cd.listId])) {
+        // a card without its own cover pulls the project mockup from the
+        // brand's R&D Drive folder by name (her ask Oct 5 2026)
+        let image = cd.cover || null;
+        if (!image && br) { image = rndImgFor(cd.name, br); if (image) matchedRnd.add(image); }
+        pipeline.push({ key: "card:" + bk + ":" + cd.id, title: cd.name, image, month: cd.launchMonth, cat: cd.calCat || (bk === "rd" ? "rd" : "launch") });
+      }
     });
   });
-  pipeline.sort((a, b2) => (a.month < b2.month ? -1 : 1));
+  // the fold's coming line lives as mockups in The Fold - R&D (no launch cards
+  // yet) — every unmatched mockup shows as its own upcoming blip
+  if (brand === "the-fold" || brand === "all") {
+    ((rnd || {})["the-fold"] || []).forEach((f) => {
+      const u = "/api/data?op=drive_img&id=" + f.id + "&fit=thumb";
+      if (matchedRnd.has(u)) return;
+      pipeline.push({ key: "rnd:" + f.id, title: f.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " "), image: u, month: null, cat: "rd" });
+    });
+  }
+  pipeline.sort((a, b2) => (!a.month ? 1 : !b2.month ? -1 : a.month < b2.month ? -1 : 1));
   const note = (k) => (notes || {})[k] || "";
   const saveNote = (k) => { onSaveNotes({ ...(notes || {}), [k]: noteText.trim() || undefined }); setEditNote(null); };
   const blip = (b2) => (
@@ -113,10 +153,11 @@ function ProductTimeline({ boards, notes, onSaveNotes }) {
       )}
     </div>
   );
+  if (brand === "lavalle-sisters" && !pipeline.length) return null; // no product line of its own
   return (
     <div style={{ border: `1px solid ${c.line}`, borderRadius: 3, background: c.card, padding: "10px 12px", marginBottom: 14 }}>
       <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, marginBottom: 8 }}>
-        Live now · {shop === null ? "loading…" : (shop.length + " products, images straight from Shopify")}
+        Live now · {shop === null ? "loading…" : brand === "the-fold" ? (shop.length + " products live on thefoldlabel.com") : (shop.length + " products, images straight from Shopify")}
       </div>
       <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
         {(shop || []).map((p) => blip({ key: "shop:" + p.id, title: p.title, image: p.image, cat: null }))}
@@ -134,7 +175,7 @@ function ProductTimeline({ boards, notes, onSaveNotes }) {
 }
 
 export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchMonth, calNotes, onSaveCalNotes }) {
-  const [brand, setBrand] = useState("all");
+  const [brand, setBrand] = useState(() => { try { const v = localStorage.getItem("lh_brand_view"); return ["the-fold", "lavalle-sisters", "lavalle-haus"].includes(v) ? v : "all"; } catch { return "all"; } });
   // all · launch · rd · pr · happening — her "separate calendars and all together"
   const [cat, setCat] = useState("all");
   const [editing, setEditing] = useState(null);
@@ -208,7 +249,7 @@ export default function OpsCalendar({ boards, shoots, onSaveShoots, onSetLaunchM
         ))}
       </div>
 
-      <ProductTimeline boards={boards} notes={calNotes} onSaveNotes={onSaveCalNotes || (() => {})} />
+      <ProductTimeline boards={boards} notes={calNotes} onSaveNotes={onSaveCalNotes || (() => {})} brand={brand} />
 
       {/* category toggle: each tag its own calendar, or everything at once */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>

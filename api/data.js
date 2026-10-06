@@ -71,11 +71,12 @@ const APP_ORIGIN = "https://lavalle-haus-os.vercel.app";
 // Anything else passes the original bytes straight through.
 async function fitImage(buf, ctype, mode) {
   const m = String(mode || "");
-  if (m !== "igfeed" && m !== "vertical") return { buf, ctype };
+  if (m !== "igfeed" && m !== "vertical" && m !== "thumb") return { buf, ctype };
   try {
     const Jimp = (await import("jimp")).default;
     const img = await Jimp.read(buf);
     const ar = img.getWidth() / img.getHeight();
+    if (m === "thumb") { if (img.getWidth() > 480) img.resize(480, Jimp.AUTO); img.quality(80); return { buf: await img.getBufferAsync(Jimp.MIME_JPEG), ctype: "image/jpeg" }; }
     if (m === "vertical") img.cover(1080, 1920);
     else if (ar < 0.8) img.cover(1080, 1350);
     else if (ar > 1.91) img.cover(1080, Math.round(1080 / 1.91));
@@ -5963,6 +5964,45 @@ export default async function handler(req, res) {
   // featured image, status. Cached 6h in KV so browsing the calendar doesn't
   // hammer the Shopify API; images stay current because Shopify serves them
   // from the product's CDN URL (an image swap in Shopify shows up here).
+  // The Fold's live catalog — read off the public storefront (products.json
+  // only lists products PUBLISHED on thefoldlabel.com), cached 6h. The fold
+  // runs its own Shopify store, separate from the LH admin token above.
+  if (req.method === "GET" && op === "fold_products") {
+    const cachedF = await kvGet("fold_products_cache");
+    if (cachedF && cachedF.at && Date.now() - new Date(cachedF.at).getTime() < 6 * 3600 * 1000 && req.query.fresh !== "1") { res.json(cachedF); return; }
+    let productsF = [];
+    try {
+      const ctlF = new AbortController(); const tmF = setTimeout(() => ctlF.abort(), 15000);
+      const rF = await fetch("https://thefoldlabel.com/products.json?limit=250", { signal: ctlF.signal }); clearTimeout(tmF);
+      const dF = await rF.json();
+      productsF = (dF.products || []).map((p) => ({ id: p.id, title: p.title, image: (p.images && p.images[0] && p.images[0].src) || null, url: "https://thefoldlabel.com/products/" + p.handle }));
+    } catch (e) {}
+    const outF = { at: new Date().toISOString(), products: productsF };
+    if (productsF.length) await kvSet("fold_products_cache", outF);
+    res.json(outF);
+    return;
+  }
+  // R&D mockup images per brand — the launch pipeline pulls its project images
+  // from these Drive folders when a card has no cover (her ask Oct 5 2026).
+  if (req.method === "GET" && op === "rnd_images") {
+    const cachedR = await kvGet("rnd_images_cache");
+    if (cachedR && cachedR.at && Date.now() - new Date(cachedR.at).getTime() < 3600 * 1000 && req.query.fresh !== "1") { res.json(cachedR); return; }
+    const tokR = await googleToken();
+    if (!tokR) { res.json({ folders: {} }); return; }
+    const RND_FOLDERS = { "lavalle-haus": "1OCtIUTKjcJNeQVRAyax6-Js6QWMk053N", "the-fold": "1Bbn0NEhjDXyKxvlIP4V8FWcr3U6e0z5h" };
+    const folders = {};
+    for (const [bk, fid] of Object.entries(RND_FOLDERS)) {
+      try {
+        const rR = await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(`'${fid}' in parents and trashed=false and mimeType contains 'image/'`) + "&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + tokR } });
+        const dR = await rR.json();
+        folders[bk] = (dR.files || []).map((f) => ({ id: f.id, name: f.name }));
+      } catch (e) { folders[bk] = []; }
+    }
+    const outR = { at: new Date().toISOString(), folders };
+    await kvSet("rnd_images_cache", outR);
+    res.json(outR);
+    return;
+  }
   if (req.method === "GET" && op === "shop_products") {
     const cached = await kvGet("shop_products_cache");
     if (cached && cached.at && Date.now() - new Date(cached.at).getTime() < 6 * 3600 * 1000 && req.query.fresh !== "1") { res.json(cached); return; }

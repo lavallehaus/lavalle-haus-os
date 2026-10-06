@@ -2567,6 +2567,25 @@ const CONNECTION_DEFS = {
     { key: "amazon", name: "Amazon Seller", does: "Daily Amazon revenue, fees and refunds.", status: "/api/amazon-sync" },
   ],
 };
+// Who sees this page (her ask Oct 5 2026) — small initials at the top of each
+// tab so access is readable at a glance. Owner-only; reads the invite roster.
+function PageAccessChips({ tab }) {
+  const [users, setUsers] = useState(null);
+  useEffect(() => { fetch("/api/data?op=users").then((r) => (r.ok ? r.json() : null)).then((d) => d && setUsers((d.users || []).filter((u) => !u.revoked))).catch(() => {}); }, []);
+  if (!users) return null;
+  const who = users.filter((u) => !/^owner/i.test(u.role || "") && (u.pages && u.pages.length ? u.pages : (LENS_ROLE_DEFAULT[u.role] || LENS_ROLE_DEFAULT["Viewer"])).includes(tab));
+  if (!who.length) return null;
+  return (
+    <span title={"Sees this page: " + who.map((u) => u.name).join(", ")} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", marginLeft: 8 }}>
+      {who.slice(0, 6).map((u, i) => (
+        <span key={u.id || u.name} title={u.name + " sees this page"} style={{ marginLeft: i ? -6 : 0, width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #FFFFFF", background: "#8F8676", color: "#fff", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8.5, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", textTransform: "uppercase" }}>
+          {(u.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("")}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function ConnectionsChip({ tab }) {
   const defs = CONNECTION_DEFS[tab] || [];
   const [open, setOpen] = useState(false);
@@ -3518,6 +3537,7 @@ style={{ background: "none", border: "none", padding: 0, cursor: "pointer", text
 {n.alert && <span style={{ fontSize: 9, background: "#9b5e5e", color: "#fff", borderRadius: 1, padding: "1px 5px" }}>{n.alert}</span>}
 </button>
 ))}
+{iAmOwner && <PageAccessChips tab={tab} />}
 {(dbState.driveMap || {})[tab] && (
 <a href={dbState.driveMap[tab]} target="_blank" rel="noopener noreferrer" title="This tab's Drive folder"
 style={{ marginLeft: "auto", flexShrink: 0, border: "1px solid #E0E0DD", borderRadius: 1, padding: "4px 10px", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "#8F8676", textDecoration: "none", whiteSpace: "nowrap" }}>

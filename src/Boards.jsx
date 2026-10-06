@@ -1731,7 +1731,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                             </button>}
                             {/^—[\s\S]*—$/.test((card.name || "").trim())
                               ? <div style={{ flex: 1, textAlign: "center", fontFamily: sans, fontSize: 10.5, letterSpacing: 4, textTransform: "uppercase", color: "#6E675C", padding: "2px 0" }}>{(card.name || "").trim().replace(/^—\s*|\s*—$/g, "")}</div>
-                              : <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}</div>}
+                              : <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}
+                                  {/^automations\b/i.test(card.name || "") && <span title="Only Kiabeth + Kiaredza see this card" style={{ display: "inline-block", marginLeft: 6, verticalAlign: "1px", background: "#EEECE6", border: `1px solid ${c.line}`, borderRadius: 9, padding: "1px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe }}>K + K only</span>}
+                                </div>}
                           </div>
                           {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
