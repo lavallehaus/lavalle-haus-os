@@ -4443,6 +4443,16 @@ export default async function handler(req, res) {
       if (md5Dirty) await kvSet("sisters_cover_drive_md5" + SBOARD.kvSuffix, md5s);
     }
     for (const gr of grids) if (gr.dirty) { gr.g.at = Date.now(); await kvSet(gr.key, gr.g); }
+    // her rule (Oct 5 2026): a card-side cover change must show on the montage,
+    // the Drive archive and the Grid card NOW — re-save the identical
+    // arrangement (idempotent) so everything re-renders in this same minute.
+    if (!dryCV && process.env.PUBLISH_KEY) {
+      for (const gr of grids) {
+        if (!gr.dirty || !gr.g || !Array.isArray(gr.g.tiles) || !gr.g.tiles.length) continue;
+        const gNum = gr.base === 1 ? "1" : "2";
+        try { const acTS = new AbortController(); setTimeout(() => acTS.abort(), 1500); fetch(APP_ORIGIN + "/api/data?op=sisters_grid_tiles" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ grid: gNum, tiles: gr.g.tiles.map((t) => ({ cover: t.cover, tag: t.tag })) }), signal: acTS.signal }).catch(() => {}); } catch (eTS) {}
+      }
+    }
     if (patchesCV.length) await patchBoardCards(SBOARD.key, patchesCV);
     res.json({ ok: true, board: SBOARD.key, dry: dryCV, plan, synced, relinked, retouched, errors: errsCV });
     return;
@@ -4751,7 +4761,8 @@ export default async function handler(req, res) {
   // media-store view AND replaces the Drive archive file so every surface
   // shows her version.
   if (op === "sisters_grid_tiles") {
-    const authT2 = await getAuthEarly(req);
+    const okKeyT0 = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authT2 = okKeyT0 ? { name: "house" } : await getAuthEarly(req);
     if (!authT2) { res.status(401).json({ error: "Locked." }); return; }
     if (req.method === "GET") {
       const g = String(req.query.grid || "1").replace(/[^12]/g, "") || "1";
@@ -7126,6 +7137,7 @@ export default async function handler(req, res) {
     let toStore = body;
     let keyStamps = {};
     let sistersCapsChanged = false;
+    const coverSyncKick = new Set(); // brand boards whose post covers changed this save — synced NOW, not on the next sweep (her rule Oct 5 2026)
     {
       const r0 = await fetch(`${url}/get/lavalle_data`, { headers: { Authorization: `Bearer ${token}` } });
       const d0 = await r0.json();
@@ -7186,6 +7198,14 @@ export default async function handler(req, res) {
         if (sOld && sNew && sNew !== sOld) {
           const capSig = (b) => JSON.stringify((b.cards || []).filter((c) => /^post\s*\d+/i.test(c.name || "")).map((c) => [c.id, c.desc || "", c.tags || ""]));
           sistersCapsChanged = capSig(sOld) !== capSig(sNew);
+        }
+        for (const bkCS of ["lavalle-sisters", "the-fold"]) {
+          const obCS = ((stored && stored.boards) || {})[bkCS], nbCS = (toStore.boards || {})[bkCS];
+          if (!obCS || !nbCS || nbCS === obCS) continue;
+          const covSigCS = (b) => JSON.stringify((b.cards || []).filter((cc) => /^post\s*\d+/i.test(cc.name || "")).map((cc) => [cc.id, cc.cover || ""]));
+          if (covSigCS(obCS) !== covSigCS(nbCS)) coverSyncKick.add(bkCS);
+        }
+        if (sOld && sNew && sNew !== sOld) {
           // Rolling pre-change snapshot (Sep 3: Posts 1-21 were found replaced
           // by blank re-dated shells with no identified culprit) — before a
           // change lands, the outgoing state is kept under a hidden board key,
@@ -7208,6 +7228,14 @@ export default async function handler(req, res) {
     if (guardHits.length) {
       // forensic ring: WHO tripped a shell/replay guard (finding the mystery device)
       try { const gl = (await kvGet("sisters_guard_log")) || []; await kvSet("sisters_guard_log", [{ iso: new Date().toISOString(), who: (auth && (auth.email || auth.name)) || "unknown", ua: String(req.headers["user-agent"] || "").slice(0, 120), guards: guardHits }, ...gl].slice(0, 20)); } catch (eGL) {}
+    }
+    // Instant cover flow (her rule, Oct 5 2026): a post card whose cover just
+    // changed syncs to the grid, the Grid card, the montage and the Drive link
+    // right now — the 15-min sweep stays as the safety net.
+    if (coverSyncKick.size && process.env.PUBLISH_KEY) {
+      for (const bkCS of coverSyncKick) {
+        try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 1200); fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync" + (bkCS === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
+      }
     }
     // (Sep 7: the instant caption→doc push trigger was REMOVED — the doc is
     // one-way source-of-truth now and is never auto-written by the app.)
