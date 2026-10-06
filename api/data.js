@@ -895,6 +895,22 @@ export default async function handler(req, res) {
           await kvSet("slack_feed", feed.slice(0, 200)); // capped
         }
       }
+      // Her ask (Oct 5 2026): opening the app from Slack's Agents & apps rail
+      // shows a Home tab with a button straight into the OS. (Needs the Home
+      // Tab toggled on + app_home_opened subscribed in the Slack app config.)
+      if (ev.type === "app_home_opened" && ev.user) {
+        const mapAH = (await kvGet("slack_oauth")) || {};
+        const teamAH = mapAH[b.team_id];
+        if (teamAH) {
+          try {
+            await fetch("https://slack.com/api/views.publish", { method: "POST", headers: { Authorization: "Bearer " + teamAH.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ user_id: ev.user, view: { type: "home", blocks: [
+              { type: "header", text: { type: "plain_text", text: "Lavalle Haus OS" } },
+              { type: "section", text: { type: "mrkdwn", text: "Boards, grids, schedule, analytics and comms for Lavalle Sisters, The Fold and Lavalle Haus." }, accessory: { type: "button", text: { type: "plain_text", text: "Open Lavalle Haus OS" }, url: "https://lavalle-haus-os.vercel.app", action_id: "open_app" } },
+              { type: "context", elements: [{ type: "mrkdwn", text: "<https://lavalle-haus-os.vercel.app|lavalle-haus-os.vercel.app> \u2014 works on phone and desktop; sign in with the house password." }] },
+            ] } }) });
+          } catch (eAH) {}
+        }
+      }
       // Channels made after install still reach the bell: join them on sight,
       // otherwise the bot only ever sees what existed on the day it was added.
       if (ev.type === "channel_created" && ev.channel && ev.channel.id) {
@@ -915,6 +931,25 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Slack announce (owner) — post a message with the app link into a
+  // workspace channel, e.g. pinning the OS link in #general (her ask Oct 5).
+  if (op === "slack_announce" && req.method === "POST") {
+    const authSA = await getAuthEarly(req);
+    if (!ownerRole(authSA)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bSA = req.body || {};
+    const mapSA = (await kvGet("slack_oauth")) || {};
+    if (!bSA.teamId) { res.json({ teams: Object.entries(mapSA).map(([id, t]) => ({ teamId: id, team: t.team })) }); return; }
+    const teamSA = mapSA[bSA.teamId];
+    if (!teamSA) { res.status(404).json({ error: "No token for that workspace." }); return; }
+    const wantCh = String(bSA.channel || "general").replace(/^#/, "").toLowerCase();
+    const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
+    const chSA = ((lr.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
+    if (!chSA) { res.status(404).json({ error: "channel not found", channels: (lr.channels || []).map((c0) => c0.name) }); return; }
+    const pr = await (await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chSA.id, text: String(bSA.text || "Open Lavalle Haus OS: https://lavalle-haus-os.vercel.app"), unfurl_links: false }) })).json();
+    if (!pr.ok) { res.status(400).json({ error: pr.error || "post failed" }); return; }
+    res.json({ ok: true, channel: "#" + chSA.name, ts: pr.ts });
+    return;
+  }
   // ── TikTok OAuth (Content Posting API) ───────────────────────────────────────
   // Public endpoints reached via vercel.json rewrites (/api/tiktok-auth and
   // /api/tiktok-callback) — folded in here to stay under the function cap.
