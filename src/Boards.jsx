@@ -679,8 +679,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // even if a board was left open.
   useEffect(() => {
     const onSeg = (e) => { if (e.detail && e.detail.id === "content" && e.detail.seg === "boards") setOpen(null); };
+    const onOpenBoard = (e) => setOpen(e.detail || null); // the Boards-chip dropdown jumps straight to a board (her ask Oct 6 2026)
     window.addEventListener("lh-seg-click", onSeg);
-    return () => window.removeEventListener("lh-seg-click", onSeg);
+    window.addEventListener("lh-open-board", onOpenBoard);
+    return () => { window.removeEventListener("lh-seg-click", onSeg); window.removeEventListener("lh-open-board", onOpenBoard); };
   }, []);
 
   // Recently viewed — per person, like Trello's home strip.
