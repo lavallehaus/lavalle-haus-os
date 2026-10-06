@@ -1942,7 +1942,7 @@ export default async function handler(req, res) {
     ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in, and the working month advances itself: the moment the previous month's last scheduled post is checked off, the links (and every month-keyed automation) move to the next month's folders. The Fold's month folders always carry Cover Photos, Carousel and Reels; missing ones are created, plus the Grid Archive."],
     ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above).", ["lavalle-sisters"]],
     ["Channel audit (auto)", "Every 15 min; refreshes every 3 days", "The Audit card under Strategy Outline re-reads @thefoldlabel's trailing 30 days (Instagram now, TikTok as soon as that account is connected) and writes short findings plus what to carry into next month. Next month's theme and captions are drawn from it.", ["the-fold"]],
-    ["Hashtag bank self-update", "Every 15 min", "Any new hashtag typed onto a post card joins the Hashtags card's FROM CARDS line, so the bank always holds the full vocabulary. The brand name never joins it.", ["the-fold"]],
+    ["Hashtag bank self-update + Live chip", "Every 15 min", "Any new hashtag typed onto a post card joins the Hashtags card's FROM CARDS line (the brand name never joins it), and a checked-off post carries the Live chip on its own — unchecking takes it back off.", ["the-fold"]],
     ["Theme, captions + Strategy Outline (per cycle)", "Every 15 min, one step per tick", "Each cycle (October = Posts 5-21, November = Posts 22-42, and so on) gets its own theme (1-2 sentences from the live site's products, the audit and current quiet-luxury direction), 1-2 sentence captions with 2 bank hashtags per post (hand-written captions are never overwritten), and its own Strategy Outline card + PDF, which rebuilds whenever the theme, a caption or the audit changes. The outline builds once the cycle's grid is complete; both cycles' outlines sit in Strategy Outline, the live month on top.", ["the-fold"]],
     ["Save arrangement", "When you hit Save in the grid editor", "The grid IS the sequence: tile 1 is Post 1 … tile 42 is Post 42 (grid 1 = Schedule 1-21, grid 2 = Schedule 22-42). Swapping two tiles swaps their cards too — caption, hashtags, approval and Courtney concept travel with the photo; a tray photo dropped in keeps the slot's caption. Dates re-flow from the slot (each of our posts advances a day, Courtney's share the day before it). The montage, the Grid card and the Strategy Outline follow."],
   ];
@@ -2820,7 +2820,9 @@ export default async function handler(req, res) {
       const ps = bdFA.cards.filter((c) => !c._deleted && c.listId === l.id).map((c) => ({ card: c, d: parseFA(c.name) })).filter((x) => x.d);
       if (!ps.length) continue;
       ps.sort((a, b) => a.d.n - b.d.n);
-      const first = ps[0].d;
+      // title by the first still-undone post (a post that already went out —
+      // Post 5's Sep 2 — is history and must not drag the cycle's month back)
+      const first = (ps.find((x) => !x.card.done) || ps[0]).d;
       cycles.push({ title: MONTHS_FA[first.mo] + " " + first.yr, range: [ps[0].d.n, ps[ps.length - 1].d.n], posts: ps });
     }
     if (!cycles.length) { res.json({ ok: false, error: "no dated cycles" }); return; }
