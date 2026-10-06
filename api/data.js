@@ -953,9 +953,21 @@ export default async function handler(req, res) {
       const pn0 = await (await fetch("https://slack.com/api/pins.add", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: ch0.id, timestamp: String(bSA.pinTs) }) })).json();
       res.json({ ok: !!pn0.ok, pinned: pn0.ok || pn0.error }); return;
     }
+    if (bSA.findUser) { // look a member up by name so a scheduled post can @-mention them
+      const ur = await (await fetch("https://slack.com/api/users.list?limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
+      const q = String(bSA.findUser).toLowerCase();
+      res.json({ users: (ur.members || []).filter((u) => !u.deleted && !u.is_bot && ((u.real_name || "") + " " + (u.name || "") + " " + ((u.profile || {}).display_name || "")).toLowerCase().includes(q)).map((u) => ({ id: u.id, name: u.real_name || u.name })) });
+      return;
+    }
     const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
     const chSA = ((lr.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
     if (!chSA) { res.status(404).json({ error: "channel not found", channels: (lr.channels || []).map((c0) => c0.name) }); return; }
+    if (bSA.scheduleAt) { // epoch seconds — Slack delivers it at that moment (her 8am ask, Oct 5 2026)
+      const sr = await (await fetch("https://slack.com/api/chat.scheduleMessage", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chSA.id, post_at: Number(bSA.scheduleAt), text: String(bSA.text || ""), unfurl_links: false }) })).json();
+      if (!sr.ok) { res.status(400).json({ error: sr.error || "schedule failed" }); return; }
+      res.json({ ok: true, scheduled: true, channel: "#" + chSA.name, post_at: Number(bSA.scheduleAt), scheduled_message_id: sr.scheduled_message_id });
+      return;
+    }
     const pr = await (await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chSA.id, text: String(bSA.text || "Open Lavalle Haus OS: https://lavalle-haus-os.vercel.app"), unfurl_links: false }) })).json();
     if (!pr.ok) { res.status(400).json({ error: pr.error || "post failed" }); return; }
     let pinned = null;

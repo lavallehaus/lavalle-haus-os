@@ -127,6 +127,8 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
     });
   const feed = feeds.find((f) => f.id === feedId) || feeds[0] || null;
   const board = feed && boards ? boards[feed.boardKey] : null;
+  // the brand boards run MONTH view only (her rule Oct 5 2026) — no week toggle
+  const monthOnly = !!(feed && (feed.boardKey === "the-fold" || feed.boardKey === "lavalle-sisters"));
   const cardById = useMemo(() => {
     const m = {};
     if (board && board.cards) board.cards.forEach((x) => { m[x.id] = x; });
@@ -485,6 +487,7 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe }}>Posting schedule</span>
             <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: c.sub }}><span style={{ color: c.green }}>●</span> approved · <span style={{ color: "#C9A96A" }}>●</span> needs review</span>
+            {!monthOnly && (
             <div style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
               {["week", "month"].map((m) => (
                 <button key={m} onClick={() => setCalMode(m)}
@@ -493,9 +496,10 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
                 </button>
               ))}
             </div>
+            )}
           </div>
 
-          {calMode === "week" ? (
+          {(monthOnly ? "month" : calMode) === "week" ? (
             /* rolling 7 days at a glance */
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 16 }}>
               {Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); const k = keyOf(d); const posts = byDay[k] || []; return (
