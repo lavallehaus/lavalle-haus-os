@@ -2957,10 +2957,12 @@ export default async function handler(req, res) {
     const sinceAU = Date.now() - 32 * 86400000;
     const rowsAU = []; let igNote = null, sawIg = false;
     const baseAU = "https://graph.instagram.com/v23.0";
+    let followersAU = null;
     for (const t of Object.values(igAccounts(await kvGet("instagram_oauth")))) {
       if (!SBOARD.igMatch.test(t.username || "")) continue;
       sawIg = true;
       try {
+        try { const profAU = await (await fetch(`${baseAU}/me?fields=followers_count&access_token=${encodeURIComponent(t.access_token)}`)).json(); if (profAU && profAU.followers_count != null) followersAU = profAU.followers_count; } catch (ePF) {}
         const media = await (await fetch(`${baseAU}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=40&access_token=${encodeURIComponent(t.access_token)}`)).json();
         if (media.error) igNote = "Instagram connection for @" + (t.username || "this account") + " needs reconnecting (Settings → Instagram): " + String(media.error.message || media.error.type || "token error").slice(0, 120);
         for (const m of (media.data || [])) {
@@ -3017,8 +3019,54 @@ export default async function handler(req, res) {
       ac.name = "Audit — channels (auto)";
       ac.desc = descAU;
     });
+    // Analytics feed (her ask Oct 5 2026): a growth point per audit day and a
+    // per-month pack (findings + top reels/carousels/TikToks) — the Analytics
+    // tab reads these, and next month's Strategy Outline is drawn from them.
+    try {
+      const dayAU = new Date().toISOString().slice(0, 10);
+      const gKeyAU = "sisters_growth" + SBOARD.kvSuffix;
+      const gSerAU = (await kvGet(gKeyAU)) || [];
+      const avgEngAU = rowsAU.length ? Math.round(rowsAU.reduce((a, r) => a + scoreAU(r), 0) / rowsAU.length) : null;
+      if (!gSerAU.some((p) => p.d === dayAU)) { gSerAU.push({ d: dayAU, followers: followersAU, avgEng: avgEngAU, posts: rowsAU.length }); await kvSet(gKeyAU, gSerAU.slice(-240)); }
+      const moKeyAU = new Date().toISOString().slice(0, 7);
+      const hKeyAU = "sisters_audit_history" + SBOARD.kvSuffix;
+      const histAU = (await kvGet(hKeyAU)) || {};
+      const packAU = (r) => ({ kind: r.kind, caption: r.caption, likes: r.likes, comments: r.comments, saved: r.saved, reach: r.reach, url: r.url, at: r.at });
+      histAU[moKeyAU] = {
+        at: Date.now(), window: windowAU, followers: followersAU,
+        headline: (findingsAU && findingsAU.headline) || null, findings: (findingsAU && findingsAU.findings) || [], carry: (findingsAU && findingsAU.carry) || [], formatMix: (findingsAU && findingsAU.formatMix) || null,
+        topReels: rowsAU.filter((r) => r.ch === "IG" && r.kind === "Reel").slice(0, 5).map(packAU),
+        topCarousels: rowsAU.filter((r) => r.ch === "IG" && r.kind === "Carousel").slice(0, 5).map(packAU),
+        topStatics: rowsAU.filter((r) => r.ch === "IG" && r.kind === "Static").slice(0, 5).map(packAU),
+        topTikTok: rowsAU.filter((r) => r.ch === "TT").slice(0, 5).map(packAU),
+      };
+      await kvSet(hKeyAU, histAU);
+    } catch (eHX) {}
     await kvSet("sisters_audit_state" + SBOARD.kvSuffix, { at: Date.now(), sig: sigAU });
-    res.json({ ok: true, ig: igCount, tiktok: ttCount, igNote, ttNote, sig: sigAU });
+    res.json({ ok: true, ig: igCount, tiktok: ttCount, igNote, ttNote, followers: followersAU, sig: sigAU });
+    return;
+  }
+  // ── Analytics dive (her ask, Oct 5 2026) — one GET for the Analytics tab:
+  // month packs from the audit history, the growth series, live connection
+  // notes. TikTok renders on top, Instagram below; all of it feeds the next
+  // Strategy Outline.
+  if (op === "sisters_analytics" && req.method === "GET") {
+    if (!ownerRole(auth)) { res.status(403).json({ error: "Analytics are only available to the owner." }); return; }
+    const histAN = (await kvGet("sisters_audit_history" + SBOARD.kvSuffix)) || {};
+    const growthAN = (await kvGet("sisters_growth" + SBOARD.kvSuffix)) || [];
+    const monthsAN = Object.keys(histAN).sort();
+    const qMo = String(req.query.month || "");
+    const mSelAN = histAN[qMo] ? qMo : monthsAN[monthsAN.length - 1] || null;
+    let igNoteAN = null, handleAN = null;
+    const igAN = Object.values(igAccounts(await kvGet("instagram_oauth"))).find((t) => SBOARD.igMatch.test(t.username || ""));
+    if (!igAN) igNoteAN = "No Instagram account is connected for this brand yet (Settings → Instagram).";
+    else {
+      handleAN = igAN.username || null;
+      try { const pAN = await (await fetch(`https://graph.instagram.com/v23.0/me?fields=username,followers_count&access_token=${encodeURIComponent(igAN.access_token)}`)).json(); if (pAN && pAN.error) igNoteAN = "Instagram needs reconnecting (Settings → Instagram) — " + String(pAN.error.message || pAN.error.type || "token error").slice(0, 140); } catch (eAN) { igNoteAN = "Instagram is unreachable right now — numbers below are from the last audit."; }
+    }
+    const ttAN = Object.values(tiktokAccounts(await kvGet("tiktok_oauth"))).find((t) => SBOARD.igMatch.test(t.display_name || ""));
+    const ttNoteAN = ttAN ? null : "TikTok isn't connected for this brand yet. Connect it under Settings → TikTok and this section fills in on the next audit pass (posting stays a TikTok Studio hand-off).";
+    res.json({ months: monthsAN, month: mSelAN, data: mSelAN ? histAN[mSelAN] : null, growth: growthAN, igNote: igNoteAN, ttNote: ttNoteAN, handle: handleAN });
     return;
   }
   // ── Hashtag bank self-update (her rule, Oct 5 2026) ───────────────────────

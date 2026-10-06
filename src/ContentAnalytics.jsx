@@ -10,7 +10,7 @@ const sans = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const serif = "Georgia, 'Times New Roman', serif";
 const fmt = (n) => (n == null ? "—" : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n));
 
-export default function ContentAnalytics({ allowedAccts = null }) {
+function LegacyAnalytics({ allowedAccts = null }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const WS2IGA = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
@@ -197,6 +197,154 @@ export default function ContentAnalytics({ allowedAccts = null }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+
+// ── Audit dive (her ask, Oct 5 2026) ─────────────────────────────────────────
+// A month-by-month read of the channel audit: TikTok on top, Instagram below,
+// a growth line, the top five reels and carousels, and the findings that feed
+// next month's Strategy Outline. Lavalle Haus keeps the classic table view.
+const BRANDS_AN = [
+  { acct: "thefoldlabel", board: "the-fold", label: "The Fold Label", handle: "@thefoldlabel" },
+  { acct: "lavallesisters", board: "lavalle-sisters", label: "Lavalle Sisters", handle: "@lavallesisters" },
+  { acct: "refilleryhaus", board: null, label: "Lavalle Haus", handle: "@refilleryhaus" },
+];
+const WS2IGA2 = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
+const secHead = { fontFamily: sans, fontSize: 11, letterSpacing: 4, textTransform: "uppercase", color: c.ink, margin: "26px 0 10px" };
+const noteBox = (warm) => ({ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: warm ? "#8a6d3b" : c.sub, background: warm ? "#F6EEDC" : c.card, border: `1px solid ${warm ? "#E4D5B0" : c.line}`, borderRadius: 2, padding: "10px 14px", lineHeight: 1.6 });
+
+function SparkAN({ points }) {
+  const pts = (points || []).filter((p) => p.followers != null);
+  if (pts.length < 2) return <div style={noteBox(false)}>The growth line draws itself as the audit runs (every 3 days){pts.length === 1 ? " — first point recorded " + pts[0].d + " at " + pts[0].followers + " followers." : "."}</div>;
+  const W = 560, H = 110, pad = 8;
+  const vals = pts.map((p) => p.followers);
+  const min = Math.min(...vals), max = Math.max(...vals), span = Math.max(1, max - min);
+  const xy = pts.map((p, i) => [pad + (i * (W - 2 * pad)) / (pts.length - 1), H - pad - ((p.followers - min) * (H - 2 * pad)) / span]);
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: 560, display: "block", background: c.card, border: `1px solid ${c.line}`, borderRadius: 2 }}>
+        <polyline points={xy.map(([x, y]) => x.toFixed(1) + "," + y.toFixed(1)).join(" ")} fill="none" stroke={c.taupe} strokeWidth="1.6" />
+        {xy.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="2" fill={c.ink} />)}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: sans, fontSize: 9, letterSpacing: 1, color: c.sub, marginTop: 4 }}>
+        <span>{pts[0].d} · {min}</span><span>followers</span><span>{pts[pts.length - 1].d} · {max}</span>
+      </div>
+    </div>
+  );
+}
+
+function TopListAN({ title, rows, tiktok }) {
+  return (
+    <div style={{ flex: "1 1 260px", minWidth: 250 }}>
+      <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, marginBottom: 8 }}>{title}</div>
+      {(!rows || !rows.length) && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11.5, color: c.sub }}>Nothing in this window yet.</div>}
+      {(rows || []).map((r, i) => (
+        <div key={i} style={{ borderTop: `1px solid ${c.line}`, padding: "8px 2px" }}>
+          <div style={{ fontFamily: sans, fontSize: 11.5, color: c.ink, lineHeight: 1.45 }}>
+            <span style={{ color: c.sub, marginRight: 6 }}>{i + 1}.</span>
+            {(r.caption || "(no caption)").slice(0, 72)}{(r.caption || "").length > 72 ? "…" : ""}
+          </div>
+          <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span>{fmt(r.likes)} likes</span><span>{fmt(r.comments)} comments</span>
+            <span>{fmt(r.saved)} {tiktok ? "shares" : "saves"}</span><span>{fmt(r.reach)} {tiktok ? "views" : "reach"}</span>
+            {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{ color: c.taupe }}>open ↗</a>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AuditDive({ board, handle }) {
+  const [resp, setResp] = useState(null);
+  const [err, setErr] = useState(null);
+  const [month, setMonth] = useState("");
+  useEffect(() => {
+    setErr(null);
+    fetch(`/api/data?op=sisters_analytics&board=${board}${month ? "&month=" + month : ""}`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => { if (!ok) setErr(d.error || "couldn't load"); else { setResp(d); if (!month && d.month) setMonth(d.month); } })
+      .catch((e) => setErr(String(e)));
+  }, [board, month]);
+  if (err) return <div style={noteBox(true)}>{err}</div>;
+  if (!resp) return <div style={{ fontFamily: sans, fontSize: 11, letterSpacing: 2, color: c.sub, padding: 30, textAlign: "center" }}>READING THE AUDIT…</div>;
+  const d = resp.data;
+  const moLbl = (k) => { if (!k) return ""; const [y, m] = k.split("-"); return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }); };
+  const growth = resp.growth || [];
+  const last = [...growth].reverse().find((p) => p.followers != null);
+  const prev30 = [...growth].reverse().find((p) => p.followers != null && (Date.now() - new Date(p.d).getTime()) > 27 * 86400000);
+  const delta = last && prev30 ? last.followers - prev30.followers : null;
+  const chips = [
+    ["Followers", (d && d.followers != null ? d.followers : last && last.followers) ?? "—"],
+    ["30-day change", delta == null ? "—" : (delta >= 0 ? "+" : "") + delta],
+    ["Avg engagement / post", last && last.avgEng != null ? last.avgEng : "—"],
+    ["Posts read", d && d.window ? d.window : "—"],
+  ];
+  return (
+    <div style={{ maxWidth: 620 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Month</span>
+        <select value={month || ""} onChange={(e) => setMonth(e.target.value)}
+          style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 10, letterSpacing: 1 }}>
+          {(resp.months || []).map((k) => <option key={k} value={k}>{moLbl(k)}</option>)}
+          {!(resp.months || []).length && <option value="">No audits yet</option>}
+        </select>
+      </div>
+
+      <div style={secHead}>TikTok · {handle}</div>
+      {resp.ttNote && <div style={noteBox(false)}>{resp.ttNote}</div>}
+      {!resp.ttNote && <TopListAN title="Top 5 TikToks" rows={d && d.topTikTok} tiktok />}
+
+      <div style={secHead}>Instagram · {handle}</div>
+      {resp.igNote && <div style={{ ...noteBox(true), marginBottom: 12 }}>⚠ {resp.igNote}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {chips.map(([k, v]) => (
+          <div key={k} style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "8px 14px", background: c.bg }}>
+            <div style={{ fontFamily: sans, fontSize: 14, color: c.ink }}>{v}</div>
+            <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginTop: 2 }}>{k}</div>
+          </div>
+        ))}
+      </div>
+      <SparkAN points={growth} />
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 16 }}>
+        <TopListAN title="Top 5 Reels" rows={d && d.topReels} />
+        <TopListAN title="Top 5 Carousels" rows={d && d.topCarousels} />
+      </div>
+
+      {d && (d.headline || (d.findings || []).length > 0) && (
+        <div style={{ marginTop: 22, border: `1px solid ${c.line}`, borderRadius: 2, padding: "14px 16px", background: c.card }}>
+          {d.headline && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: c.ink, marginBottom: 8 }}>{d.headline}</div>}
+          {(d.findings || []).map((x, i) => <div key={i} style={{ fontFamily: sans, fontSize: 11.5, color: c.ink, lineHeight: 1.7 }}>• {x}</div>)}
+          {(d.carry || []).length > 0 && <div style={{ fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "10px 0 4px" }}>Carry into next month</div>}
+          {(d.carry || []).map((x, i) => <div key={i} style={{ fontFamily: sans, fontSize: 11.5, color: c.ink, lineHeight: 1.7 }}>• {x}</div>)}
+          {d.formatMix && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11.5, color: c.sub, marginTop: 8 }}>{d.formatMix}</div>}
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, marginTop: 10 }}>These findings feed next cycle's Strategy Outline automatically.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ContentAnalytics({ allowedAccts = null }) {
+  const visible = BRANDS_AN.filter((b) => !allowedAccts || allowedAccts.has(b.acct));
+  const [bv, setBv] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+  const [acct, setAcct] = useState(() => { try { const ig = WS2IGA2[localStorage.getItem("lh_brand_view")]; if (ig && visible.some((b) => b.acct === ig)) return ig; } catch {} return (visible[0] || BRANDS_AN[0]).acct; });
+  useEffect(() => { const h = (e) => { setBv(e.detail || "all"); const ig = WS2IGA2[e.detail]; if (ig && visible.some((b) => b.acct === ig)) setAcct(ig); }; window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
+  const locked = !!WS2IGA2[bv];
+  const brand = BRANDS_AN.find((b) => b.acct === acct) || BRANDS_AN[0];
+  return (
+    <div style={{ fontFamily: sans }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {(locked ? visible.filter((b) => b.acct === WS2IGA2[bv]) : visible).map((b) => (
+          <button key={b.acct} onClick={() => setAcct(b.acct)}
+            style={{ border: `1px solid ${acct === b.acct ? c.ink : c.line}`, background: acct === b.acct ? c.ink : "transparent", color: acct === b.acct ? "#fff" : c.sub, borderRadius: 1, padding: "8px 14px", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", cursor: locked ? "default" : "pointer" }}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+      {brand.board ? <AuditDive board={brand.board} handle={brand.handle} /> : <LegacyAnalytics allowedAccts={allowedAccts} />}
     </div>
   );
 }
