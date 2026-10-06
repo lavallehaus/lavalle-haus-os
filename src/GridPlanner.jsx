@@ -67,6 +67,13 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
   const ttNames = tiktok
     ? [...((tiktok.production && tiktok.production.accounts) || []), ...((tiktok.sandbox && tiktok.sandbox.accounts) || [])].map((a) => a.display_name).filter(Boolean).join(", ")
     : "";
+  // the account chips follow the brand in view — refilleryhaus / lavallesisters
+  // never show while The Fold is the brand on screen (her rule Oct 5 2026)
+  const WS2TTP = { "lavalle-sisters": "lavallesisters", "lavalle-haus": "refilleryhaus", "the-fold": "thefoldlabel" };
+  const brandIGP = (typeof WS2IGP !== "undefined" ? WS2IGP : {})[bvGP] || null;
+  const igShown = insta && insta.connected ? (insta.accounts || []).filter((a) => !brandIGP || String(a.username || "").toLowerCase().replace(/\s+/g, "") === brandIGP) : [];
+  const ttAll = tiktok ? [...((tiktok.production && tiktok.production.accounts) || []), ...((tiktok.sandbox && tiktok.sandbox.accounts) || [])].map((a) => a.display_name).filter(Boolean) : [];
+  const ttShown = ttAll.filter((n) => !WS2TTP[bvGP] || n.toLowerCase().replace(/\s+/g, "") === WS2TTP[bvGP]);
   const sendTestDraft = async () => {
     setTtMsg({ t: "Sending a draft to the TikTok inbox…" });
     try {
@@ -325,16 +332,17 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
           )}
           {insta && insta.connected && (
             <>
-              <span style={{ ...ghost, cursor: "default" }} title="Connected Instagram accounts">◉ IG ✓ · {insta.accounts.map((a) => a.username).filter(Boolean).join(", ") || insta.accounts.length}</span>
+              {/* only the brand in view's account shows (her rule Oct 5 2026) */}
+              <span style={{ ...ghost, cursor: "default" }} title="Connected Instagram account for this brand">◉ IG {igShown.length ? "✓ · " + igShown.map((a) => a.username).filter(Boolean).join(", ") : "— not linked for this brand"}</span>
               <button onClick={() => window.open("/api/instagram-auth", "_blank")} style={ghost} title="Connect another Instagram account or re-link this one">↻</button>
             </>
           )}
-          {tiktok && !ttConnected && (
-            <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Link the TikTok account">♪ Connect TikTok</button>
+          {tiktok && (!ttConnected || !ttShown.length) && (
+            <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Link this brand's TikTok account">♪ Connect TikTok</button>
           )}
-          {ttConnected && (
+          {ttConnected && ttShown.length > 0 && (
             <>
-              <button onClick={sendTestDraft} style={ghost} title={"Send a test draft to the connected TikTok inbox" + (ttNames ? " — connected: " + ttNames : "")}>♪ TikTok ✓{ttNames ? " · " + ttNames : ""} · Test draft</button>
+              <button onClick={sendTestDraft} style={ghost} title={"Send a test draft to the connected TikTok inbox — connected: " + ttShown.join(", ")}>♪ TikTok ✓ · {ttShown.join(", ")} · Test draft</button>
               <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Connect another TikTok account or re-link this one">↻</button>
             </>
           )}
@@ -509,14 +517,29 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
                       </span>
                     </div>
                   );
+                  // her ask Oct 5 2026: the day's post fills its slot — grid-size
+                  // cover on top, title right underneath (no thumbnail rows)
+                  const PostTile = ({ cover, num, name, time, tone, done, onClick, title }) => (
+                    <div onClick={onClick} title={title}
+                      style={{ cursor: onClick ? "pointer" : "default", borderRadius: 2, overflow: "hidden", border: `1px solid ${c.line}`, borderTop: `3px solid ${tone}`, background: c.bg, opacity: done ? 0.55 : 1 }}>
+                      {cover ? <img src={cover} alt="" style={{ display: "block", width: "100%", aspectRatio: "3 / 4", objectFit: "cover" }} />
+                        : <div style={{ width: "100%", aspectRatio: "3 / 4", background: c.card }} />}
+                      <div style={{ padding: "6px 7px 7px" }}>
+                        <div style={{ fontFamily: sans, fontSize: 10.5, lineHeight: 1.35, color: c.ink, textDecoration: done ? "line-through" : "none" }}>{num ? <b>#{num} </b> : null}{name}</div>
+                        {time && <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 0.5, color: c.sub, marginTop: 1 }}>{time}</div>}
+                      </div>
+                    </div>
+                  );
                   for (let i = 0; i < first.getDay(); i++) cells.push(<div key={"pad" + i} />);
                   for (let d = 1; d <= days; d++) {
                     const k = keyOf(new Date(calMonth.y, calMonth.m, d));
                     const gridPosts = byDay[k] || [];
                     const bPosts = boardPubsByDay[k] || [];
                     const rows = [];
-                    gridPosts.forEach(({ it, card }) => rows.push(
-                      <PostRow key={it.cardId} cover={imgOf(it, 200)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done || card.approved ? c.green : "#C9A96A"} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
+                    gridPosts.forEach(({ it, card }, gi) => rows.push(
+                      gi === 0
+                        ? <PostTile key={it.cardId} cover={imgOf(it, 600)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done || card.approved ? c.green : "#C9A96A"} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
+                        : <PostRow key={it.cardId} cover={imgOf(it, 200)} num={it.n} name={(card.name || "").replace(/\[.*?\]/g, "").replace(/post\s*\d+/i, "").trim() || "Post"} time={timeOf(it.pub && it.pub.at)} tone={card.done || card.approved ? c.green : "#C9A96A"} done={card.done} onClick={() => setOpenItem(it.cardId)} title={card.name} />
                     ));
                     bPosts.forEach(({ card: cd }, bi) => rows.push(
                       <PostRow key={"bp" + bi} cover={cd.cover} num={(cd.name.match(/post\s*(\d+)/i) || [])[1]} name={"@" + (cd.pub.account || "?")} time={timeOf(cd.pub.at)} tone={cd.pub.status === "published" ? c.green : c.taupe} title={pubTitle(cd)} />
@@ -584,16 +607,24 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
             ); })()}
             <img src={imgOf(open, 1600)} alt="" style={{ display: "block", width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, margin: "12px 0" }} />
 
+            {/* RULE (hers, Oct 5 2026): this drawer mirrors the board card exactly —
+                same title, same tags, hashtags live inside the description. */}
+            {(openCard.labels || []).length > 0 && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", margin: "0 0 10px" }}>
+                {openCard.labels.map((L, li) => { const n = (typeof L === "string" ? L : L && L.n) || ""; const col = (typeof L === "object" && L && L.c) || "#E9E6DF"; return n ? (
+                  <span key={li} style={{ background: col, borderRadius: 1, padding: "3px 10px", fontFamily: sans, fontSize: 9.5, letterSpacing: 1, textTransform: "uppercase", color: "#4a4a45" }}>{n}</span>
+                ) : null; })}
+              </div>
+            )}
+            {(openCard.hook || feed.boardKey === "lavalle-sisters") && (<>
             <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Hook</div>
             <input value={openCard.hook || ""} onChange={(e) => patchCard(open.cardId, { hook: e.target.value })} placeholder="The first line that stops the scroll…"
               style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, color: c.ink, outline: "none", marginBottom: 10 }} />
-            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Caption</div>
-            <textarea rows={4} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
+            </>)}
+            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Description — caption + hashtags, exactly as on the card</div>
+            <textarea rows={5} value={openCard.desc || ""} onChange={(e) => patchCard(open.cardId, { desc: e.target.value })}
               style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.ink, outline: "none", resize: "vertical", marginBottom: 4 }} />
             <div style={{ marginBottom: 10 }}><NotesLinks text={openCard.desc} /></div>
-            <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>Hashtags</div>
-            <input value={openCard.tags || ""} onChange={(e) => patchCard(open.cardId, { tags: e.target.value })} placeholder="#two #tags"
-              style={{ width: "100%", boxSizing: "border-box", background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "9px 12px", fontFamily: sans, fontSize: 12.5, color: c.ink, outline: "none", marginBottom: 10 }} />
 
             {(open.pieces || []).length > 0 && (
               <div style={{ marginBottom: 10 }}>

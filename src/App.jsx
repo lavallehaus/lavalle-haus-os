@@ -2773,6 +2773,9 @@ const [tab, setTab] = useState(() => { try { return localStorage.getItem("lh_tab
 // Owner "chief" views — the whole app at once is overwhelming, so a view
 // narrows the tab bar to one department. Purely visual: no permissions change.
 const [viewMode, setViewMode] = useState(() => { try { return localStorage.getItem("lh_view") || "all"; } catch { return "all"; } });
+const [bvApp, setBvApp] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
+useEffect(() => { const h = (e) => setBvApp(e.detail || "all"); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
+const setBrandView = (v) => { try { localStorage.setItem("lh_brand_view", v); } catch {} window.dispatchEvent(new CustomEvent("lh-brand-view", { detail: v })); };
 useEffect(() => { try { localStorage.setItem("lh_tab", tab); } catch {} }, [tab]); // refresh lands you back on the tab you were on
 useEffect(() => { try { localStorage.setItem("lh_view", viewMode); } catch {} }, [viewMode]);
 // App-level reel finisher: on ANY screen, every ~12s, nudge any post still
@@ -3248,11 +3251,17 @@ const CHIEF_VIEWS = {
   operations: { label: "Chief of Operations", tabs: ["brain", "profit", "ads", "inventory", "materials", "roadmap"] },
 };
 const chiefTabs = iAmOwner && CHIEF_VIEWS[viewMode] ? CHIEF_VIEWS[viewMode].tabs : null;
+// brand view drives the whole frame (her ask Oct 5 2026): The Fold / Sisters
+// views keep only the tabs that apply to that brand; the wordmark dropdown
+// in the header is where you switch.
+const BRAND_NAV = { "the-fold": ["content", "calendar"], "lavalle-sisters": ["content", "calendar"] };
+const brandNavTabs = BRAND_NAV[bvApp] || null;
 const visibleNav = NAV
   // gated strictly by the person's pages/role — Business Brain included
   // (a member whose pages exclude "brain" never sees the business signals).
   .filter(n => iAmOwner || myPages.includes(n.id))
   .filter(n => !chiefTabs || chiefTabs.includes(n.id))
+  .filter(n => !brandNavTabs || brandNavTabs.includes(n.id))
   .map(n => n.subs && HIDDEN_SUBS[n.id] ? { ...n, subs: n.subs.filter(s => !HIDDEN_SUBS[n.id].includes(s.id)) } : n);
 // Never land on a page you can't see (e.g. the saved tab or the "brain"
 // default when Business Brain isn't in this person's pages).
@@ -3450,12 +3459,21 @@ const timeOfDay = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "G
 return (
 <div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#1A1A1A", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 <div style={{ background: "#F4F4F3", borderBottom: "1px solid #E0E0DD", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+<div style={{ textAlign: "left" }}>
+{/* the brand name is a dropdown — switch the whole view between houses (her ask Oct 5 2026) */}
+<select value={bvApp} onChange={(e) => { setBrandView(e.target.value); setCommandView(false); }} title="Switch brand view"
+  style={{ display: "block", appearance: "none", WebkitAppearance: "none", background: "transparent", border: "none", padding: 0, marginBottom: 3, fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", cursor: "pointer" }}>
+  {bvApp === "lavalle-haus" && <option value="lavalle-haus">Lavalle Haus ▾</option>}
+  <option value="all">Lavalle Haus ▾</option>
+  <option value="the-fold">The Fold ▾</option>
+  <option value="lavalle-sisters">Lavalle Sisters ▾</option>
+</select>
 <button onClick={() => { setCommandView(false); setTab(visibleNav[0].id); }} title="Home"
 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit" }}>
-<div style={{ fontSize: 10, letterSpacing: 5, color: "#8A8A85", textTransform: "uppercase", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", marginBottom: 3 }}>Lavalle Haus</div>
 <div style={{ fontSize: 20, letterSpacing: 2, fontWeight: 300, textTransform: "uppercase" }}>Operating System</div>
 {me && me.name && <div style={{ fontSize: 11, fontStyle: "italic", color: "#8F8676", marginTop: 3 }}>{timeOfDay}, {me.name.split(" ")[0]}.</div>}
 </button>
+</div>
 <GlobalSearch nav={visibleNav} dbState={dbState} onGo={goSearch} />
 <div style={{ display: "flex", gap: 8 }}>
 {(iAmOwner || ["brain", "profit", "inventory", "ads"].some((t) => myPages.includes(t)) ? [
