@@ -2954,7 +2954,12 @@ export default async function handler(req, res) {
     if (!okKeyAU && !ownerRole(authAU)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const stAU = (await kvGet("sisters_audit_state" + SBOARD.kvSuffix)) || {};
     if (!(req.body || {}).force && Date.now() - (stAU.at || 0) < 3 * 86400000) { res.json({ ok: true, skipped: true, nextIn: Math.round((3 * 86400000 - (Date.now() - stAU.at)) / 3600000) + "h" }); return; }
-    const sinceAU = Date.now() - 32 * 86400000;
+    // window: the trailing month, stretched back to the 1st of the PREVIOUS
+    // calendar month when the feed has gone quiet — "September findings for
+    // the October outline" works even when nothing posted in 30 days.
+    const nowAUd = new Date();
+    const prevMoStartAU = Date.UTC(nowAUd.getUTCFullYear(), nowAUd.getUTCMonth() - 1, 1);
+    const sinceAU = Math.min(Date.now() - 32 * 86400000, prevMoStartAU);
     const rowsAU = []; let igNote = null, sawIg = false;
     const baseAU = "https://graph.instagram.com/v23.0";
     let followersAU = null;
