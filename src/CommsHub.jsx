@@ -17,7 +17,90 @@ const serif = "Georgia, 'Times New Roman', serif";
 const input = { width: "100%", boxSizing: "border-box", border: `1px solid ${c.line}`, borderRadius: 1, padding: "8px 10px", fontFamily: sans, fontSize: 12.5, color: c.ink, background: "#fff" };
 const uid = () => "cm" + Math.random().toString(36).slice(2, 9);
 
-export default function CommsHub({ data, onSave, team = [] }) {
+const NOTE_TAGS = ["Marketing", "R&D", "Newsletter", "Scripts", "Stories", "Ops", "Courtney"];
+
+// Meeting Notes (her ask, Oct 5 2026) — the notes she keeps per meeting date,
+// mirrored both ways with her phone's Notes app by the daily notes-comms-sync
+// routine on her Mac. Private by default: only Kiabeth + Kiaredza see a note
+// unless someone is granted on it (Courtney sees her own). Items carry a tag
+// (R&D / Newsletter / Marketing…) so each line files where it impacts.
+function MeetingNotes({ notes, onSave, team, viewer }) {
+  const canSee = (n) => viewer.owner || (n.access || []).some((a) => String(a).toLowerCase().split(" ")[0] === String(viewer.name || "").toLowerCase().split(" ")[0]);
+  const visible = (notes || []).filter(canSee).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (a.title || "").localeCompare(b.title || ""));
+  const [selId, setSelId] = useState(visible[0] ? visible[0].id : null);
+  const note = visible.find((n) => n.id === selId) || visible[0] || null;
+  const [itemText, setItemText] = useState("");
+  const patchNote = (id, patch) => onSave((notes || []).map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  const lbl = (n) => { const d = n.date ? new Date(n.date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "undated"; return d + " · " + (n.title || "Meeting"); };
+  const addNote = () => {
+    const date = prompt("Meeting date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+    if (!date) return;
+    const title = prompt("Who / what is this meeting?", "Sarah");
+    if (!title) return;
+    const nn = { id: uid(), date: date.trim(), title: title.trim(), access: [], items: [], src: "app" };
+    onSave([...(notes || []), nn]); setSelId(nn.id);
+  };
+  const grouped = note ? NOTE_TAGS.concat([null]).map((tg) => [tg, (note.items || []).filter((it) => (tg === null ? !NOTE_TAGS.includes(it.tag) : it.tag === tg))]).filter(([, l]) => l.length) : [];
+  return (
+    <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "14px 16px", marginBottom: 22, background: "#FAF9F7" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span style={{ fontFamily: sans, fontSize: 11, letterSpacing: 3, textTransform: "uppercase", color: c.ink }}>Meeting notes</span>
+        <select value={note ? note.id : ""} onChange={(e) => setSelId(e.target.value)}
+          style={{ border: `1px solid ${c.line}`, background: "#fff", color: c.ink, borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 11 }}>
+          {visible.map((n) => <option key={n.id} value={n.id}>{lbl(n)}</option>)}
+          {!visible.length && <option value="">No notes yet</option>}
+        </select>
+        <button onClick={addNote} style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>+ New</button>
+        <span style={{ flex: 1 }} />
+        {note && viewer.owner && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10.5, color: c.sub }}>{(note.access || []).length ? "Shared with " + note.access.join(", ") : "Private — Kiabeth + Kiaredza"}</span>
+            {team.filter((m) => !/kiabeth|kiaredza/i.test(m.name || "")).map((m) => {
+              const on = (note.access || []).includes(m.name);
+              return <button key={m.name} onClick={() => patchNote(note.id, { access: on ? (note.access || []).filter((a) => a !== m.name) : [...(note.access || []), m.name] })}
+                style={{ border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? "#fff" : c.sub, borderRadius: 10, padding: "3px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1, cursor: "pointer" }}>{m.name.split(" ")[0]}</button>;
+            })}
+          </span>
+        )}
+      </div>
+      {!note && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Notes from your phone's Notes app land here each morning, filed by meeting date.</div>}
+      {note && (
+        <div>
+          {grouped.map(([tg, list]) => (
+            <div key={tg || "untagged"} style={{ marginBottom: 10 }}>
+              <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>{tg || "To file"}</div>
+              {list.map((it) => (
+                <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: `1px solid ${c.line}`, opacity: it.done ? 0.55 : 1 }}>
+                  <input type="checkbox" checked={!!it.done} style={{ marginTop: 3 }}
+                    onChange={() => patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, done: !q.done, doneAt: !q.done ? new Date().toISOString() : undefined } : q)) })} />
+                  <span style={{ flex: 1, fontFamily: sans, fontSize: 12, lineHeight: 1.55, color: c.ink, textDecoration: it.done ? "line-through" : "none" }}>{it.text}</span>
+                  <select value={it.tag || ""} onChange={(e) => patchNote(note.id, { items: note.items.map((q) => (q.id === it.id ? { ...q, tag: e.target.value || null } : q)) })}
+                    style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: "3px 5px", fontFamily: sans, fontSize: 9.5, color: it.tag ? c.ink : c.sub, background: "#fff" }}>
+                    <option value="">tag…</option>
+                    {NOTE_TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <button onClick={() => { if (window.confirm("Remove this line from the app note?")) patchNote(note.id, { items: note.items.filter((q) => q.id !== it.id) }); }}
+                    style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <input style={{ ...input, flex: 1 }} placeholder="Add a line to this meeting's notes…" value={itemText} onChange={(e) => setItemText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, src: "app", at: new Date().toISOString() }] }); setItemText(""); } }} />
+            <button onClick={() => { if (itemText.trim()) { patchNote(note.id, { items: [...(note.items || []), { id: uid(), text: itemText.trim(), tag: null, done: false, src: "app", at: new Date().toISOString() }] }); setItemText(""); } }}
+              style={{ border: `1px solid ${c.ink}`, background: c.ink, color: "#fff", borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Add</button>
+          </div>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 10, color: c.sub, marginTop: 8 }}>
+            Backed up to the Notes app on your phone each morning — nothing there is ever overwritten; only lines marked (done) are cleared out.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CommsHub({ data, onSave, team = [], viewer = { name: "", owner: true } }) {
   const contacts = (data && data.contacts) || [];
   const channels = (data && data.channels) || [];
   const [openId, setOpenId] = useState(channels[0] ? channels[0].id : null);
@@ -65,6 +148,8 @@ export default function CommsHub({ data, onSave, team = [] }) {
   };
 
   return (
+    <div>
+    <MeetingNotes notes={(data && data.meetingNotes) || []} team={team} viewer={viewer} onSave={(mn) => save({ meetingNotes: mn })} />
     <div style={{ fontFamily: sans, display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
       {/* left rail — switch between communications */}
       <div style={{ flex: "0 0 210px", minWidth: 170 }}>
@@ -166,6 +251,7 @@ export default function CommsHub({ data, onSave, team = [] }) {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

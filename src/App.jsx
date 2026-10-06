@@ -3354,7 +3354,7 @@ if (tab === "content") return (
 { id: "analytics", label: "Analytics", render: () => <ContentAnalytics allowedAccts={allowedAccts} /> },
 { id: "comms", label: "Comms", render: () => (
   <div>
-    <CommsHub data={dbState.comms || null} team={(dbState.actionsBoard || {}).team || []} onSave={(cv) => setDbState((prev) => { const next = { ...prev, comms: cv }; dbSave(next); return next; })} />
+    <CommsHub viewer={{ name: (me && me.name) || "", owner: iAmOwner }} data={dbState.comms || null} team={(dbState.actionsBoard || {}).team || []} onSave={(cv) => setDbState((prev) => { const next = { ...prev, comms: cv }; dbSave(next); return next; })} />
     <div style={{ height: 28 }} />
     <TeamMeetings data={dbState.teamMeetings || null} iAmOwner={iAmOwner} onSave={(mv) => setDbState((prev) => { const next = { ...prev, teamMeetings: mv }; dbSave(next); return next; })} />
   </div>
