@@ -3050,9 +3050,10 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           const firstNames = (memberPool || []).map((m) => String(m).split(" ")[0].toLowerCase());
           const isPerson = (n0) => { const s = String(n0 || "").trim().toLowerCase(); return s === "courtney" || firstNames.includes(s) || (memberPool || []).some((m) => String(m).toLowerCase() === s); };
           const isStatusy = (n0) => /need to film|ready for review|approved|live|posted|filmed/i.test(String(n0 || ""));
-          const personPr = [...(opsMode ? [] : [{ n: "Courtney", c: "#FFFFFF" }]), ...(tagBank || []).filter((pr) => isPerson(pr.n))];
+          const personFixed = opsMode ? [] : [{ n: "Courtney", c: "#FFFFFF" }, { n: "Kiabeth", c: "#FFFFFF" }, { n: "Kiaredza", c: "#FFFFFF" }]; // her ask Oct 5: both owners pickable
+          const personPr = [...personFixed, ...(tagBank || []).filter((pr) => isPerson(pr.n) && !personFixed.some((f) => f.n.toLowerCase() === String(pr.n).toLowerCase()))];
           const statusAll = [...statusPr, ...(tagBank || []).filter((pr) => !isPerson(pr.n) && isStatusy(pr.n))];
-          const otherPr = (tagBank || []).filter((pr) => !isPerson(pr.n) && !isStatusy(pr.n));
+          const otherPr = (tagBank || []).filter((pr) => !isPerson(pr.n) && !isStatusy(pr.n) && !/^reference$/i.test(String(pr.n || "").trim())); // Reference retired (her ask Oct 5)
           const onCard = (n0) => labels.some((L) => ((typeof L === "string" ? L : L && L.n) || "").toLowerCase() === String(n0).toLowerCase());
           const GROUPS = [["Post status", statusAll], ["Person assigned", personPr], ["Instagram", igPr], ["TikTok", ttPr], ["Other saved tags", otherPr]]
             .map(([g, list]) => [g, list.filter((pr) => !onCard(pr.n))]).filter(([, list]) => list.length);

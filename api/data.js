@@ -1485,8 +1485,10 @@ export default async function handler(req, res) {
       if (!schedIds.has(card.listId)) continue;
       const m3 = /^post\s*(\d+)/i.exec(card.name || "");
       const fid = m3 && byN[Number(m3[1])];
-      if (!fid || (card.cover || "").includes(fid)) continue;
-      if (card.desc) card.comments = [...(card.comments || []), { id: "bc" + randomBytes(4).toString("hex"), by: "Claude", sys: true, at: new Date().toISOString(), text: "Previous caption (cover replaced by " + target.month + " sync): " + card.desc }];
+      // FILL-ONLY (her rules, Oct 5 2026): the grid is the cover of record —
+      // this sync only dresses cards that have NO cover yet, and never writes
+      // process notes into the card's comments (comments are team-only).
+      if (!fid || card.cover) continue;
       card.cover = "/api/data?op=drive_img&id=" + fid;
       card.coverUrl = "https://drive.google.com/file/d/" + fid + "/view";
       changed.push({ card, n: Number(m3[1]) });
@@ -3036,6 +3038,15 @@ export default async function handler(req, res) {
         known.add(lo); fresh.push(t);
       }
     }
+    // Live tag follows the checkbox (her rule, Oct 5 2026): a checked post
+    // carries the Live chip on its own; unchecking takes it back off.
+    let liveFlips = 0;
+    for (const c of bdHS.cards.filter((c) => !c._deleted && schedHS.includes(c.listId) && /^post\s*\d+\b/i.test(c.name || ""))) {
+      const hasLive = (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "live");
+      if (c.done && !hasLive) { c.labels = [{ n: "Live", c: "#DCE3DC" }, ...(c.labels || [])]; liveFlips++; }
+      else if (!c.done && hasLive) { c.labels = (c.labels || []).filter((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() !== "live"); liveFlips++; }
+    }
+    if (liveFlips) await kvSet("lavalle_data", blobHS);
     if (fresh.length) {
       const lineRx = /\nFROM CARDS \(auto\):.*$/;
       const m = lineRx.exec(bankHS.desc || "");
@@ -4491,6 +4502,7 @@ export default async function handler(req, res) {
       return ds[0].label + (ds.length > 1 ? " \u2013 " + ds[ds.length - 1].label : "");
     };
     const HDR = 64;
+    const courtP = new Set(); // fold: dotted posts come from the Courtney card tag (no C tiles there)
     const render = async (from, to) => {
       const slice = all.slice(from - 1, to);
       const n = slice.length, rows = Math.ceil(n / 3);
@@ -4503,7 +4515,7 @@ export default async function handler(req, res) {
         try {
           const t = await getTile(slice[i].cover); if (!t) continue;
           await drawNum(t, from + i);
-          if (slice[i].tag === "C") { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
+          if (slice[i].tag === "C" || courtP.has(from + i)) { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
           cv.composite(t, (2 - (i % 3)) * 360, HDR + (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
       }
@@ -4542,6 +4554,7 @@ export default async function handler(req, res) {
           const mo = MO_W[mD[1].toLowerCase()];
           dateP[n] = { t: Date.UTC(mo >= 6 ? 2026 : 2027, mo, Number(mD[2])), label: mD[1].slice(0, 3).replace(/^./, (ch) => ch.toUpperCase()) + " " + Number(mD[2]) };
         }
+        if (!SBOARD.hasCourtney && (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney")) courtP.add(n);
         if (c.done) { doneP.add(n); continue; }
         // Sep 27 2026 (cycle rollover): numbers restart each cycle, so "first
         // undone number" lies while two cycles overlap — the current post is
@@ -4656,6 +4669,7 @@ export default async function handler(req, res) {
     }
     let rec = (await kvGet("sisters_grid_tiles_" + g + SBOARD.kvSuffix)) || { tiles: [], mid: null };
     if (rec.locked) { res.status(409).json({ error: "This grid is locked — unlock it before moving tiles." }); return; }
+    const courtMT = new Set(); // fold: Courtney-tagged post numbers, dotted on the montage
     const prevTilesW = (rec.tiles || []).map((t) => ({ cover: t.cover, tag: t.tag })); // what the cards currently follow
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
       rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
@@ -4671,6 +4685,8 @@ export default async function handler(req, res) {
       const blobW = Array.isArray(rawW) ? rawW[0] : rawW;
       const bdW = blobW && blobW.boards && blobW.boards[SBOARD.key];
       if (bdW && !SBOARD.hasCourtney) {
+        // Fold: her Courtney-tagged posts get the white grid dot (tags stay K so cover writeback keeps flowing).
+        for (const l0 of bdW.lists.filter((l) => /^schedule/i.test(l.name || ""))) for (const c0 of bdW.cards.filter((c) => !c._deleted && c.listId === l0.id)) { const n0 = Number((/^post\s*(\d+)/i.exec(c0.name || "") || [])[1] || 0); if (n0 && (c0.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney")) courtMT.add(n0); }
         // Fold (no Courtney): grid 1 = Posts 1..21 (Schedule 1-21); grid 2 = Posts 22..42 (Schedule 22-42).
         const schedW = bdW.lists.find((l) => (g === "2" ? /^schedule\s*22\s*[-–]\s*42$/i : /^schedule\s*1\s*[-–]\s*21$/i).test((l.name || "").trim()));
         let kN = g === "1" ? 1 : 22, wrote = 0;
@@ -4807,7 +4823,7 @@ export default async function handler(req, res) {
         const rr = await fetch(u);
         if (!rr.ok) continue;
         const t2 = (await Jimp.read(Buffer.from(await rr.arrayBuffer()))).cover(360, 480);
-        if (rec.tiles[i].tag === "C") {
+        if (rec.tiles[i].tag === "C" || courtMT.has((g === "2" ? 21 : 0) + i + 1)) {
           const cx = 360 - 26, cy = 26, r = 9;
           t2.scan(cx - r - 4, cy - r - 4, (r + 4) * 2, (r + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= r * r) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (r + 2) * (r + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } });
         }
