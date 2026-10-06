@@ -54,7 +54,47 @@ function MeetingNotes({ notes, onSave, team, viewer, meetings = [] }) {
     const nn = { id: uid(), date: date.trim(), title: title.trim(), access: [], items: [], src: "app", brand: ["the-fold", "lavalle-sisters", "lavalle-haus"].includes(bvMN) ? bvMN : null };
     onSave([...(notes || []), nn]); setSelId(nn.id);
   };
-  const grouped = note ? NOTE_TAGS.concat([null]).map((tg) => [tg, (note.items || []).filter((it) => (tg === null ? !NOTE_TAGS.includes(it.tag) : it.tag === tg))]).filter(([, l]) => l.length) : [];
+  // sectioned by PROJECT (her ask Oct 5 2026): items carrying a project name
+  // group under it with a progress count; a fully-done project can be removed.
+  // Everything else keeps the tag grouping.
+  const projNames = note ? [...new Set((note.items || []).filter((i) => i.project).map((i) => i.project))] : [];
+  const sections = note ? [
+    ...projNames.map((pj) => { const list = (note.items || []).filter((i) => i.project === pj); return { key: pj, hdr: pj, dn: list.filter((i) => i.done).length, total: list.length, removable: true, list }; }),
+    ...NOTE_TAGS.concat([null]).map((tg) => [tg, (note.items || []).filter((it) => !it.project && (tg === null ? !NOTE_TAGS.includes(it.tag) : it.tag === tg))]).filter(([, l]) => l.length).map(([tg, l]) => ({ key: "tag:" + (tg || "untagged"), hdr: tg || "To file", list: l })),
+  ] : [];
+  const removeProject = (pj) => {
+    if (!window.confirm('Remove the completed project "' + pj + '" and its checked-off items?')) return;
+    const left = (note.items || []).filter((i) => i.project !== pj);
+    if (!left.length && /photoshoot/i.test(note.title || "")) { onSave((notes || []).filter((n2) => n2.id !== note.id)); setSelId(null); }
+    else patchNote(note.id, { items: left });
+  };
+  // "+ Photoshoot" loads the standing shoot checklist for a month (sisters run
+  // one monthly, the fold every 2-3 months). Any line that doesn't apply —
+  // flights, usually — gets ×'d off the project like any other item.
+  const addShoot = () => {
+    const d0 = prompt("Shoot date (YYYY-MM-DD)", new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10));
+    if (!d0 || !/^\d{4}-\d{2}-\d{2}$/.test(d0.trim())) return;
+    let brand = ["the-fold", "lavalle-sisters"].includes(bvMN) ? bvMN : null;
+    if (!brand) { const a = prompt('Which brand? Type "fold" or "sisters"', "sisters") || ""; brand = /fold/i.test(a) ? "the-fold" : "lavalle-sisters"; }
+    const bLbl = brand === "the-fold" ? "The Fold" : "Lavalle Sisters";
+    const nEx = brand === "the-fold" ? 6 : 12;
+    const sd = new Date(d0.trim() + "T12:00");
+    const dd = (off) => new Date(sd.getTime() + off * 86400000).toISOString().slice(0, 10);
+    const mLbl = sd.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const pj = "Photoshoot — " + mLbl + " (" + bLbl + ")";
+    const mk = (text, due) => ({ id: uid(), text, tag: null, done: false, status: "not-started", assignedAt: new Date().toISOString(), src: "app", project: pj, due });
+    const items = [
+      mk("1 example video that references the prop list", dd(-7)),
+      mk("Props ordered (everything ordered)", dd(-6)),
+      mk("Flight details booked — × this line if no flight is needed", dd(-5)),
+      mk("Location selection", dd(-4)),
+      mk("Receive " + nEx + " video examples - " + bLbl, dd(-2)),
+      mk("Photoshoot", d0.trim()),
+      mk(nEx + " posts delivered to Courtney (post-shoot hand-off)", dd(2)),
+    ];
+    const nn = { id: uid(), date: d0.trim(), title: "Photoshoot — " + mLbl, access: ["Courtney"], items, src: "app", brand };
+    onSave([...(notes || []), nn]); setSelId(nn.id);
+  };
   return (
     <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: "14px 16px", marginBottom: 22, background: "#FAF9F7" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
@@ -65,6 +105,7 @@ function MeetingNotes({ notes, onSave, team, viewer, meetings = [] }) {
           {!visible.length && <option value="">No notes yet</option>}
         </select>
         <button onClick={addNote} style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>+ New</button>
+        {viewer.owner && <button onClick={addShoot} title="Load the standing shoot checklist for a month — sisters run one monthly, the fold every 2-3 months; × any line that doesn't apply" style={{ border: `1px dashed ${c.taupe}`, background: "transparent", borderRadius: 1, padding: "6px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, cursor: "pointer" }}>+ Photoshoot</button>}
         <span style={{ flex: 1 }} />
         {note && viewer.owner && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -80,9 +121,15 @@ function MeetingNotes({ notes, onSave, team, viewer, meetings = [] }) {
       {!note && <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 12, color: c.sub }}>Notes from your phone's Notes app land here each morning, filed by meeting date.</div>}
       {note && (
         <div>
-          {grouped.map(([tg, list]) => (
-            <div key={tg || "untagged"} style={{ marginBottom: 10 }}>
-              <div style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 4 }}>{tg || "To file"}</div>
+          {sections.map(({ key, hdr, dn, total, removable, list }) => (
+            <div key={key} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", color: c.taupe }}>{hdr}</span>
+                {total != null && <span style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, color: dn === total ? c.green : c.sub }}>{dn} of {total} done{dn === total ? " ✓" : ""}</span>}
+                {removable && total > 0 && dn === total && viewer.owner && (
+                  <button onClick={() => removeProject(key)} style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 10, padding: "2px 10px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.green, cursor: "pointer" }}>Project complete — remove</button>
+                )}
+              </div>
               {list.map((it) => (
                 <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: `1px solid ${c.line}`, opacity: it.done ? 0.55 : 1 }}>
                   <input type="checkbox" checked={!!it.done} style={{ marginTop: 3 }}

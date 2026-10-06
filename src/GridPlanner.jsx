@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // LAVALLE HAUS OS — Grid planner (Content → Grid)
 // A Plann-style feed preview: the 3-across Instagram grid, assembled
@@ -132,9 +132,11 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
     if (board && board.cards) board.cards.forEach((x) => { m[x.id] = x; });
     return m;
   }, [board]);
-  // Resolve a tile's image: explicit src → the board card's cover → Drive thumb.
-  // (Lets auto-built brand feeds show board cover photos without duplicating them.)
-  const imgOf = (it, w) => it.src || (cardById[it.cardId] && cardById[it.cardId].cover) || thumb(it.driveId, w);
+  // Resolve a tile's image: the board card's CURRENT cover first (reframe/zoom
+  // crops are baked into it and re-picked covers land there instantly), then the
+  // item's own src, then the Drive thumb — so the Schedule always shows the exact
+  // frame the 1-21 / 22-42 cards and the Grid card show (her rule Oct 5 2026).
+  const imgOf = (it, w) => (cardById[it.cardId] && cardById[it.cardId].cover) || it.src || thumb(it.driveId, w);
 
   // Live grid — the account's real Instagram feed, fetched on demand.
   const acct = feed && feed.account;
@@ -178,14 +180,46 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
     /* eslint-disable-next-line */
   }, [boards, state && state.feeds && state.feeds.length]);
 
-  const patchCard = (cardId, patch) => {
+  // Undo / redo (her ask Oct 5 2026) — 40 steps over everything the Schedule
+  // changes: card fields (desc, due, done…) and planner items (dates, publish
+  // slots, reorders). Keystrokes on the same field coalesce into one step.
+  const histRef = useRef({ undo: [], redo: [] });
+  const [, setHistTick] = useState(0);
+  const bumpHist = () => setHistTick((n) => n + 1);
+  const pushHist = (e2) => {
+    const u = histRef.current.undo; const last = u[u.length - 1];
+    if (last && last.kind === e2.kind && last.id === e2.id && Date.now() - last.at < 1500 &&
+        JSON.stringify(Object.keys(last.after).sort()) === JSON.stringify(Object.keys(e2.after).sort())) {
+      last.after = e2.after; last.at = Date.now();
+    } else { u.push({ ...e2, at: Date.now() }); if (u.length > 40) u.shift(); }
+    histRef.current.redo = []; bumpHist();
+  };
+  const writeCard = (cardId, patch) => {
     if (!board || !onSaveBoards) return;
     const nextBoards = { ...boards, [feed.boardKey]: { ...board, cards: board.cards.map((x) => x.id === cardId ? { ...x, ...patch } : x) } };
     onSaveBoards(nextBoards);
   };
-
-  const patchFeed = (patch) => {
+  const writeFeed = (patch) => {
     save({ ...state, feeds: feeds.map((f) => f.id === feed.id ? { ...f, ...patch } : f) });
+  };
+  const patchCard = (cardId, patch) => {
+    const cur = cardById[cardId]; if (!cur) { writeCard(cardId, patch); return; }
+    const before = {}; Object.keys(patch).forEach((k) => { before[k] = cur[k]; });
+    pushHist({ kind: "card", id: cardId, before, after: patch });
+    writeCard(cardId, patch);
+  };
+  const patchFeed = (patch) => {
+    const before = {}; Object.keys(patch).forEach((k) => { before[k] = feed[k]; });
+    pushHist({ kind: "feed", id: feed.id, before, after: patch });
+    writeFeed(patch);
+  };
+  const stepHist = (dir) => {
+    const from = dir === "undo" ? histRef.current.undo : histRef.current.redo;
+    const to = dir === "undo" ? histRef.current.redo : histRef.current.undo;
+    const e2 = from.pop(); if (!e2) return;
+    const patch = dir === "undo" ? e2.before : e2.after;
+    if (e2.kind === "card") writeCard(e2.id, patch); else writeFeed(patch);
+    to.push(e2); bumpHist();
   };
 
   const patchItem = (cardId, patch) => {
@@ -346,6 +380,8 @@ export default function GridPlanner({ allowedAccts = null, data, boards, onSave,
               <button onClick={() => window.open("/api/tiktok-auth?sandbox=1", "_blank")} style={ghost} title="Connect another TikTok account or re-link this one">↻</button>
             </>
           )}
+          <button onClick={() => stepHist("undo")} disabled={!histRef.current.undo.length} style={{ ...ghost, opacity: histRef.current.undo.length ? 1 : 0.35 }} title="Undo the last change made on this page">↶ Undo</button>
+          <button onClick={() => stepHist("redo")} disabled={!histRef.current.redo.length} style={{ ...ghost, opacity: histRef.current.redo.length ? 1 : 0.35 }} title="Redo">↷ Redo</button>
           <button onClick={() => setAspect(aspect === "1 / 1" ? "3 / 4" : "1 / 1")} style={ghost} title="Toggle tile shape">{aspect === "1 / 1" ? "◻ Square" : "▯ Portrait"}</button>
           <button onClick={() => { setSyncOpen(!syncOpen); setSyncMsg(null); setFolderLink(""); }} style={{ ...ghost, color: c.ink, borderColor: c.taupe }}>⟳ Sync from Drive</button>
         </div>
