@@ -832,7 +832,7 @@ export default async function handler(req, res) {
     if (!cid) { res.status(500).send("SLACK_CLIENT_ID is not set in Vercel env vars yet."); return; }
     // chat:write lets the bot post replies FOR Kiabeth — but only ever after she
     // taps approve in the app (see slack_draft / slack_send). Nothing auto-sends.
-    const scopes = ["channels:read", "channels:join", "channels:history", "groups:read", "groups:history", "team:read", "users:read", "chat:write"].join(",");
+    const scopes = ["channels:read", "channels:join", "channels:history", "groups:read", "groups:history", "team:read", "users:read", "chat:write", "pins:write"].join(","); // pins:write: the bot pins its app-link post (her ask Oct 5 2026)
     const params = new URLSearchParams({ client_id: cid, scope: scopes, redirect_uri: "https://lavalle-haus-os.vercel.app/api/slack-callback" });
     res.writeHead(302, { Location: "https://slack.com/oauth/v2/authorize?" + params.toString() });
     res.end(); return;
