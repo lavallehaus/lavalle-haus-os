@@ -4418,6 +4418,27 @@ export default async function handler(req, res) {
         }
       }
     } catch (eM3) {}
+    // Months the live schedule actually runs in (her rule Oct 5 2026): the
+    // card links every month folder posts 1-42 post into, not just the
+    // working month — October through January when the cycle spans that far.
+    const activeMosL3 = [];
+    try {
+      const MONTHS_A3 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+      const rawA3 = await kvGet("lavalle_data"); const blobA3 = Array.isArray(rawA3) ? rawA3[0] : rawA3;
+      const bdA3 = blobA3 && blobA3.boards && blobA3.boards[SBOARD.key];
+      if (bdA3) {
+        const schedA3 = bdA3.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+        const seenA3 = [];
+        for (const c of bdA3.cards.filter((c) => !c._deleted && schedA3.includes(c.listId) && !c.done)) {
+          const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
+          if (!m) continue;
+          const mo = MONTHS_A3.indexOf(m[1].toLowerCase()); if (mo < 0) continue;
+          seenA3.push({ mo, t: Date.UTC(mo >= 6 ? 2026 : 2027, mo, +m[2]) });
+        }
+        seenA3.sort((a, b) => a.t - b.t);
+        for (const x of seenA3) { const nm = MONTHS_A3[x.mo][0].toUpperCase() + MONTHS_A3[x.mo].slice(1); if (!activeMosL3.includes(nm)) activeMosL3.push(nm); }
+      }
+    } catch (eA3) {}
     const top = await lsL3(SIS3);
     const mF = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === wm3.toLowerCase());
     if (!mF) { res.json({ ok: false, error: "month folder missing: " + wm3 }); return; }
@@ -4440,6 +4461,16 @@ export default async function handler(req, res) {
     // DRAFTED CONTENT folder (Kiabeth, Aug 26) — the drafts are what the team
     // opens from here, not the raw to-edit pool.
     const links = [{ label: wm3 + " folder", url: "https://drive.google.com/drive/folders/" + mF.id }].concat(subs.map((f) => { const nmL = (f.name || "").trim(); if (/^courtney to edit$/i.test(nmL)) return { label: "Courtney drafted", url: "https://drive.google.com/drive/folders/1woGS7L4PQwFcNOu3sxBtTXP2ZIo8DMkc" }; return { label: wm3 + " → " + nmL, url: "https://drive.google.com/drive/folders/" + f.id }; }));
+    if (SBOARD.key === "the-fold") {
+      for (const mn of activeMosL3) {
+        if (mn.toLowerCase() === wm3.toLowerCase()) continue;
+        let mF2 = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === mn.toLowerCase());
+        if (!mF2) { try { mF2 = await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,mimeType", { method: "POST", headers: { Authorization: "Bearer " + gtL3, "Content-Type": "application/json" }, body: JSON.stringify({ name: mn, mimeType: "application/vnd.google-apps.folder", parents: [SIS3] }) })).json(); if (mF2 && mF2.id) top.push({ ...mF2, mimeType: "application/vnd.google-apps.folder" }); } catch (eMk2) { mF2 = null; } }
+        if (!mF2 || !mF2.id) continue;
+        try { const subs2 = (await lsL3(mF2.id)).filter((f) => f.mimeType === "application/vnd.google-apps.folder"); for (const need of ["Cover Photos", "Carousel", "Reels"]) { if (!subs2.some((f) => (f.name || "").trim().toLowerCase() === need.toLowerCase())) await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtL3, "Content-Type": "application/json" }, body: JSON.stringify({ name: need, mimeType: "application/vnd.google-apps.folder", parents: [mF2.id] }) }); } } catch (eS2) {}
+        links.push({ label: mn + " folder", url: "https://drive.google.com/drive/folders/" + mF2.id });
+      }
+    }
     // Captions + Hashtags doc and the grid archive ride INSIDE the month group
     // (her ask, Aug 26) — the "<month> → X" label is what nests them in the
     // Links sheet, and they follow the working month automatically.
