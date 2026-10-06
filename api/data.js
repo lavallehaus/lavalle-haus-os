@@ -5993,7 +5993,11 @@ export default async function handler(req, res) {
     const folders = {};
     for (const [bk, fid] of Object.entries(RND_FOLDERS)) {
       try {
-        const rR = await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(`'${fid}' in parents and trashed=false and mimeType contains 'image/'`) + "&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + tokR } });
+        // one level deep: the LH R&D folder files mockups under supplier subfolders
+        const rSub = await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(`'${fid}' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'`) + "&fields=files(id)&pageSize=25&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + tokR } });
+        const subs = (((await rSub.json()).files) || []).map((f) => f.id);
+        const parents = [fid, ...subs].slice(0, 20).map((x) => `'${x}' in parents`).join(" or ");
+        const rR = await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(`(${parents}) and trashed=false and mimeType contains 'image/'`) + "&fields=files(id,name)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + tokR } });
         const dR = await rR.json();
         folders[bk] = (dR.files || []).map((f) => ({ id: f.id, name: f.name }));
       } catch (e) { folders[bk] = []; }
