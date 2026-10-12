@@ -2343,6 +2343,27 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Bulk card patch (owner): {board, patches:[{cardId, patch:{cover,...}}]} in one write.
+  if (op === "board_cards_patch" && req.method === "POST") {
+    const authBP = await getAuthEarly(req);
+    if (!ownerRole(authBP)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bBP = req.body || {};
+    const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
+    const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
+    if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "due", "links", "tags", "attachments"];
+    let n = 0; const nowBP = Date.now();
+    for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
+      const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
+      for (const k of FIELDS_BP) if (Object.prototype.hasOwnProperty.call(P.patch, k)) c[k] = P.patch[k];
+      c._touched = nowBP; n++;
+    }
+    bdBP._rev = (bdBP._rev || 0) + 1; bdBP._stamp = nowBP;
+    await kvSet("lavalle_data", blobBP);
+    res.json({ ok: true, patched: n });
+    return;
+  }
+
   // ── Bulk list import (owner): add whole columns with their cards in one
   // write — {board, position:"front"|"end", lists:[{name, cards:[{name, desc,
   // labels, members, links, cover, done, due}]}]}. Built for moving the
