@@ -4452,6 +4452,9 @@ export default async function handler(req, res) {
     for (const p0 of postsCQ) {
       const asn = (covCQ.assign || {})[p0.nn] || null;
       const pc = asn && asn.post ? postCard(asn.post) : null;
+      // her rule Oct 12 2026: when the tied scheduled post is checked off the
+      // C card checks itself — so a finished batch can roll over on its own
+      const tiedDone = !!(pc && pc.done);
       const coverLine = asn && asn.post
         ? "Tied cover: Post " + asn.post + (asn.date ? " - " + asn.date : "") + (asn.why ? " (" + asn.why + ")" : "")
         : (asn && asn.why
@@ -4482,7 +4485,7 @@ export default async function handler(req, res) {
       if (ex0) {
         const mergedC = mergeCmts(ex0.comments);
         const same = ex0.desc === descCQ && ex0.name === nameCQ && (!coverV || ex0.cover === coverV) && (ex0.links || []).some((l0) => l0.u === (linksCQ[0] && linksCQ[0].u)) && JSON.stringify(mergedC) === JSON.stringify(ex0.comments || []);
-        if (!same) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; fc.comments = mergeCmts(fc.comments); } }); }
+        if (!same || (tiedDone && !ex0.done)) { updCQ++; patchesCQ.push({ id: ex0.id, apply: (fc) => { fc.name = nameCQ; fc.desc = descCQ; fc.links = linksCQ; if (coverV) fc.cover = coverV; fc.deckN = p0.nn; fc.cBatch = batchCQ.label; fc.comments = mergeCmts(fc.comments); if (tiedDone && !fc.done) fc.done = true; } }); }
       } else {
         madeCQ++;
         const nid = "cq" + Math.random().toString(36).slice(2, 10);
@@ -5244,6 +5247,46 @@ export default async function handler(req, res) {
       courtS = { id: "l" + Math.random().toString(36).slice(2, 9), name: "Courtney Posts 1-12" };
       bdS.lists.push(courtS);
       await kvSet("lavalle_data", blobS);
+    }
+    // Her rule Oct 12 2026: a finished schedule column cleans up after itself.
+    // Any OTHER "Schedule N-M" list whose post cards are ALL done gets a montage
+    // snapshot in the Grid Archive, then its cards tombstone and the list goes.
+    for (const lDone of bdS.lists.filter((l) => /^schedule\s*\d+\s*[-–]\s*\d+$/i.test((l.name || "").trim()) && l.id !== schedS.id)) {
+      const csD = bdS.cards.filter((c) => !c._deleted && c.listId === lDone.id && /^post\s*\d+/i.test(c.name || ""));
+      if (csD.length < 3 || !csD.every((c) => c.done)) continue;
+      try {
+        const JimpD = (await import("jimp")).default;
+        const qD = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+        const fD = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qD + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtS } })).json();
+        let arcD = fD.files && fD.files[0] && fD.files[0].id;
+        if (!arcD) arcD = (await (await fetch("https://www.googleapis.com/drive/v3/files", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Sisters — Grid Archive", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
+        const numD = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
+        const base = Math.min(...csD.map(numD));
+        const cvD = await new (JimpD)(1080, 3360, 0xffffffff);
+        for (const c of csD) {
+          const slot = numD(c) - base; if (slot < 0 || slot > 20 || !c.cover) continue;
+          try {
+            const full = /^https?:/.test(c.cover) ? c.cover : APP_ORIGIN + c.cover;
+            const rI = await fetch(full); if (!rI.ok) continue;
+            const im = await JimpD.read(Buffer.from(await rI.arrayBuffer()));
+            cvD.composite(im.cover(360, 480), (2 - (slot % 3)) * 360, (6 - Math.floor(slot / 3)) * 480);
+          } catch (eI) {}
+        }
+        cvD.quality(88);
+        const bufD = await cvD.getBufferAsync(JimpD.MIME_JPEG);
+        const nmD = "Cycle " + (lDone.name || "").replace(/^schedule\s*/i, "") + " ending " + new Date().toISOString().slice(0, 10) + " — grid.jpg";
+        const bdyD = "lhd" + bufD.length.toString(36);
+        const metaD = JSON.stringify({ name: nmD, parents: [arcD] });
+        const preD = `--${bdyD}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaD}\r\n--${bdyD}\r\nContent-Type: image/jpeg\r\n\r\n`;
+        await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": `multipart/related; boundary=${bdyD}` }, body: Buffer.concat([Buffer.from(preD, "utf8"), bufD, Buffer.from(`\r\n--${bdyD}--`, "utf8")]) });
+        const nowD = new Date().toISOString();
+        const idsD = new Set(csD.map((c) => c.id));
+        bdS.cards = bdS.cards.map((c) => (idsD.has(c.id) ? { ...c, _deleted: true, _removedAt: nowD } : c));
+        bdS.lists = bdS.lists.filter((l) => l.id !== lDone.id);
+        await kvSet("lavalle_data", blobS);
+        res.json({ ok: true, archivedColumn: lDone.name, cards: csD.length, montage: nmD });
+        return;
+      } catch (eD) { /* next sweep retries */ }
     }
     const cardsS = bdS.cards.filter((c) => c.listId === schedS.id && /^post\s*\d+/i.test(c.name || ""));
     const numS = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
