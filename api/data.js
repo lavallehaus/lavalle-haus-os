@@ -2343,6 +2343,42 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Bulk list import (owner): add whole columns with their cards in one
+  // write — {board, position:"front"|"end", lists:[{name, cards:[{name, desc,
+  // labels, members, links, cover, done, due}]}]}. Built for moving the
+  // Monthly Creative Deck's subtabs onto "To Film Lavalle Sisters" (Oct 12
+  // 2026). Bumps the board's _rev/_stamp so open tabs notice and reload.
+  if (op === "board_lists_import" && req.method === "POST") {
+    const authBI = await getAuthEarly(req);
+    if (!ownerRole(authBI)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bBI = req.body || {};
+    const rawBI = await kvGet("lavalle_data"); const blobBI = Array.isArray(rawBI) ? rawBI[0] : rawBI;
+    const bdBI = blobBI && blobBI.boards && blobBI.boards[String(bBI.board || "")];
+    if (!bdBI) { res.status(404).json({ error: "No such board." }); return; }
+    if (!Array.isArray(bBI.lists) || !bBI.lists.length) { res.status(400).json({ error: "lists[] required." }); return; }
+    const rid = (p) => p + Math.random().toString(36).slice(2, 10);
+    const nowBI = Date.now();
+    const newLists = [], newCards = [];
+    for (const L of bBI.lists) {
+      const l = { id: rid("l"), name: String(L.name || "New column").slice(0, 80) };
+      newLists.push(l);
+      for (const C of (L.cards || [])) {
+        newCards.push({
+          id: rid("c"), listId: l.id, name: String(C.name || "Card").slice(0, 140), desc: String(C.desc || ""),
+          due: C.due || null, labels: Array.isArray(C.labels) ? C.labels : [], members: Array.isArray(C.members) ? C.members : [],
+          attachments: [], links: Array.isArray(C.links) ? C.links.map((x) => ({ id: rid("l"), n: String(x.n || "Link"), u: String(x.u || ""), a: 1 })) : [],
+          cover: C.cover || null, done: !!C.done, _touched: nowBI,
+        });
+      }
+    }
+    bdBI.lists = bBI.position === "end" ? [...(bdBI.lists || []), ...newLists] : [...newLists, ...(bdBI.lists || [])];
+    bdBI.cards = [...(bdBI.cards || []), ...newCards];
+    bdBI._rev = (bdBI._rev || 0) + 1; bdBI._stamp = nowBI;
+    await kvSet("lavalle_data", blobBI);
+    res.json({ ok: true, lists: newLists.map((l) => ({ id: l.id, name: l.name, cards: newCards.filter((c) => c.listId === l.id).length })) });
+    return;
+  }
+
   if (op === "ops_film_pr_sync" && req.method === "POST") {
     const okKeyFP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authFP = okKeyFP ? null : await getAuthEarly(req);
