@@ -2405,6 +2405,7 @@ export default async function handler(req, res) {
     const lbOf = (c, pre) => ((c.labels || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => x.toUpperCase().startsWith(pre)) || "");
     const shapeOf = (lab) => /reel|ftc|b-?roll/i.test(lab) ? "V" : /carousel|static/i.test(lab) ? "F" : null; // V = 1080x1920, F = 1080x1350
     const stCS = (await kvGet("sisters_cover_sizes_state")) || { done: {} };
+    const md5MapCS = (await kvGet("sisters_cover_drive_md5" + SBOARD.kvSuffix)) || {};
     for (const nRe of (Array.isArray((req.body || {}).redo) ? req.body.redo : [])) { delete stCS.done[Number(nRe)]; if (stCS.classic) delete stCS.classic[Number(nRe)]; }
     const JimpCS = (await import("jimp")).default;
     let madeCS = 0, budgetCS = 6;
@@ -2480,6 +2481,15 @@ export default async function handler(req, res) {
       const sig2 = createHash("sha256").update(String(t.cover) + "|classic|" + shpC).digest("hex").slice(0, 10);
       const hasUrl = !!(c.coverUrl || "").trim();
       if (stCS.classic[n] === sig2 && hasUrl) continue;
+      // loop breaker (Oct 12 2026): if this tile's media was minted by the
+      // Drive-ingest watcher from THIS card's own Drive original, tile and
+      // Drive already hold the same content — mark done, write nothing.
+      {
+        const fidL = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
+        const midL = (String(t.cover || "").match(/\/cover\/([A-Za-z0-9]+)\.jpg/) || [])[1];
+        const entL = fidL && md5MapCS[fidL];
+        if (entL && typeof entL === "object" && entL.mid && entL.mid === midL && hasUrl) { stCS.classic[n] = sig2; continue; }
+      }
       let fC = existCS.find((f) => new RegExp("^" + n + "\\.(jpe?g|png|heic|webp)$", "i").test((f.name || "").trim()));
       try {
         const photoChanged = (stCS.classic[n] && stCS.classic[n] !== sig2) || (!hasUrl && !stCS.classic[n] && fC);
@@ -4595,8 +4605,9 @@ export default async function handler(req, res) {
           const meta1 = await mr.json();
           const md5 = mr.ok && meta1.md5Checksum;
           if (!md5) continue;
-          if (!md5s[fid]) { md5s[fid] = md5; md5Dirty = true; continue; }
-          if (md5s[fid] === md5) continue;
+          const prevE = md5s[fid]; const prevMd5 = typeof prevE === "string" ? prevE : (prevE && prevE.md5);
+          if (!prevMd5) { md5s[fid] = { md5 }; md5Dirty = true; continue; }
+          if (prevMd5 === md5) continue;
           // the Drive original changed — ingest it as the new cover
           const ir = await fetch("https://www.googleapis.com/drive/v3/files/" + fid + "?alt=media&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
           if (!ir.ok) { errsCV.push(n + ":dl"); continue; }
@@ -4608,7 +4619,7 @@ export default async function handler(req, res) {
           const gr = n <= 21 ? grids[0] : grids[1];
           const tile = gr.g && gr.g.tiles && gr.g.tiles[n - gr.base];
           if (tile) { tile.cover = cvR; gr.dirty = true; }
-          md5s[fid] = md5; md5Dirty = true; retouched.push(n);
+          md5s[fid] = { md5, mid: midR }; md5Dirty = true; retouched.push(n);
         } catch (eR) { errsCV.push(n + ":" + String(eR).slice(0, 30)); }
       }
       if (md5Dirty) await kvSet("sisters_cover_drive_md5" + SBOARD.kvSuffix, md5s);
