@@ -2359,23 +2359,27 @@ export default async function handler(req, res) {
     const rid = (p) => p + Math.random().toString(36).slice(2, 10);
     const nowBI = Date.now();
     const newLists = [], newCards = [];
+    const topCards = [];
     for (const L of bBI.lists) {
-      const l = { id: rid("l"), name: String(L.name || "New column").slice(0, 80) };
-      newLists.push(l);
+      // {listId} targets an EXISTING column (its cards go to the top when {top:true})
+      const existing = L.listId && (bdBI.lists || []).find((x) => x.id === L.listId);
+      const l = existing || { id: rid("l"), name: String(L.name || "New column").slice(0, 80) };
+      if (!existing) newLists.push(l);
       for (const C of (L.cards || [])) {
-        newCards.push({
+        (existing && L.top ? topCards : newCards).push({
           id: rid("c"), listId: l.id, name: String(C.name || "Card").slice(0, 140), desc: String(C.desc || ""),
           due: C.due || null, labels: Array.isArray(C.labels) ? C.labels : [], members: Array.isArray(C.members) ? C.members : [],
           attachments: [], links: Array.isArray(C.links) ? C.links.map((x) => ({ id: rid("l"), n: String(x.n || "Link"), u: String(x.u || ""), a: 1 })) : [],
           cover: C.cover || null, done: !!C.done, _touched: nowBI,
+          ...(Array.isArray(C.attachments) ? { attachments: C.attachments.map((a) => ({ id: rid("a"), name: String(a.name || "File"), url: String(a.url || ""), type: String(a.type || "application/octet-stream") })) } : {}),
         });
       }
     }
     bdBI.lists = bBI.position === "end" ? [...(bdBI.lists || []), ...newLists] : [...newLists, ...(bdBI.lists || [])];
-    bdBI.cards = [...(bdBI.cards || []), ...newCards];
+    bdBI.cards = [...topCards, ...(bdBI.cards || []), ...newCards];
     bdBI._rev = (bdBI._rev || 0) + 1; bdBI._stamp = nowBI;
     await kvSet("lavalle_data", blobBI);
-    res.json({ ok: true, lists: newLists.map((l) => ({ id: l.id, name: l.name, cards: newCards.filter((c) => c.listId === l.id).length })) });
+    res.json({ ok: true, lists: newLists.map((l) => ({ id: l.id, name: l.name, cards: newCards.filter((c) => c.listId === l.id).length })), topCards: topCards.map((c) => ({ id: c.id, name: c.name, listId: c.listId })) });
     return;
   }
 
