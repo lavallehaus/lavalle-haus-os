@@ -946,6 +946,13 @@ export default async function handler(req, res) {
     if (!teamSA) { res.status(404).json({ error: "No token for that workspace." }); return; }
     const wantCh = String(bSA.channel || "general").replace(/^#/, "").toLowerCase();
     if (/loft|^lavalle-haus$/.test(wantCh)) { res.status(400).json({ error: "That channel is shared with the Loft — the bot stays out of it." }); return; }
+    if (bSA.deleteTs) { // remove one of the bot's own posts (a mis-sent message)
+      const lrD = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
+      const chD = ((lrD.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
+      if (!chD) { res.status(404).json({ error: "channel not found" }); return; }
+      const dl = await (await fetch("https://slack.com/api/chat.delete", { method: "POST", headers: { Authorization: "Bearer " + teamSA.token, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chD.id, ts: String(bSA.deleteTs) }) })).json();
+      res.json({ ok: !!dl.ok, deleted: dl.ok || dl.error }); return;
+    }
     if (bSA.pinTs) { // pin an already-posted message
       const lr0 = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
       const ch0 = ((lr0.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
