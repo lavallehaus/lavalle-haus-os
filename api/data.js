@@ -1189,9 +1189,19 @@ export default async function handler(req, res) {
     return;
   }
   if (op === "media_gc" && req.method === "POST") {
-    const authGC = await getAuthEarly(req);
-    if (!ownerRole(authGC)) { res.status(403).json({ error: "Owner only." }); return; }
-    const bGC = req.body || {};
+    const okKeyGC = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authGC = okKeyGC ? null : await getAuthEarly(req);
+    if (!okKeyGC && !ownerRole(authGC)) { res.status(403).json({ error: "Owner only." }); return; }
+    let bGC = req.body || {};
+    // daily auto-sweep (the quota filled twice in a week — Oct 6 + Oct 13):
+    // the pinger calls ?auto=1 every 15 min; it actually runs once a day and
+    // deletes ONLY media nothing references.
+    if (req.query.auto === "1") {
+      const lastGC = (await kvGet("media_gc_last")) || 0;
+      if (Date.now() - lastGC < 24 * 3600 * 1000) { res.json({ ok: true, skipped: "ran within 24h" }); return; }
+      await kvSet("media_gc_last", Date.now());
+      bGC = { apply: true };
+    }
     const cmd = async (arr) => { const r = await fetch(KV_URL, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(arr) }); const d = await r.json().catch(() => ({})); return d.result; };
     const pipe = async (cmds) => { const r = await fetch(KV_URL + "/pipeline", { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(cmds) }); return (await r.json().catch(() => [])) || []; };
     const t0 = Date.now();
