@@ -966,7 +966,7 @@ export default async function handler(req, res) {
       res.json({ users: (ur.members || []).filter((u) => !u.deleted && !u.is_bot && ((u.real_name || "") + " " + (u.name || "") + " " + ((u.profile || {}).display_name || "")).toLowerCase().includes(q)).map((u) => ({ id: u.id, name: u.real_name || u.name })) });
       return;
     }
-    const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
+    const lr = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: { Authorization: "Bearer " + teamSA.token } })).json();
     const chSA = ((lr.channels || []).find((c0) => (c0.name || "").toLowerCase() === wantCh)) || null;
     if (!chSA) { res.status(404).json({ error: "channel not found", channels: (lr.channels || []).map((c0) => c0.name) }); return; }
     if (bSA.scheduleAt) { // epoch seconds — Slack delivers it at that moment (her 8am ask, Oct 5 2026)
