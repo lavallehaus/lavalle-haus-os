@@ -2368,7 +2368,7 @@ export default async function handler(req, res) {
     const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
     const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
     if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
-    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "_deleted", "_removedAt"];
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "_deleted", "_removedAt"];
     let n = 0; const nowBP = Date.now();
     for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
       const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
