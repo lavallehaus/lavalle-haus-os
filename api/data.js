@@ -5379,11 +5379,13 @@ export default async function handler(req, res) {
     }
     const cardsS = bdS.cards.filter((c) => c.listId === schedS.id && /^post\s*\d+/i.test(c.name || ""));
     const numS = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
-    const p10 = cardsS.find((c) => numS(c) === 10);
     const p1 = cardsS.find((c) => numS(c) === 1);
     const sigS = p1 ? p1.name : "none";
     let st = (await kvGet("sisters_cycle_state")) || { lastSig: null, stage: null };
-    if (!p10 || p10.done !== true) { res.json({ ok: true, fired: false, reason: "Post 10 not completed" }); return; }
+    // Her rule (Oct 15 2026, after the Post-10 trigger deleted a half-posted
+    // cycle): a cycle only rotates when EVERY post in the column is checked off.
+    const livePosts = cardsS.filter((c) => !c._deleted);
+    if (livePosts.length < 21 || !livePosts.every((c) => c.done === true)) { res.json({ ok: true, fired: false, reason: "cycle not fully completed (" + livePosts.filter((c) => c.done).length + "/" + livePosts.length + " done)" }); return; }
     if (st.lastSig === sigS && !st.stage) { res.json({ ok: true, fired: false, reason: "cycle already rotated" }); return; }
     if (st.lastSig !== sigS) st = { lastSig: sigS, stage: "montage" };
     const MOS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -5456,7 +5458,8 @@ export default async function handler(req, res) {
       return;
     }
     if (st.stage === "rotate") {
-      // delete finished cycle cards (her rule: Drive is the backup), spawn next 21
+      // tombstone the finished cycle cards (Oct 15 2026: no more hard deletes —
+      // tombstones keep covers/captions recoverable), spawn next 21
       const ids = new Set(cardsS.map((c) => c.id));
       // next cycle starts the day AFTER the finishing cycle's last dated post,
       // never mid-cycle (a shortened bridge cycle must still hand off cleanly)
@@ -5466,7 +5469,8 @@ export default async function handler(req, res) {
         const mD2 = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec(c.name || "");
         if (mD2) lastT = Math.max(lastT, Date.UTC(new Date().getUTCFullYear(), MOP2.indexOf(mD2[1].toLowerCase()), Number(mD2[2])));
       }
-      bdS.cards = bdS.cards.filter((c) => !ids.has(c.id));
+      const nowRot = new Date().toISOString();
+      bdS.cards = bdS.cards.map((c) => (ids.has(c.id) ? { ...c, _deleted: true, _removedAt: nowRot } : c));
       const start = new Date(Math.max(Date.now() + 86400000, lastT + 86400000));
       for (let n = 1; n <= 21; n++) {
         const day = new Date(start.getTime() + (n - 1) * 86400000);
