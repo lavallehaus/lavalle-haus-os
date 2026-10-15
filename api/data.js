@@ -2368,7 +2368,7 @@ export default async function handler(req, res) {
     const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
     const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
     if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
-    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "due", "links", "tags", "attachments"];
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "_deleted", "_removedAt"];
     let n = 0; const nowBP = Date.now();
     for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
       const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
@@ -2408,7 +2408,7 @@ export default async function handler(req, res) {
           id: rid("c"), listId: l.id, name: String(C.name || "Card").slice(0, 140), desc: String(C.desc || ""),
           due: C.due || null, labels: Array.isArray(C.labels) ? C.labels : [], members: Array.isArray(C.members) ? C.members : [],
           attachments: [], links: Array.isArray(C.links) ? C.links.map((x) => ({ id: rid("l"), n: String(x.n || "Link"), u: String(x.u || ""), a: 1 })) : [],
-          cover: C.cover || null, done: !!C.done, _touched: nowBI,
+          cover: C.cover || null, coverUrl: C.coverUrl || null, done: !!C.done, _touched: nowBI,
           ...(Array.isArray(C.attachments) ? { attachments: C.attachments.map((a) => ({ id: rid("a"), name: String(a.name || "File"), url: String(a.url || ""), type: String(a.type || "application/octet-stream") })) } : {}),
         });
       }
