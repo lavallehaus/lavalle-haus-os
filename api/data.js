@@ -5337,12 +5337,50 @@ export default async function handler(req, res) {
       bdS.lists.push(courtS);
       await kvSet("lavalle_data", blobS);
     }
+    // Her rule Oct 15 2026 ("I cant have this happen again"): BEFORE any cycle's
+    // cards leave the board, every caption, tag, link and cover reference is
+    // written to a backup doc in the cycle's month folder under Lavalle Sisters.
+    const backupCycleS = async (cardsB, labelB) => {
+      try {
+        const MOB = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        let lastB = 0;
+        for (const c of cardsB) {
+          const m = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec(c.name || "");
+          if (m) lastB = Math.max(lastB, Date.UTC(new Date().getUTCFullYear(), MOB.indexOf(m[1].toLowerCase()), Number(m[2])));
+        }
+        const d0 = lastB ? new Date(lastB) : new Date();
+        const monthB = d0.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
+        const SIS_ROOT_B = "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU"; // Drive: Lavalle Sisters
+        const qB = encodeURIComponent("name='" + monthB + "' and '" + SIS_ROOT_B + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false");
+        const fB = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qB + "&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtS } })).json();
+        let folderB = fB.files && fB.files[0] && fB.files[0].id;
+        if (!folderB) folderB = (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": "application/json" }, body: JSON.stringify({ name: monthB, mimeType: "application/vnd.google-apps.folder", parents: [SIS_ROOT_B] }) })).json()).id;
+        const linkLine = (l) => "  link: " + (l.n || "Link") + " -> " + (l.u || "");
+        const txtB = cardsB.map((c) => [
+          "== " + (c.name || "") + " ==",
+          "done: " + (c.done ? "yes" : "no"),
+          c.tags ? "tags: " + c.tags : "tags:",
+          (c.labels || []).length ? "labels: " + c.labels.map((x) => (typeof x === "string" ? x : x && x.n)).join(", ") : "labels:",
+          "cover: " + (c.cover || ""), "coverUrl: " + (c.coverUrl || ""),
+          ...(c.links || []).map(linkLine),
+          "caption:", c.desc || "", "",
+        ].join("\n")).join("\n");
+        const bufB = Buffer.from("Backup written " + new Date().toISOString() + " — " + labelB + "\n\n" + txtB, "utf8");
+        const nmB = labelB + " — captions & tags backup " + new Date().toISOString().slice(0, 10) + ".txt";
+        const bdyB = "lhbk" + bufB.length.toString(36);
+        const metaB = JSON.stringify({ name: nmB, parents: [folderB] });
+        const preB = `--${bdyB}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaB}\r\n--${bdyB}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n`;
+        const upB = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name", { method: "POST", headers: { Authorization: "Bearer " + gtS, "Content-Type": `multipart/related; boundary=${bdyB}` }, body: Buffer.concat([Buffer.from(preB, "utf8"), bufB, Buffer.from(`\r\n--${bdyB}--`, "utf8")]) });
+        return (await upB.json()).id || null;
+      } catch (eB) { return null; }
+    };
     // Her rule Oct 12 2026: a finished schedule column cleans up after itself.
     // Any OTHER "Schedule N-M" list whose post cards are ALL done gets a montage
     // snapshot in the Grid Archive, then its cards tombstone and the list goes.
     for (const lDone of bdS.lists.filter((l) => /^schedule\s*\d+\s*[-–]\s*\d+$/i.test((l.name || "").trim()) && l.id !== schedS.id)) {
       const csD = bdS.cards.filter((c) => !c._deleted && c.listId === lDone.id && /^post\s*\d+/i.test(c.name || ""));
       if (csD.length < 3 || !csD.every((c) => c.done)) continue;
+      await backupCycleS(csD, "Cycle " + (lDone.name || "").trim());
       try {
         const JimpD = (await import("jimp")).default;
         const qD = encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false");
@@ -5469,6 +5507,7 @@ export default async function handler(req, res) {
         const mD2 = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i.exec(c.name || "");
         if (mD2) lastT = Math.max(lastT, Date.UTC(new Date().getUTCFullYear(), MOP2.indexOf(mD2[1].toLowerCase()), Number(mD2[2])));
       }
+      await backupCycleS(cardsS, "Cycle Schedule 1-21");
       const nowRot = new Date().toISOString();
       bdS.cards = bdS.cards.map((c) => (ids.has(c.id) ? { ...c, _deleted: true, _removedAt: nowRot } : c));
       const start = new Date(Math.max(Date.now() + 86400000, lastT + 86400000));
