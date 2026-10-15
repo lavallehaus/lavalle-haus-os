@@ -5331,12 +5331,9 @@ export default async function handler(req, res) {
     if (!bdS) { res.json({ ok: false, error: "no lavalle-sisters board" }); return; }
     const schedS = bdS.lists.find((l) => /^schedule\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
     if (!schedS) { res.json({ ok: false, error: "no Schedule 1-21 list" }); return; }
-    let courtS = bdS.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
-    if (!courtS) {
-      courtS = { id: "l" + Math.random().toString(36).slice(2, 9), name: "Courtney Posts 1-12" };
-      bdS.lists.push(courtS);
-      await kvSet("lavalle_data", blobS);
-    }
+    // Her rule Oct 15 2026: do NOT auto-create the Courtney Posts column — she
+    // deleted it on purpose. If it's absent, the weave below just has no C covers.
+    const courtS = bdS.lists.find((l) => /courtney\s*posts/i.test(l.name || "")) || null;
     // Her rule Oct 15 2026 ("I cant have this happen again"): BEFORE any cycle's
     // cards leave the board, every caption, tag, link and cover reference is
     // written to a backup doc in the cycle's month folder under Lavalle Sisters.
@@ -5461,7 +5458,7 @@ export default async function handler(req, res) {
       const dateTag = new Date().toISOString().slice(0, 10);
       await upS(await cv1.getBufferAsync(Jimp.MIME_JPEG), "Cycle ending " + dateTag + " — grid.jpg", arcId);
       // 2) combined weave: K daily + Courtney on Mon/Wed/Fri, chronological
-      const courtCards = bdS.cards.filter((c) => c.listId === courtS.id && /\d+/.test(c.name || "") && c.cover)
+      const courtCards = bdS.cards.filter((c) => courtS && c.listId === courtS.id && /\d+/.test(c.name || "") && c.cover)
         .sort((a, b) => Number((/(\d+)/.exec(a.name) || [])[1]) - Number((/(\d+)/.exec(b.name) || [])[1]));
       // cycle start = tomorrow (rotation moment); K post n on day n-1
       const start = new Date(Date.now() + 86400000);
