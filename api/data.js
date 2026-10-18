@@ -1196,6 +1196,42 @@ export default async function handler(req, res) {
     res.json({ boards: out });
     return;
   }
+  if (op === "kv_backup" && req.method === "POST") {
+    // Her rule Oct 17 2026, after the quota suspension scare: the whole app
+    // state (minus media blobs and secrets) goes to Drive daily, so a dead or
+    // locked database can never again mean data loss. Rides the pinger with a
+    // 20h throttle; ?force=1 skips the throttle.
+    const okKeyB = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authB = okKeyB ? null : await getAuthEarly(req);
+    if (!okKeyB && !ownerRole(authB)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    if (req.query.auto === "1" && !req.query.force) {
+      const lastB = await kvGet("kv_backup_last");
+      if (lastB && Date.now() - new Date(lastB).getTime() < 20 * 3600 * 1000) { res.json({ ok: true, skipped: "ran recently" }); return; }
+    }
+    const gtB = await googleToken();
+    if (!gtB) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const KEYS_B = ["lavalle_data", "lavalle_users", "sisters_grid_tiles_1", "sisters_grid_tiles_2", "sisters_grid_tray",
+      "sisters_grid_hist_1", "sisters_grid_hist_2", "sisters_cycle_state", "sisters_courtney_start", "sisters_cover_drive_md5",
+      "courtney_twelve_covers", "grid_used", "outlook_ics_url"]; // secrets (oauth tokens) deliberately excluded — re-auth beats leaking
+    const dump = { at: new Date().toISOString(), keys: {} };
+    for (const k of KEYS_B) { try { dump.keys[k] = await kvGet(k); } catch (eK) { dump.keys[k] = { _backupError: String(eK).slice(0, 100) }; } }
+    const zlibB = await import("node:zlib");
+    const bufB = zlibB.gzipSync(Buffer.from(JSON.stringify(dump), "utf8"));
+    const qB = encodeURIComponent("name='Lavalle Haus OS — DB backups' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+    const fB = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + qB + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtB } })).json();
+    let folderB = fB.files && fB.files[0] && fB.files[0].id;
+    if (!folderB) folderB = (await (await fetch("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { Authorization: "Bearer " + gtB, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Haus OS — DB backups", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
+    const nmB2 = "lavalle-haus-os backup " + new Date().toISOString().slice(0, 10) + ".json.gz";
+    const bdyB2 = "lhdb" + bufB.length.toString(36);
+    const metaB2 = JSON.stringify({ name: nmB2, parents: [folderB] });
+    const preB2 = `--${bdyB2}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaB2}\r\n--${bdyB2}\r\nContent-Type: application/gzip\r\n\r\n`;
+    const upB2 = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size", { method: "POST", headers: { Authorization: "Bearer " + gtB, "Content-Type": `multipart/related; boundary=${bdyB2}` }, body: Buffer.concat([Buffer.from(preB2, "utf8"), bufB, Buffer.from(`\r\n--${bdyB2}--`, "utf8")]) });
+    const dB2 = await upB2.json();
+    if (!upB2.ok) { res.status(400).json({ error: (dB2.error && dB2.error.message) || "upload_failed" }); return; }
+    await kvSet("kv_backup_last", new Date().toISOString());
+    res.json({ ok: true, file: dB2.name, bytes: bufB.length, keys: Object.keys(dump.keys).length });
+    return;
+  }
   if (op === "kv_diag" && req.method === "POST") {
     const authKD = await getAuthEarly(req);
     if (!ownerRole(authKD)) { res.status(403).json({ error: "Owner only." }); return; }
