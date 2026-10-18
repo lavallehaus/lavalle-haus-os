@@ -192,7 +192,7 @@ async function bakeCover(sourceUrl) {
     if (!r.ok) return sourceUrl;
     const buf = Buffer.from(await r.arrayBuffer());
     const id = "m" + randomBytes(10).toString("hex");
-    await kvSet("media_" + id, { type: "image/jpeg", b64: buf.toString("base64"), at: new Date().toISOString() });
+    await mediaStore(id, "image/jpeg", buf);
     // Hand Instagram a clean ".jpg" path, not a query string. A cover_url of
     // /api/data?op=media&id=... made Meta reject EVERY Reel container with a
     // bare "ERROR"; the identical image at /cover/<id>.jpg is accepted.
@@ -591,6 +591,44 @@ async function kvSet(key, value) {
   // request is too large. Surface it instead of pretending the write landed.
   let d = null; try { d = await r.json(); } catch {}
   if (!r.ok || (d && d.error)) { const msg = "kvSet " + key + " failed: " + (d && d.error ? d.error : r.status); console.error(msg); throw new Error(msg); }
+}
+// ── MEDIA STORE (Drive-backed since Oct 17 2026) ──────────────────────────────
+// Images used to live as base64 INSIDE Redis (media_* keys) — the bulk of the
+// store and the bandwidth that got the database suspended. New records keep a
+// tiny pointer {type, driveId} in Redis; the bytes live in her Drive folder
+// "Lavalle Haus OS — media store", so a dead database can never take the
+// images with it. Old inline-b64 records keep working (read path takes both).
+async function mediaDriveFolder(gt) {
+  let fid = await kvGet("media_drive_folder_id");
+  if (fid) return fid;
+  const q = encodeURIComponent("name='Lavalle Haus OS — media store' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const f = await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id)", { headers: { Authorization: "Bearer " + gt } })).json();
+  fid = f.files && f.files[0] && f.files[0].id;
+  if (!fid) fid = (await (await fetch("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Lavalle Haus OS — media store", mimeType: "application/vnd.google-apps.folder" }) })).json()).id;
+  if (fid) await kvSet("media_drive_folder_id", fid);
+  return fid;
+}
+async function mediaStore(id, ctype, buf) {
+  try {
+    const gt = await googleToken();
+    if (!gt) throw new Error("no_google");
+    const folder = await mediaDriveFolder(gt);
+    if (!folder) throw new Error("no_folder");
+    const ext = /png/.test(ctype) ? ".png" : /webp/.test(ctype) ? ".webp" : ".jpg";
+    const bdy = "lhm" + buf.length.toString(36);
+    const meta = JSON.stringify({ name: id + ext, parents: [folder] });
+    const pre = `--${bdy}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${bdy}\r\nContent-Type: ${ctype}\r\n\r\n`;
+    const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", { method: "POST", headers: { Authorization: "Bearer " + gt, "Content-Type": `multipart/related; boundary=${bdy}` }, body: Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${bdy}--`, "utf8")]) });
+    const d = await r.json();
+    if (!r.ok || !d.id) throw new Error("drive_upload " + (d.error && d.error.message));
+    await kvSet("media_" + id, { type: ctype, driveId: d.id, bytes: buf.length, at: new Date().toISOString() });
+    return { driveId: d.id };
+  } catch (e) {
+    // Drive down or disconnected: fall back to inline b64 so a cover is never
+    // lost; op=media_migrate moves stragglers to Drive on its next pass.
+    await kvSet("media_" + id, { type: ctype, b64: buf.toString("base64"), at: new Date().toISOString() });
+    return { b64: true, err: String(e).slice(0, 120) };
+  }
 }
 // Atomic publish claim (SET NX): only ONE runner in the whole fleet — cron,
 // app-level advancers on any number of open devices, manual "post now" — can
@@ -1249,6 +1287,36 @@ export default async function handler(req, res) {
     res.json({ ok: true, dbsize, probe, big });
     return;
   }
+  if (op === "media_migrate" && req.method === "POST") {
+    // Move inline-b64 media records to the Drive media store, batch by batch.
+    // POST {cursor, n} → {cursor, migrated, skipped, done}; loop until done.
+    const okKeyMM = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authMM = okKeyMM ? null : await getAuthEarly(req);
+    if (!okKeyMM && !ownerRole(authMM)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const gtMM = await googleToken();
+    if (!gtMM) { res.status(400).json({ error: "google_not_connected" }); return; }
+    const bMM = req.body || {};
+    const cmdMM = async (arr) => { const r = await fetch(KV_URL, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(arr) }); const d = await r.json().catch(() => ({})); return d.result; };
+    let cursorMM = String(bMM.cursor || "0");
+    const limMM = Math.min(Number(bMM.n) || 15, 40);
+    let migrated = 0, skipped = 0, failed = 0;
+    const t0MM = Date.now();
+    do {
+      const r = await cmdMM(["SCAN", cursorMM, "MATCH", "media_*", "COUNT", "100"]);
+      if (!r) break;
+      cursorMM = String(r[0]);
+      for (const k of r[1] || []) {
+        if (migrated >= limMM || Date.now() - t0MM > 40000) break;
+        const rec = await kvGet(k);
+        if (!rec || !rec.b64) { skipped++; continue; }
+        const resMM = await mediaStore(k.slice(6), rec.type || rec.ct || "image/jpeg", Buffer.from(rec.b64, "base64"));
+        if (resMM.driveId) migrated++; else { failed++; break; }
+      }
+      if (migrated >= limMM || failed || Date.now() - t0MM > 40000) break;
+    } while (cursorMM !== "0");
+    res.json({ ok: !failed, cursor: cursorMM, migrated, skipped, failed, done: cursorMM === "0" && !failed, ms: Date.now() - t0MM });
+    return;
+  }
   if (op === "media_gc" && req.method === "POST") {
     const okKeyGC = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authGC = okKeyGC ? null : await getAuthEarly(req);
@@ -1282,7 +1350,24 @@ export default async function handler(req, res) {
     const orphans = mediaKeys.filter((k) => !referenced.has(k.slice(6)));
     let deleted = 0;
     if (bGC.apply) {
-      for (let i = 0; i < orphans.length; i += 100) { const r = await cmd(["DEL", ...orphans.slice(i, i + 100)]); deleted += Number(r) || 0; if (Date.now() - t0 > 50000) break; }
+      // Drive-backed records: trash the Drive file too, so orphans don't pile
+      // up in the media-store folder (b64 records just get their key deleted).
+      const gtGC = await googleToken().catch(() => null);
+      for (let i = 0; i < orphans.length; i += 50) {
+        const chunkGC = orphans.slice(i, i + 50);
+        if (gtGC) {
+          const vals = await pipe(chunkGC.map((k) => ["GET", k]));
+          for (const v of vals) {
+            try {
+              const o = JSON.parse((v && v.result) || "null");
+              if (o && o.driveId) await fetch("https://www.googleapis.com/drive/v3/files/" + o.driveId, { method: "PATCH", headers: { Authorization: "Bearer " + gtGC, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
+            } catch (eO) {}
+          }
+        }
+        const r = await cmd(["DEL", ...chunkGC]);
+        deleted += Number(r) || 0;
+        if (Date.now() - t0 > 50000) break;
+      }
     }
     res.json({ ok: true, keys: keys.length, mediaKeys: mediaKeys.length, otherKeys: otherKeys.length, referencedTokens: referenced.size, orphans: orphans.length, sample: orphans.slice(0, 8), deleted, applied: !!bGC.apply, ms: Date.now() - t0 });
     return;
@@ -1292,7 +1377,7 @@ export default async function handler(req, res) {
     const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(b.dataUrl || ""));
     if (!m) { res.status(400).json({ error: "Expected an image data URL." }); return; }
     const id = "m" + randomBytes(10).toString("hex");
-    await kvSet("media_" + id, { type: m[1], b64: m[2], at: new Date().toISOString() });
+    await mediaStore(id, m[1], Buffer.from(m[2], "base64"));
     res.json({ ok: true, id, url: "/api/data?op=media&id=" + id });
     return;
   }
@@ -1300,9 +1385,18 @@ export default async function handler(req, res) {
   if (req.method === "GET" && op === "media") {
     const id = String(req.query.id || "").replace(/\.jpe?g$/i, "").replace(/[^a-zA-Z0-9_-]/g, "");
     const rec = id && (await kvGet("media_" + id));
-    if (!rec || !rec.b64) { res.status(404).send("no media"); return; }
+    if (!rec || (!rec.b64 && !rec.driveId)) { res.status(404).send("no media"); return; }
+    let rawM;
+    if (rec.b64) rawM = Buffer.from(rec.b64, "base64");
+    else {
+      const tokM = await googleToken();
+      if (!tokM) { res.status(503).send("google_not_connected"); return; }
+      const irM = await fetch(`https://www.googleapis.com/drive/v3/files/${rec.driveId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: "Bearer " + tokM } });
+      if (!irM.ok) { res.status(502).send("drive_fail"); return; }
+      rawM = Buffer.from(await irM.arrayBuffer());
+    }
     // Same ?fit= shaping as Drive images — uploaded covers publish too.
-    const fitted = await fitImage(Buffer.from(rec.b64, "base64"), rec.type || "image/jpeg", req.query.fit);
+    const fitted = await fitImage(rawM, rec.type || rec.ct || "image/jpeg", req.query.fit);
     const buf = fitted.buf;
     res.setHeader("Content-Type", fitted.ctype);
     res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
@@ -2035,7 +2129,7 @@ export default async function handler(req, res) {
     const bufP = await cvP.getBufferAsync(Jimp.MIME_JPEG);
     // media store copy for the in-app viewer
     const midP = "sg" + createHash("sha256").update(bufP).digest("hex").slice(0, 14);
-    await kvSet("media_" + midP, { b64: bufP.toString("base64"), ct: "image/jpeg" });
+    await mediaStore(midP, "image/jpeg", bufP);
     const up8 = { id: null }; // Drive copy removed — the archive holds exactly the two named grids; the app reads the media-store render
     await kvSet("sisters_pregrid", { mid: midP, fileId: up8.id || null, kTiles: kCards.filter((c) => c.cover).length, cTiles: ciP, at: Date.now() });
     res.json({ ok: true, tiles: seqP.length, kTiles: kCards.filter((c) => c.cover).length, cWoven: ciP, fileId: up8.id || null, view: "/cover/" + midP + ".jpg" });
@@ -3604,7 +3698,7 @@ export default async function handler(req, res) {
       }
       const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, monthGrid: monthGridS, dates: theme.dates || null, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       pdfBuf = out.pdf;
-      for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await kvSet("media_" + mid, { b64: b.toString("base64"), ct: "image/jpeg" }); pageUrls.push("/cover/" + mid + ".jpg"); }
+      for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await mediaStore(mid, "image/jpeg", b); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
     // Drive: <board root> / <Month> / Strategy outline / <title> Strategy Outline.pdf
     const gtS2 = await googleToken(); let driveId = null;
@@ -4745,7 +4839,7 @@ export default async function handler(req, res) {
           if (!ir.ok) { errsCV.push(n + ":dl"); continue; }
           const buf = Buffer.from(await ir.arrayBuffer());
           const midR = "m" + createHash("sha256").update(buf).digest("hex").slice(0, 20);
-          await kvSet("media_" + midR, { type: "image/jpeg", b64: buf.toString("base64"), at: new Date().toISOString() });
+          await mediaStore(midR, "image/jpeg", buf);
           const cvR = "/cover/" + midR + ".jpg";
           patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = cvR; } });
           const gr = n <= 21 ? grids[0] : grids[1];
@@ -4962,7 +5056,7 @@ export default async function handler(req, res) {
       cv.quality(86);
       const buf = await cv.getBufferAsync(Jimp.MIME_JPEG);
       const mid = "gw" + createHash("sha256").update(buf).digest("hex").slice(0, 14);
-      await kvSet("media_" + mid, { b64: buf.toString("base64"), ct: "image/jpeg" });
+      await mediaStore(mid, "image/jpeg", buf);
       return "/cover/" + mid + ".jpg";
     };
     // HER RULE: the Grid card always scrolls through the grid in these four
@@ -5282,7 +5376,7 @@ export default async function handler(req, res) {
     cvT.quality(88);
     const bufT = await cvT.getBufferAsync(Jimp.MIME_JPEG);
     const midT = "sg" + createHash("sha256").update(bufT).digest("hex").slice(0, 14);
-    await kvSet("media_" + midT, { b64: bufT.toString("base64"), ct: "image/jpeg" });
+    await mediaStore(midT, "image/jpeg", bufT);
     rec.mid = midT;
     rec.at = Date.now(); // when this arrangement was saved — the cover-sync tiebreak
     await kvSet("sisters_grid_tiles_" + g + SBOARD.kvSuffix, rec);
@@ -5695,7 +5789,7 @@ export default async function handler(req, res) {
           img.quality(80);
           const small = await img.getBufferAsync(Jimp.MIME_JPEG);
           const mid = "g" + randomBytes(8).toString("hex");
-          await kvSet("media_" + mid, { type: "image/jpeg", b64: small.toString("base64"), at: new Date().toISOString() });
+          await mediaStore(mid, "image/jpeg", small);
           return mid;
         } catch (eB) { return null; }
       };
@@ -6512,7 +6606,7 @@ export default async function handler(req, res) {
       const mA = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(bA.photo));
       if (!mA) { res.status(400).json({ error: "Expected an image." }); return; }
       const idA = "m" + randomBytes(10).toString("hex");
-      await kvSet("media_" + idA, { type: mA[1], b64: mA[2], at: new Date().toISOString() });
+      await mediaStore(idA, mA[1], Buffer.from(mA[2], "base64"));
       const urlA = "/cover/" + idA + ".jpg";
       if (auth.userId) {
         const usersA = (await kvGet("lavalle_users")) || [];
