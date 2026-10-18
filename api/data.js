@@ -570,6 +570,17 @@ async function kvGet(key) {
   if (!d || d.result == null) return null;
   try { return JSON.parse(d.result); } catch { return null; }
 }
+async function kvRawDiag(key) {
+  // Oct 17 2026 outage forensics: show exactly what Upstash answers, instead of
+  // kvGet's error-masking-as-null. Returns status + raw body head + host only.
+  try {
+    const r = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const t = await r.text();
+    return { key, status: r.status, bodyHead: t.slice(0, 300), bodyBytes: t.length, host: (KV_URL || "").replace(/^https?:\/\//, "").split("/")[0] };
+  } catch (e) {
+    return { key, fetchError: String(e).slice(0, 200), host: (KV_URL || "").replace(/^https?:\/\//, "").split("/")[0] };
+  }
+}
 async function kvSet(key, value) {
   const r = await fetch(`${KV_URL}/set/${key}`, {
     method: "POST",
@@ -1183,6 +1194,13 @@ export default async function handler(req, res) {
     const out = {};
     for (const [bk, b] of Object.entries((blobRV && blobRV.boards) || {})) { if (!bk.startsWith("_") && b && b._stamp) out[bk] = b._stamp; }
     res.json({ boards: out });
+    return;
+  }
+  if (op === "kv_diag" && req.method === "POST") {
+    const authKD = await getAuthEarly(req);
+    if (!ownerRole(authKD)) { res.status(403).json({ error: "Owner only." }); return; }
+    const cmdKD = async (arr) => { try { const r = await fetch(KV_URL, { method: "POST", headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(arr) }); return { status: r.status, body: (await r.text()).slice(0, 300) }; } catch (e) { return { err: String(e).slice(0, 200) }; } };
+    res.json({ host: (KV_URL || "unset").replace(/^https?:\/\//, "").split("/")[0], raw: await kvRawDiag("lavalle_data"), dbsize: await cmdKD(["DBSIZE"]), keysSample: await cmdKD(["SCAN", "0", "COUNT", "20"]) });
     return;
   }
   if (op === "kv_health" && req.method === "POST") {
