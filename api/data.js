@@ -2502,7 +2502,10 @@ export default async function handler(req, res) {
     if (bLP.remove) {
       if ((bdLP.cards || []).some((c) => c.listId === lLP.id)) { res.status(400).json({ error: "List not empty." }); return; }
       bdLP.lists = bdLP.lists.filter((l) => l.id !== lLP.id);
-    } else if (bLP.patch && bLP.patch.name) { lLP.name = String(bLP.patch.name).slice(0, 80); }
+    } else if (bLP.patch) {
+      if (bLP.patch.name) lLP.name = String(bLP.patch.name).slice(0, 80);
+      if (Object.prototype.hasOwnProperty.call(bLP.patch, "month")) lLP.month = bLP.patch.month ? String(bLP.patch.month).slice(0, 12) : null;
+    }
     await kvSet("lavalle_data", blobLP);
     res.json({ ok: true });
     return;
@@ -2516,7 +2519,7 @@ export default async function handler(req, res) {
     const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
     const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
     if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
-    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "_deleted", "_removedAt"];
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "listId", "_deleted", "_removedAt"];
     let n = 0; const nowBP = Date.now();
     for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
       const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
@@ -2549,7 +2552,7 @@ export default async function handler(req, res) {
     for (const L of bBI.lists) {
       // {listId} targets an EXISTING column (its cards go to the top when {top:true})
       const existing = L.listId && (bdBI.lists || []).find((x) => x.id === L.listId);
-      const l = existing || { id: rid("l"), name: String(L.name || "New column").slice(0, 80) };
+      const l = existing || { id: rid("l"), name: String(L.name || "New column").slice(0, 80), ...(L.month ? { month: String(L.month).slice(0, 12) } : {}) };
       if (!existing) newLists.push(l);
       for (const C of (L.cards || [])) {
         (existing && L.top ? topCards : newCards).push({

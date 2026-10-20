@@ -1039,6 +1039,17 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const _openBoard = open && boards ? boards[open] : null;
   const board = _openBoard && canSee(_openBoard) ? _openBoard : null;
   const folderMode = open === "rh-operations";
+  // Month sub-tabs (her ask Oct 20 2026, "like a google sheet"): lists may
+  // carry a `month` name; when any do, a Sheets-style tab strip pins to the
+  // bottom and the columns filter to the active month. Untagged lists ride
+  // the first month so nothing can vanish.
+  const [monthTab, setMonthTab] = useState(null);
+  const MONTH_SEQ = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const boardMonths = board ? MONTH_SEQ.filter((m) => (board.lists || []).some((l) => l.month === m)) : [];
+  const nowMonthName = MONTH_SEQ[new Date().getMonth()];
+  const activeMonth = boardMonths.length ? (boardMonths.includes(monthTab) ? monthTab : (boardMonths.includes(nowMonthName) ? nowMonthName : boardMonths[0])) : null;
+  const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => (l.month || boardMonths[0]) === activeMonth) : board.lists) : [];
+  useEffect(() => { setMonthTab(null); }, [open]);
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent("lh-board-state", { detail: !!open })); } catch {}
@@ -1568,7 +1579,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             );
           })()}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
-            {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : board.lists).map((l) => {
+            {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : monthLists).map((l) => {
               // the Automations card is for the owners' eyes only (her rule Oct 5 2026)
               let cards = board.cards.filter((x) => x.listId === l.id && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")));
               // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
@@ -1835,6 +1846,17 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             )}
           </div>
+          {boardMonths.length > 0 && (
+            // Sheets-style month tabs, pinned bottom-left (her ask Oct 20 2026)
+            <div style={{ position: "fixed", bottom: 0, left: 0, zIndex: 80, display: "flex", alignItems: "flex-end", gap: 0, background: "rgba(237,233,226,0.97)", borderTop: "1px solid #D6CFBF", borderRight: "1px solid #D6CFBF", borderRadius: "0 6px 0 0", padding: "0 10px 0 6px", boxShadow: "0 -2px 10px rgba(26,26,26,0.08)" }}>
+              {boardMonths.map((m) => (
+                <button key={m} onClick={() => setMonthTab(m)}
+                  style={{ border: "1px solid " + (m === activeMonth ? "#D6CFBF" : "transparent"), borderBottom: "none", background: m === activeMonth ? "#FAF9F7" : "transparent", borderRadius: "6px 6px 0 0", margin: "6px 1px 0", padding: "8px 16px 9px", fontFamily: sans, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontWeight: m === activeMonth ? 600 : 400, color: m === activeMonth ? c.ink : "#8F8676", cursor: "pointer" }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
           {touchDragList && touchPos && (() => {
             const l0 = board.lists.find((x) => x.id === touchDragList);
             return l0 ? (
