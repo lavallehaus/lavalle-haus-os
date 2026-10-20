@@ -2609,6 +2609,17 @@ export default async function handler(req, res) {
   // links onto the card: coverUrl = the IG file, plus a "Cover n-TT" link.
   // Staged: a few posts per tick; the pinger finishes the rest.
   if (op === "sisters_cover_sizes" && req.method === "POST") {
+    // DISABLED Oct 20 2026 — THE generation-loss machine. This op re-encoded
+    // (Jimp q88) and PATCHed her Drive originals every time a cover signature
+    // moved; the md5 watcher then re-ingested its own output, and any id drift
+    // (like the Oct 15 restore) set the two spinning: 12 cover files gained
+    // 21-22 re-encode revisions in five days. Rule now: THE APP NEVER WRITES
+    // IMAGE BYTES TO DRIVE. Drive numbered files are her originals of record;
+    // the md5 watcher (Drive → app) stays; nothing writes the other way.
+    res.json({ ok: true, disabled: "Oct 20 2026 — app no longer writes image bytes to Drive (generation-loss loop)" });
+    return;
+  }
+  if (op === "sisters_cover_sizes_DISABLED_OCT20" && req.method === "POST") {
     const okKeyCS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authCS = okKeyCS ? null : await getAuthEarly(req);
     if (!okKeyCS && !ownerRole(authCS)) { res.status(403).json({ error: "Owner or key only." }); return; }
@@ -4782,34 +4793,10 @@ export default async function handler(req, res) {
       if (cardWins) { winCover = normCV(c.cover); tile.cover = winCover; gr.dirty = true; }
       else { winCover = normCV(tile.cover); patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = winCover; } }); }
       synced.push(n + (cardWins ? "\u2192grid" : "\u2192card"));
-      // replace the Drive original in place (same folder, same file name)
-      const oldId = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
-      if (oldId && gtCV) {
-        try {
-          const mr = await fetch("https://www.googleapis.com/drive/v3/files/" + oldId + "?fields=name,parents&supportsAllDrives=true", { headers: { Authorization: "Bearer " + gtCV } });
-          const meta0 = await mr.json();
-          if (mr.ok && meta0.name) {
-            const ir = await fetch(APP_ORIGIN + winCover);
-            if (ir.ok) {
-              const buf = Buffer.from(await ir.arrayBuffer());
-              const boundary = "lhc" + buf.length.toString(36);
-              const metaJ = JSON.stringify({ name: meta0.name, parents: meta0.parents && meta0.parents.length ? [meta0.parents[0]] : undefined });
-              const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaJ}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`;
-              const bodyU = Buffer.concat([Buffer.from(pre, "utf8"), buf, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
-              const ur = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", {
-                method: "POST", headers: { Authorization: "Bearer " + gtCV, "Content-Type": `multipart/related; boundary=${boundary}` }, body: bodyU,
-              });
-              const ud = await ur.json();
-              if (ur.ok && ud.id) {
-                await fetch("https://www.googleapis.com/drive/v3/files/" + oldId + "?supportsAllDrives=true", { method: "PATCH", headers: { Authorization: "Bearer " + gtCV, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
-                const nu = "https://drive.google.com/file/d/" + ud.id + "/view";
-                patchesCV.push({ id: c.id, apply: (fc) => { fc.coverUrl = nu; } });
-                relinked.push(n);
-              } else errsCV.push(n + ":upload");
-            } else errsCV.push(n + ":cover_fetch");
-          } else errsCV.push(n + ":meta");
-        } catch (eCV) { errsCV.push(n + ":" + String(eCV).slice(0, 40)); }
-      }
+      // Oct 20 2026: the "replace the Drive original in place" upload that used
+      // to live here is GONE \u2014 it fed the generation-loss loop (app re-encoded
+      // her originals, the md5 watcher re-ingested them, forever). The app
+      // never writes image bytes to Drive; her Drive files are the originals.
     }
     // Drive retouch pass (her rule Sep 29): the coverUrl's Drive file is the
     // original of record — when she replaces/retouches it in place, the new
