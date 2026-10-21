@@ -2155,6 +2155,7 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the numbered windows (split 1–9, 10–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in, and a window drops off the card entirely once every post in it is crossed off. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
+    ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its (proposal) list has all 21 covers), the channel audit runs as market research, the month's strategy card writes itself from the Instagram + TikTok findings, Sarah is tagged on it and pinged in Slack, and every comment she leaves on the card is implemented into the strategy and answered with a Completed comment on the card.", ["lavalle-sisters"]],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page.", ["lavalle-sisters"]],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
     ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten.", ["lavalle-sisters"]],
@@ -3385,6 +3386,133 @@ export default async function handler(req, res) {
     const ttAN = Object.values(tiktokAccounts(await kvGet("tiktok_oauth"))).find((t) => SBOARD.igMatch.test(t.display_name || ""));
     const ttNoteAN = ttAN ? null : "TikTok isn't connected for this brand yet. Connect it under Settings → TikTok and this section fills in on the next audit pass (posting stays a TikTok Studio hand-off).";
     res.json({ months: monthsAN, month: mSelAN, data: mSelAN ? histAN[mSelAN] : null, growth: growthAN, igNote: igNoteAN, ttNote: ttNoteAN, handle: handleAN });
+    return;
+  }
+  // ── Monthly strategy trigger (her ask, Oct 21 2026) ───────────────────────
+  // The moment a month's grid exists — a month-tagged "Schedule 1-21 · <Mon>
+  // (proposal)" list whose 21 posts all carry covers — the channel audit runs
+  // (the market research: Instagram + TikTok), the month's brand strategy
+  // writes itself from those findings, Sarah is tagged on the card and pinged
+  // in Slack, and from then on every comment she leaves on the card is
+  // implemented into the strategy and answered with a "Completed" comment.
+  if (op === "sisters_strategy_trigger" && req.method === "POST") {
+    const okKeyST = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authST = okKeyST ? null : await getAuthEarly(req);
+    if (!okKeyST && !ownerRole(authST)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawST = await kvGet("lavalle_data");
+    const blobST = Array.isArray(rawST) ? rawST[0] : rawST;
+    const bdST = blobST && blobST.boards && blobST.boards["lavalle-sisters"];
+    if (!bdST) { res.json({ ok: false, error: "no board" }); return; }
+    const stST = (await kvGet("sisters_strategy_trigger_state")) || {};
+    const MONST = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    let firedST = false, monthST = null, adoptedST = false;
+    const propST = bdST.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b.*\(proposal\)/i.test((l.name || "").trim()));
+    if (propST && propST.month) {
+      const postsST = bdST.cards.filter((c) => !c._deleted && c.listId === propST.id && /^post\s*\d+/i.test(c.name || ""));
+      const readyST = postsST.length >= 21 && postsST.every((c) => c.cover);
+      const nowST = new Date();
+      const miST = MONST.indexOf(propST.month);
+      const yrST = miST >= 0 && miST < nowST.getMonth() - 1 ? nowST.getFullYear() + 1 : nowST.getFullYear();
+      monthST = propST.month + " " + yrST;
+      const sigST = propST.id + "|" + monthST;
+      if (readyST && stST.sig !== sigST) {
+        const cardNameRx = new RegExp("^" + propST.month + " Strategy\\b", "i");
+        const haveST = bdST.cards.find((c) => !c._deleted && cardNameRx.test(c.name || ""));
+        if (haveST) {
+          // the month's strategy was already written by hand — adopt it:
+          // make sure Sarah is on it and the comment-loop footer is there,
+          // but never overwrite the text and never re-ping Slack.
+          await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
+            const c2 = bd2.cards.find((x) => !x._deleted && cardNameRx.test(x.name || ""));
+            if (!c2) return;
+            if (!(c2.members || []).includes("Sarah Memmer")) c2.members = [...(c2.members || []), "Sarah Memmer"];
+            if (!/leave comments here/i.test(c2.desc || "")) c2.desc = (c2.desc || "") + "\n\nSarah: leave comments here with any changes. Each one is reviewed and implemented, and a Completed comment is posted on this card when it is done.";
+          });
+          adoptedST = true;
+        } else {
+          // 1) market research — run the channel audit now (3-day throttle bypassed)
+          try { const acST = new AbortController(); setTimeout(() => acST.abort(), 50000); await fetch(APP_ORIGIN + "/api/data?op=sisters_audit_card", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ force: true }), signal: acST.signal }).catch(() => {}); } catch (e1) {}
+          const audST = (await kvGet("sisters_audit_findings")) || {};
+          // 2) strategy from the findings
+          const nFtc = postsST.filter((c) => (c.labels || []).some((l) => /ftc/i.test(typeof l === "string" ? l : (l && l.n) || ""))).length;
+          const nCourt = postsST.filter((c) => (c.labels || []).some((l) => /courtney/i.test(typeof l === "string" ? l : (l && l.n) || ""))).length;
+          let themeST = null, playsST = null;
+          const keyST = process.env.ANTHROPIC_API_KEY;
+          if (keyST) {
+            try {
+              const pST = "You are writing next month's social strategy for the Lavalle Sisters page (Instagram + TikTok, two sisters behind The Fold and Lavalle Haus). Channel audit of the trailing month:\nHeadline: " + (audST.headline || "") + "\nFindings:\n" + (audST.findings || []).map((x) => "- " + x).join("\n") + "\nCarry:\n" + (audST.carry || []).map((x) => "- " + x).join("\n") + "\nFormat mix: " + (audST.formatMix || "") + "\n\nThe month's grid is locked: 21 posts, " + nFtc + " face-to-camera reels, " + nCourt + " Courtney fashion reels, the rest b-roll reels.\nReturn ONLY JSON: {\"theme\":\"1-2 sentence month theme, plain punctuation, no em dashes\",\"plays\":[\"5-6 short numbered-ready directives with numbers from the findings\"]}";
+              const rST = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyST, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: pST }] }) });
+              const jST = await rST.json(); const tST = (jST.content || []).map((c) => c.text || "").join("");
+              const mST = tST.match(/\{[\s\S]*\}/); if (mST) { const o = JSON.parse(mST[0]); themeST = o.theme; playsST = o.plays; }
+            } catch (e2) {}
+          }
+          if (!themeST) themeST = "Carry what worked: " + ((audST.carry || []).slice(0, 2).join(" ") || "reels first, sister story forward.");
+          await kvSet("sisters_strategy_theme", { title: monthST, body: themeST, at: Date.now() });
+          const descST = [
+            "Built automatically from the " + (audST.window || "trailing 30 day") + " channel audit the moment the " + propST.month + " grid was completed.",
+            "",
+            audST.headline ? "AUDIT HEADLINE\n" + audST.headline : "",
+            (audST.findings || []).length ? "\nWHAT THE DATA SAID\n" + audST.findings.map((x) => "• " + x).join("\n") : "",
+            "\nTHEME\n" + themeST,
+            (playsST || []).length ? "\n" + propST.month.toUpperCase() + " PLAYS\n" + playsST.map((x, i) => (i + 1) + ". " + x).join("\n") : ((audST.carry || []).length ? "\nCARRY\n" + audST.carry.map((x) => "• " + x).join("\n") : ""),
+            "\nSarah: leave comments here with any changes. Each one is reviewed and implemented, and a Completed comment is posted on this card when it is done.",
+          ].filter(Boolean).join("\n");
+          await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
+            const soST = bd2.lists.find((l) => /strategy outline/i.test(l.name || "")) || bd2.lists[0];
+            bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy (from the " + (audST.window || "trailing 30 days") + " audit)", desc: descST, labels: [], members: ["Sarah Memmer"], attachments: [], links: [], comments: [], done: false });
+          });
+          // 3) Slack Sarah in Memmer Media #kia-kiabeth
+          try {
+            const mapST = (await kvGet("slack_oauth")) || {};
+            const entST = Object.entries(mapST).find(([, t]) => /memmer/i.test((t && t.team) || ""));
+            if (entST) {
+              const tokST = entST[1].token;
+              const lrST = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: { Authorization: "Bearer " + tokST } })).json();
+              const chST = (lrST.channels || []).find((c0) => (c0.name || "").toLowerCase() === "kia-kiabeth");
+              if (chST) await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { Authorization: "Bearer " + tokST, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chST.id, unfurl_links: false, text: "Hi Sarah! The " + propST.month + " grid is locked and the month's strategy just published itself from the latest Instagram and TikTok research. You are tagged on the strategy card on the Lavalle Sisters board (Strategy Outline column). Leave any changes as comments on that card: each one gets implemented and answered with a Completed comment when done." }) });
+            }
+          } catch (e3) {}
+        }
+        stST.sig = sigST; stST.firedAt = Date.now();
+        firedST = true;
+      }
+    }
+    // Comment loop: every pass, implement any new Sarah comment on a strategy
+    // card and answer it with a Completed comment (capped at 3 per pass).
+    const doneCm = stST.comments || {};
+    let processedCm = 0;
+    const stratCards = bdST.cards.filter((c) => !c._deleted && /\bStrategy\b/i.test(c.name || "") && !/outline/i.test(c.name || "") && (c.members || []).includes("Sarah Memmer"));
+    for (const cST of stratCards) {
+      for (const cm of (cST.comments || [])) {
+        if (processedCm >= 3) break;
+        if (cm.sys || !cm.id || doneCm[cm.id]) continue;
+        if (!/sarah/i.test(cm.by || "")) continue;
+        const keyCm = process.env.ANTHROPIC_API_KEY;
+        if (!keyCm) break;
+        try {
+          const pCm = "This is a social strategy card. Current text:\n---\n" + (cST.desc || "") + "\n---\nSarah (the social manager) commented: \"" + String(cm.text || "").slice(0, 600) + "\"\nRewrite the card text implementing her feedback. Keep the structure and short lines, plain punctuation, never an em dash, keep the final Sarah comment-loop note. Return ONLY JSON: {\"desc\":\"full revised card text\",\"summary\":\"one short line saying what changed\"}";
+          const rCm = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyCm, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: pCm }] }) });
+          const jCm = await rCm.json(); const tCm = (jCm.content || []).map((c) => c.text || "").join("");
+          const mCm = tCm.match(/\{[\s\S]*\}/);
+          if (mCm) {
+            const oCm = JSON.parse(mCm[0]);
+            if (oCm.desc) {
+              await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
+                const c2 = bd2.cards.find((x) => x.id === cST.id);
+                if (!c2) return;
+                c2.desc = String(oCm.desc);
+                c2.comments = [...(c2.comments || []), { id: "c" + Math.random().toString(36).slice(2, 10), by: "Lavalle Haus OS", text: "Completed: " + String(oCm.summary || "your feedback is in"), at: new Date().toISOString(), sys: true }];
+              });
+              doneCm[cm.id] = true;
+              processedCm++;
+            }
+          }
+        } catch (e4) {}
+      }
+    }
+    stST.comments = doneCm;
+    await kvSet("sisters_strategy_trigger_state", stST);
+    res.json({ ok: true, fired: firedST, adopted: adoptedST, month: monthST, commentsProcessed: processedCm });
     return;
   }
   // ── Hashtag bank self-update (her rule, Oct 5 2026) ───────────────────────
