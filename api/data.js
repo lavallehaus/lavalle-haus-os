@@ -5065,13 +5065,19 @@ export default async function handler(req, res) {
     try {
       const rawP = await kvGet("lavalle_data"); const blobP = Array.isArray(rawP) ? rawP[0] : rawP;
       const bdP = blobP && blobP.boards && blobP.boards[SBOARD.key];
+      // Oct 21 2026: month-tabbed cycles overlap now — the NEXT month's
+      // "Schedule 1-21 · Nov" proposal list maps to combined slots 22-42 so
+      // its Post 1-21 never collide with the current cycle's numbering (and
+      // the card cover advances into the new grid once the old one is done).
+      const listName = {}; for (const l of (bdP ? bdP.lists : [])) listName[l.id] = l.name || "";
       const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
         if (!schedP.includes(c.listId)) continue;
-        const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
+        let n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
+        if (/nov/i.test(listName[c.listId]) && n <= 21) n += 21;
         presentP.add(n);
         const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
         if (mD && MO_W[mD[1].toLowerCase()] != null) {
