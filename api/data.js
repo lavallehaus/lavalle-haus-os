@@ -5652,6 +5652,35 @@ export default async function handler(req, res) {
       const nowRot = new Date().toISOString();
       bdS.cards = bdS.cards.map((c) => (ids.has(c.id) ? { ...c, _deleted: true, _removedAt: nowRot } : c));
       const start = new Date(Math.max(Date.now() + 86400000, lastT + 86400000));
+      // Oct 21 2026 (month tabs): the next cycle is built and approved ahead of
+      // time on its own month-tagged "(proposal)" list. When one exists, promote
+      // it instead of spawning blanks: its cards get their dates, the list takes
+      // the exact live name (every sisters automation matches "Schedule 1-21"),
+      // the finished month's emptied schedule list retires, and the proposal's
+      // grid-2 tile store becomes the live grid-1.
+      const propS = bdS.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b.*\(proposal\)/i.test((l.name || "").trim()));
+      if (propS) {
+        for (const c of bdS.cards) {
+          if (c._deleted || c.listId !== propS.id) continue;
+          const mN = /^post\s*(\d+)\b/i.exec(c.name || "");
+          if (!mN) continue;
+          const dayP = new Date(start.getTime() + (Number(mN[1]) - 1) * 86400000);
+          c.name = "Post " + mN[1] + " " + dayP.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) + " " + MOS[dayP.getUTCMonth()] + " " + dayP.getUTCDate();
+        }
+        propS.name = "Schedule 1-21";
+        bdS.lists = bdS.lists.filter((l) => l.id !== schedS.id);
+        try {
+          const g2P = await kvGet("sisters_grid_tiles_2");
+          if (g2P && (g2P.tiles || []).length) { await kvSet("sisters_grid_tiles_1", g2P); await kvSet("sisters_grid_tiles_2", { tiles: [] }); }
+          const h2P = await kvGet("sisters_grid_hist_2");
+          if (h2P) { await kvSet("sisters_grid_hist_1", h2P); await kvSet("sisters_grid_hist_2", []); }
+        } catch (eGP) {}
+        await kvSet("lavalle_data", blobS);
+        st.stage = null;
+        await kvSet("sisters_cycle_state", st);
+        res.json({ ok: true, fired: true, stage: "rotated", promoted: propS.id, month: propS.month || null });
+        return;
+      }
       for (let n = 1; n <= 21; n++) {
         const day = new Date(start.getTime() + (n - 1) * 86400000);
         bdS.cards.push({ id: "c" + Math.random().toString(36).slice(2, 10), listId: schedS.id, name: "Post " + n + " " + day.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) + " " + MOS[day.getUTCMonth()] + " " + day.getUTCDate(), desc: "", labels: [], members: [], attachments: [], links: [], cover: null, done: false });
