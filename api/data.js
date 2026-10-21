@@ -5076,6 +5076,21 @@ export default async function handler(req, res) {
     // Links sheet, and they follow the working month automatically.
     if (SBOARD.key === "lavalle-sisters") links.push({ label: wm3 + " → Captions + Hashtags", url: "https://docs.google.com/document/d/1Do98h-x2dl4Wj8suLLHTXrm_2GSOmfN9nyUQhFRXLrI/edit" });
     if (SBOARD.key === "lavalle-sisters") links.push({ label: wm3 + " → Grid", url: "https://drive.google.com/drive/folders/" + (((await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name='Lavalle Sisters — Grid Archive' and mimeType='application/vnd.google-apps.folder' and trashed=false") + "&fields=files(id)", { headers: { Authorization: "Bearer " + gtL3 } })).json()).files || [])[0] || {}).id });
+    // Oct 21 2026 (month tabs): a next-month "(proposal)" list's month folder
+    // rides the Links card BEFORE the working month advances — its approved
+    // covers and reel covers live there and the team needs the link now.
+    if (SBOARD.key === "lavalle-sisters") {
+      try {
+        const rawP5 = await kvGet("lavalle_data"); const blobP5 = Array.isArray(rawP5) ? rawP5[0] : rawP5;
+        const bdP5 = blobP5 && blobP5.boards && blobP5.boards[SBOARD.key];
+        const mos5 = [...new Set((bdP5 ? bdP5.lists : []).filter((l) => l.month && /\(proposal\)/i.test(l.name || "")).map((l) => l.month))];
+        for (const mn5 of mos5) {
+          if (mn5.toLowerCase() === wm3.toLowerCase()) continue;
+          const mF5 = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === mn5.toLowerCase());
+          if (mF5) links.push({ label: mn5 + " folder (next cycle covers)", url: "https://drive.google.com/drive/folders/" + mF5.id });
+        }
+      } catch (e5) {}
+    }
     links.push({ label: (SBOARD.key === "the-fold" ? "The Fold" : "Lavalle Sisters") + " (all months)", url: "https://drive.google.com/drive/folders/" + SIS3 });
     // Pinned links survive every rebuild (the card's links are REPLACED each
     // run, so anything hand-added would vanish on the next pinger tick).
