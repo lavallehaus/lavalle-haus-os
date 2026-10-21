@@ -3447,7 +3447,9 @@ export default async function handler(req, res) {
             } catch (e2) {}
           }
           if (!themeST) themeST = "Carry what worked: " + ((audST.carry || []).slice(0, 2).join(" ") || "reels first, sister story forward.");
-          await kvSet("sisters_strategy_theme", { title: monthST, body: themeST, at: Date.now() });
+          // staged, not live (Oct 21 2026): the live theme titles the CURRENT
+          // cycle's Strategy Outline — it flips at promotion, not before.
+          await kvSet("sisters_strategy_theme_next", { title: monthST, body: themeST, at: Date.now() });
           const descST = [
             "Built automatically from the " + (audST.window || "trailing 30 day") + " channel audit the moment the " + propST.month + " grid was completed.",
             "",
@@ -3773,6 +3775,9 @@ export default async function handler(req, res) {
     if (bS2.setTheme && (bS2.setTheme.title || bS2.setTheme.body || bS2.setTheme.range)) {
       const curT = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
       await kvSet("sisters_strategy_theme" + SBOARD.kvSuffix, { ...curT, ...bS2.setTheme, at: Date.now() });
+    }
+    if (bS2 && bS2.setThemeNext) {
+      await kvSet("sisters_strategy_theme_next", { ...bS2.setThemeNext, at: Date.now() });
     }
     const rawS2 = await kvGet("lavalle_data"); const blobS2 = Array.isArray(rawS2) ? rawS2[0] : rawS2;
     const bdS2 = blobS2 && blobS2.boards && blobS2.boards[SBOARD.key];
@@ -5255,7 +5260,7 @@ export default async function handler(req, res) {
     const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
     const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".")).digest("hex").slice(0, 12); // w6 = date strip above each window
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
-    if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, coverHash, views: {} };
+    if (cacheW.hash !== tilesHash || (req.body || {}).force) cacheW = { hash: tilesHash, coverHash, views: {} };
     // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
     // card entirely — no slide, no render. A window counts as complete when it
     // has cards on the board and every one of them is done.
@@ -5295,7 +5300,9 @@ export default async function handler(req, res) {
           if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
           const wantName = "Grid — " + views[cur].label + " (auto)";
           const activeLabels = activeW.map((wi) => WINDOWS[wi][0] + "–" + WINDOWS[wi][1]).join(", ");
-          const atts = views.filter((v) => v.url).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
+          // a proposal month's windows stay OFF this card (Oct 21 2026 — they
+          // live on that month's own Grid and Contributions card until promotion)
+          const atts = views.filter((v, wi) => v.url && !(() => { const [a0, b0] = WINDOWS[wi]; for (let s0 = a0; s0 <= b0; s0++) if (shiftP.has(s0)) return true; return false; })()).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
           const changedC = card.name !== wantName || card.cover !== views[cur].url || JSON.stringify((card.attachments || []).map((x) => x.url)) !== JSON.stringify(atts.map((x) => x.url));
           if (changedC) {
             card.name = wantName;
@@ -5829,6 +5836,10 @@ export default async function handler(req, res) {
           if (h2P) { await kvSet("sisters_grid_hist_1", h2P); await kvSet("sisters_grid_hist_2", []); }
         } catch (eGP) {}
         await kvSet("lavalle_data", blobS);
+        try {
+          const thN = await kvGet("sisters_strategy_theme_next");
+          if (thN && thN.title) { await kvSet("sisters_strategy_theme", { ...thN, at: Date.now() }); await kvSet("sisters_strategy_theme_next", null); }
+        } catch (eThN) {}
         st.stage = null;
         await kvSet("sisters_cycle_state", st);
         res.json({ ok: true, fired: true, stage: "rotated", promoted: propS.id, month: propS.month || null });
