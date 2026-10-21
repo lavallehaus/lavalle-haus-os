@@ -5155,18 +5155,23 @@ export default async function handler(req, res) {
     };
     const HDR = 64;
     const courtP = new Set(); // fold: dotted posts come from the Courtney card tag (no C tiles there)
+    // Oct 21 2026 (her note): a next-month proposal list rides combined slots
+    // 22-42 internally, but its posts ARE 1-21 \u2014 every number a person sees
+    // (tile numerals, window headers, view labels) shows the post's own number.
+    const shiftP = new Set();
+    const dispOf = (s) => (shiftP.has(s) ? s - 21 : s);
     const render = async (from, to) => {
       const slice = all.slice(from - 1, to);
       const n = slice.length, rows = Math.ceil(n / 3);
       const rng = rangeOf(from, to);
       const cv = await new Jimp(1080, rows * 480 + HDR, 0xf2efe9ff);
-      const hdrTxt = ("Posts " + from + "\u2013" + to + (rng ? "  \u00b7  " + rng : "")).replace(/&/g, "&amp;");
+      const hdrTxt = ("Posts " + dispOf(from) + "\u2013" + dispOf(to) + (rng ? "  \u00b7  " + rng : "")).replace(/&/g, "&amp;");
       const hdrSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${HDR}"><text x="24" y="42" font-family="Inter" font-size="30" fill="#787268">${hdrTxt}</text></svg>`;
       try { cv.composite(await Jimp.read(Buffer.from(new ResvgN(hdrSvg, { fitTo: { mode: "original" }, font: { fontBuffers: [interN], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng())), 0, 0); } catch (eH) {}
       for (let i = 0; i < n; i++) {
         try {
           const t = await getTile(slice[i].cover); if (!t) continue;
-          await drawNum(t, from + i);
+          await drawNum(t, dispOf(from + i));
           if (slice[i].tag === "C" || courtP.has(from + i)) { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
           cv.composite(t, (2 - (i % 3)) * 360, HDR + (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
@@ -5205,7 +5210,7 @@ export default async function handler(req, res) {
         if (!schedP.includes(c.listId)) continue;
         let n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
-        if (/nov/i.test(listName[c.listId]) && n <= 21) n += 21;
+        if (/nov/i.test(listName[c.listId]) && n <= 21) { n += 21; shiftP.add(n); }
         presentP.add(n);
         const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
         if (mD && MO_W[mD[1].toLowerCase()] != null) {
@@ -5228,7 +5233,7 @@ export default async function handler(req, res) {
       postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
     }
     const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
-    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",")).digest("hex").slice(0, 12); // w6 = date strip above each window
+    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".")).digest("hex").slice(0, 12); // w6 = date strip above each window
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash) cacheW = { hash: tilesHash, coverHash, views: {} };
     // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
@@ -5256,7 +5261,7 @@ export default async function handler(req, res) {
     if (missingW.length && process.env.PUBLISH_KEY) {
       try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
     }
-    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + a + "–" + b + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
+    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + dispOf(a) + "–" + dispOf(b) + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.
     if (views[cur].url) {
