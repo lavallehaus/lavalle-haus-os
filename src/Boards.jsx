@@ -1848,10 +1848,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           </div>
           {boardMonths.length > 0 && (
             // Sheets-style month tabs, pinned bottom-left (her ask Oct 20 2026)
-            <div style={{ position: "fixed", bottom: 0, left: 0, zIndex: 80, display: "flex", alignItems: "flex-end", gap: 0, background: "rgba(237,233,226,0.97)", borderTop: "1px solid #D6CFBF", borderRight: "1px solid #D6CFBF", borderRadius: "0 6px 0 0", padding: "0 10px 0 6px", boxShadow: "0 -2px 10px rgba(26,26,26,0.08)" }}>
+            // paddingBottom carries the phone's home-indicator inset (viewport-fit=cover
+            // puts bottom:0 UNDER it, where iOS swallows taps — her bug, Oct 21 2026):
+            // the strip's background still reaches the screen edge, the buttons sit above it.
+            <div style={{ position: "fixed", bottom: 0, left: 0, zIndex: 200, display: "flex", alignItems: "flex-end", gap: 0, background: "rgba(237,233,226,0.97)", borderTop: "1px solid #D6CFBF", borderRight: "1px solid #D6CFBF", borderRadius: "0 6px 0 0", padding: "0 10px env(safe-area-inset-bottom, 0px) 6px", boxShadow: "0 -2px 10px rgba(26,26,26,0.08)" }}>
               {boardMonths.map((m) => (
                 <button key={m} onClick={() => setMonthTab(m)}
-                  style={{ border: "1px solid " + (m === activeMonth ? "#D6CFBF" : "transparent"), borderBottom: "none", background: m === activeMonth ? "#FAF9F7" : "transparent", borderRadius: "6px 6px 0 0", margin: "6px 1px 0", padding: "8px 16px 9px", fontFamily: sans, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontWeight: m === activeMonth ? 600 : 400, color: m === activeMonth ? c.ink : "#8F8676", cursor: "pointer" }}>
+                  style={{ border: "1px solid " + (m === activeMonth ? "#D6CFBF" : "transparent"), borderBottom: "none", background: m === activeMonth ? "#FAF9F7" : "transparent", borderRadius: "6px 6px 0 0", margin: "6px 1px 0", padding: "10px 16px 11px", fontFamily: sans, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontWeight: m === activeMonth ? 600 : 400, color: m === activeMonth ? c.ink : "#8F8676", cursor: "pointer", touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
                   {m}
                 </button>
               ))}

@@ -3458,7 +3458,12 @@ export default async function handler(req, res) {
             "\nSarah: leave comments here with any changes. Each one is reviewed and implemented, and a Completed comment is posted on this card when it is done.",
           ].filter(Boolean).join("\n");
           await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
-            const soST = bd2.lists.find((l) => /strategy outline/i.test(l.name || "")) || bd2.lists[0];
+            // the strategy card lives under ITS month's tab (her note Oct 21 2026):
+            // the month-tagged Grid and Contributions list first, any list tagged
+            // with that month next, Strategy Outline only as a last resort.
+            const soST = bd2.lists.find((l) => l.month === propST.month && /grid and contributions/i.test(l.name || ""))
+              || bd2.lists.find((l) => l.month === propST.month && !/schedule/i.test(l.name || ""))
+              || bd2.lists.find((l) => /strategy outline/i.test(l.name || "")) || bd2.lists[0];
             bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy (from the " + (audST.window || "trailing 30 days") + " audit)", desc: descST, labels: [], members: ["Sarah Memmer"], attachments: [], links: [], comments: [], done: false });
           });
           // 3) Slack Sarah in Memmer Media #kia-kiabeth
