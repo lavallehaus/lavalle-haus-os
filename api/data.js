@@ -2640,7 +2640,7 @@ export default async function handler(req, res) {
     const rawCS = await kvGet("lavalle_data"); const blobCS = Array.isArray(rawCS) ? rawCS[0] : rawCS;
     const bdCS = blobCS && blobCS.boards && blobCS.boards[SBOARD.key];
     if (!bdCS) { res.json({ ok: false }); return; }
-    const schedCS = bdCS.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedCS = bdCS.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const cardCS = (n) => bdCS.cards.find((c) => schedCS.includes(c.listId) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
     const lbOf = (c, pre) => ((c.labels || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => x.toUpperCase().startsWith(pre)) || "");
     const shapeOf = (lab) => /reel|ftc|b-?roll/i.test(lab) ? "V" : /carousel|static/i.test(lab) ? "F" : null; // V = 1080x1920, F = 1080x1350
@@ -2778,7 +2778,7 @@ export default async function handler(req, res) {
     const rawCC = await kvGet("lavalle_data"); const blobCC = Array.isArray(rawCC) ? rawCC[0] : rawCC;
     const bdCC = blobCC && blobCC.boards && blobCC.boards[SBOARD.key];
     if (!bdCC || !tilesCC.length) { res.json({ ok: false }); return; }
-    const schedCC = bdCC.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedCC = bdCC.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const RX_CC = /^(post\s*\d+(?:\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday))?(?:\s+[A-Za-z]+\s+\d+)?)(?:\s*[—–-]\s*(.+))?$/i;
     const cardCC = (n) => bdCC.cards.find((c) => schedCC.includes(c.listId) && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
     const hashCC = (x) => createHash("sha256").update(String(x)).digest("hex").slice(0, 10);
@@ -3401,7 +3401,7 @@ export default async function handler(req, res) {
     const bankHS = bdHS.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
     if (!bankHS) { res.json({ ok: false, error: "no hashtags card" }); return; }
     const known = new Set((String(bankHS.desc || "").match(/#[\w]+/g) || []).map((t) => t.toLowerCase()));
-    const schedHS = bdHS.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedHS = bdHS.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const fresh = [];
     for (const c of bdHS.cards.filter((c) => !c._deleted && schedHS.includes(c.listId))) {
       for (const t of (String(c.tags || "").match(/#[\w]+/g) || [])) {
@@ -3786,7 +3786,7 @@ export default async function handler(req, res) {
     const rawCB = await kvGet("lavalle_data"); const blobCB = Array.isArray(rawCB) ? rawCB[0] : rawCB;
     const bdCB = blobCB && blobCB.boards && blobCB.boards["lavalle-sisters"];
     if (!bdCB) { res.json({ ok: false }); return; }
-    const schedCB = bdCB.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedCB = bdCB.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const postsCB = bdCB.cards.filter((c) => schedCB.includes(c.listId) && /^post\s*\d+/i.test(c.name || ""))
       .sort((a, b) => Number((/^post\s*(\d+)/i.exec(a.name) || [])[1] || 0) - Number((/^post\s*(\d+)/i.exec(b.name) || [])[1] || 0));
     const numCB = (c) => Number((/^post\s*(\d+)/i.exec(c.name) || [])[1] || 0);
@@ -3999,7 +3999,7 @@ export default async function handler(req, res) {
     const bdF = blobF && blobF.boards && blobF.boards[SBOARD.key];
     const cardByN = {};
     if (bdF) {
-      const schedF0 = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      const schedF0 = bdF.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
       bdF.cards.forEach((c) => { if (schedF0.includes(c.listId)) { const m = /^Post (\d+)\b/.exec(c.name || ""); if (m) cardByN[parseInt(m[1], 10)] = c; } });
     }
     const cFmtOf = (c) => {
@@ -4050,7 +4050,7 @@ export default async function handler(req, res) {
     let tagged = 0;
     const patchesF = [];
     if (bdF) {
-      const schedF = bdF.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      const schedF = bdF.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
       for (const c of bdF.cards) {
         if (!schedF.includes(c.listId)) continue;
         const m = /^Post (\d+)\b/.exec(c.name || ""); if (!m) continue;
@@ -4686,7 +4686,7 @@ export default async function handler(req, res) {
     if (!bdCQ) { res.json({ ok: false, error: "no_board" }); return; }
     const colCQ = bdCQ.lists.find((l) => /courtney\s*posts/i.test(l.name || ""));
     if (!colCQ) { res.json({ ok: false, error: "no_column" }); return; }
-    const schedIds = bdCQ.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedIds = bdCQ.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const postCard = (n0) => bdCQ.cards.find((c0) => schedIds.includes(c0.listId) && new RegExp("^Post\\s*" + n0 + "\\b").exec(c0.name || ""));
     const colCards = bdCQ.cards.filter((c0) => c0.listId === colCQ.id);
     // rollover: the fresh twelve land only after the previous batch is all done
@@ -4764,7 +4764,7 @@ export default async function handler(req, res) {
     const rawCV = await kvGet("lavalle_data"); const blobCV = Array.isArray(rawCV) ? rawCV[0] : rawCV;
     const bdCV = blobCV && blobCV.boards && blobCV.boards[SBOARD.key];
     if (!bdCV) { res.json({ ok: false }); return; }
-    const schedCV = bdCV.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+    const schedCV = bdCV.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
     const grids = [
       { key: "sisters_grid_tiles_1" + SBOARD.kvSuffix, base: 1, g: null, dirty: false },
       { key: "sisters_grid_tiles_2" + SBOARD.kvSuffix, base: 22, g: null, dirty: false },
@@ -4873,7 +4873,7 @@ export default async function handler(req, res) {
       const rawM3 = await kvGet("lavalle_data"); const blobM3 = Array.isArray(rawM3) ? rawM3[0] : rawM3;
       const bdM3 = blobM3 && blobM3.boards && blobM3.boards[SBOARD.key];
       if (bdM3) {
-        const schedM3 = bdM3.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+        const schedM3 = bdM3.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
         const dated = [];
         for (const c of bdM3.cards.filter((c) => !c._deleted && schedM3.includes(c.listId))) {
           const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
@@ -4899,7 +4899,7 @@ export default async function handler(req, res) {
       const rawA3 = await kvGet("lavalle_data"); const blobA3 = Array.isArray(rawA3) ? rawA3[0] : rawA3;
       const bdA3 = blobA3 && blobA3.boards && blobA3.boards[SBOARD.key];
       if (bdA3) {
-        const schedA3 = bdA3.lists.filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+        const schedA3 = bdA3.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
         const seenA3 = [];
         for (const c of bdA3.cards.filter((c) => !c._deleted && schedA3.includes(c.listId) && !c.done)) {
           const m = /^post\s*\d+\s+\w+\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
@@ -5070,7 +5070,7 @@ export default async function handler(req, res) {
       // its Post 1-21 never collide with the current cycle's numbering (and
       // the card cover advances into the new grid once the old one is done).
       const listName = {}; for (const l of (bdP ? bdP.lists : [])) listName[l.id] = l.name || "";
-      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule/i.test(l.name || "")).map((l) => l.id);
+      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()) || /^schedule.*\bnov/i.test(l.name || "")).map((l) => l.id);
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
@@ -5225,7 +5225,7 @@ export default async function handler(req, res) {
       const bdW = blobW && blobW.boards && blobW.boards[SBOARD.key];
       if (bdW && !SBOARD.hasCourtney) {
         // Fold: her Courtney-tagged posts get the white grid dot (tags stay K so cover writeback keeps flowing).
-        for (const l0 of bdW.lists.filter((l) => /^schedule/i.test(l.name || ""))) for (const c0 of bdW.cards.filter((c) => !c._deleted && c.listId === l0.id)) { const n0 = Number((/^post\s*(\d+)/i.exec(c0.name || "") || [])[1] || 0); if (n0 && (c0.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney")) courtMT.add(n0); }
+        for (const l0 of bdW.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()))) for (const c0 of bdW.cards.filter((c) => !c._deleted && c.listId === l0.id)) { const n0 = Number((/^post\s*(\d+)/i.exec(c0.name || "") || [])[1] || 0); if (n0 && (c0.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney")) courtMT.add(n0); }
         // Fold (no Courtney): grid 1 = Posts 1..21 (Schedule 1-21); grid 2 = Posts 22..42 (Schedule 22-42).
         const schedW = bdW.lists.find((l) => (g === "2" ? /^schedule\s*22\s*[-–]\s*42$/i : /^schedule\s*1\s*[-–]\s*21$/i).test((l.name || "").trim()));
         let kN = g === "1" ? 1 : 22, wrote = 0;
