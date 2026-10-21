@@ -1041,14 +1041,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const folderMode = open === "rh-operations";
   // Month sub-tabs (her ask Oct 20 2026, "like a google sheet"): lists may
   // carry a `month` name; when any do, a Sheets-style tab strip pins to the
-  // bottom and the columns filter to the active month. Untagged lists ride
-  // the first month so nothing can vanish.
+  // bottom and the columns filter to the active month. Untagged lists are
+  // month-agnostic (Strategy Outline, the Grid card) and show on EVERY tab.
   const [monthTab, setMonthTab] = useState(null);
   const MONTH_SEQ = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const boardMonths = board ? MONTH_SEQ.filter((m) => (board.lists || []).some((l) => l.month === m)) : [];
   const nowMonthName = MONTH_SEQ[new Date().getMonth()];
   const activeMonth = boardMonths.length ? (boardMonths.includes(monthTab) ? monthTab : (boardMonths.includes(nowMonthName) ? nowMonthName : boardMonths[0])) : null;
-  const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => (l.month || boardMonths[0]) === activeMonth) : board.lists) : [];
+  const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => !l.month || l.month === activeMonth) : board.lists) : [];
   useEffect(() => { setMonthTab(null); }, [open]);
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
