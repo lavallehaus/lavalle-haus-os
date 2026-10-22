@@ -4152,53 +4152,38 @@ export default async function handler(req, res) {
     // of the 42 days, so OUR posts default to TT · FTC — with a few
     // deliberate b-roll/carousel exceptions — while Instagram (where heavy FTC
     // underperforms) keeps the b-roll / carousel / static read of the same slot.
-    const formats = {}; let staticCount = 0; let ourReelIdx = 0;
+    // Her rules (Oct 21-22 2026): everything is a REEL — statics and carousels
+    // are no longer options, and channel-split chips (IG · / TT · ) are retired.
+    // One tag per card: "Reel (FTC)" for face-to-camera, "Reel (BRoll)" for
+    // everything else. Courtney's posts carry her name label + Reel (BRoll).
+    const formats = {};
     for (let n = 1; n <= tilesF.length; n++) {
       const style = (tileStyle && tileStyle[n]) || null;
       const isC = tilesF[n - 1] && tilesF[n - 1].tag === "C";
-      if (isC) {
-        const F = cFmtOf(cardByN[n]);
-        formats[n] = { ig: F, tt: F, note: "Courtney's pick" };
-        continue;
-      }
-      let ig, tt, note = style === "face" ? "face to camera" : style === "broll" ? "b-roll" : null;
-      // Under the static/carousel→TT-Reel rule, a numbered reel final can be
-      // the TIKTOK asset for an IG-static day (her Post 3 video, Aug 27) — so
-      // a reel file must not flip a post whose IG chip already says Static or
-      // Carousel. To make such a post a real IG reel, change its IG chip.
-      const curIGF = ((cardByN[n] && cardByN[n].labels) || []).map((lb) => (typeof lb === "string" ? lb : (lb && lb.n) || "")).find((x) => /^IG · /i.test(x)) || "";
-      const igLocked = /static|carousel/i.test(curIGF);
-      if (reelByN[n] && !igLocked) { ig = "Reel"; }
-      else if (igLocked && /static/i.test(curIGF) && staticCount < 2) { staticCount++; ig = "Static"; }
-      else if (igLocked) { ig = "Carousel"; }
-      else if (carByN[n]) { ig = "Carousel"; }
-      else if (style === "still" && staticCount < 2) { staticCount++; ig = "Static"; }
-      else if (style === "still") { ig = "Carousel"; note = "static cap reached"; }
-      else if (style) { ig = "Reel"; }
-      else continue; // nothing known yet — leave the card untagged
-      // Her rule Aug 26 (full scope, restated Aug 27 after the engine reverted
-      // hand-flipped chips): ANY post that runs Static or Carousel on IG runs a
-      // REEL on TikTok — TT never gets a carousel on our posts.
-      if (ig === "Static" || ig === "Carousel") tt = "Reel";
-
-      else { ourReelIdx++; tt = (ourReelIdx % 5 === 0 && note === "b-roll") ? "Reel" : "FTC"; } // "TT · B-roll" label retired (her rule Sep 7: a TT b-roll IS a reel) — the every-5th b-roll exception now just reads TT · Reel
-      formats[n] = { ig, tt, note };
+      if (isC) { formats[n] = "Reel (BRoll)"; continue; }
+      if (style === "face") formats[n] = "Reel (FTC)";
+      else if (style) formats[n] = "Reel (BRoll)"; // b-roll and stills both run as b-roll reels
+      // nothing known yet — leave the card untagged
     }
-    // write the tags onto the cards (notation rule: every tagged card says IG · … and TT · …)
+    // write the tags onto the cards — strip every legacy chip (IG ·, TT ·,
+    // Static, Carousel) and any stale Reel tag, keep Courtney + sister labels.
     let tagged = 0;
     const patchesF = [];
     if (bdF) {
       const schedF = bdF.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
+      const isLegacy = (nm) => /^(IG|TT)\s*\u00b7/i.test(nm) || /^(static|carousel)\b/i.test(nm) || /^Reel \((FTC|BRoll)\)$/i.test(nm);
       for (const c of bdF.cards) {
         if (!schedF.includes(c.listId)) continue;
         const m = /^Post (\d+)\b/.exec(c.name || ""); if (!m) continue;
         const f = formats[parseInt(m[1], 10)]; if (!f) continue;
-        const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); });
-        const add = [{ n: "IG · " + f.ig + (f.note && f.note !== "Courtney's pick" && f.ig === "Reel" ? " · " + f.note : ""), c: "#E9E6DF" }, { n: "TT · " + f.tt, c: "#C6CCCF" }];
-        const next = [...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")];
+        const add = [{ n: f, c: f === "Reel (FTC)" ? "#C9BFAF" : "#D9CFC1" }];
+        const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !isLegacy(nm); });
+        const court = keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney");
+        const rest = keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney");
+        const next = [...court, ...add, ...rest];
         if (JSON.stringify(next) !== JSON.stringify(c.labels || [])) {
           c.labels = next; tagged++;
-          patchesF.push({ id: c.id, apply: (fc) => { const kp = (fc.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !/^(IG|TT)\s*·/i.test(nm); }); fc.labels = [...kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"), ...add, ...kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney")]; } });
+          patchesF.push({ id: c.id, apply: (fc) => { const kp = (fc.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !isLegacy(nm); }); const ct = kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney"); const rs = kp.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney"); fc.labels = [...ct, ...add, ...rs]; } });
         }
       }
       if (tagged) await patchBoardCards(SBOARD.key, patchesF);
