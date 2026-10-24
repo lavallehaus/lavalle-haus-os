@@ -4934,6 +4934,9 @@ export default async function handler(req, res) {
     // invisible to the sync until promotion renamed the list (Oct 24 2026 bug:
     // her Post 2 cover edit never reached the grid or the Grid card).
     const propCV = bdCV.lists.filter((l) => /^schedule\s*1\s*[-\u2013]\s*21\b\s*\S/i.test((l.name || "").trim())).map((l) => l.id);
+    // calendar-month schedule columns ("Schedule \u00b7 October") number straight
+    // through, so they index the tile store exactly like the live cycle
+    const monCV = bdCV.lists.filter((l) => /^schedule\s*[\u00b7\u2022]/i.test((l.name || "").trim())).map((l) => l.id);
     const grids = [
       { key: "sisters_grid_tiles_1" + SBOARD.kvSuffix, base: 1, g: null, dirty: false },
       { key: "sisters_grid_tiles_2" + SBOARD.kvSuffix, base: 22, g: null, dirty: false },
@@ -4950,7 +4953,7 @@ export default async function handler(req, res) {
     const patchesCV = [];
     for (const c of bdCV.cards) {
       const propC = propCV.includes(c.listId);
-      if (!schedCV.includes(c.listId) && !propC) continue;
+      if (!schedCV.includes(c.listId) && !propC && !monCV.includes(c.listId)) continue;
       const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
       if (!n || !c.cover) continue;
       const gr = propC ? grids[1] : (n <= 21 ? grids[0] : grids[1]);
@@ -4982,7 +4985,7 @@ export default async function handler(req, res) {
       let md5Dirty = false;
       for (const c of bdCV.cards) {
         const propR = propCV.includes(c.listId);
-        if (!schedCV.includes(c.listId) && !propR) continue;
+        if (!schedCV.includes(c.listId) && !propR && !monCV.includes(c.listId)) continue;
         const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n || !/\/cover\//.test(c.cover || "")) continue;
         const fid = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
@@ -5261,7 +5264,7 @@ export default async function handler(req, res) {
       // its Post 1-21 never collide with the current cycle's numbering (and
       // the card cover advances into the new grid once the old one is done).
       const listName = {}; for (const l of (bdP ? bdP.lists : [])) listName[l.id] = l.name || "";
-      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()) || /^schedule\s*1\s*[-\u2013]\s*21\b\s*\S/i.test((l.name || "").trim())).map((l) => l.id);
+      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()) || /^schedule\s*1\s*[-\u2013]\s*21\b\s*\S/i.test((l.name || "").trim()) || /^schedule\s*[\u00b7\u2022]/i.test((l.name || "").trim())).map((l) => l.id);
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
@@ -5298,7 +5301,8 @@ export default async function handler(req, res) {
     // card entirely — no slide, no render. A window counts as complete when it
     // has cards on the board and every one of them is done.
     const winDone = (a, b) => { let any = false; for (let n0 = a; n0 <= b; n0++) { if (presentP.has(n0)) { any = true; if (!doneP.has(n0)) return false; } } return any; };
-    let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]));
+    const winHasCovers = (a0, b0) => all.slice(a0 - 1, b0).some((t) => t && t.cover);
+    let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]) && winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
     let cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
     if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
     if (!activeW.includes(cur)) cur = activeW.find((wi) => wi > cur) != null ? activeW.find((wi) => wi > cur) : activeW[activeW.length - 1];
