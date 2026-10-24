@@ -842,6 +842,8 @@ export default async function handler(req, res) {
       // ride the sweep: card-side cover edits flow back to the grid + Drive (both brands)
       try { const acCV = new AbortController(); setTimeout(() => acCV.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCV.signal }).catch(() => {}); } catch (eCV) {}
       try { const acCF = new AbortController(); setTimeout(() => acCF.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCF.signal }).catch(() => {}); } catch (eCF) {}
+      try { const acCL = new AbortController(); setTimeout(() => acCL.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync&board=refillery-haus", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCL.signal }).catch(() => {}); } catch (eCL) {}
+      try { const acGL = new AbortController(); setTimeout(() => acGL.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card&board=refillery-haus", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acGL.signal }).catch(() => {}); } catch (eGL) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -2141,12 +2143,20 @@ export default async function handler(req, res) {
     const bkq = (req.query && req.query.board) || (req.body && req.body.board) || "";
     if (bkq === "the-fold") return {
       key: "the-fold", label: "THE FOLD", themeLabelBrand: "The Fold (thefoldlabel.com) — quiet-luxury womenswear",
-      kvSuffix: "_tf", igMatch: /thefold/i, driveRootId: "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC", // The Fold > Social Media (month folders)
+      kvSuffix: "_tf", qs: "&board=the-fold", igMatch: /thefold/i, driveRootId: "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC", // The Fold > Social Media (month folders)
       monthDefaultKv: "fold_working_month", hasCourtney: false,
+    };
+    // Lavalle Haus (board key is the pre-rebrand "refillery-haus"). Added Oct 24
+    // 2026 so the Sisters automation suite — grid tiles, the rendered Grid card,
+    // cover sync, the Links card, the month's strategy deck — runs here too.
+    if (bkq === "refillery-haus" || bkq === "lavalle-haus") return {
+      key: "refillery-haus", label: "LAVALLE HAUS", themeLabelBrand: "@lavallehausofficial — Lavalle Haus (lavallehaus.com), refillable body care, candles and vessels",
+      kvSuffix: "_lh", qs: "&board=refillery-haus", igMatch: /lavallehaus/i, driveRootId: "1AiqTBFxc9Qfs9pixso_X2UeLcgIL1W82", // Lavalle Haus > Social Media Management (month folders)
+      monthDefaultKv: "lh_working_month", hasCourtney: false,
     };
     return {
       key: "lavalle-sisters", label: "LAVALLE SISTERS", themeLabelBrand: "@lavallesisters — The Fold + Lavalle Haus, run by two sisters",
-      kvSuffix: "", igMatch: /sister/i, driveRootId: "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU",
+      kvSuffix: "", qs: "", igMatch: /sister/i, driveRootId: "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU",
       monthDefaultKv: "sisters_working_month", hasCourtney: true,
     };
   })();
@@ -5009,7 +5019,7 @@ export default async function handler(req, res) {
       for (const gr of grids) {
         if (!gr.dirty || !gr.g || !Array.isArray(gr.g.tiles) || !gr.g.tiles.length) continue;
         const gNum = gr.base === 1 ? "1" : "2";
-        try { const acTS = new AbortController(); setTimeout(() => acTS.abort(), 1500); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_tiles" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ grid: gNum, tiles: gr.g.tiles.map((t) => ({ cover: t.cover, tag: t.tag })) }), signal: acTS.signal }).catch(() => {}); } catch (eTS) {}
+        try { const acTS = new AbortController(); setTimeout(() => acTS.abort(), 1500); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_tiles" + (SBOARD.qs || ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ grid: gNum, tiles: gr.g.tiles.map((t) => ({ cover: t.cover, tag: t.tag })) }), signal: acTS.signal }).catch(() => {}); } catch (eTS) {}
       }
     }
     if (patchesCV.length) await patchBoardCards(SBOARD.key, patchesCV);
@@ -5307,7 +5317,7 @@ export default async function handler(req, res) {
     }
     const missingW = activeW.filter((wi) => !cacheW.views[wi]);
     if (missingW.length && process.env.PUBLISH_KEY) {
-      try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.key === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
+      try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.qs || ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
     }
     const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + dispOf(a) + "–" + dispOf(b) + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
     // The card updates on EVERY call that has the current window — even while
@@ -7959,7 +7969,7 @@ export default async function handler(req, res) {
           const capSig = (b) => JSON.stringify((b.cards || []).filter((c) => /^post\s*\d+/i.test(c.name || "")).map((c) => [c.id, c.desc || "", c.tags || ""]));
           sistersCapsChanged = capSig(sOld) !== capSig(sNew);
         }
-        for (const bkCS of ["lavalle-sisters", "the-fold"]) {
+        for (const bkCS of ["lavalle-sisters", "the-fold", "refillery-haus"]) {
           const obCS = ((stored && stored.boards) || {})[bkCS], nbCS = (toStore.boards || {})[bkCS];
           if (!obCS || !nbCS || nbCS === obCS) continue;
           const covSigCS = (b) => JSON.stringify((b.cards || []).filter((cc) => /^post\s*\d+/i.test(cc.name || "")).map((cc) => [cc.id, cc.cover || ""]));
@@ -7994,7 +8004,7 @@ export default async function handler(req, res) {
     // right now — the 15-min sweep stays as the safety net.
     if (coverSyncKick.size && process.env.PUBLISH_KEY) {
       for (const bkCS of coverSyncKick) {
-        try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync" + (bkCS === "the-fold" ? "&board=the-fold" : ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
+        try { const acCS = new AbortController(); setTimeout(() => acCS.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync" + (bkCS === "lavalle-sisters" ? "" : "&board=" + bkCS), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCS.signal }).catch(() => {}); } catch (eCS) {}
       }
     }
     // (Sep 7: the instant caption→doc push trigger was REMOVED — the doc is
