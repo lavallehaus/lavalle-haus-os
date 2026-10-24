@@ -4888,6 +4888,11 @@ export default async function handler(req, res) {
     const bdCV = blobCV && blobCV.boards && blobCV.boards[SBOARD.key];
     if (!bdCV) { res.json({ ok: false }); return; }
     const schedCV = bdCV.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
+    // Proposal-month lists ("Schedule 1-21 \u00b7 Nov (proposal)") ride grid 2 with
+    // posts named 1-21, so they index tiles_2 from 0 \u2014 without this they were
+    // invisible to the sync until promotion renamed the list (Oct 24 2026 bug:
+    // her Post 2 cover edit never reached the grid or the Grid card).
+    const propCV = bdCV.lists.filter((l) => /^schedule\s*1\s*[-\u2013]\s*21\b.*\(proposal\)/i.test((l.name || "").trim())).map((l) => l.id);
     const grids = [
       { key: "sisters_grid_tiles_1" + SBOARD.kvSuffix, base: 1, g: null, dirty: false },
       { key: "sisters_grid_tiles_2" + SBOARD.kvSuffix, base: 22, g: null, dirty: false },
@@ -4903,12 +4908,13 @@ export default async function handler(req, res) {
     const synced = [], relinked = [], errsCV = [], plan = [];
     const patchesCV = [];
     for (const c of bdCV.cards) {
-      if (!schedCV.includes(c.listId)) continue;
+      const propC = propCV.includes(c.listId);
+      if (!schedCV.includes(c.listId) && !propC) continue;
       const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
       if (!n || !c.cover) continue;
-      const gr = n <= 21 ? grids[0] : grids[1];
+      const gr = propC ? grids[1] : (n <= 21 ? grids[0] : grids[1]);
       const tiles = gr.g && gr.g.tiles;
-      const tile = tiles && tiles[n - gr.base];
+      const tile = tiles && tiles[propC ? n - 1 : n - gr.base];
       if (!tile) continue;
       if (normCV(tile.cover) === normCV(c.cover)) continue;
       // newer side wins: the card's own edit time vs the grid's last save
@@ -4934,7 +4940,8 @@ export default async function handler(req, res) {
       const md5s = (await kvGet("sisters_cover_drive_md5" + SBOARD.kvSuffix)) || {};
       let md5Dirty = false;
       for (const c of bdCV.cards) {
-        if (!schedCV.includes(c.listId)) continue;
+        const propR = propCV.includes(c.listId);
+        if (!schedCV.includes(c.listId) && !propR) continue;
         const n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n || !/\/cover\//.test(c.cover || "")) continue;
         const fid = (String(c.coverUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
@@ -4955,8 +4962,8 @@ export default async function handler(req, res) {
           await mediaStore(midR, "image/jpeg", buf);
           const cvR = "/cover/" + midR + ".jpg";
           patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = cvR; } });
-          const gr = n <= 21 ? grids[0] : grids[1];
-          const tile = gr.g && gr.g.tiles && gr.g.tiles[n - gr.base];
+          const gr = propR ? grids[1] : (n <= 21 ? grids[0] : grids[1]);
+          const tile = gr.g && gr.g.tiles && gr.g.tiles[propR ? n - 1 : n - gr.base];
           if (tile) { tile.cover = cvR; gr.dirty = true; }
           md5s[fid] = { md5, mid: midR }; md5Dirty = true; retouched.push(n);
         } catch (eR) { errsCV.push(n + ":" + String(eR).slice(0, 30)); }
