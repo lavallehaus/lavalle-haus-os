@@ -2155,7 +2155,7 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the numbered windows (split 1–9, 10–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in, and a window drops off the card entirely once every post in it is crossed off. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
-    ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its (proposal) list has all 21 covers), the channel audit runs as market research, the month's strategy card writes itself from the Instagram + TikTok findings, Sarah is tagged on it and pinged in Slack, and every comment she leaves on the card is implemented into the strategy and answered with a Completed comment on the card.", ["lavalle-sisters"]],
+    ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its next-month Schedule 1-21 list has all 21 covers), the channel audit runs as market research, the month's strategy card writes itself from the Instagram + TikTok findings, Sarah is tagged on it and pinged in Slack, and every comment she leaves on the card is implemented into the strategy and answered with a Completed comment on the card.", ["lavalle-sisters"]],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page.", ["lavalle-sisters"]],
     ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
     ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten.", ["lavalle-sisters"]],
@@ -3406,7 +3406,7 @@ export default async function handler(req, res) {
     const stST = (await kvGet("sisters_strategy_trigger_state")) || {};
     const MONST = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     let firedST = false, monthST = null, adoptedST = false;
-    const propST = bdST.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b.*\(proposal\)/i.test((l.name || "").trim()));
+    const propST = bdST.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b\s*\S/i.test((l.name || "").trim()));
     if (propST && propST.month) {
       const postsST = bdST.cards.filter((c) => !c._deleted && c.listId === propST.id && /^post\s*\d+/i.test(c.name || ""));
       const readyST = postsST.length >= 21 && postsST.every((c) => c.cover);
@@ -4888,11 +4888,12 @@ export default async function handler(req, res) {
     const bdCV = blobCV && blobCV.boards && blobCV.boards[SBOARD.key];
     if (!bdCV) { res.json({ ok: false }); return; }
     const schedCV = bdCV.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
-    // Proposal-month lists ("Schedule 1-21 \u00b7 Nov (proposal)") ride grid 2 with
-    // posts named 1-21, so they index tiles_2 from 0 \u2014 without this they were
+    // Proposal-month lists ("Schedule 1-21 \u00b7 Nov" \u2014 any suffix after 1-21; her
+    // Oct 24 rule dropped the "(proposal)" wording) ride grid 2 with posts
+    // named 1-21, so they index tiles_2 from 0 \u2014 without this they were
     // invisible to the sync until promotion renamed the list (Oct 24 2026 bug:
     // her Post 2 cover edit never reached the grid or the Grid card).
-    const propCV = bdCV.lists.filter((l) => /^schedule\s*1\s*[-\u2013]\s*21\b.*\(proposal\)/i.test((l.name || "").trim())).map((l) => l.id);
+    const propCV = bdCV.lists.filter((l) => /^schedule\s*1\s*[-\u2013]\s*21\b\s*\S/i.test((l.name || "").trim())).map((l) => l.id);
     const grids = [
       { key: "sisters_grid_tiles_1" + SBOARD.kvSuffix, base: 1, g: null, dirty: false },
       { key: "sisters_grid_tiles_2" + SBOARD.kvSuffix, base: 22, g: null, dirty: false },
@@ -5085,7 +5086,7 @@ export default async function handler(req, res) {
       try {
         const rawP5 = await kvGet("lavalle_data"); const blobP5 = Array.isArray(rawP5) ? rawP5[0] : rawP5;
         const bdP5 = blobP5 && blobP5.boards && blobP5.boards[SBOARD.key];
-        const mos5 = [...new Set((bdP5 ? bdP5.lists : []).filter((l) => l.month && /\(proposal\)/i.test(l.name || "")).map((l) => l.month))];
+        const mos5 = [...new Set((bdP5 ? bdP5.lists : []).filter((l) => l.month && /^schedule\s*1\s*[-–]\s*21\b\s*\S/i.test((l.name || "").trim())).map((l) => l.month))];
         for (const mn5 of mos5) {
           if (mn5.toLowerCase() === wm3.toLowerCase()) continue;
           const mF5 = top.find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim().toLowerCase() === mn5.toLowerCase());
@@ -5220,14 +5221,14 @@ export default async function handler(req, res) {
       // its Post 1-21 never collide with the current cycle's numbering (and
       // the card cover advances into the new grid once the old one is done).
       const listName = {}; for (const l of (bdP ? bdP.lists : [])) listName[l.id] = l.name || "";
-      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()) || /^schedule.*\bnov/i.test(l.name || "")).map((l) => l.id);
+      const schedP = (bdP ? bdP.lists : []).filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()) || /^schedule\s*1\s*[-\u2013]\s*21\b\s*\S/i.test((l.name || "").trim())).map((l) => l.id);
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
         if (!schedP.includes(c.listId)) continue;
         let n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
-        if (/nov/i.test(listName[c.listId]) && n <= 21) { n += 21; shiftP.add(n); }
+        if (/^schedule\s*1\s*[-–]\s*21\b\s*\S/i.test((listName[c.listId] || "").trim()) && n <= 21) { n += 21; shiftP.add(n); }
         presentP.add(n);
         const mD = /^post\s*\d+\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(c.name || "");
         if (mD && MO_W[mD[1].toLowerCase()] != null) {
@@ -5810,7 +5811,7 @@ export default async function handler(req, res) {
       // the exact live name (every sisters automation matches "Schedule 1-21"),
       // the finished month's emptied schedule list retires, and the proposal's
       // grid-2 tile store becomes the live grid-1.
-      const propS = bdS.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b.*\(proposal\)/i.test((l.name || "").trim()));
+      const propS = bdS.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b\s*\S/i.test((l.name || "").trim()));
       if (propS) {
         for (const c of bdS.cards) {
           if (c._deleted || c.listId !== propS.id) continue;
