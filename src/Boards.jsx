@@ -1043,13 +1043,17 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // carry a `month` name; when any do, a Sheets-style tab strip pins to the
   // bottom and the columns filter to the active month. Untagged lists are
   // month-agnostic (Strategy Outline, the Grid card) and show on EVERY tab.
-  const [monthTab, setMonthTab] = useState(null);
+  // her ask Oct 24 2026: a refresh must LEAVE her on the month she was reading —
+  // it used to snap back to the calendar month every reload.
+  const monthTabKey = open ? "lh_month_tab_" + open : null;
+  const [monthTab, setMonthTab] = useState(() => { try { return monthTabKey ? localStorage.getItem(monthTabKey) : null; } catch { return null; } });
+  const pickMonthTab = (m) => { setMonthTab(m); try { if (monthTabKey) localStorage.setItem(monthTabKey, m); } catch {} };
   const MONTH_SEQ = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const boardMonths = board ? MONTH_SEQ.filter((m) => (board.lists || []).some((l) => l.month === m)) : [];
   const nowMonthName = MONTH_SEQ[new Date().getMonth()];
   const activeMonth = boardMonths.length ? (boardMonths.includes(monthTab) ? monthTab : (boardMonths.includes(nowMonthName) ? nowMonthName : boardMonths[0])) : null;
   const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => !l.month || l.month === activeMonth) : board.lists) : [];
-  useEffect(() => { setMonthTab(null); }, [open]);
+  useEffect(() => { let v = null; try { v = open ? localStorage.getItem("lh_month_tab_" + open) : null; } catch {} setMonthTab(v || null); }, [open]);
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent("lh-board-state", { detail: !!open })); } catch {}
@@ -1582,6 +1586,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : monthLists).map((l) => {
               // the Automations card is for the owners' eyes only (her rule Oct 5 2026)
               let cards = board.cards.filter((x) => x.listId === l.id && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")));
+              // Month-agnostic columns (Strategy Outline) hold one card PER MONTH —
+              // "Strategy Outline — October 2026" was showing on the November tab
+              // (her note Oct 24 2026). A card that names another month hides only
+              // once its twin for the active month exists, so a lone card (the Links
+              // card, named for the working month) never disappears.
+              if (activeMonth && !l.month) {
+                const stem = (nm) => { const m = /^(.*?)(january|february|march|april|may|june|july|august|september|october|november|december)\b(.*)$/i.exec(nm || ""); return m ? { pre: m[1].toLowerCase().trim(), mo: m[2].toLowerCase(), post: m[3].toLowerCase().trim() } : null; };
+                const mine = cards.map((x) => ({ x, st: stem(x.name) }));
+                cards = mine.filter(({ st }) => {
+                  if (!st || st.mo === activeMonth.toLowerCase()) return true;
+                  return !mine.some((o) => o.st && o.st.mo === activeMonth.toLowerCase() && o.st.pre === st.pre && o.st.post === st.post);
+                }).map(({ x }) => x);
+              }
               // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
               // its month cards + schedule note feed the calendar instead of
               // the normal stack. Anything else (paired film items…) stays a card.
@@ -1853,7 +1870,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             // the strip's background still reaches the screen edge, the buttons sit above it.
             <div style={{ position: "fixed", bottom: 0, left: 0, zIndex: 200, display: "flex", alignItems: "flex-end", gap: 0, background: "rgba(237,233,226,0.97)", borderTop: "1px solid #D6CFBF", borderRight: "1px solid #D6CFBF", borderRadius: "0 6px 0 0", padding: "0 10px env(safe-area-inset-bottom, 0px) 6px", boxShadow: "0 -2px 10px rgba(26,26,26,0.08)" }}>
               {boardMonths.map((m) => (
-                <button key={m} onClick={() => setMonthTab(m)}
+                <button key={m} onClick={() => pickMonthTab(m)}
                   style={{ border: "1px solid " + (m === activeMonth ? "#D6CFBF" : "transparent"), borderBottom: "none", background: m === activeMonth ? "#FAF9F7" : "transparent", borderRadius: "6px 6px 0 0", margin: "6px 1px 0", padding: "10px 16px 11px", fontFamily: sans, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontWeight: m === activeMonth ? 600 : 400, color: m === activeMonth ? c.ink : "#8F8676", cursor: "pointer", touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
                   {m}
                 </button>

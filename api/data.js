@@ -2157,7 +2157,7 @@ export default async function handler(req, res) {
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the numbered windows (split 1–9, 10–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in, and a window drops off the card entirely once every post in it is crossed off. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
     ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its next-month Schedule 1-21 list has all 21 covers), the channel audit runs as market research, the month's strategy card writes itself from the Instagram + TikTok findings, Sarah is tagged on it and pinged in Slack, and every comment she leaves on the card is implemented into the strategy and answered with a Completed comment on the card.", ["lavalle-sisters"]],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page.", ["lavalle-sisters"]],
-    ["Strategy Outline PDF", "When every one of OUR posts in 1–42 is marked Approved (Courtney's 12 don't count); after that, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
+    ["Strategy Outline PDF", "For the month we're posting: when every one of OUR posts is marked Approved (Courtney's 12 don't count). For NEXT month: the second its grid is locked (all 21 covers in), so the deck is ready before the month starts. After either, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
     ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten.", ["lavalle-sisters"]],
     ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file.", ["lavalle-sisters"]],
     ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days.", ["lavalle-sisters"]],
@@ -3483,6 +3483,17 @@ export default async function handler(req, res) {
         stST.sig = sigST; stST.firedAt = Date.now();
         firedST = true;
       }
+      // HER RULE (Oct 24 2026): "the second the grid is locked in, the strategy
+      // deck for that month should also be updated". The month's own Strategy
+      // Outline deck (pages + PDF + Drive) builds as soon as all 21 covers are
+      // in, and rebuilds whenever a cover or caption changes after that — the
+      // PDF op is idempotent against its own signature, so this stays cheap.
+      if (readyST && process.env.PUBLISH_KEY) {
+        try {
+          const acND = new AbortController(); setTimeout(() => acND.abort(), 25000);
+          await fetch(APP_ORIGIN + "/api/data?op=sisters_strategy_pdf", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ next: true }), signal: acND.signal }).catch(() => {});
+        } catch (eND) {}
+      }
     }
     // Comment loop: every pass, implement any new Sarah comment on a strategy
     // card and answer it with a Completed comment (capped at 3 per pass).
@@ -3772,6 +3783,13 @@ export default async function handler(req, res) {
     const authS2 = okKeyS2 ? null : await getAuthEarly(req);
     if (!okKeyS2 && !ownerRole(authS2)) { res.status(403).json({ error: "Owner or key only." }); return; }
     const bS2 = req.body || {};
+    // NEXT-MONTH DECK (her rule Oct 24 2026: "the second the grid is locked in,
+    // the strategy deck for that month should also be updated"). The next
+    // cycle's grid is finished long before its posts are approved, so this mode
+    // builds that month's outline from the proposal list + the staged theme,
+    // gated on all 21 covers being in place rather than on approvals. The LIVE
+    // theme is never touched — that mislabels the current month's deck.
+    const nextS2 = !!bS2.next;
     if (bS2.setTheme && (bS2.setTheme.title || bS2.setTheme.body || bS2.setTheme.range)) {
       const curT = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
       await kvSet("sisters_strategy_theme" + SBOARD.kvSuffix, { ...curT, ...bS2.setTheme, at: Date.now() });
@@ -3785,17 +3803,23 @@ export default async function handler(req, res) {
     const g1S = (await kvGet("sisters_grid_tiles_1" + SBOARD.kvSuffix)) || { tiles: [] };
     const g2S = (await kvGet("sisters_grid_tiles_2" + SBOARD.kvSuffix)) || { tiles: [] };
     const tilesS = [...(g1S.tiles || []), ...(g2S.tiles || [])];
-    const tagAt = (n) => (tilesS[n - 1] ? tilesS[n - 1].tag : null);
+    const tagAt = (n) => (tilesS[n - 1 + tileOff] ? tilesS[n - 1 + tileOff].tag : null);
     const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, (m, off, str) => (/^[A-Z]/.test(str.slice(off + m.length)) ? ". " : ", ")).replace(/\.\s*\./g, ".").replace(/,\s*,/g, ",").trim();
-    const schedLists = bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
+    const propListS2 = bdS2.lists.find((l) => /^schedule\s*1\s*[-–]\s*21\b\s*\S/i.test((l.name || "").trim()));
+    if (nextS2 && !propListS2) { res.json({ ok: false, error: "no next-cycle schedule list" }); return; }
+    const schedLists = nextS2 ? [propListS2.id]
+      : bdS2.lists.filter((l) => /^schedule\s*(1\s*[-–]\s*21|22\s*[-–]\s*42)$/i.test((l.name || "").trim())).map((l) => l.id);
+    // a proposal post numbered 1-21 rides combined slots 22-42 in the tile store
+    const tileOff = nextS2 ? 21 : 0;
     let postCards = bdS2.cards.filter((c) => schedLists.includes(c.listId) && /^Post \d+\b/.test(c.name || ""))
       .map((c) => { const n = Number(/^Post (\d+)/.exec(c.name)[1]); const tg = tagAt(n); const m = /^Post\s*\d+(?:\s+[A-Za-z]+\s+\d+)?(?:\s*[—–-]\s*(.+))?$/.exec(c.name || "") || []; return { n, name: c.name, date: "", concept: (m[1] || "").trim(), desc: noDash(c.desc || ""), tags: String(c.tags || "").trim(), cover: c.cover, approved: !!c.approved, isC: tg ? tg === "C" : (SBOARD.hasCourtney && /Courtney/i.test(c.desc || "")), courtney: (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney") }; })
       .sort((a, b) => a.n - b.n);
     if (postCards.length < 21) { res.json({ ok: false, error: "schedule incomplete" }); return; }
     // From Oct 2026 the outline covers ONE cycle (theme.range, e.g. [1,21]) while the
     // other Schedule column still holds the previous cycle for Courtney to finish.
-    const themeR = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {};
-    const rangeS = Array.isArray(themeR.range) && themeR.range.length === 2 ? themeR.range : null;
+    const themeR = nextS2 ? ((await kvGet("sisters_strategy_theme_next")) || {}) : ((await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || {});
+    if (nextS2 && !themeR.title) { res.json({ ok: false, waiting: "no staged theme for the next cycle yet" }); return; }
+    const rangeS = nextS2 ? [1, 21] : (Array.isArray(themeR.range) && themeR.range.length === 2 ? themeR.range : null);
     // The Fold builds per cycle and only from a real theme — fold_strategy_auto
     // writes {title, body, range} per cycle; until then there is nothing to build.
     if (SBOARD.key === "the-fold" && !(themeR.title && rangeS)) { res.json({ ok: false, waiting: "no cycle theme set yet (fold_strategy_auto writes it)" }); return; }
@@ -3806,18 +3830,21 @@ export default async function handler(req, res) {
     const cacheS = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     const views = (cacheS.views || {});
     const winRanges = [[1, 9], [10, 21], [22, 30], [31, 42]];
-    const winNeeded = [0, 1, 2, 3].filter((i) => !rangeS || (winRanges[i][0] <= rangeS[1] && winRanges[i][1] >= rangeS[0]));
+    const winNeeded = nextS2 ? [2, 3] : [0, 1, 2, 3].filter((i) => !rangeS || (winRanges[i][0] <= rangeS[1] && winRanges[i][1] >= rangeS[0]));
     const activeS = Array.isArray(cacheS.active) ? cacheS.active : [0, 1, 2, 3]; // completed windows never render (they left the Grid card)
     const viewsReady = tilesS.length < 21 || ((cacheS.coverHash || cacheS.hash) === tilesHashS && winNeeded.every((i) => views[i] || !activeS.includes(i)));
     if (!viewsReady) { res.json({ ok: true, skipped: true, waiting: "grid windows still rendering for this arrangement" }); return; }
-    const theme = (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
+    const theme = nextS2 ? { ...themeR } : (await kvGet("sisters_strategy_theme" + SBOARD.kvSuffix)) || { title: "September 2026", body: "First chill. Transitional layering (cashmere cardigans, linen sets, eyelet) meets the refillable evening ritual: black soap, lavender oil, candle sand. The two of us behind both brands; quiet, warm, one palette." };
     theme.body = noDash(theme.body);
     const pickSig = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || {};
     const sig = createHash("sha256").update(JSON.stringify([postCards.map((p) => [p.n, p.name, p.desc, p.tags, p.cover, p.isC]), tilesHashS, views[0], views[1], views[2], views[3], theme.title, theme.body, pickSig.pick, pickSig.ranked])).digest("hex").slice(0, 12);
-    const stateKeyS = "sisters_strategy_pdf_state" + SBOARD.kvSuffix + (SBOARD.key === "the-fold" ? "_" + String(themeR.title).replace(/\W+/g, "_") : "");
+    const stateKeyS = "sisters_strategy_pdf_state" + SBOARD.kvSuffix + (nextS2 ? "_next" : "") + (SBOARD.key === "the-fold" ? "_" + String(themeR.title).replace(/\W+/g, "_") : "");
     const prev = (await kvGet(stateKeyS)) || {};
     const staleRebuild = prev.sig && prev.sig !== sig; // already built once → keep fresh on caption/cover/grid/theme edits
-    const gateS = SBOARD.key === "the-fold" ? (postCards.length > 0 && postCards.every((p) => p.cover)) : allApproved; // her rule Oct 5 2026: the Fold outline builds once the full grid is complete
+    // her rule Oct 5 2026: the Fold outline builds once the full grid is complete.
+    // Oct 24 2026: a NEXT-month deck builds on the same signal — grid locked (all
+    // 21 covers), since those posts are approved only as the month runs.
+    const gateS = (SBOARD.key === "the-fold" || nextS2) ? (postCards.length > 0 && postCards.every((p) => p.cover)) : allApproved;
     if (!bS2.force && !staleRebuild && (!gateS || prev.sig === sig)) { res.json({ ok: true, skipped: true, allApproved, gate: gateS, approvedCount: ours.filter((p) => p.approved).length, ofOurs: ours.length, alreadyBuilt: prev.sig === sig }); return; }
     // shared renderer (lib/strategy-pages.mjs): Cormorant + Inter, cream pages,
     // tracked cover, Loft-style in-feed pages with the numbered 3x3 grid crop.
@@ -3829,7 +3856,7 @@ export default async function handler(req, res) {
       let logoS = null;
       if (SBOARD.key === "the-fold") { try { const fsL = await import("node:fs"); const pathL = await import("node:path"); logoS = fsL.readFileSync(pathL.join(process.cwd(), "assets", "fold-logo.png")); } catch (eLg) {} }
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
-      const tilesInRange = rangeS ? tilesS.slice(rangeS[0] - 1, rangeS[1]) : tilesS;
+      const tilesInRange = rangeS ? tilesS.slice(rangeS[0] - 1 + tileOff, rangeS[1] + tileOff) : tilesS;
       let collage = [], monthGridS = null;
       if (SBOARD.key === "the-fold") {
         // the strategy page shows the whole cycle grid at a glance (her rule)
@@ -3845,10 +3872,10 @@ export default async function handler(req, res) {
           } catch (eG) {}
         }
       } else {
-        const collageUrls = (pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
+        const collageUrls = (!nextS2 && pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
         collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
       }
-      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, monthGrid: monthGridS, dates: theme.dates || null, windows: { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
+      const out = await renderStrategyPages({ brand: SBOARD.label, title: theme.title, body: theme.body, posts: postCards, collage, logoPng: logoS, monthGrid: monthGridS, dates: theme.dates || null, windows: nextS2 ? { w19: await getBuf(views[2]), w1021: await getBuf(views[3]), w2230: null, w3142: null } : { w19: await getBuf(views[0]), w1021: await getBuf(views[1]), w2230: await getBuf(views[2]), w3142: await getBuf(views[3]) } });
       pdfBuf = out.pdf;
       for (const b of out.jpgs) { const mid = "sp" + createHash("sha256").update(b).digest("hex").slice(0, 14); await mediaStore(mid, "image/jpeg", b); pageUrls.push("/cover/" + mid + ".jpg"); }
     }
@@ -3875,7 +3902,10 @@ export default async function handler(req, res) {
     // attach on a FRESH blob — the render above takes ~40s and writing the
     // stale snapshot wiped concurrent human saves (Courtney's edits, Aug 31)
     await patchBoardCards(SBOARD.key, [], (blob9, bd9) => {
-      const gridCard9 = bd9.cards.find((c) => /^grid\b/i.test(c.name || ""));
+      const moName9 = (theme.title || "").split(/[\s+]+/)[0];
+      const moLists9 = new Set(bd9.lists.filter((l) => (l.month || "").toLowerCase() === moName9.toLowerCase()).map((l) => l.id));
+      const gridCard9 = (nextS2 ? bd9.cards.find((c) => /^grid\b/i.test(c.name || "") && moLists9.has(c.listId)) : null)
+        || bd9.cards.find((c) => /^grid\b/i.test(c.name || ""));
       if (gridCard9 && pdfUrl) { gridCard9.attachments = (gridCard9.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard9.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
       const soList9 = bd9.lists.find((l) => /strategy outline/i.test(l.name || ""));
       if (!soList9) return;
@@ -5832,6 +5862,9 @@ export default async function handler(req, res) {
         try {
           const thN = await kvGet("sisters_strategy_theme_next");
           if (thN && thN.title) { await kvSet("sisters_strategy_theme", { ...thN, at: Date.now() }); await kvSet("sisters_strategy_theme_next", null); }
+          // the month just promoted: its deck now rebuilds through the LIVE path,
+          // so drop the next-cycle build signature (Oct 24 2026)
+          await kvSet("sisters_strategy_pdf_state_next", null);
         } catch (eThN) {}
         st.stage = null;
         await kvSet("sisters_cycle_state", st);
