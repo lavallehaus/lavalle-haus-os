@@ -2497,6 +2497,53 @@ function AccountMenu({ me }) {
 // Install button (beforeinstallprompt); iPhones get the two-tap Share →
 // Add to Home Screen guide. Hidden forever once the app runs installed
 // (standalone); dismiss snoozes it for a week.
+// Candle Sand margins we track at a glance — profit per unit and the most we
+// can spend on ads per sale before a unit stops paying. Numbers are the
+// decision figures from the "Profit Margins Amazon" sheet (verified off the
+// live supply cart). "Profit" is after Amazon fees + COGS, before ads; it is
+// also the break-even ad ceiling per sale (current ad cost ≈ $6.85/sale).
+const CANDLE_SAND_MARGINS = {
+  asOf: "Oct 2026",
+  adNow: 6.85,
+  rows: [
+    { sku: "Unscented", size: "16oz", price: 26, profit: 11.30, afterAd: 4.45 },
+    { sku: "Unscented", size: "32oz", price: 37, profit: 14.02, afterAd: 7.17 },
+    { sku: "Vanilla Cashmere", size: "16oz", price: 26, profit: 6.94, afterAd: 0.09, warn: true },
+    { sku: "Vanilla Cashmere", size: "32oz", price: 46, profit: 12.95, afterAd: 6.10 },
+  ],
+};
+function CandleSandTracker() {
+  const m = CANDLE_SAND_MARGINS;
+  const money = (n) => "$" + n.toFixed(2);
+  return (
+    <div style={{ background: "#FFFFFF", border: "1px solid #E0E0DD", borderRadius: 10, padding: "16px 18px", margin: "0 0 18px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div style={{ fontFamily: "Jost, sans-serif", fontWeight: 300, fontSize: 15, letterSpacing: 0.5, color: "#1A1A1A" }}>
+          Candle Sand · Profit &amp; Ad Spend
+        </div>
+        <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase", color: "#9A9A95" }}>
+          Profit Margins Amazon · {m.asOf} · ad now ≈ {money(m.adNow)}/sale
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {m.rows.map((r, i) => (
+          <div key={i} style={{ flex: "1 1 160px", minWidth: 150, border: "1px solid " + (r.warn ? "#D8B8A8" : "#E8E8E6"), background: r.warn ? "#FBF3EE" : "#F8F8F7", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, letterSpacing: 0.5, color: "#71716C", marginBottom: 2 }}>{r.sku}</div>
+            <div style={{ fontFamily: "Jost, sans-serif", fontWeight: 300, fontSize: 12, color: "#8F8676", marginBottom: 8 }}>{r.size} · {money(r.price).replace(".00", "")}</div>
+            <div style={{ fontFamily: "Jost, sans-serif", fontWeight: 300, fontSize: 24, color: "#1A1A1A", lineHeight: 1 }}>{money(r.profit)}</div>
+            <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 0.6, textTransform: "uppercase", color: "#9A9A95", margin: "3px 0 8px" }}>profit · max ad/sale</div>
+            <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 11, color: r.warn ? "#B5673E" : "#71716C" }}>
+              {r.warn ? "⚠ " : ""}after ad: <b style={{ color: r.warn ? "#B5673E" : "#1A1A1A" }}>{money(r.afterAd)}</b>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10.5, color: "#9A9A95", marginTop: 10, lineHeight: 1.5 }}>
+        The big number is profit per unit after Amazon fees + cost, and the most we can spend on ads per sale before it stops paying. Vanilla Cashmere 16oz barely clears ads — keep ad spend off it. Spiced Apple tracks Vanilla Cashmere.
+      </div>
+    </div>
+  );
+}
 function InstallAppNudge() {
   const [deferred, setDeferred] = useState(null);
   const [show, setShow] = useState(false);
@@ -3370,6 +3417,7 @@ const osBoards = (
 if (typeof window !== "undefined" && window.innerWidth < 760) {
 return (
 <div>
+<CandleSandTracker />
 {lensStrip}
 <CommandDashboard model={brainModel} onNavigate={goTo} />
 {osBoards}
@@ -3378,6 +3426,7 @@ return (
 }
 return (
 <div>
+<CandleSandTracker />
 {lensStrip}
 <CommandDashboard model={brainModel} onNavigate={goTo} />
 {osBoards}

@@ -5220,6 +5220,10 @@ export default async function handler(req, res) {
     // 22-42 internally, but its posts ARE 1-21 \u2014 every number a person sees
     // (tile numerals, window headers, view labels) shows the post's own number.
     const shiftP = new Set();
+    // "post this next" marker (her ask Oct 25 2026): on boards with no Courtney
+    // weave, the first post that is not crossed off wears the dot, so the grid
+    // card always shows which one is up. Assigned once doneP/presentP are built.
+    let nextP = null;
     const dispOf = (s) => (shiftP.has(s) ? s - 21 : s);
     const render = async (from, to) => {
       const slice = all.slice(from - 1, to);
@@ -5233,7 +5237,7 @@ export default async function handler(req, res) {
         try {
           const t = await getTile(slice[i].cover); if (!t) continue;
           await drawNum(t, dispOf(from + i));
-          if (slice[i].tag === "C" || courtP.has(from + i)) { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
+          if (slice[i].tag === "C" || courtP.has(from + i) || nextP === from + i) { const cx = 360 - 26, cy = 26, rr = 9; t.scan(cx - rr - 4, cy - rr - 4, (rr + 4) * 2, (rr + 4) * 2, function (x2, y2, idx2) { const dd = (x2 - cx) * (x2 - cx) + (y2 - cy) * (y2 - cy); if (dd <= rr * rr) { this.bitmap.data[idx2] = 255; this.bitmap.data[idx2 + 1] = 255; this.bitmap.data[idx2 + 2] = 255; } else if (dd <= (rr + 2) * (rr + 2)) { this.bitmap.data[idx2] = 120; this.bitmap.data[idx2 + 1] = 114; this.bitmap.data[idx2 + 2] = 104; } }); }
           cv.composite(t, (2 - (i % 3)) * 360, HDR + (rows - 1 - Math.floor(i / 3)) * 480);
         } catch (e1) {}
       }
@@ -5294,7 +5298,7 @@ export default async function handler(req, res) {
       postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
     }
     const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
-    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".")).digest("hex").slice(0, 12); // w6 = date strip above each window
+    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".") + "|n" + (nextP == null ? "" : nextP)).digest("hex").slice(0, 12); // w6 = date strip above each window
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash || (req.body || {}).force) cacheW = { hash: tilesHash, coverHash, views: {} };
     // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
@@ -5303,6 +5307,7 @@ export default async function handler(req, res) {
     const winDone = (a, b) => { let any = false; for (let n0 = a; n0 <= b; n0++) { if (presentP.has(n0)) { any = true; if (!doneP.has(n0)) return false; } } return any; };
     const winHasCovers = (a0, b0) => all.slice(a0 - 1, b0).some((t) => t && t.cover);
     let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]) && winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
+    if (!SBOARD.hasCourtney) { for (let n0 = 1; n0 <= 42; n0++) { if (presentP.has(n0) && !doneP.has(n0)) { nextP = n0; break; } } }
     let cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
     if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
     if (!activeW.includes(cur)) cur = activeW.find((wi) => wi > cur) != null ? activeW.find((wi) => wi > cur) : activeW[activeW.length - 1];

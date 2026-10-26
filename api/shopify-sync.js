@@ -39,8 +39,11 @@ const TITLE_MAP = {
 // Variant routing for products whose variants belong to different app products.
 const VARIANT_SPLIT = {
   "sandwax refill pouch": [
-    { match: "16 oz", id: 2 }, // Beeswax Candle Sand 16oz
-    { match: "32 oz", id: 3 }, // Beeswax Candle Sand 32oz
+    // ORDER MATTERS: resolveId() uses .includes() and takes the FIRST match.
+    // The 2-pack label contains "16 oz", so it must be tested before "16 oz".
+    { match: "2 pack", id: 3 }, // Beeswax Candle Sand 2-pack (two 16oz pouches)
+    { match: "32 oz", id: 3 },  // legacy label for the same variant
+    { match: "16 oz", id: 2 },  // Beeswax Candle Sand single 16oz
   ],
 };
 
