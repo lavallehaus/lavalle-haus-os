@@ -5351,8 +5351,36 @@ export default async function handler(req, res) {
             card.cover = views[cur].url;
             card.attachments = atts;
             card.desc = "Auto-updating grid preview. Swipe through the remaining grid windows (" + activeLabels + ") — a window drops off once all its posts are crossed off. White dot = Courtney's post. Numbers = post order.";
-            await kvSet("lavalle_data", blobC);
           }
+          // Oct 29 2026 (her: "i changed the post 13 cover but it hasnt uploaded
+          // under grid and contributions card and weve had this issue in the
+          // past"): the block above refreshes ONE card — the auto card in the
+          // FIRST list matching /grid/i. A month-tabbed board also has a
+          // per-month "Grid · <Month>" card in its OWN Grid list, and those
+          // attachments were written once and then never tracked a re-render,
+          // so a changed cover showed on the card but not in the month grid.
+          // Remap EVERY grid card's attachments by window range.
+          const urlByRange = {};
+          views.forEach((v, wi) => { if (v.url) urlByRange[WINDOWS[wi][0] + "-" + WINDOWS[wi][1]] = v.url; });
+          let remapped = false;
+          for (const lG of bdC.lists) {
+            if (!/grid/i.test(lG.name || "")) continue;
+            for (const cG of bdC.cards) {
+              if (cG.listId !== lG.id || !/^grid\b/i.test(cG.name || "") || cG === card) continue;
+              const beforeU = (cG.attachments || []).map((x) => x.url);
+              cG.attachments = (cG.attachments || []).map((a) => {
+                const m = String(a.name || "").match(/(\d+)\s*[\u2013-]\s*(\d+)/);
+                const u = m && urlByRange[m[1] + "-" + m[2]];
+                return u && u !== a.url ? Object.assign({}, a, { url: u }) : a;
+              });
+              // a cover pointing at one of this card's own window images follows
+              // that same window forward rather than going stale or dangling
+              const ci = beforeU.indexOf(cG.cover);
+              if (ci >= 0 && cG.attachments[ci] && cG.attachments[ci].url) cG.cover = cG.attachments[ci].url;
+              if (JSON.stringify((cG.attachments || []).map((x) => x.url)) !== JSON.stringify(beforeU)) remapped = true;
+            }
+          }
+          if (changedC || remapped) await kvSet("lavalle_data", blobC);
         }
       }
     }
