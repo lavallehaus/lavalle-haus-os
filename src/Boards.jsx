@@ -2048,7 +2048,32 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     setDraftNotes({ ...draftNotes, [beatKey]: [...(draftNotes[beatKey] || []), n] });
     setNoteText(""); setNoteOn(null);
   };
-  const [desc, setDesc] = useState(card.desc || "");
+  // Her report Oct 29 2026: a save refused as stale alerts and auto-reloads,
+  // and whatever she had just typed in the caption box went with it. The text
+  // now survives the reload — it is mirrored to localStorage on every
+  // keystroke and read back when the sheet reopens, and only cleared once the
+  // SAVED card actually carries it. Drafts older than a week are dropped.
+  const draftKey = card && card.id ? "lh_draft_" + boardKey + "_" + card.id : null;
+  const readDraft = () => {
+    if (!draftKey) return null;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw == null) return null;
+      const d = JSON.parse(raw);
+      if (!d || typeof d.v !== "string") return null;
+      if (Date.now() - (d.t || 0) > 7 * 86400000) { localStorage.removeItem(draftKey); return null; }
+      return d.v;
+    } catch (e) { return null; }
+  };
+  const [desc, setDescRaw] = useState(() => { const d = readDraft(); return d != null && d !== (card.desc || "") ? d : (card.desc || ""); });
+  const [descRecovered] = useState(() => { const d = readDraft(); return d != null && d !== (card.desc || ""); });
+  const setDesc = (v) => {
+    setDescRaw(v);
+    if (!draftKey) return;
+    try { if (v === (card.desc || "")) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ t: Date.now(), v })); } catch (e) {}
+  };
+  // once the server copy catches up, the draft has done its job
+  useEffect(() => { if (draftKey && (card.desc || "") === desc) { try { localStorage.removeItem(draftKey); } catch (e) {} } }, [card.desc]);
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
   // Sarah's sheet comments come back as a PROPOSAL, never as a replacement —
   // the live words stay put until they're accepted here.
@@ -2878,6 +2903,11 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
         <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        {descRecovered && (card.desc || "") !== desc && (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 4 }}>
+            Recovered what you had typed here before the last refresh — save to keep it.
+          </div>
+        )}
         {/* Her rule Sep 26 (all brand boards): NO separate hashtags box — the
             caption + the post's 2 hashtags are written together here and post
             as one. Legacy card.tags still get appended at publish if present. */}
