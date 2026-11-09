@@ -5350,6 +5350,11 @@ export default async function handler(req, res) {
             card.name = wantName;
             card.cover = views[cur].url;
             card.attachments = atts;
+            // Nov 9 2026 (Courtney, re-ordering Fold covers live): this write used to
+            // leave _touched alone, so a tab still holding the PREVIOUS render
+            // looked like an "informed edit" to mergeBoard and silently saved
+            // the old grid image back. Stamp it so the save path can tell.
+            card._touched = Date.now();
             card.desc = "Auto-updating grid preview. Swipe through the remaining grid windows (" + activeLabels + ") — a window drops off once all its posts are crossed off. White dot = Courtney's post. Numbers = post order.";
           }
           // Oct 29 2026 (her: "i changed the post 13 cover but it hasnt uploaded
@@ -5377,10 +5382,16 @@ export default async function handler(req, res) {
               // that same window forward rather than going stale or dangling
               const ci = beforeU.indexOf(cG.cover);
               if (ci >= 0 && cG.attachments[ci] && cG.attachments[ci].url) cG.cover = cG.attachments[ci].url;
-              if (JSON.stringify((cG.attachments || []).map((x) => x.url)) !== JSON.stringify(beforeU)) remapped = true;
+              if (JSON.stringify((cG.attachments || []).map((x) => x.url)) !== JSON.stringify(beforeU)) { cG._touched = Date.now(); remapped = true; }
             }
           }
-          if (changedC || remapped) await kvSet("lavalle_data", blobC);
+          if (changedC || remapped) {
+            // Bump the board rev/stamp like every other server-side write
+            // (op=board_cards_patch does). Without it an open tab never learns
+            // the grid card moved and keeps saving its stale copy over it.
+            bdC._rev = (bdC._rev || 0) + 1; bdC._stamp = Date.now();
+            await kvSet("lavalle_data", blobC);
+          }
         }
       }
     }
@@ -7886,6 +7897,20 @@ export default async function handler(req, res) {
             const sc = sMap.get(c0.id);
             if (!sc) return c0._deleted ? c0 : { ...c0, _touched: nowMs }; // new card — stamped on arrival
             if (cnorm(c0) === cnorm(sc)) return sc; // unchanged → keep stored (and its stamp)
+            // The auto Grid card's COVER + ATTACHMENTS are server-owned (Nov 9
+            // 2026 — Courtney re-ordering Fold covers watched the grid revert
+            // every time she saved). sisters_grid_card re-renders them between a
+            // tab's load and its next save, so that tab always holds the
+            // PREVIOUS render; with matching _touched the merge read it as an
+            // informed edit and accepted it. Nobody hand-edits these two fields.
+            // Everything else on the card (name, list, position) still wins.
+            if (/^grid\b/i.test(sc.name || "") && !c0._deleted) {
+              const imgOf = (x) => JSON.stringify([x.cover || "", ((x.attachments || []).map((a) => (a && a.url) || ""))]);
+              if (imgOf(c0) !== imgOf(sc)) {
+                c0 = { ...c0, cover: sc.cover, attachments: sc.attachments };
+                if (cnorm(c0) === cnorm(sc)) return sc;
+              }
+            }
             // an EMPTY card never replaces one that has content — no real edit
             // blanks caption, hashtags, cover, labels and done in one stroke;
             // that shape is the shell generator
