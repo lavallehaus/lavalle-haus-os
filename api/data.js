@@ -7904,10 +7904,14 @@ export default async function handler(req, res) {
             // PREVIOUS render; with matching _touched the merge read it as an
             // informed edit and accepted it. Nobody hand-edits these two fields.
             // Everything else on the card (name, list, position) still wins.
+            // Only the RENDERED images are protected (/cover/gw…) — a cover a
+            // person set by hand is still theirs to change.
             if (/^grid\b/i.test(sc.name || "") && !c0._deleted) {
+              const isRender = (u) => /^\/cover\/gw/.test(String(u || ""));
               const imgOf = (x) => JSON.stringify([x.cover || "", ((x.attachments || []).map((a) => (a && a.url) || ""))]);
-              if (imgOf(c0) !== imgOf(sc)) {
-                c0 = { ...c0, cover: sc.cover, attachments: sc.attachments };
+              const storedIsRender = isRender(sc.cover) || (sc.attachments || []).some((a) => isRender(a && a.url));
+              if (storedIsRender && imgOf(c0) !== imgOf(sc)) {
+                c0 = { ...c0, cover: isRender(sc.cover) ? sc.cover : c0.cover, attachments: sc.attachments };
                 if (cnorm(c0) === cnorm(sc)) return sc;
               }
             }
