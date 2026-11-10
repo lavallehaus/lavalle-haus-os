@@ -531,8 +531,9 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
         if (!r.ok) throw new Error(d.error || "couldn't read the grid");
         const t = { id: guid(), name: "Reference " + (templates.length + 1), pattern: d.pattern, logic: d.logic };
         onSave({ ...(data || {}), [gk]: { ...gridCfg, templates: [...templates, t].slice(-3), tplActive: t.id } });
-        setMsg("Reference grid read — " + (d.logic || "pattern of " + d.pattern.length + " tiles") + ". Auto-arrange now follows it.");
-      } catch (e) { setMsg("Reference grid failed: " + String(e.message || e).slice(0, 90)); }
+        const okMsgT = "Reference grid read — " + (d.logic || "pattern of " + d.pattern.length + " tiles") + ". Arrange now follows it.";
+        setMsg(okMsgT); setSisMsg({ t: "ok", m: okMsgT });
+      } catch (e) { const errT = "Reference grid failed: " + String(e.message || e).slice(0, 90); setMsg(errT); setSisMsg({ t: "err", m: errT }); }
       setTplBusy(false);
     };
     fr.readAsDataURL(file);
@@ -572,6 +573,90 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
       };
       fr.readAsDataURL(f);
     });
+  };
+
+  // ── Arrange + reference grid, inside the tile editor ─────────────────────
+  // Nov 10 2026: both lived only on the read-only grid, so switching the tile
+  // editor on for the Fold would have quietly taken them away. These versions
+  // work on sisTiles (the editor's own state) instead of the gridPlanner order,
+  // and land as an ordinary UNDOABLE edit — nothing reaches a card until Save
+  // arrangement, exactly like dragging a tile by hand.
+  const [sisArranging, setSisArranging] = useState(false);
+  const sisBoardKey = Object.keys(GRID_BOARDS).find((k) => GRID_BOARDS[k] === acct);
+  // tile index -> the card it publishes as. Grid 1 is Posts 1-21 (Schedule
+  // 1-21), grid 2 is Posts 22-42 (Schedule 22-42), on both boards.
+  const sisCardAt = (idx) => {
+    const b = sisBoardKey && boards && boards[sisBoardKey];
+    if (!b) return null;
+    const rx = sisGridNum === "2" ? /^schedule\s*22\s*[-\u2013]\s*42$/i : /^schedule\s*1\s*[-\u2013]\s*21$/i;
+    const l = (b.lists || []).find((x) => rx.test((x.name || "").trim()));
+    if (!l) return null;
+    const n = (sisGridNum === "2" ? 21 : 0) + idx + 1;
+    return b.cards.find((cd) => !cd._deleted && cd.listId === l.id && new RegExp("^post\\s*" + n + "\\b", "i").test(cd.name || "")) || null;
+  };
+  const sisArrange = async () => {
+    if (sisLocked || sisArranging || sisTiles.length < 4) return;
+    setSisArranging(true); setSisMsg(null);
+    const items = sisTiles.map((t, i) => ({ key: "t" + i, cover: t.cover, coverUrl: "" }));
+    // Posted tiles never move — the same rule the read-only grid follows.
+    const lockedSlots = new Set(sisTiles.map((t, i) => { const cd = sisCardAt(i); return cd && cd.done ? i : -1; }).filter((i) => i >= 0));
+    let placed = null, usedVision = false;
+    try {
+      // A classification already stored on the card is reused while its cover
+      // still matches the tile, so re-arranging costs nothing.
+      const have = {}; const todo = [];
+      sisTiles.forEach((t, i) => {
+        const cd = sisCardAt(i);
+        if (cd && cd.gclass && cd.cover === t.cover) have["t" + i] = cd.gclass;
+        else todo.push({ key: "t" + i, url: absUrl(hiResSource({ cover: t.cover, coverUrl: "" })) });
+      });
+      let classes = have;
+      if (todo.length) {
+        const r = await fetch("/api/data?op=grid_classify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: todo, refs: {} }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "classification failed");
+        classes = { ...have, ...(d.classes || {}) };
+        if (onSaveBoards && boards && sisBoardKey && boards[sisBoardKey] && d.classes && Object.keys(d.classes).length) {
+          const byId = {};
+          Object.entries(d.classes).forEach(([k, cls]) => { const cd = sisCardAt(Number(k.slice(1))); if (cd) byId[cd.id] = cls; });
+          if (Object.keys(byId).length) onSaveBoards({ ...boards, [sisBoardKey]: { ...boards[sisBoardKey], cards: boards[sisBoardKey].cards.map((cd) => (byId[cd.id] ? { ...cd, gclass: byId[cd.id] } : cd)) } });
+        }
+      }
+      if (Object.keys(classes).length >= Math.min(6, sisTiles.length)) {
+        const tpl = templates.find((t) => t.id === gridCfg.tplActive);
+        placed = arrangeByClasses(items, lockedSlots, classes, tpl ? tpl.pattern : null);
+        usedVision = true;
+      }
+    } catch (e) { setSisMsg({ t: "err", m: "Vision pass unavailable (" + String(e.message || e).slice(0, 60) + ") — arranging by tone instead." }); }
+    if (!placed) {
+      try {
+        const tones = await Promise.all(sisTiles.map(async (t) => { try { return tone(await loadImg(t.cover)); } catch { return { l: 0.5 + Math.random() * 0.001, h: Math.random() }; } }));
+        const freeIdx = sisTiles.map((_, i) => i).filter((i) => !lockedSlots.has(i)).sort((a, b) => tones[a].l - tones[b].l);
+        const half = Math.ceil(freeIdx.length / 2);
+        const darks = freeIdx.slice(0, half), lights = freeIdx.slice(half).reverse();
+        const inter = [];
+        for (let i = 0; i < half; i++) { if (lights[i] != null) inter.push(lights[i]); if (darks[i] != null) inter.push(darks[i]); }
+        const pos = new Array(sisTiles.length); let take = 0;
+        for (let s2 = 0; s2 < sisTiles.length; s2++) pos[s2] = lockedSlots.has(s2) ? s2 : inter[take++];
+        const freeSlots = pos.map((_, s2) => s2).filter((s2) => !lockedSlots.has(s2));
+        const near = (i) => { const out = []; const r = Math.floor(i / COLS), col = i % COLS; if (col > 0) out.push(i - 1); if (col < COLS - 1 && i + 1 < pos.length) out.push(i + 1); if (r > 0) out.push(i - COLS); if (i + COLS < pos.length) out.push(i + COLS); return out; };
+        const cost = (i) => near(i).reduce((s2, j) => { const a = tones[pos[i]], b = tones[pos[j]]; return s2 + Math.max(0, 0.35 - Math.abs(a.l - b.l)) + Math.max(0, 0.2 - hueDist(a.h, b.h)); }, 0);
+        for (let pass = 0; pass < 400 && freeSlots.length > 1; pass++) {
+          const i = freeSlots[Math.floor(Math.random() * freeSlots.length)], j = freeSlots[Math.floor(Math.random() * freeSlots.length)];
+          if (i === j) continue;
+          const before = cost(i) + cost(j);
+          [pos[i], pos[j]] = [pos[j], pos[i]];
+          if (cost(i) + cost(j) >= before) [pos[i], pos[j]] = [pos[j], pos[i]];
+        }
+        placed = pos;
+      } catch (e) { setSisMsg({ t: "err", m: "Couldn't analyze the photos (" + String(e).slice(0, 60) + ")" }); setSisArranging(false); return; }
+    }
+    pushSisHist();
+    setSisTiles(placed.map((i) => sisTiles[i]));
+    setSisPick(null);
+    const tplName = (templates.find((t) => t.id === gridCfg.tplActive) || {}).name;
+    setSisMsg({ t: "ok", m: (usedVision ? "Arranged editorially" : "Arranged for tonal balance") + (tplName ? ", following \u201c" + tplName + "\u201d" : "") + (lockedSlots.size ? " \u2014 " + lockedSlots.size + " posted tile" + (lockedSlots.size === 1 ? "" : "s") + " stayed put." : ".") + " Nothing is saved until you press Save arrangement." });
+    setSisArranging(false);
   };
 
   const moveItem = (fromVis, toVis) => {
@@ -898,6 +983,20 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
               {sisBusy ? "Saving…" : "Save arrangement"}</button>}
             {!sisLocked && <button onClick={() => { setSisPick(null); openSisEdit(); }} disabled={sisBusy}
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Revert</button>}
+            {!sisLocked && <button onClick={sisArrange} disabled={sisArranging || sisTiles.length < 4}
+              style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.taupe, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: sisArranging ? "default" : "pointer", opacity: sisArranging || sisTiles.length < 4 ? 0.4 : 1 }}>
+              {sisArranging ? "Arranging…" : "Arrange"}</button>}
+            {!sisLocked && <label style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "7px 12px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: tplBusy ? c.taupe : c.sub, cursor: "pointer" }}>
+              {tplBusy ? "Reading reference…" : "◫ Reference grid"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) addTemplate(f); e.target.value = ""; }} />
+            </label>}
+            {!sisLocked && templates.map((t) => (
+              <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <button onClick={() => setTplActive(t.id)} title={t.logic || ""}
+                  style={{ border: `1px solid ${gridCfg.tplActive === t.id ? c.taupe : c.line}`, background: gridCfg.tplActive === t.id ? c.taupe : "transparent", color: gridCfg.tplActive === t.id ? "#fff" : c.sub, borderRadius: 1, padding: "7px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer" }}>{t.name}</button>
+                <button onClick={() => removeTemplate(t.id)} style={{ border: "none", background: "transparent", color: c.line, cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
+              </span>
+            ))}
             {sisPick != null && (
               <button onClick={() => setSisReframe({ idx: sisPick, z: { s: 1.3, x: 0, y: 0 } })}
                 style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>Reframe selected</button>

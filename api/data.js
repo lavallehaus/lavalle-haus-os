@@ -4962,11 +4962,14 @@ export default async function handler(req, res) {
       if (!tile) continue;
       if (normCV(tile.cover) === normCV(c.cover)) continue;
       // newer side wins: the card's own edit time vs the grid's last save
-      const cardWins = (c._touched || 0) > gr.at;
-      plan.push({ n, dir: cardWins ? "card\u2192tile" : "tile\u2192card", cardAgoMin: c._touched ? Math.round((Date.now() - c._touched) / 60000) : null, gridAgoMin: gr.at ? Math.round((Date.now() - gr.at) / 60000) : null });
+      // Fall back to the grid-wide stamp only for tiles written before per-tile
+      // times existed.
+      const tileAt = tile.at || gr.at;
+      const cardWins = (c._touched || 0) > tileAt;
+      plan.push({ n, dir: cardWins ? "card\u2192tile" : "tile\u2192card", cardAgoMin: c._touched ? Math.round((Date.now() - c._touched) / 60000) : null, gridAgoMin: tileAt ? Math.round((Date.now() - tileAt) / 60000) : null });
       if (dryCV) continue;
       let winCover;
-      if (cardWins) { winCover = normCV(c.cover); tile.cover = winCover; gr.dirty = true; }
+      if (cardWins) { winCover = normCV(c.cover); tile.cover = winCover; tile.at = Date.now(); gr.dirty = true; }
       else { winCover = normCV(tile.cover); patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = winCover; } }); }
       synced.push(n + (cardWins ? "\u2192grid" : "\u2192card"));
       // Oct 20 2026: the "replace the Drive original in place" upload that used
@@ -5008,7 +5011,7 @@ export default async function handler(req, res) {
           patchesCV.push({ id: c.id, apply: (fc) => { fc.cover = cvR; } });
           const gr = propR ? grids[1] : (n <= 21 ? grids[0] : grids[1]);
           const tile = gr.g && gr.g.tiles && gr.g.tiles[propR ? n - 1 : n - gr.base];
-          if (tile) { tile.cover = cvR; gr.dirty = true; }
+          if (tile) { tile.cover = cvR; tile.at = Date.now(); gr.dirty = true; }
           md5s[fid] = { md5, mid: midR }; md5Dirty = true; retouched.push(n);
         } catch (eR) { errsCV.push(n + ":" + String(eR).slice(0, 30)); }
       }
@@ -5460,8 +5463,16 @@ export default async function handler(req, res) {
     if (rec.locked) { res.status(409).json({ error: "This grid is locked — unlock it before moving tiles." }); return; }
     const courtMT = new Set(); // fold: Courtney-tagged post numbers, dotted on the montage
     const prevTilesW = (rec.tiles || []).map((t) => ({ cover: t.cover, tag: t.tag })); // what the cards currently follow
+    // Per-tile change time. sisters_card_cover_sync used to settle a card/tile
+    // disagreement with "newer side wins" against rec.at — a GRID-WIDE stamp —
+    // so ANY grid save made EVERY tile look newer than an earlier card-side
+    // cover edit, and that edit was silently overwritten by the old photo.
+    // A tile keeps its timestamp as long as it keeps its photo; a genuinely new
+    // photo gets a fresh one.
+    const prevAtByCover = {};
+    (rec.tiles || []).forEach((t) => { if (t && t.cover) prevAtByCover[t.cover] = t.at || rec.at || 0; });
     if (Array.isArray(bT.tiles) && bT.tiles.length) {
-      rec.tiles = bT.tiles.map((t) => ({ cover: String(t.cover || "").slice(0, 300), tag: t.tag === "C" ? "C" : "K" })).slice(0, 40);
+      rec.tiles = bT.tiles.map((t) => { const cv0 = String(t.cover || "").slice(0, 300); return { cover: cv0, tag: t.tag === "C" ? "C" : "K", at: prevAtByCover[cv0] || Date.now() }; }).slice(0, 40);
     } else if (Array.isArray(bT.order) && bT.order.length === rec.tiles.length) {
       const seen = new Set(bT.order.map(Number));
       if (seen.size === rec.tiles.length) rec.tiles = bT.order.map((i) => rec.tiles[Number(i)]);
@@ -5496,6 +5507,7 @@ export default async function handler(req, res) {
         rec.tiles.forEach((t, q) => {
           if (t.tag !== "K") return;
           const card = cardAtF(offsetF + q + 1); if (!card) return;
+          const before0 = [card.cover, card.coverUrl, card.desc, card.tags, card.approved, card.done];
           const s = srcF[q] >= 0 ? snapF[srcF[q]] : null;
           if (s) {
             card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels;
@@ -5512,8 +5524,7 @@ export default async function handler(req, res) {
           // weren't changing". Sisters has always cleared it here; this branch
           // never did. Name and date are left untouched on purpose.
           if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
-          card._touched = Date.now();
-          wrote++;
+          if (JSON.stringify(before0) !== JSON.stringify([card.cover, card.coverUrl, card.desc, card.tags, card.approved, card.done])) { card._touched = Date.now(); wrote++; }
         });
         // Bump the board rev/stamp like every other server-side write, or an open
         // tab never learns these cards moved and saves its stale copy back.
