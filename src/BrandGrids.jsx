@@ -166,21 +166,35 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   // URL on the tile — Save arrangement then writes it onto the card itself.
   const [sisReframe, setSisReframe] = useState(null); // { idx, z:{s,x,y} }
   const sisPanRef = useRef(null);
-  const sisFocus = acct === "lavallesisters" && !!sisSel;
-  const sisGridNum = (() => { const g = sisGrids.archive.find((a) => a.fileId === sisSel); return g && g.name.startsWith("2") ? "2" : "1"; })();
+  // Nov 10 2026 (hers, after Courtney: "the Fold board is not working in the
+  // same way as the Sister board"): the Fold now gets the SAME tile editor —
+  // photo pool, drag a photo onto a tile, reframe, undo, Save arrangement. The
+  // server already held the Fold's 42 tiles and already had a writeback branch
+  // for them; this client gate was the only thing keeping the board on the
+  // read-only grid, where uploads could only ever append new cards.
+  const tileBoardBG = acct === "thefoldlabel" ? "the-fold" : null;
+  const tileQS = tileBoardBG ? "&board=" + tileBoardBG : "";
+  const tileBody = tileBoardBG ? { board: tileBoardBG } : {};
+  const sisFocus = (acct === "lavallesisters" && !!sisSel) || (acct === "thefoldlabel" && sisEdit);
+  // The Fold picks its grid with the 1-21 / 22-42 buttons; Sisters picks it from
+  // the Drive archive entry.
+  const sisGridNum = acct === "thefoldlabel" ? foldSel : (() => { const g = sisGrids.archive.find((a) => a.fileId === sisSel); return g && g.name.startsWith("2") ? "2" : "1"; })();
+  // Drafts are per board AND per grid — a shared key let the Fold's unsaved
+  // arrangement surface on Sisters and vice versa.
+  const draftKeyBG = "lh_sisdraft_" + acct + "_" + sisGridNum;
   const openSisEdit = async () => {
     setSisBusy(true);
     try {
-      const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum)).json();
+      const d = await (await fetch("/api/data?op=sisters_grid_tiles&grid=" + sisGridNum + tileQS)).json();
       if (d && d.tiles && d.tiles.length) {
         setSisTiles(d.tiles); setSisTray(d.tray || []); setSisEdit(true); setSisPick(null); setSisLocked(!!d.locked); setSisHist([]); setSisFuture([]); setSisMsg(null);
         // a reload (crash, stale-board auto-refresh) mid-edit parks the work in
         // localStorage — offer it back instead of silently showing the server copy
         let draft = null;
         try {
-          const dr = JSON.parse(localStorage.getItem("lh_sisdraft_" + sisGridNum) || "null");
+          const dr = JSON.parse(localStorage.getItem(draftKeyBG) || "null");
           if (dr && Array.isArray(dr.tiles) && dr.tiles.length && Date.now() - (dr.at || 0) < 7 * 86400000 && JSON.stringify(dr.tiles) !== JSON.stringify(d.tiles)) draft = dr;
-          else if (dr) localStorage.removeItem("lh_sisdraft_" + sisGridNum);
+          else if (dr) localStorage.removeItem(draftKeyBG);
         } catch {}
         setSisDraft(draft);
       }
@@ -190,24 +204,24 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
   // The grid IS the editable tiles — selecting a grid loads it straight into
   // the editor (her rule: no flat montage image to stare at, no extra mode).
   useEffect(() => {
-    if (acct === "lavallesisters" && sisSel) openSisEdit();
+    if ((acct === "lavallesisters" && sisSel) || acct === "thefoldlabel") openSisEdit();
     else setSisEdit(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [acct, sisSel]);
+  }, [acct, sisSel, foldSel]);
   useEffect(() => { sisTilesRef.current = sisTiles; }, [sisTiles]);
   // Park every local change as a device-side draft (cleared on successful save)
   // so a reload can never eat unsaved grid work. Paused while a found draft is
   // still waiting on Restore/Discard, so it can't overwrite itself.
   useEffect(() => {
     if (!sisEdit || !sisTiles.length || sisDraft) return;
-    try { localStorage.setItem("lh_sisdraft_" + sisGridNum, JSON.stringify({ at: Date.now(), tiles: sisTiles, tray: sisTray })); } catch {}
+    try { localStorage.setItem(draftKeyBG, JSON.stringify({ at: Date.now(), tiles: sisTiles, tray: sisTray })); } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sisTiles, sisTray, sisEdit, sisDraft]);
   const pushSisHist = () => { setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture([]); };
   const sisUndo = () => { if (!sisHist.length) return; const last = sisHist[sisHist.length - 1]; setSisFuture((f) => [sisTilesRef.current, ...f].slice(0, 30)); setSisHist(sisHist.slice(0, -1)); setSisTiles(last); setSisPick(null); };
   const sisRedo = () => { if (!sisFuture.length) return; const nxt = sisFuture[0]; setSisHist((h) => [...h.slice(-29), sisTilesRef.current]); setSisFuture(sisFuture.slice(1)); setSisTiles(nxt); setSisPick(null); };
   const toggleSisLock = async () => {
-    try { const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, locked: !sisLocked }) })).json(); if (d && d.ok) { setSisLocked(!!d.locked); setSisPick(null); } } catch {}
+    try { const d = await (await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...tileBody, grid: sisGridNum, locked: !sisLocked }) })).json(); if (d && d.ok) { setSisLocked(!!d.locked); setSisPick(null); } } catch {}
   };
   const sisDragRef = useRef(false);
   // Plann-style drag: PRESS AND HOLD (~220ms, finger still) lifts the tile into
@@ -323,15 +337,17 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
     // reverted my grid" once the page reloads (Courtney's Post 15, Sep 6).
     setSisBusy(true); setSisMsg(null);
     try {
-      const r = await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grid: sisGridNum, tiles: sisTiles, tray: sisTray }) });
+      const r = await fetch("/api/data?op=sisters_grid_tiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...tileBody, grid: sisGridNum, tiles: sisTiles, tray: sisTray }) });
       let d = null; try { d = await r.json(); } catch {}
       if (r.ok && d && d.ok) {
-        try { localStorage.removeItem("lh_sisdraft_" + sisGridNum); } catch {}
+        try { localStorage.removeItem(draftKeyBG); } catch {}
         setSisDraft(null);
         setSisMsg({ t: "ok", m: "Saved" });
         setTimeout(() => setSisMsg((m) => (m && m.t === "ok" ? null : m)), 4000);
-        const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
-        if (l && l.archive) { setSisGrids({ pregrid: null, archive: l.archive }); const hit = l.archive.find((a) => a.name.startsWith(sisGridNum)); if (hit) setSisSel(hit.fileId); }
+        if (acct === "lavallesisters") {
+          const l = await (await fetch("/api/data?op=sisters_grid_list")).json();
+          if (l && l.archive) { setSisGrids({ pregrid: null, archive: l.archive }); const hit = l.archive.find((a) => a.name.startsWith(sisGridNum)); if (hit) setSisSel(hit.fileId); }
+        }
       } else {
         setSisMsg({ t: "err", m: "NOT SAVED — " + ((d && d.error) || "the server said " + r.status) + " Your arrangement is still on screen; press Save arrangement again once it's resolved." });
       }
@@ -840,11 +856,14 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
               style={{ border: `1px solid ${c.line}`, background: foldSel === k ? c.ink : "transparent", color: foldSel === k ? "#FFFFFF" : c.sub, borderRadius: 1, padding: "7px 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{lb}</button>
           ))}
           <span style={{ flex: 1 }} />
+          {/* Zoom drives the read-only grid only; the tile editor sizes itself. */}
+          {!sisFocus && <>
           <span style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub }}>Zoom</span>
           {[["\u2212", -156], ["+", 156]].map(([lb, dz]) => (
             <button key={lb} onClick={() => setZoomW((z) => Math.max(312, Math.min(936, z + dz)))}
               style={{ border: `1px solid ${c.line}`, background: "transparent", color: c.ink, borderRadius: 1, width: 30, height: 30, fontFamily: sans, fontSize: 13, cursor: "pointer" }}>{lb}</button>
           ))}
+          </>}
         </div>
       )}
       {acct === "lavallesisters" && sisGrids.archive.length > 0 && (
@@ -856,7 +875,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           </select>
         </div>
       )}
-      {acct === "lavallesisters" && sisSel && sisEdit && (
+      {sisFocus && sisEdit && (
         <div style={{ margin: "0 auto 40px", maxWidth: 468, padding: "0 24px 48px", boxSizing: "border-box" }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
             {sisLocked && (
@@ -985,7 +1004,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
             </div>
             )}
           </div>
-          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "2px 0 6px" }}>The grid — 21 tiles, Post 1 bottom-right</div>
+          <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, margin: "2px 0 6px" }}>{"The grid — " + sisTiles.length + " tiles, Post " + (sisGridNum === "2" ? 22 : 1) + " bottom-right"}</div>
           {(() => {
             const nS = sisTiles.length, rowsS = Math.ceil(nS / 3);
             const visual = [];
@@ -1017,7 +1036,7 @@ export default function BrandGrids({ boards, data, onSave, onSaveBoards, allowed
           })()}
         </div>
       )}
-      {acct === "lavallesisters" && sisSel && !sisEdit && sisBusy && (
+      {!sisEdit && sisBusy && (acct === "lavallesisters" ? !!sisSel : acct === "thefoldlabel") && (
         <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 11, color: c.sub, marginBottom: 10 }}>Loading the grid…</div>
       )}
 

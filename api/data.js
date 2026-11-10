@@ -5307,6 +5307,15 @@ export default async function handler(req, res) {
     const winDone = (a, b) => { let any = false; for (let n0 = a; n0 <= b; n0++) { if (presentP.has(n0)) { any = true; if (!doneP.has(n0)) return false; } } return any; };
     const winHasCovers = (a0, b0) => all.slice(a0 - 1, b0).some((t) => t && t.cover);
     let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]) && winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
+    // Her rule "a finished window leaves the card" governs which windows are
+    // SLIDES on the auto card — it must not stop those windows being RENDERED.
+    // It used to do both, and that froze the month card: once posts 1-9 were all
+    // crossed off, the "grid — posts 1–9" image on Grid and Contributions could
+    // never be rebuilt, so a cover changed on an already-posted card never showed
+    // (hers, Nov 10 2026: "the card courtney had changed ... never updated the
+    // grid and contribution card on that column ... this seems to be a persistent
+    // issue"). Render every window that has covers; filter the slides separately.
+    const renderW = [0, 1, 2, 3].filter((wi) => winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
     if (!SBOARD.hasCourtney) { for (let n0 = 1; n0 <= 42; n0++) { if (presentP.has(n0) && !doneP.has(n0)) { nextP = n0; break; } } }
     let cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
     if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
@@ -5316,7 +5325,7 @@ export default async function handler(req, res) {
     // to leave the card one slide for up to an hour — her complaint, Oct 5 2026),
     // and self-kick for whatever is left so the card converges in ~a minute.
     const t0W = Date.now();
-    for (const wi of [cur, ...activeW.filter((x) => x !== cur)]) {
+    for (const wi of [cur, ...renderW.filter((x) => x !== cur)]) {
       if (cacheW.views[wi]) continue;
       if (rendered != null && Date.now() - t0W > 36000) break;
       const [a, b] = WINDOWS[wi];
@@ -5324,11 +5333,11 @@ export default async function handler(req, res) {
       cacheW.coverHash = coverHash; cacheW.active = activeW;
       await kvSet("sisters_grid_card_views" + SBOARD.kvSuffix, cacheW);
     }
-    const missingW = activeW.filter((wi) => !cacheW.views[wi]);
+    const missingW = renderW.filter((wi) => !cacheW.views[wi]);
     if (missingW.length && process.env.PUBLISH_KEY) {
       try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.qs || ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
     }
-    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + dispOf(a) + "–" + dispOf(b) + (rng ? " · " + rng : ""), url: activeW.includes(wi) ? (cacheW.views[wi] || null) : null }; });
+    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + dispOf(a) + "–" + dispOf(b) + (rng ? " · " + rng : ""), url: cacheW.views[wi] || null, slide: activeW.includes(wi) }; });
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.
     if (views[cur].url) {
@@ -5344,7 +5353,7 @@ export default async function handler(req, res) {
           const activeLabels = activeW.map((wi) => WINDOWS[wi][0] + "–" + WINDOWS[wi][1]).join(", ");
           // a proposal month's windows stay OFF this card (Oct 21 2026 — they
           // live on that month's own Grid and Contributions card until promotion)
-          const atts = views.filter((v, wi) => v.url && !(() => { const [a0, b0] = WINDOWS[wi]; for (let s0 = a0; s0 <= b0; s0++) if (shiftP.has(s0)) return true; return false; })()).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
+          const atts = views.filter((v, wi) => v.url && v.slide && !(() => { const [a0, b0] = WINDOWS[wi]; for (let s0 = a0; s0 <= b0; s0++) if (shiftP.has(s0)) return true; return false; })()).map((v) => ({ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }));
           const changedC = card.name !== wantName || card.cover !== views[cur].url || JSON.stringify((card.attachments || []).map((x) => x.url)) !== JSON.stringify(atts.map((x) => x.url));
           if (changedC) {
             card.name = wantName;
@@ -5469,16 +5478,46 @@ export default async function handler(req, res) {
         for (const l0 of bdW.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim()))) for (const c0 of bdW.cards.filter((c) => !c._deleted && c.listId === l0.id)) { const n0 = Number((/^post\s*(\d+)/i.exec(c0.name || "") || [])[1] || 0); if (n0 && (c0.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney")) courtMT.add(n0); }
         // Fold (no Courtney): grid 1 = Posts 1..21 (Schedule 1-21); grid 2 = Posts 22..42 (Schedule 22-42).
         const schedW = bdW.lists.find((l) => (g === "2" ? /^schedule\s*22\s*[-–]\s*42$/i : /^schedule\s*1\s*[-–]\s*21$/i).test((l.name || "").trim()));
-        let kN = g === "1" ? 1 : 22, wrote = 0;
-        for (const t of rec.tiles) {
-          if (t.tag !== "K") { kN++; continue; }
-          if (schedW) {
-            const card = bdW.cards.find((c) => c.listId === schedW.id && new RegExp("^post\\s*" + kN + "\\b", "i").test(c.name || ""));
-            if (card && card.cover !== t.cover) { card.cover = t.cover; card._touched = Date.now(); wrote++; }
+        const offsetF = g === "1" ? 0 : 21;
+        const cardAtF = (n) => schedW && bdW.cards.find((c) => !c._deleted && c.listId === schedW.id && new RegExp("^post\\s*" + n + "\\b", "i").test(c.name || ""));
+        // Her call (Nov 10 2026), after Courtney: "the Fold board is not working in
+        // the same way as the Sister board". On the Fold the CONTENT now follows
+        // the photo exactly as it does on Sisters — caption, hashtags, approval,
+        // the linked asset and the done tick travel with the tile you moved — but
+        // the DATES DELIBERATELY DO NOT. Every Fold post keeps the day its own card
+        // carries, so rearranging the grid can never silently re-schedule something
+        // already dated or already posted. (Sisters re-dates from the slot; that is
+        // the one place the two boards are meant to differ.)
+        const usedF = new Set(); const srcF = new Array(rec.tiles.length).fill(-1);
+        rec.tiles.forEach((t, q) => { const p = prevTilesW.findIndex((pt, i) => !usedF.has(i) && pt.cover === t.cover); if (p >= 0) { usedF.add(p); srcF[q] = p; } });
+        rec.tiles.forEach((t, q) => { if (srcF[q] >= 0) return; if (q < prevTilesW.length && !usedF.has(q)) { usedF.add(q); srcF[q] = q; return; } const p = prevTilesW.findIndex((pt, i) => !usedF.has(i)); if (p >= 0) { usedF.add(p); srcF[q] = p; } });
+        const snapF = prevTilesW.map((pt, p) => { const c = cardAtF(offsetF + p + 1); return c ? { desc: c.desc || "", tags: c.tags || "", approved: !!c.approved, labels: c.labels || [], attachments: c.attachments || [], links: c.links || [], done: !!c.done, coverUrl: c.coverUrl || "", pub: c.pub, assetUrl: c.assetUrl, carouselUrl: c.carouselUrl, tiktokCover: c.tiktokCover } : null; });
+        let wrote = 0;
+        rec.tiles.forEach((t, q) => {
+          if (t.tag !== "K") return;
+          const card = cardAtF(offsetF + q + 1); if (!card) return;
+          const s = srcF[q] >= 0 ? snapF[srcF[q]] : null;
+          if (s) {
+            card.desc = s.desc; card.tags = s.tags; card.approved = s.approved; card.labels = s.labels;
+            card.attachments = s.attachments; card.links = s.links; card.done = s.done; card.coverUrl = s.coverUrl;
+            if (s.pub) card.pub = s.pub; else delete card.pub;
+            if (s.assetUrl) card.assetUrl = s.assetUrl; else delete card.assetUrl;
+            if (s.carouselUrl) card.carouselUrl = s.carouselUrl; else delete card.carouselUrl;
+            if (s.tiktokCover) card.tiktokCover = s.tiktokCover; else delete card.tiktokCover;
           }
-          kN++;
-        }
-        if (wrote) await kvSet("lavalle_data", blobW);
+          // A Drive coverUrl OUTRANKS card.cover when the grid renders (hiResSource
+          // prefers a Drive id from either field), so writing a new cover without
+          // clearing it left the OLD photo on screen — Courtney, Nov 9-10 2026:
+          // "I was rearranging the grid and noticed the order/covers of posts
+          // weren't changing". Sisters has always cleared it here; this branch
+          // never did. Name and date are left untouched on purpose.
+          if (card.cover !== t.cover) { card.cover = t.cover; card.coverUrl = ""; }
+          card._touched = Date.now();
+          wrote++;
+        });
+        // Bump the board rev/stamp like every other server-side write, or an open
+        // tab never learns these cards moved and saves its stale copy back.
+        if (wrote) { bdW._rev = (bdW._rev || 0) + 1; bdW._stamp = Date.now(); await kvSet("lavalle_data", blobW); }
       } else if (bdW) {
         // Sisters — ONE combined numbering: tile i of (grid 1 ⧺ grid 2) IS Post i+1
         // (grid 1 = Posts 1–21 in Schedule 1-21, grid 2 = Posts 22–42 in Schedule
@@ -5590,7 +5629,9 @@ export default async function handler(req, res) {
             if (cc) { if (cc.cover !== card.cover) { cc.cover = card.cover; cc._touched = Date.now(); wrote++; } const d2 = "From Trello: COURTNEY CONTENT IDEAS · scheduled as Post " + n + ". Caption + hashtags: Courtney."; if (cc.desc !== d2) { cc.desc = d2; cc._touched = Date.now(); wrote++; } }
           });
         }
-        if (wrote) await kvSet("lavalle_data", blobW);
+        // Same rev/stamp bump as every other server-side card write, so an open
+        // tab learns these cards moved instead of saving its stale copy back.
+        if (wrote) { bdW._rev = (bdW._rev || 0) + 1; bdW._stamp = Date.now(); await kvSet("lavalle_data", blobW); }
       }
     } catch (eW) {}
     // render montage: slot 1 bottom-right, chronological

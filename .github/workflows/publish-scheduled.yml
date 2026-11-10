@@ -49,13 +49,20 @@ jobs:
           done
       # The Fold: same automation suite, board-generic via ?board=the-fold
       # (grid card windows, automations card, links card, strategy PDF, monthly theme)
+      # Nov 10 2026 (her pick, after the Sisters/Fold feature audit): the Fold also
+      # gets the four automations that were running on Sisters only and are already
+      # SBOARD-parameterised — editorial cover pick, point-of-the-post card titles,
+      # platform-sized cover files in Drive, and the IG/TT format chips. Cycle
+      # rotation (sisters_cycle_check) is deliberately NOT here: it is hardcoded to
+      # the Sisters one-post-a-day walk and would re-date Fold posts, which her
+      # Nov 10 rule forbids.
       - name: Fold grid card refresh
         run: |
           curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=sisters_grid_card&board=the-fold" \
             -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 120 -o /dev/null || true
       - name: Fold board cards
         run: |
-          for op in automations_card sisters_links_card sisters_audit_card sisters_hashtags_sync fold_strategy_auto sisters_strategy_pdf; do
+          for op in automations_card sisters_links_card sisters_audit_card sisters_hashtags_sync sisters_cover_pick sisters_card_concepts sisters_cover_sizes sisters_formats fold_strategy_auto sisters_strategy_pdf; do
             curl -fsS -X POST "https://lavalle-haus-os.vercel.app/api/data?op=$op&board=the-fold" \
               -H "x-publish-key: ${{ secrets.PUBLISH_KEY }}" --max-time 150 -o /dev/null || true
           done
