@@ -4,6 +4,7 @@ import ContentBrain from "./ContentBrain.jsx";
 import PRHub from "./PRHub.jsx";
 import FoldLedger from "./FoldLedger.jsx";
 import { UGC_DM_SCRIPT, UGC_EMAIL_SUBJECT, UGC_EMAIL_BODY, UGC_BRIEF_PDF, UGC_EMAIL_FROM, composeOutreachEmail } from "./ugcOutreach.js";
+import { useVoice, ttsSupported, srSupported, cardSpeech, matchList, isStopCommand, isNextCommand } from "./voice.js";
 
 // LAVALLE HAUS OS — Boards (Content → Boards)
 // The Trello workspaces, brought home. Three businesses, each with its boards;
@@ -21,6 +22,23 @@ export const WORKSPACES = [
   { id: "the-fold", label: "The Fold", tagline: "The label", boards: ["the-fold", "the-fold-operations"] },
   { id: "pr-ugc", label: "PR + UGC", tagline: "Creator seeding · press · UGC reference edits", boards: ["pr-refillery-haus", "pr-the-fold"] },
 ];
+
+// Read-aloud / voice-command glyphs. Drawn rather than set as 🔊 / 🎤 so they
+// sit in the same quiet family as the done-circles and member chips instead of
+// dropping a colour emoji into the board.
+const SpeakerIcon = ({ size = 11, color = c.taupe }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <path d="M2.8 6.1h2.3L8.4 3.1v9.8L5.1 9.9H2.8z" fill={color} />
+    <path d="M10.7 5.7a3.3 3.3 0 0 1 0 4.6" stroke={color} strokeWidth="1.15" strokeLinecap="round" />
+    <path d="M12.7 3.7a6.1 6.1 0 0 1 0 8.6" stroke={color} strokeWidth="1.15" strokeLinecap="round" />
+  </svg>
+);
+const MicIcon = ({ size = 11, color = c.taupe }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <rect x="5.9" y="1.9" width="4.2" height="7.4" rx="2.1" fill={color} />
+    <path d="M3.6 7.6a4.4 4.4 0 0 0 8.8 0M8 12v2.1M6.1 14.1h3.8" stroke={color} strokeWidth="1.15" strokeLinecap="round" />
+  </svg>
+);
 
 const uid = () => "bc" + Math.random().toString(36).slice(2, 9);
 // Each board's brand → its locked Instagram handle (Sisters → @lavallesisters,
@@ -651,6 +669,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // shows its sections as clickable files; opening one focuses that column.
   const [opsFocus, setOpsFocus] = useState(() => { try { return localStorage.getItem("lh_ops_focus") || null; } catch { return null; } });
   const [statsFor, setStatsFor] = useState(null); // product name whose hover stats panel is open
+  // Read a board aloud / take a spoken command (the TikTok Shop findings are
+  // meant to be listened to, not read on a phone). See src/voice.js.
+  const voice = useVoice();
+  const [voiceMenu, setVoiceMenu] = useState(false);
+  const [heard, setHeard] = useState("");         // last spoken command, shown back so a misheard one is obvious
+  // Navigating away stops the voice — nothing should keep talking over the app.
+  useEffect(() => { voice.stop(); voice.stopListening(); setVoiceMenu(false); setHeard(""); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { if (opsFocus) localStorage.setItem("lh_ops_focus", opsFocus); else localStorage.removeItem("lh_ops_focus"); } catch {} }, [opsFocus]);
   const [editCard, setEditCard] = useState(null);
   // Comment/activity attribution follows the login; localStorage only backs up
@@ -1469,6 +1494,70 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               {!["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runLinkAssets(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Match every Post N card to its numbered reel/carousel in Drive">{linking || "Link assets"}</button>}
               {viewer.owner && !["the-fold", "lavalle-sisters"].includes(open) && <button onClick={() => runSyncCovers(open)} disabled={!!linking} style={{ ...ghost, opacity: linking ? 0.5 : 1 }} title="Pull numbered covers from this brand's Cover Photos ▸ Month folder onto each Post N card">{linking || "⟳ Sync covers"}</button>}
               {open !== "the-fold" && <button onClick={() => setLookbook(true)} style={ghost} title="Swipe through this board's looks by launch month">◫ Lookbook</button>}
+              {/* Read the board out loud, and take a spoken command. Hidden
+                  entirely on a browser with no speech support rather than
+                  shipped as a control that does nothing. */}
+              {ttsSupported() && (() => {
+                const spoken = (list) => (board.cards || []).filter((cd) => cd.listId === list.id && !cd._deleted && !/^—[\s\S]*—$/.test((cd.name || "").trim()));
+                const sumList = (board.lists || []).find((l) => /^summary$/i.test((l.name || "").trim())) || (board.lists || [])[0];
+                const sumCards = sumList ? spoken(sumList) : [];
+                const hasSummary = /^summary$/i.test(((sumList || {}).name || "").trim()) && sumCards.length > 0;
+                const readList = (l) => { const cs = spoken(l); if (cs.length) voice.speak([l.name + "."].concat(cs.map(cardSpeech)), l.name); };
+                const readBoard = () => voice.speak((board.lists || []).reduce((acc, l) => { const cs = spoken(l); return cs.length ? acc.concat([l.name + "."], cs.map(cardSpeech)) : acc; }, []), board.name);
+                const onCommand = (t) => {
+                  setHeard(t);
+                  if (isStopCommand(t)) { voice.stop(); return; }
+                  if (isNextCommand(t)) { voice.next(); return; }
+                  const l = matchList(t, board.lists || []);
+                  if (l) { readList(l); return; }
+                  if (/\b(everything|whole|all|board)\b/.test(t)) { readBoard(); return; }
+                  if (hasSummary) voice.speak(sumCards.map(cardSpeech), sumList.name);
+                };
+                return (
+                  <>
+                    {/* Nothing speaks until this is pressed, and ▶/⏸ picks up
+                        where it left off rather than starting over. */}
+                    <button onClick={() => (voice.speaking ? voice.pause() : voice.paused ? voice.play() : hasSummary ? voice.speak(sumCards.map(cardSpeech), sumList.name) : readBoard())}
+                      style={{ ...ghost, display: "inline-flex", alignItems: "center", gap: 7, color: voice.speaking || voice.paused ? c.ink : c.sub }}
+                      title={voice.speaking ? "Pause" : voice.paused ? "Carry on from where it stopped" : hasSummary ? "Read the Summary card aloud" : "Read this board aloud, column by column"}>
+                      {voice.speaking ? <>❚❚ Pause</> : voice.paused ? <>▶ Play</> : <><SpeakerIcon /> {hasSummary ? "Read me the summary" : "Read this board"}</>}
+                    </button>
+                    {(voice.speaking || voice.paused) && (
+                      <>
+                        <button onClick={voice.next} style={ghost} title="Skip to the next sentence">Next ▸</button>
+                        <button onClick={voice.stop} style={{ ...ghost, color: c.red, borderColor: "#E2CFCB" }} title="Stop and go back to the start">■ Stop</button>
+                      </>
+                    )}
+                    {srSupported() && (
+                      <button onClick={() => (voice.listening ? voice.stopListening() : voice.listen(onCommand))}
+                        style={{ ...ghost, display: "inline-flex", alignItems: "center", gap: 7, borderColor: voice.listening ? c.taupe : c.line, color: voice.listening ? c.ink : c.sub }}
+                        title={'Say "read summary", "the standard", "how do we compare", "the backlog", "next" or "stop"'}>
+                        <MicIcon color={voice.listening ? c.ink : c.taupe} /> {voice.listening ? "Listening…" : "Ask"}
+                      </button>
+                    )}
+                    <button onClick={() => setVoiceMenu(!voiceMenu)} style={ghost} title="Choose the voice and the speed">Voice ▾</button>
+                    {voiceMenu && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 65, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(26,26,26,0.14)", padding: 14, width: 260, textAlign: "left" }}>
+                        <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 8 }}>Reading voice</div>
+                        <select value={voice.voiceURI} onChange={(e) => voice.chooseVoice(e.target.value)}
+                          style={{ width: "100%", border: `1px solid ${c.line}`, borderRadius: 6, padding: "7px 8px", fontFamily: sans, fontSize: 11.5, color: c.ink, background: "#FFFFFF", marginBottom: 12 }}>
+                          <option value="">This device's default</option>
+                          {voice.voices.filter((v) => /^en/i.test(v.lang)).map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                          {voice.voices.some((v) => !/^en/i.test(v.lang)) && <optgroup label="Other languages">
+                            {voice.voices.filter((v) => !/^en/i.test(v.lang)).map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name} · {v.lang}</option>)}
+                          </optgroup>}
+                        </select>
+                        {!voice.voices.length && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 12 }}>Still loading this device's voices.</div>}
+                        <div style={{ fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, marginBottom: 6 }}>Speed · {voice.rate.toFixed(2)}×</div>
+                        <input type="range" min="0.6" max="1.6" step="0.05" value={voice.rate} onChange={(e) => voice.chooseRate(e.target.value)} style={{ width: "100%", marginBottom: 12, accentColor: c.taupe }} />
+                        <button onClick={() => voice.speak("This is how the board will sound.", "Test")}
+                          style={{ width: "100%", background: "transparent", border: `1px solid ${c.line}`, borderRadius: 6, padding: "7px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer" }}>Hear it</button>
+                        {srSupported() && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 10, lineHeight: 1.5 }}>Ask for: read summary · the standard · how do we compare · the backlog · on camera · next · stop</div>}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               <button onClick={() => setBgMenu(!bgMenu)} style={ghost} title="Change the board background">▦ Background</button>
               <button onClick={() => {
                 const existing = board.lists.find((l) => /^planned\s*1\s*[-–]\s*21$/i.test((l.name || "").trim()));
@@ -1518,6 +1607,20 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               )}
             </div>
           </div>
+          {(voice.speaking || voice.paused || heard) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 14px 10px", padding: "7px 12px", background: "rgba(255,255,255,0.94)", border: `1px solid ${c.line}`, borderRadius: 8, position: "relative", zIndex: 26, maxWidth: 560 }}>
+              {voice.speaking && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: c.taupe, animation: "lhpulse 1.1s ease-in-out infinite", flexShrink: 0 }} />}
+              <span style={{ flex: 1, minWidth: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {voice.speaking ? "Reading " + (voice.nowReading || "this board") : voice.paused ? "Paused · " + (voice.nowReading || "this board") : "Heard “" + heard + "”"}
+              </span>
+              {voice.speaking || voice.paused
+                ? <>
+                    <button onClick={() => (voice.speaking ? voice.pause() : voice.play())} style={{ ...ghost, padding: "4px 10px", flexShrink: 0 }}>{voice.speaking ? "❚❚ Pause" : "▶ Play"}</button>
+                    <button onClick={voice.stop} style={{ ...ghost, padding: "4px 10px", color: c.red, borderColor: "#E2CFCB", flexShrink: 0 }}>■ Stop</button>
+                  </>
+                : <button onClick={() => setHeard("")} style={{ ...ghost, padding: "4px 10px", flexShrink: 0 }}>Clear</button>}
+            </div>
+          )}
           {folderMode && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 14px 10px", position: "relative", zIndex: 25 }}>
               {opsFocus ? (
@@ -1765,6 +1868,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               : <div style={{ flex: 1, fontFamily: sans, fontSize: 12.5, lineHeight: 1.45, color: c.ink, textDecoration: (card.done || (card.pub && card.pub.status === "published")) ? "line-through" : "none" }}>{card.name}
                                   {/^automations\b/i.test(card.name || "") && <span title="Only Kiabeth + Kiaredza see this card" style={{ display: "inline-block", marginLeft: 6, verticalAlign: "1px", background: "#EEECE6", border: `1px solid ${c.line}`, borderRadius: 9, padding: "1px 8px", fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe }}>K + K only</span>}
                                 </div>}
+                            {/* read this card aloud — same ring as the done-circle opposite it */}
+                            {ttsSupported() && !/^—[\s\S]*—$/.test((card.name || "").trim()) && (
+                              <button onClick={(e) => { e.stopPropagation(); voice.speak(cardSpeech(card), card.name); }}
+                                title="Read this card aloud"
+                                style={{ flexShrink: 0, width: 18, height: 18, borderRadius: "50%", border: `1px solid ${c.line}`, background: "transparent", cursor: "pointer", padding: 0, marginTop: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                <SpeakerIcon size={9} />
+                              </button>
+                            )}
                           </div>
                           {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
