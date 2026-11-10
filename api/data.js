@@ -2523,6 +2523,37 @@ export default async function handler(req, res) {
   }
 
   // ── Bulk card patch (owner): {board, patches:[{cardId, patch:{cover,...}}]} in one write.
+  // Set fields on EXISTING columns — the month tag that drives the Sheets-style
+  // sub-tab strip, or a rename. board_lists_import only ever creates columns, and
+  // the client save path would need the whole board (a stale tab then reverts
+  // server-side work), so month-tagging had no safe route until this.
+  if (op === "board_list_patch" && req.method === "POST") {
+    const authLP = await getAuthEarly(req);
+    if (!ownerRole(authLP)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bLP = req.body || {};
+    const rawLP = await kvGet("lavalle_data"); const blobLP = Array.isArray(rawLP) ? rawLP[0] : rawLP;
+    const bdLP = blobLP && blobLP.boards && blobLP.boards[String(bLP.board || "")];
+    if (!bdLP) { res.status(404).json({ error: "No such board." }); return; }
+    const MONTHS_LP = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    let nLP = 0; const outLP = [];
+    for (const P of (Array.isArray(bLP.patches) ? bLP.patches : [])) {
+      const l = (bdLP.lists || []).find((x) => x.id === P.listId || (P.name && (x.name || "").trim() === String(P.name).trim()));
+      if (!l || !P.patch) continue;
+      if (Object.prototype.hasOwnProperty.call(P.patch, "month")) {
+        const m = P.patch.month;
+        if (m === null || m === "") delete l.month;                       // "" clears the tag
+        else if (MONTHS_LP.includes(String(m))) l.month = String(m);
+        else { res.status(400).json({ error: "month must be a full month name or empty" }); return; }
+      }
+      if (typeof P.patch.rename === "string" && P.patch.rename.trim()) l.name = P.patch.rename.trim().slice(0, 80);
+      outLP.push({ id: l.id, name: l.name, month: l.month || "" }); nLP++;
+    }
+    bdLP._rev = (bdLP._rev || 0) + 1; bdLP._stamp = Date.now();
+    await kvSet("lavalle_data", blobLP);
+    res.json({ ok: true, patched: nLP, lists: outLP });
+    return;
+  }
+
   if (op === "board_cards_patch" && req.method === "POST") {
     const authBP = await getAuthEarly(req);
     if (!ownerRole(authBP)) { res.status(403).json({ error: "Owner only." }); return; }
