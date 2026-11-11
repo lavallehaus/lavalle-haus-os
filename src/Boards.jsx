@@ -1075,8 +1075,39 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const pickMonthTab = (m) => { setMonthTab(m); try { if (monthTabKey) localStorage.setItem(monthTabKey, m); } catch {} };
   const MONTH_SEQ = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const boardMonths = board ? MONTH_SEQ.filter((m) => (board.lists || []).some((l) => l.month === m)) : [];
+  // DATE-DRIVEN month strip (the Fold, Nov 10 2026). A Sisters cycle posts
+  // DAILY, so its 21 posts fit inside one calendar month and a `month` tag on
+  // the whole column is honest. The Fold posts Tuesday/Thursday, so one
+  // 21-post cycle spans about two and a half months: tagging that column
+  // "November" labelled Aug 16 \u2013 Dec 31 as a single month and left December
+  // with no tab at all (hers, Nov 10 2026: "it says august to november and sub
+  // tab says january but theres nothing for december, this makes no sense").
+  // So when a board carries no column tags but its Schedule columns hold dated
+  // posts, the tabs come from THE DATE IN EACH POST'S NAME and the Schedule
+  // columns filter card-by-card. Every other column stays month-agnostic and
+  // shows on every tab, exactly as an untagged column does on Sisters.
+  const schedColRx = /^schedule\b/i;
+  const monthOfName = (nm) => { const m = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.exec(nm || ""); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : null; };
+  const dateMonths = useMemo(() => {
+    if (!board || boardMonths.length) return [];
+    const first = new Map();
+    (board.lists || []).filter((l) => schedColRx.test((l.name || "").trim())).forEach((l) => {
+      (board.cards || []).forEach((x) => {
+        if (x.listId !== l.id || x._deleted) return;
+        const mo = monthOfName(x.name); if (!mo) return;
+        const n = Number((/^post\s*(\d+)/i.exec(x.name || "") || [])[1] || 0) || 999;
+        if (!first.has(mo) || n < first.get(mo)) first.set(mo, n);
+      });
+    });
+    // Chronological, NOT calendar order: post numbers run forward through the
+    // cycle, so the lowest post number in each month puts the tabs in
+    // November \u2192 December \u2192 January order instead of January first.
+    return [...first.entries()].sort((a, b) => a[1] - b[1]).map(([m]) => m);
+  }, [board, boardMonths.length]); // eslint-disable-line
+  const monthStrip = boardMonths.length ? boardMonths : dateMonths;
+  const byDateMonths = !boardMonths.length && dateMonths.length > 0;
   const nowMonthName = MONTH_SEQ[new Date().getMonth()];
-  const activeMonth = boardMonths.length ? (boardMonths.includes(monthTab) ? monthTab : (boardMonths.includes(nowMonthName) ? nowMonthName : boardMonths[0])) : null;
+  const activeMonth = monthStrip.length ? (monthStrip.includes(monthTab) ? monthTab : (monthStrip.includes(nowMonthName) ? nowMonthName : monthStrip[0])) : null;
   const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => !l.month || l.month === activeMonth) : board.lists) : [];
   useEffect(() => { let v = null; try { v = open ? localStorage.getItem("lh_month_tab_" + open) : null; } catch {} setMonthTab(v || null); }, [open]);
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
@@ -1694,7 +1725,11 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               // (her note Oct 24 2026). A card that names another month hides only
               // once its twin for the active month exists, so a lone card (the Links
               // card, named for the working month) never disappears.
-              if (activeMonth && !l.month) {
+              if (byDateMonths) {
+                // Schedule column: show only the posts DATED in the active
+                // month. Every other column is month-agnostic and shows whole.
+                if (schedColRx.test((l.name || "").trim())) cards = cards.filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; });
+              } else if (activeMonth && !l.month) {
                 const stem = (nm) => { const m = /^(.*?)(january|february|march|april|may|june|july|august|september|october|november|december)\b(.*)$/i.exec(nm || ""); return m ? { pre: m[1].toLowerCase().trim(), mo: m[2].toLowerCase(), post: m[3].toLowerCase().trim() } : null; };
                 const mine = cards.map((x) => ({ x, st: stem(x.name) }));
                 cards = mine.filter(({ st }) => {
@@ -1974,13 +2009,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             )}
           </div>
-          {boardMonths.length > 0 && (
+          {monthStrip.length > 0 && (
             // Sheets-style month tabs, pinned bottom-left (her ask Oct 20 2026)
             // paddingBottom carries the phone's home-indicator inset (viewport-fit=cover
             // puts bottom:0 UNDER it, where iOS swallows taps — her bug, Oct 21 2026):
             // the strip's background still reaches the screen edge, the buttons sit above it.
             <div style={{ position: "fixed", bottom: 0, left: 0, zIndex: 200, display: "flex", alignItems: "flex-end", gap: 0, background: "rgba(237,233,226,0.97)", borderTop: "1px solid #D6CFBF", borderRight: "1px solid #D6CFBF", borderRadius: "0 6px 0 0", padding: "0 10px env(safe-area-inset-bottom, 0px) 6px", boxShadow: "0 -2px 10px rgba(26,26,26,0.08)" }}>
-              {boardMonths.map((m) => (
+              {monthStrip.map((m) => (
                 <button key={m} onClick={() => pickMonthTab(m)}
                   style={{ border: "1px solid " + (m === activeMonth ? "#D6CFBF" : "transparent"), borderBottom: "none", background: m === activeMonth ? "#FAF9F7" : "transparent", borderRadius: "6px 6px 0 0", margin: "6px 1px 0", padding: "10px 16px 11px", fontFamily: sans, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontWeight: m === activeMonth ? 600 : 400, color: m === activeMonth ? c.ink : "#8F8676", cursor: "pointer", touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
                   {m}
