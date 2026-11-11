@@ -51,6 +51,15 @@ function cleanPages(v) {
   return out.length ? out : null;
 }
 const ownerRole = (auth) => !!(auth && /^owner/i.test(auth.role || ""));
+// HER RULE (Oct 29 2026, hardened Nov 6, repeated Nov 11 2026: "none of
+// courtneys posts should have text on them on days assigned to her because she
+// makes up her own. We had talked about this."). Courtney writes and posts her
+// own captions, so nothing we generate may land on a card assigned to her -
+// not a caption, not hashtags, and not a post asset (a parked N.jpg turns the
+// card's OPEN REEL button into an offer to post a still). The sweeps kept
+// re-filling these every 15 minutes, which is why it came back; every writer
+// below checks this first.
+const isCourtneyCard = (c) => !!(c && (c.labels || []).some((lb) => /^courtney$/i.test((typeof lb === "string" ? lb : (lb && lb.n)) || "")));
 
 // TikTok tokens: KV holds {open_id: token} per environment. Early builds stored
 // a single token object at the top level — migrate that shape on read.
@@ -1744,7 +1753,7 @@ export default async function handler(req, res) {
           const d4 = await r4.json();
           const txt = ((d4.content || [])[0] || {}).text || "";
           const parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
-          if (parsed.caption) { ch.card.desc = String(parsed.caption).slice(0, 300); ch.card.tags = String(parsed.tags || "").slice(0, 80); captioned++; }
+          if (parsed.caption && !isCourtneyCard(ch.card)) { ch.card.desc = String(parsed.caption).slice(0, 300); ch.card.tags = String(parsed.tags || "").slice(0, 80); captioned++; }
         } catch (e4) {}
       }
     }
@@ -1810,7 +1819,7 @@ export default async function handler(req, res) {
         if (!label) continue;
         const newName = /\[.*?\]/.test(card.name) ? card.name.replace(/\[.*?\]/, "[" + label + "]") : card.name + " [" + label + "]";
         if (newName !== card.name) { card.name = newName; fmt.relabeled++; }
-        if (asset && card.assetUrl !== asset) { card.assetUrl = asset; fmt.linked++; }
+        if (asset && card.assetUrl !== asset && !isCourtneyCard(card)) { card.assetUrl = asset; fmt.linked++; }
       }
     } catch (e6) {}
     // Board backgrounds follow the covers (her rule): when a month's Cover
@@ -2145,6 +2154,10 @@ export default async function handler(req, res) {
       key: "the-fold", label: "THE FOLD", themeLabelBrand: "The Fold (thefoldlabel.com) — quiet-luxury womenswear",
       kvSuffix: "_tf", qs: "&board=the-fold", igMatch: /thefold/i, driveRootId: "1lHEphb2pERjSK3sLktXxRgoC_GAvLMcC", // The Fold > Social Media (month folders)
       monthDefaultKv: "fold_working_month", hasCourtney: false,
+      // Month sub-tabs on this board come from each POST'S OWN DATE (a Tue/Thu
+      // cycle spans ~2.5 months, so a month tag on the whole column would be a
+      // lie), so the grid windows must be calendar months too - see monthWin.
+      monthWindows: true,
     };
     // Lavalle Haus (board key is the pre-rebrand "refillery-haus"). Added Oct 24
     // 2026 so the Sisters automation suite — grid tiles, the rendered Grid card,
@@ -3250,7 +3263,7 @@ export default async function handler(req, res) {
             const outC = JSON.parse(mC[0]);
             const patchesFA = [];
             for (const pc of (outC.posts || [])) {
-              const hit = batch.find((b) => b.n === Number(pc.n)); if (!hit || !pc.caption) continue;
+              const hit = batch.find((b) => b.n === Number(pc.n)); if (!hit || !pc.caption || isCourtneyCard(hit.card)) continue;
               const cap = noDashF(pc.caption).slice(0, 300);
               const tags = (String(pc.tags || "").match(/#[\w]+/g) || []).filter((t) => bankTags.some((bt) => bt.toLowerCase() === t.toLowerCase())).slice(0, 2).join(" ");
               capsFA.byN[hit.n] = cap; capsFA.sigByN[hit.n] = auditSig; capsFA.seeded[hit.n] = 1;
@@ -4035,6 +4048,7 @@ export default async function handler(req, res) {
         // a BLANK doc entry never blanks a written caption — an empty parse is
         // far more likely a doc mishap (partial edit, broken block) than an
         // intentional erase; clearing is done in the app
+        if (isCourtneyCard(c)) continue; // her words only (see isCourtneyCard)
         if (p.c !== nrm(b0.c) && p.c !== nrm(c.desc) && (p.c || !(c.desc || "").trim())) { c.desc = p.c; dc = p.c; pulled++; }
         if (p.h !== nrm(b0.h) && p.h !== nrm(c.tags) && (p.h || !(c.tags || "").trim())) { c.tags = p.h; dh = p.h; pulled++; }
         if (dc !== null || dh !== null) patchesCB.push({ id: c.id, apply: (fc) => { if (dc !== null) fc.desc = dc; if (dh !== null) fc.tags = dh; } });
@@ -5283,7 +5297,8 @@ export default async function handler(req, res) {
     };
     // HER RULE: the Grid card always scrolls through the grid in these four
     // windows, in this order: 1-9, 10-21, 22-30, 31-42.
-    const WINDOWS = [[1, 9], [10, 21], [22, 30], [31, 42]];
+    let WINDOWS = [[1, 9], [10, 21], [22, 30], [31, 42]];
+    let winName = null; // month windows name themselves ("November"); null = the numbered 1-9 / 10-21 windows
     // one window per invocation (each render is ~10-20s on serverless); results
     // cached against a hash of the tile set so a rearrangement re-renders and an
     // unchanged grid costs nothing. The pinger's repeated calls converge.
@@ -5331,8 +5346,28 @@ export default async function handler(req, res) {
       const start = Date.UTC(2026, 7, 26);
       postN = Math.min(42, Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1 + 2));
     }
+    // MONTH WINDOWS (the Fold, Nov 11 2026). Post-number windows (1-9, 10-21...)
+    // are the right unit on Sisters, where one cycle IS one month. On a board
+    // whose month sub-tabs come from each post's own DATE, a 1-9 window
+    // straddles two months - so every month tab showed the SAME grid image
+    // (hers: "the other months december, january the grid is not different, it
+    // is identical to november and that should not be the case"). Here each
+    // window is a calendar month, so the tab and the grid agree.
+    if (SBOARD.monthWindows) {
+      const MO_NM = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const mw = [];
+      let run = null;
+      for (let n0 = 1; n0 <= 42; n0++) {
+        if (!presentP.has(n0) || !dateP[n0]) { run = null; continue; }
+        const mo0 = new Date(dateP[n0].t).getUTCMonth();
+        if (run && run.mo === mo0 && run.b === n0 - 1) { run.b = n0; continue; }
+        run = { mo: mo0, a: n0, b: n0 }; mw.push(run);
+      }
+      if (mw.length) { WINDOWS = mw.map((w) => [w.a, w.b]); winName = mw.map((w) => MO_NM[w.mo]); }
+    }
+    const WIX = WINDOWS.map((_, i) => i);
     const coverHash = "w5" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag))).digest("hex").slice(0, 12); // covers-only key, published for the strategy op
-    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b]) => rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".") + "|n" + (nextP == null ? "" : nextP)).digest("hex").slice(0, 12); // w6 = date strip above each window
+    const tilesHash = "w6" + createHash("sha256").update(JSON.stringify(all.map((t) => t.cover + t.tag)) + "|" + WINDOWS.map(([a, b], wi) => (winName ? winName[wi] + ":" : "") + a + "-" + b + ":" + rangeOf(a, b)).join(",") + "|d" + [...shiftP].sort((x, y) => x - y).join(".") + "|n" + (nextP == null ? "" : nextP)).digest("hex").slice(0, 12); // w6 = date strip above each window
     let cacheW = (await kvGet("sisters_grid_card_views" + SBOARD.kvSuffix)) || {};
     if (cacheW.hash !== tilesHash || (req.body || {}).force) cacheW = { hash: tilesHash, coverHash, views: {} };
     // HER RULE (Sep 28): a window whose posts are ALL crossed off leaves the
@@ -5340,7 +5375,7 @@ export default async function handler(req, res) {
     // has cards on the board and every one of them is done.
     const winDone = (a, b) => { let any = false; for (let n0 = a; n0 <= b; n0++) { if (presentP.has(n0)) { any = true; if (!doneP.has(n0)) return false; } } return any; };
     const winHasCovers = (a0, b0) => all.slice(a0 - 1, b0).some((t) => t && t.cover);
-    let activeW = [0, 1, 2, 3].filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]) && winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
+    let activeW = WIX.filter((wi) => !winDone(WINDOWS[wi][0], WINDOWS[wi][1]) && winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
     // Her rule "a finished window leaves the card" governs which windows are
     // SLIDES on the auto card — it must not stop those windows being RENDERED.
     // It used to do both, and that froze the month card: once posts 1-9 were all
@@ -5349,9 +5384,11 @@ export default async function handler(req, res) {
     // (hers, Nov 10 2026: "the card courtney had changed ... never updated the
     // grid and contribution card on that column ... this seems to be a persistent
     // issue"). Render every window that has covers; filter the slides separately.
-    const renderW = [0, 1, 2, 3].filter((wi) => winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
+    const renderW = WIX.filter((wi) => winHasCovers(WINDOWS[wi][0], WINDOWS[wi][1]));
     if (!SBOARD.hasCourtney) { for (let n0 = 1; n0 <= 42; n0++) { if (presentP.has(n0) && !doneP.has(n0)) { nextP = n0; break; } } }
-    let cur = postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3;
+    let cur = winName
+      ? Math.max(0, WINDOWS.findIndex(([a0, b0]) => postN >= a0 && postN <= b0))
+      : (postN <= 9 ? 0 : postN <= 21 ? 1 : postN <= 30 ? 2 : 3);
     if (!activeW.length) activeW = [cur]; // whole cycle done: keep the current view up
     if (!activeW.includes(cur)) cur = activeW.find((wi) => wi > cur) != null ? activeW.find((wi) => wi > cur) : activeW[activeW.length - 1];
     let rendered = null;
@@ -5371,7 +5408,7 @@ export default async function handler(req, res) {
     if (missingW.length && process.env.PUBLISH_KEY) {
       try { const acK = new AbortController(); setTimeout(() => acK.abort(), 1200); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card" + (SBOARD.qs || ""), { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acK.signal }).catch(() => {}); } catch (eKk) {}
     }
-    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: "Grid " + dispOf(a) + "–" + dispOf(b) + (rng ? " · " + rng : ""), url: cacheW.views[wi] || null, slide: activeW.includes(wi) }; });
+    const views = WINDOWS.map(([a, b], wi) => { const rng = rangeOf(a, b); return { label: (winName ? winName[wi] : "Grid " + dispOf(a) + "–" + dispOf(b)) + (rng ? " · " + rng : ""), month: winName ? winName[wi] : null, url: cacheW.views[wi] || null, slide: activeW.includes(wi) }; });
     // The card updates on EVERY call that has the current window — even while
     // the other windows are still rendering — so it never shows a stale grid.
     if (views[cur].url) {
@@ -5380,7 +5417,32 @@ export default async function handler(req, res) {
       const bdC = blobC && blobC.boards && blobC.boards[SBOARD.key];
       if (bdC) {
         const todo = bdC.lists.find((l) => /grid/i.test(l.name || "")) || bdC.lists.find((l) => /^to\s*do$/i.test((l.name || "").trim())) || (!SBOARD.hasCourtney ? bdC.lists.find((l) => /strategy outline/i.test(l.name || "")) : null);
-        if (todo) {
+        if (todo && winName) {
+          // ONE GRID CARD PER MONTH (the Fold, Nov 11 2026). The month sub-tabs
+          // filter card by card, so a single grid card showed the identical
+          // image on every tab. Each month now gets its own card, named for the
+          // month so the tab strip can place it.
+          const autoRxG = /^grid\b.*\(auto\)\s*$/i;
+          const spareG = bdC.cards.filter((c) => !c._deleted && c.listId === todo.id && autoRxG.test(c.name || ""));
+          const wantNames = views.filter((v) => v.url && v.month).map((v) => "Grid – " + v.month + " (auto)");
+          let changedM = false;
+          views.forEach((v, wi) => {
+            if (!v.url || !v.month) return;
+            const nmG = "Grid – " + v.month + " (auto)";
+            let cG = spareG.find((c) => (c.name || "").trim() === nmG);
+            // reuse a stale auto card (the old numbered-window one) before making a new one
+            if (!cG) cG = spareG.find((c) => !wantNames.includes((c.name || "").trim()));
+            if (cG) spareG.splice(spareG.indexOf(cG), 1);
+            else { cG = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, labels: [], members: [], attachments: [], links: [], done: false, desc: "", name: nmG }; bdC.cards.push(cG); }
+            const attG = [{ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }];
+            const descG = "Auto-updating grid for " + v.month + " – Posts " + WINDOWS[wi][0] + "–" + WINDOWS[wi][1] + ", as the feed will read. Numbers = post order. White dot = Courtney's post.";
+            if ((cG.name || "").trim() !== nmG || cG.cover !== v.url || cG.desc !== descG || JSON.stringify((cG.attachments || []).map((x) => x.url)) !== JSON.stringify([v.url])) {
+              cG.name = nmG; cG.cover = v.url; cG.attachments = attG; cG.desc = descG;
+              cG._touched = Date.now(); changedM = true;
+            }
+          });
+          if (changedM) { bdC._rev = (bdC._rev || 0) + 1; bdC._stamp = Date.now(); await kvSet("lavalle_data", blobC); }
+        } else if (todo) {
           let card = bdC.cards.find((c) => c.listId === todo.id && /^grid\b/i.test(c.name || ""));
           if (!card) { card = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, name: "Grid", labels: [], members: [], attachments: [], links: [], done: false, desc: "" }; bdC.cards.unshift(card); }
           const wantName = "Grid — " + views[cur].label + " (auto)";

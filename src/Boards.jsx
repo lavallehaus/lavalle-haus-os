@@ -1725,11 +1725,17 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               // (her note Oct 24 2026). A card that names another month hides only
               // once its twin for the active month exists, so a lone card (the Links
               // card, named for the working month) never disappears.
-              if (byDateMonths) {
+              if (byDateMonths && schedColRx.test((l.name || "").trim())) {
                 // Schedule column: show only the posts DATED in the active
-                // month. Every other column is month-agnostic and shows whole.
-                if (schedColRx.test((l.name || "").trim())) cards = cards.filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; });
+                // month. A card with no month in its name (a recovered upload,
+                // a note) is month-agnostic and stays on every tab.
+                cards = cards.filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; });
               } else if (activeMonth && !l.month) {
+                // Every OTHER column falls through to the twin rule below, the
+                // same one month-tagged boards use: a card naming another month
+                // steps aside only once its twin for the active month exists.
+                // That is what puts each "Grid - <Month> (auto)" card on its own
+                // tab while a lone card (the Links card) never disappears.
                 const stem = (nm) => { const m = /^(.*?)(january|february|march|april|may|june|july|august|september|october|november|december)\b(.*)$/i.exec(nm || ""); return m ? { pre: m[1].toLowerCase().trim(), mo: m[2].toLowerCase(), post: m[3].toLowerCase().trim() } : null; };
                 const mine = cards.map((x) => ({ x, st: stem(x.name) }));
                 cards = mine.filter(({ st }) => {
