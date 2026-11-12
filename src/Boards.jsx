@@ -1087,7 +1087,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // columns filter card-by-card. Every other column stays month-agnostic and
   // shows on every tab, exactly as an untagged column does on Sisters.
   const schedColRx = /^schedule\b/i;
-  const monthOfName = (nm) => { const m = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.exec(nm || ""); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : null; };
+  // A card in a Schedule column with NO month in its name is month-agnostic and
+  // shows on every tab. That is right for a loose note, but an ABBREVIATED month
+  // used to fall through the same hole: "… (Instagram Nov 6)" matched nothing,
+  // so a November to-do sat on the December tab too (hers, Nov 12 2026: "makes
+  // no sense that this image that was already posted is on decembers log").
+  // An abbreviation followed by a day number is a date, so count it.
+  const MONTH_ABBR = { jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", sept: "September", oct: "October", nov: "November", dec: "December" };
+  const monthOfName = (nm) => {
+    const m = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.exec(nm || "");
+    if (m) return m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
+    const a = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2}\b/i.exec(nm || "");
+    return a ? MONTH_ABBR[a[1].toLowerCase()] : null;
+  };
   const dateMonths = useMemo(() => {
     if (!board || boardMonths.length) return [];
     const first = new Map();
