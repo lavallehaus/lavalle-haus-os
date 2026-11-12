@@ -3963,8 +3963,25 @@ export default async function handler(req, res) {
       if (gridCard9 && pdfUrl) { gridCard9.attachments = (gridCard9.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard9.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
       const soList9 = bd9.lists.find((l) => /strategy outline/i.test(l.name || ""));
       if (!soList9) return;
-      let sc9 = bd9.cards.find((c) => c.listId === soList9.id && new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(c.name || ""));
+      // ONE outline card per CYCLE, not per title. The Fold's title spans the
+      // cycle's months and therefore MOVES — as posts are ticked off the first
+      // undone post slides into the next month, and a re-date moves the last
+      // one. Matching on the title alone minted a brand new card every time it
+      // shifted and never retired the old one (Nov 12 2026: five cards and five
+      // Drive PDFs for two cycles — hers: "why are there two brand strategy
+      // docs???"). `cyc` is the stable key: which grid the cycle is, not what
+      // it is called this week. Renaming in place keeps one card per cycle.
+      const cyc9 = (Array.isArray(theme.range) && Number(theme.range[1]) > 21) ? "22-42" : "1-21";
+      const titleRx9 = new RegExp("^Strategy Outline — " + theme.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      let sc9 = bd9.cards.find((c) => !c._deleted && c.listId === soList9.id && c.cyc === cyc9)
+        || bd9.cards.find((c) => !c._deleted && c.listId === soList9.id && titleRx9.test(c.name || ""));
       if (!sc9) { sc9 = { id: "c" + Math.random().toString(36).slice(2, 10), listId: soList9.id, name: "Strategy Outline — " + theme.title, labels: [], members: [], attachments: [], links: [], done: false }; }
+      sc9.cyc = cyc9;
+      sc9.name = "Strategy Outline — " + theme.title; // the span moved → rename, never duplicate
+      // any OTHER card already stamped with this cycle retires now. Only
+      // stamped ones — an unstamped card may belong to the other cycle, and
+      // the legacy strays were cleared by hand on Nov 12 2026.
+      for (const c of bd9.cards) if (c !== sc9 && !c._deleted && c.listId === soList9.id && c.cyc === cyc9) { c._deleted = true; c._removedAt = Date.now(); }
       bd9.cards = bd9.cards.filter((c) => c !== sc9); bd9.cards.unshift(sc9); // current month always tops the column
       sc9.cover = pageUrls[0] || sc9.cover; sc9.desc = theme.body + (pdfUrl ? "\n\nPDF: " + pdfUrl : "") + "\n\nOpen the card and tap Present (or ⤢ on the tile) to read the outline full screen.";
       sc9.attachments = pageAtt.length ? [...pageAtt, ...pdfAtt] : [...(sc9.attachments || []).filter((a) => /^image\//.test(a.type || "")), ...pdfAtt];
