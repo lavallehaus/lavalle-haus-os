@@ -897,7 +897,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     const moving = b.cards.find((x) => x.id === cardId);
     if (!moving || (moving.listId === toListId && anchorCardId === cardId)) return;
     let rest = b.cards.filter((x) => x.id !== cardId);
-    const moved = { ...moving, listId: toListId }; // _touched is SERVER-assigned; the client never writes it (clock-independence, Sep 7)
+    // The month view pours both cycles into one schedule column. A card dragged
+    // inside it must KEEP its own cycle — its list is what indexes the grid
+    // (grid 1 = posts 1-21, grid 2 = 22-42), so adopting the column's list
+    // would silently move a post to the wrong grid.
+    const schedRx = /^schedule\b/i;
+    const fromSched = schedRx.test(((b.lists || []).find((l0) => l0.id === moving.listId) || {}).name || "");
+    const toSched = schedRx.test(((b.lists || []).find((l0) => l0.id === toListId) || {}).name || "");
+    const keepList = fromSched && toSched;
+    const moved = { ...moving, listId: keepList ? moving.listId : toListId }; // _touched is SERVER-assigned; the client never writes it (clock-independence, Sep 7)
     if (anchorCardId) {
       const i = rest.findIndex((x) => x.id === anchorCardId);
       // placeAfter: dropped on the lower half of the anchor card → land below
@@ -1120,7 +1128,20 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const byDateMonths = !boardMonths.length && dateMonths.length > 0;
   const nowMonthName = MONTH_SEQ[new Date().getMonth()];
   const activeMonth = monthStrip.length ? (monthStrip.includes(monthTab) ? monthTab : (monthStrip.includes(nowMonthName) ? nowMonthName : monthStrip[0])) : null;
-  const monthLists = board ? (boardMonths.length ? board.lists.filter((l) => !l.month || l.month === activeMonth) : board.lists) : [];
+  // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
+  // grid 2 = 22-42), not something the month view should show. A month that
+  // straddles the boundary used to render both columns side by side — hers,
+  // Nov 12 2026: "there also shouldnt be two columns for december. It should
+  // always be 1-21 and if month breaks into next month it should still say
+  // 1-21 but just first card should be continuation of where that 1-21 log
+  // left off." So render only the FIRST schedule column and pour every
+  // schedule card dated in this month into it, in post order.
+  const schedListIds = board && byDateMonths ? board.lists.filter((l) => schedColRx.test((l.name || "").trim())).map((l) => l.id) : [];
+  const monthLists = board
+    ? (boardMonths.length
+        ? board.lists.filter((l) => !l.month || l.month === activeMonth)
+        : board.lists.filter((l) => !schedListIds.length || !schedListIds.includes(l.id) || l.id === schedListIds[0]))
+    : [];
   useEffect(() => { let v = null; try { v = open ? localStorage.getItem("lh_month_tab_" + open) : null; } catch {} setMonthTab(v || null); }, [open]);
   useEffect(() => { if (opsFocus && board && folderMode && !board.lists.some((l0) => l0.id === opsFocus)) setOpsFocus(null); }, [opsFocus, board, folderMode]);
   useEffect(() => {
@@ -1738,10 +1759,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               // once its twin for the active month exists, so a lone card (the Links
               // card, named for the working month) never disappears.
               if (byDateMonths && schedColRx.test((l.name || "").trim())) {
-                // Schedule column: show only the posts DATED in the active
-                // month. A card with no month in its name (a recovered upload,
-                // a note) is month-agnostic and stays on every tab.
-                cards = cards.filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; });
+                // Schedule column: every schedule card DATED in the active
+                // month, from either cycle, in post order — one continuous log.
+                // A card with no month in its name (a loose note) is
+                // month-agnostic and stays on every tab.
+                const postNo = (nm) => Number((/^post\s*(\d+)/i.exec(nm || "") || [])[1] || 0);
+                cards = board.cards
+                  .filter((x) => schedListIds.includes(x.listId) && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")))
+                  .filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; })
+                  .sort((a, b) => (postNo(a.name) || 9999) - (postNo(b.name) || 9999));
               } else if (activeMonth && !l.month) {
                 // Every OTHER column falls through to the twin rule below, the
                 // same one month-tagged boards use: a card naming another month
