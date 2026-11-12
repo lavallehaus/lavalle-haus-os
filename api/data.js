@@ -853,6 +853,8 @@ export default async function handler(req, res) {
       try { const acCF = new AbortController(); setTimeout(() => acCF.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync&board=the-fold", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCF.signal }).catch(() => {}); } catch (eCF) {}
       try { const acCL = new AbortController(); setTimeout(() => acCL.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_card_cover_sync&board=refillery-haus", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCL.signal }).catch(() => {}); } catch (eCL) {}
       try { const acGL = new AbortController(); setTimeout(() => acGL.abort(), 25000); await fetch(APP_ORIGIN + "/api/data?op=sisters_grid_card&board=refillery-haus", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acGL.signal }).catch(() => {}); } catch (eGL) {}
+      // ride the sweep: the Fold's cadence card re-reads the dated cards (sig-guarded)
+      try { const acCD = new AbortController(); setTimeout(() => acCD.abort(), 20000); await fetch(APP_ORIGIN + "/api/data?op=fold_cadence_card", { method: "POST", headers: { "x-publish-key": process.env.PUBLISH_KEY, "Content-Type": "application/json" }, body: "{}", signal: acCD.signal }).catch(() => {}); } catch (eCD2) {}
       res.json(out);
     } catch (e) {
       await kvSet("publish_last", { at: new Date().toISOString(), threw: String(e).slice(0, 400) });
@@ -2192,6 +2194,7 @@ export default async function handler(req, res) {
     ["Reel / cover link-up (The Fold)", "Every 15 min", "A reel named “3” or “reel 3” dropped into a month's Reels folder links to Post 3; numbered cover photos dress their cards; board backgrounds follow designated picks.", ["the-fold"]],
     ["Links card", "Every 15 min", "The Links card in Strategy Outline always points at the month we're working in, and the working month advances itself: the moment the previous month's last scheduled post is checked off, the links (and every month-keyed automation) move to the next month's folders. The Fold's month folders always carry Cover Photos, Carousel and Reels; missing ones are created, plus the Grid Archive."],
     ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above).", ["lavalle-sisters"]],
+    ["Cadence card", "Every 15 min (writes only when the schedule actually changes)", "The \"Cadence \u2014 who posts, how many, which days\" card under Strategy Outline re-reads every dated card on the board and reports, per month, the post count, Courtney's share, Kiabeth's share and the weekday spread. Standing rule on the card: Tuesday and Thursday are Courtney's, Friday is Kiabeth's (she cuts, Courtney posts), and the Tuesdays and Thursdays past Courtney's six a month stay dark. Because it is read off the cards it follows every re-date on its own.", ["the-fold"]],
     ["Channel audit (auto)", "Every 15 min; refreshes every 3 days", "The Audit card under Strategy Outline re-reads @thefoldlabel's trailing 30 days (Instagram now, TikTok as soon as that account is connected) and writes short findings plus what to carry into next month. Next month's theme and captions are drawn from it.", ["the-fold"]],
     ["Hashtag bank self-update + Live chip", "Every 15 min", "Any new hashtag typed onto a post card joins the Hashtags card's FROM CARDS line (the brand name never joins it), and a checked-off post carries the Live chip on its own — unchecking takes it back off.", ["the-fold"]],
     ["Theme, captions + Strategy Outline (per cycle)", "Every 15 min, one step per tick", "Each cycle (October = Posts 5-21, November = Posts 22-42, and so on) gets its own theme (1-2 sentences from the live site's products, the audit and current quiet-luxury direction), 1-2 sentence captions with 2 bank hashtags per post (hand-written captions are never overwritten), and its own Strategy Outline card + PDF, which rebuilds whenever the theme, a caption or the audit changes. The outline builds once the cycle's grid is complete; both cycles' outlines sit in Strategy Outline, the live month on top.", ["the-fold"]],
@@ -3167,6 +3170,87 @@ export default async function handler(req, res) {
   //  3. BUILDS — a cycle whose theme or captions changed gets its Strategy
   //     Outline rebuilt (upcoming cycle first, current cycle last so it tops
   //     the column). Both outlines sit in Strategy Outline, one card each.
+  // ── Cadence card (her rule, Nov 12 2026) ─────────────────────────────────
+  // "somewhere under the strategy outline column the schedule so that we know
+  // how many posts per month, how many Courtney and how many Kiabeth and what
+  // days of the week." Reads the board's own dated cards, so it can never
+  // disagree with the schedule the way a hand-written note would — and a
+  // re-date is reflected on the next tick. The card's NAME carries no month,
+  // so the date-driven month tabs show it on every tab.
+  if (op === "fold_cadence_card" && req.method === "POST") {
+    const okKeyCD = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authCD = okKeyCD ? null : await getAuthEarly(req);
+    if (!okKeyCD && !ownerRole(authCD)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const rawCD = await kvGet("lavalle_data"); const blobCD = Array.isArray(rawCD) ? rawCD[0] : rawCD;
+    const bdCD = blobCD && blobCD.boards && blobCD.boards["the-fold"];
+    if (!bdCD) { res.json({ ok: false }); return; }
+    const MO_CD = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const DW_CD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const parseCD = (nm) => {
+      const m = /^post\s*(\d+)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(nm || "");
+      if (!m) return null;
+      const mo = MO_CD.findIndex((x) => x.toLowerCase() === m[3].toLowerCase());
+      if (mo < 0) return null;
+      return { n: +m[1], dw: m[2].toLowerCase(), mo, day: +m[4], yr: mo >= 6 ? 2026 : 2027 };
+    };
+    const whoCD = (c) => {
+      const L = (c.labels || []).map((l) => (typeof l === "string" ? l : (l && l.n)) || "");
+      if (L.some((x) => /^courtney$/i.test(x))) return "C";
+      if (L.some((x) => /^kiabeth$/i.test(x))) return "K";
+      return "?";
+    };
+    const rows = [];
+    for (const c of (bdCD.cards || [])) {
+      if (c._deleted) continue;
+      const d = parseCD(c.name); if (!d) continue;
+      rows.push({ ...d, who: whoCD(c), done: !!c.done });
+    }
+    rows.sort((a, b) => a.n - b.n);
+    const months = new Map();
+    for (const r of rows) {
+      const k = r.yr + "-" + String(r.mo).padStart(2, "0");
+      if (!months.has(k)) months.set(k, { yr: r.yr, mo: r.mo, n: 0, C: 0, K: 0, u: 0, dw: {}, first: r, last: r, done: 0 });
+      const M = months.get(k);
+      M.n++; M[r.who === "?" ? "u" : r.who]++; M.dw[r.dw] = (M.dw[r.dw] || 0) + 1;
+      if (r.done) M.done++;
+      if (r.n < M.first.n) M.first = r; if (r.n > M.last.n) M.last = r;
+    }
+    const DWORD = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    const cap = (w) => w[0].toUpperCase() + w.slice(1, 3);
+    let body = "THE RULE\n"
+      + "Tuesday and Thursday are Courtney's. Friday is Kiabeth's: she cuts the reel, Courtney posts it.\n"
+      + "Courtney edits six a month, so the Tuesdays and Thursdays past her six stay dark.\n"
+      + "Agreed volume: 21 posts per 2 months, about 10.5 a month, 6 Courtney edits a month.\n\n";
+    let tC = 0, tK = 0, tN = 0;
+    for (const [, M] of [...months.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+      tC += M.C; tK += M.K; tN += M.n;
+      const days = DWORD.filter((w) => M.dw[w]).map((w) => cap(w) + " " + M.dw[w]).join(" \u00b7 ");
+      body += MO_CD[M.mo] + " " + M.yr + " \u2014 " + M.n + " posts \u00b7 Courtney " + M.C + " \u00b7 Kiabeth " + M.K
+        + (M.u ? " \u00b7 unassigned " + M.u : "") + "\n"
+        + "   " + days + "\n"
+        + "   Post " + M.first.n + " " + MO_CD[M.first.mo].slice(0, 3) + " " + M.first.day
+        + " to Post " + M.last.n + " " + MO_CD[M.last.mo].slice(0, 3) + " " + M.last.day
+        + (M.done ? " \u00b7 " + M.done + " posted" : "") + "\n\n";
+    }
+    body += "Across the run: " + tN + " posts \u00b7 Courtney " + tC + " \u00b7 Kiabeth " + tK + "\n"
+      + "Dark by design: Thanksgiving, Christmas Eve, Christmas Day, New Year's Day.\n\n"
+      + "Built from the dated cards on this board, so it follows every re-date. Rebuilt "
+      + new Date().toISOString().slice(0, 10) + ".";
+    const sigCD = createHash("sha256").update(body.replace(/Rebuilt \d{4}-\d\d-\d\d\.$/, "")).digest("hex").slice(0, 12);
+    const prevCD = (await kvGet("fold_cadence_card_sig")) || null;
+    const soCD = (bdCD.lists || []).find((l) => /strategy outline/i.test(l.name || ""));
+    if (!soCD) { res.json({ ok: false, error: "no Strategy Outline column" }); return; }
+    const NAME_CD = "Cadence \u2014 who posts, how many, which days";
+    const existCD = (bdCD.cards || []).find((c) => !c._deleted && c.listId === soCD.id && c.name === NAME_CD);
+    if (prevCD === sigCD && existCD) { res.json({ ok: true, did: "idle" }); return; }
+    await patchBoardCards("the-fold",
+      existCD ? [{ id: existCD.id, apply: (fc) => { fc.desc = body; fc.listId = soCD.id; } }]
+              : [{ append: { id: "c" + randomBytes(5).toString("hex"), listId: soCD.id, name: NAME_CD, desc: body, labels: [], members: [], attachments: [], links: [], done: false } }]);
+    await kvSet("fold_cadence_card_sig", sigCD);
+    res.json({ ok: true, did: existCD ? "updated" : "created", months: months.size, posts: tN, C: tC, K: tK });
+    return;
+  }
+
   if (op === "fold_strategy_auto" && req.method === "POST") {
     const okKeyFA = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authFA = okKeyFA ? null : await getAuthEarly(req);
