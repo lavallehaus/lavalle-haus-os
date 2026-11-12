@@ -3245,7 +3245,8 @@ export default async function handler(req, res) {
     if (prevCD === sigCD && existCD) { res.json({ ok: true, did: "idle" }); return; }
     await patchBoardCards("the-fold",
       existCD ? [{ id: existCD.id, apply: (fc) => { fc.desc = body; fc.listId = soCD.id; } }]
-              : [{ append: { id: "c" + randomBytes(5).toString("hex"), listId: soCD.id, name: NAME_CD, desc: body, labels: [], members: [], attachments: [], links: [], done: false } }]);
+              : (() => { const idCD = "c" + randomBytes(5).toString("hex"); // patchBoardCards keys on p.id FIRST, so an append needs it at top level too
+                  return [{ id: idCD, append: { id: idCD, listId: soCD.id, name: NAME_CD, desc: body, labels: [], members: [], attachments: [], links: [], done: false } }]; })());
     await kvSet("fold_cadence_card_sig", sigCD);
     res.json({ ok: true, did: existCD ? "updated" : "created", months: months.size, posts: tN, C: tC, K: tK });
     return;
