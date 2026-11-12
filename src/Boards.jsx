@@ -1767,7 +1767,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 cards = board.cards
                   .filter((x) => schedListIds.includes(x.listId) && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")))
                   .filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; })
-                  .sort((a, b) => (postNo(a.name) || 9999) - (postNo(b.name) || 9999));
+                  .sort((a, b) => postNo(a.name) - postNo(b.name)); // a card with no post number (a to-do, a note) sorts to the top
               } else if (activeMonth && !l.month) {
                 // Every OTHER column falls through to the twin rule below, the
                 // same one month-tagged boards use: a card naming another month
