@@ -3236,19 +3236,53 @@ export default async function handler(req, res) {
       + "Dark by design: Thanksgiving, Christmas Eve, Christmas Day, New Year's Day.\n\n"
       + "Built from the dated cards on this board, so it follows every re-date. Rebuilt "
       + new Date().toISOString().slice(0, 10) + ".";
+    // ⚠️ An "Approved" / "Ready for review" tag on a post with NO REEL attached
+    // reads as "this one is done" when the post asset is still a static .jpg
+    // (hers, Nov 12 2026: "you put approved for some of my posts and theres no
+    // reel connected its just a static photo"). The checkbox is only ever
+    // "Approve caption + hashtags", so the tag was never a claim about the
+    // video — but it looks like one. Strip it whenever the post asset is not a
+    // Drive video. Mime lookups are cached by file id, so a steady state costs
+    // no Drive calls at all.
+    const mimeCD = (await kvGet("fold_asset_mime")) || {};
+    let mimeDirtyCD = false;
+    const tokCD = await googleToken();
+    const unflagged = [];
+    const patchesCD = [];
+    for (const c of (bdCD.cards || [])) {
+      if (c._deleted || !parseCD(c.name)) continue;
+      const flags = (c.labels || []).filter((l) => /^(approved|ready for review)$/i.test((typeof l === "string" ? l : (l && l.n)) || ""));
+      if (!flags.length) continue;
+      const aid = (String(c.assetUrl || "").match(/\/file\/d\/([A-Za-z0-9_-]+)/) || [])[1];
+      let mime = aid ? mimeCD[aid] : "";
+      if (aid && mime === undefined && tokCD) {
+        try {
+          const mr = await fetch("https://www.googleapis.com/drive/v3/files/" + aid + "?fields=mimeType&supportsAllDrives=true", { headers: { Authorization: "Bearer " + tokCD } });
+          mime = mr.ok ? ((await mr.json()).mimeType || "") : "";
+          mimeCD[aid] = mime; mimeDirtyCD = true;
+        } catch (eM) { mime = ""; }
+      }
+      if (/^video\//.test(mime || "")) continue; // a real reel is attached — the tag stands
+      const keep = (c.labels || []).filter((l) => !/^(approved|ready for review)$/i.test((typeof l === "string" ? l : (l && l.n)) || ""));
+      patchesCD.push({ id: c.id, apply: (fc) => { fc.labels = keep; } });
+      unflagged.push(parseCD(c.name).n);
+    }
+    if (mimeDirtyCD) await kvSet("fold_asset_mime", mimeCD);
+    if (patchesCD.length) await patchBoardCards("the-fold", patchesCD);
+
     const sigCD = createHash("sha256").update(body.replace(/Rebuilt \d{4}-\d\d-\d\d\.$/, "")).digest("hex").slice(0, 12);
     const prevCD = (await kvGet("fold_cadence_card_sig")) || null;
     const soCD = (bdCD.lists || []).find((l) => /strategy outline/i.test(l.name || ""));
     if (!soCD) { res.json({ ok: false, error: "no Strategy Outline column" }); return; }
     const NAME_CD = "Cadence \u2014 who posts, how many, which days";
     const existCD = (bdCD.cards || []).find((c) => !c._deleted && c.listId === soCD.id && c.name === NAME_CD);
-    if (prevCD === sigCD && existCD) { res.json({ ok: true, did: "idle" }); return; }
+    if (prevCD === sigCD && existCD) { res.json({ ok: true, did: "idle", unflagged }); return; }
     await patchBoardCards("the-fold",
       existCD ? [{ id: existCD.id, apply: (fc) => { fc.desc = body; fc.listId = soCD.id; } }]
               : (() => { const idCD = "c" + randomBytes(5).toString("hex"); // patchBoardCards keys on p.id FIRST, so an append needs it at top level too
                   return [{ id: idCD, append: { id: idCD, listId: soCD.id, name: NAME_CD, desc: body, labels: [], members: [], attachments: [], links: [], done: false } }]; })());
     await kvSet("fold_cadence_card_sig", sigCD);
-    res.json({ ok: true, did: existCD ? "updated" : "created", months: months.size, posts: tN, C: tC, K: tK });
+    res.json({ ok: true, did: existCD ? "updated" : "created", months: months.size, posts: tN, C: tC, K: tK, unflagged });
     return;
   }
 
