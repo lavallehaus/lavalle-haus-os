@@ -1737,10 +1737,30 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 // That is what puts each "Grid - <Month> (auto)" card on its own
                 // tab while a lone card (the Links card) never disappears.
                 const stem = (nm) => { const m = /^(.*?)(january|february|march|april|may|june|july|august|september|october|november|december)\b(.*)$/i.exec(nm || ""); return m ? { pre: m[1].toLowerCase().trim(), mo: m[2].toLowerCase(), post: m[3].toLowerCase().trim() } : null; };
-                const mine = cards.map((x) => ({ x, st: stem(x.name) }));
-                cards = mine.filter(({ st }) => {
-                  if (!st || st.mo === activeMonth.toLowerCase()) return true;
-                  return !mine.some((o) => o.st && o.st.mo === activeMonth.toLowerCase() && o.st.pre === st.pre && o.st.post === st.post);
+                // A card can name a SPAN, not one month ("Strategy Outline —
+                // November-December 2026"). Matching only the first month left
+                // both Fold outlines on the November tab, because the twin rule
+                // compares the tail too and "-december 2026" never equals
+                // "-march 2027" (hers, Nov 12 2026: "both strategy outlines are
+                // still showing in november"). Cover every month the span runs
+                // through instead, so each outline sits on its own months.
+                const MOS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+                const spanOf = (nm) => {
+                  const all = String(nm || "").toLowerCase().match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/g);
+                  if (!all || !all.length) return null;
+                  const a = MOS.indexOf(all[0]), b = MOS.indexOf(all[all.length - 1]);
+                  const out = []; for (let i = 0; i < 12; i++) { const k = (a + i) % 12; out.push(MOS[k]); if (k === b) break; }
+                  return out;
+                };
+                const am = activeMonth.toLowerCase();
+                const mine = cards.map((x) => ({ x, st: stem(x.name), sp: spanOf(x.name) }));
+                cards = mine.filter(({ st, sp }) => {
+                  if (!sp) return true;                       // no month named — shows on every tab
+                  if (sp.includes(am)) return true;           // this tab is inside the card's span
+                  // names another month: step aside only if a sibling in the
+                  // same family actually covers this tab, so a lone card never
+                  // vanishes
+                  return !mine.some((o) => o.sp && o.sp.includes(am) && o.st && st && o.st.pre === st.pre);
                 }).map(({ x }) => x);
               }
               // UGC / PR Schedule column renders as a Sept–Dec 2026 calendar;
