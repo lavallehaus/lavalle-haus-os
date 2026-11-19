@@ -3342,8 +3342,7 @@ export default async function handler(req, res) {
       res.json({ ok: false, did: "theme", cycle: cy.title, error: "theme generation failed, will retry" }); return;
     }
     // 2 · captions
-    const bankFA = bdFA.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
-    const bankTags = ((bankFA && bankFA.desc || "").match(/#[\w]+/g) || []).filter((t) => !/fold|lavalle/i.test(t));
+    // Hashtags retired on the Fold account (her call Nov 19 2026) - bank no longer fed to the caption writer.
     const capsFA = (await kvGet("fold_auto_caps")) || { byN: {}, sigByN: {}, seeded: {} };
     capsFA.seeded = capsFA.seeded || {};
     const needsCap = [];
@@ -3373,7 +3372,7 @@ export default async function handler(req, res) {
         } catch (eIm) {}
       }
       if (contentFA.length) {
-        contentFA.push({ type: "text", text: "You write Instagram captions for The Fold (thefoldlabel.com), quiet-luxury womenswear. Live products: " + (prodLine || "(catalog unavailable)") + ". This cycle's theme: " + ((themesFA[batch[0].cy.title] || {}).body || "") + ". Audit notes: " + auditLine + " Hashtag bank (choose from these ONLY): " + bankTags.join(" ") + "\n\nFor each post photo above: a caption of MAXIMUM 2 short sentences in the brand's calm register, naming the live product when the photo clearly shows one; plain punctuation, never an em dash, no emojis, no hashtags inside the caption. Then exactly 2 hashtags from the bank, varied across posts. Return ONLY JSON: {\"posts\":[{\"n\":22,\"caption\":\"…\",\"tags\":\"#a #b\"}]}" });
+        contentFA.push({ type: "text", text: "You write Instagram captions for The Fold (thefoldlabel.com), quiet-luxury womenswear. Live products: " + (prodLine || "(catalog unavailable)") + ". This cycle's theme: " + ((themesFA[batch[0].cy.title] || {}).body || "") + ". Audit notes: " + auditLine + "\n\nFor each post photo above: a caption of MAXIMUM 2 short sentences in the brand's calm register, naming the live product when the photo clearly shows one; plain punctuation, never an em dash, no emojis, no hashtags anywhere, no tags. Hashtags are not used on this account. Return ONLY JSON: {\"posts\":[{\"n\":22,\"caption\":\"…\"}]}" });
         try {
           const rC = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyFA, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: contentFA }] }) });
           const jC = await rC.json(); const tC = (jC.content || []).map((c) => c.text || "").join("");
@@ -3384,9 +3383,8 @@ export default async function handler(req, res) {
             for (const pc of (outC.posts || [])) {
               const hit = batch.find((b) => b.n === Number(pc.n)); if (!hit || !pc.caption || isCourtneyCard(hit.card)) continue;
               const cap = noDashF(pc.caption).slice(0, 300);
-              const tags = (String(pc.tags || "").match(/#[\w]+/g) || []).filter((t) => bankTags.some((bt) => bt.toLowerCase() === t.toLowerCase())).slice(0, 2).join(" ");
               capsFA.byN[hit.n] = cap; capsFA.sigByN[hit.n] = auditSig; capsFA.seeded[hit.n] = 1;
-              patchesFA.push({ id: hit.card.id, apply: (fc) => { fc.desc = cap; if (tags) fc.tags = tags; } });
+              patchesFA.push({ id: hit.card.id, apply: (fc) => { fc.desc = cap; } });
             }
             // guard: only write onto cards whose desc is still empty or still ours
             const freshRaw = await kvGet("lavalle_data"); const freshBlob = Array.isArray(freshRaw) ? freshRaw[0] : freshRaw;
