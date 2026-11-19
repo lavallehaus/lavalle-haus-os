@@ -2180,13 +2180,12 @@ export default async function handler(req, res) {
   // and what triggers it. Regenerated from this registry so it never drifts.
   const AUTOMATIONS = [
     ["Grid card refresh", "Every 15 min", "The Grid card re-renders the numbered windows (split 1–9, 10–21, 22–30, 31–42) from whatever is saved in the grid editor; its cover advances to the window we're in, and a window drops off the card entirely once every post in it is crossed off. White dot = Courtney's post. Card names carry no dates; the slot number is the sequence."],
-    ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its next-month Schedule 1-21 list has all 21 covers), the channel audit runs as market research, the month's strategy card writes itself from the Instagram + TikTok findings, Sarah is tagged on it and pinged in Slack, and every comment she leaves on the card is implemented into the strategy and answered with a Completed comment on the card.", ["lavalle-sisters"]],
+    ["Monthly strategy trigger", "Every 15 min", "The moment a month's grid is complete (its next-month Schedule 1-21 list has all 21 covers), the channel audit runs as market research and the month's strategy card writes itself from the Instagram + TikTok findings.", ["lavalle-sisters"]],
     ["Editorial cover pick", "Every 15 min (re-runs when the grid changes)", "Reads the current grid's photos and picks the most editorial product shot as the Strategy Outline card's cover. Category alternates as grids switch: the first grid takes its majority (fashion if 12 of 21 lean fashion), the next grid takes the other, and so on. Also ranks photos for the collage on the Strategy page.", ["lavalle-sisters"]],
     ["Strategy Outline PDF", "For the month we're posting: when every one of OUR posts is marked Approved (Courtney's 12 don't count). For NEXT month: the second its grid is locked (all 21 covers in), so the deck is ready before the month starts. After either, whenever the grid, a caption, a hashtag, the theme or the cover pick changes", "Builds the month's Strategy Outline from the locked grid (the grid is the sequence: C-dotted tiles are Courtney's), the theme, and each card's title, caption and 2 TikTok hashtags. Saves the PDF to Drive → <Month> → Strategy outline, renders the pages as images on the Strategy Outline card (swipe; ⤢ for present mode) and links the PDF on the Grid card. House rule: captions carry no em dashes.", ["lavalle-sisters"]],
     ["Card concepts — point of the post", "Every 15 min, a few posts per tick (re-runs when a post's cover photo or caption changes)", "Reads each post's cover photo and auto-caption and writes a short point-of-the-post into the card title — \"Post n <date> - TF: linen set styling\" — recognizing whether the product is The Fold (TF) or Lavalle Haus (LH). Courtney's titles and anything typed by hand are never overwritten.", ["lavalle-sisters"]],
     ["Platform-sized cover files", "Every 15 min, a few posts per tick (re-runs when a tile photo or a post's IG/TT format changes)", "Rule: when a post is a reel on one platform and a feed post (carousel/static) on the other, its photo is saved to Drive → Cover photos in BOTH sizes — <n>-IG.jpg and <n>-TT.jpg (1080×1350 feed / 1080×1920 vertical). Same-shape posts keep one numbered file. Either way, when a grid photo is REPLACED the Drive file refreshes in place and the cover photo link on the card always points at the current file.", ["lavalle-sisters"]],
-    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (Sarah's daily rule; a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days.", ["lavalle-sisters"]],
-    ["Sarah's script notes \u2192 proposed rewrites", "Every 15 min (re-runs when Sarah leaves or edits a comment in the FTC Scripts sheet)", "Reads Sarah's comments on the Lavalle Sisters - FTC Scripts sheet, works out which post and which line each one sits on, and writes a PROPOSED rewrite onto that card \u2014 script title, on-screen hook, spoken hook, nugget 1, nugget 2, close or caption. Nothing is replaced: the current words stay until you accept, and nothing is ever written back into Sarah's sheet. A filming direction (\u201cactually show this\u201d) is listed as a direction, not turned into a rewrite. Her note also lands on the matching beat under Pre-production, and the card links straight to her row.", ["lavalle-sisters"]],
+    ["Post formats — IG vs TT tags", "Every 15 min (re-runs when the month's Reels/Carousels folders, Blerina's or Courtney's edit folders, the grid, or a Courtney format pick change)", "Tags every card IG · … and TT · … with locked neutral colors (ivory = IG, slate = TT). Courtney's 12: her pick (reel or carousel, switchable on her card) and the SAME format on both channels. Our posts: TikTok runs mainly FTC, face to camera (a few B-roll/Carousel exceptions), each day tagged as exactly one thing, while Instagram keeps the b-roll / carousel / static read since heavy FTC underperforms there. Cadence: at most 2 statics, Instagram-only; TikTok runs a carousel on those days.", ["lavalle-sisters"]],
     ["Courtney's 12 \u2014 the ask", "The 24th of each month", "Posts a dated card asking Courtney for the following month's 12, due the 7th, with the creative deck linked. Two weeks of runway so the 12 get read before the shoot \u2014 and the deck page, not Slack, is where she delivers them.", ["lavalle-sisters"]],
     ["Cycle rotation", "When Post 10 is checked done", "Archives the finishing grid to Drive (Grid Archive), deletes completed cards, writes the next dated Post cards.", ["lavalle-sisters"]],
     ["Loft deliveries → Courtney", "Every 15 min until Oct 2026", "New files the Loft delivers for Lavalle Haus are copied into Lavalle Sisters → <working month> → Courtney to edit → From the Loft.", ["lavalle-sisters"]],
@@ -3596,8 +3595,6 @@ export default async function handler(req, res) {
           await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
             const c2 = bd2.cards.find((x) => !x._deleted && cardNameRx.test(x.name || ""));
             if (!c2) return;
-            if (!(c2.members || []).includes("Sarah Memmer")) c2.members = [...(c2.members || []), "Sarah Memmer"];
-            if (!/leave comments here/i.test(c2.desc || "")) c2.desc = (c2.desc || "") + "\n\nSarah: leave comments here with any changes. Each one is reviewed and implemented, and a Completed comment is posted on this card when it is done.";
           });
           adoptedST = true;
         } else {
@@ -3628,7 +3625,6 @@ export default async function handler(req, res) {
             (audST.findings || []).length ? "\nWHAT THE DATA SAID\n" + audST.findings.map((x) => "• " + x).join("\n") : "",
             "\nTHEME\n" + themeST,
             (playsST || []).length ? "\n" + propST.month.toUpperCase() + " PLAYS\n" + playsST.map((x, i) => (i + 1) + ". " + x).join("\n") : ((audST.carry || []).length ? "\nCARRY\n" + audST.carry.map((x) => "• " + x).join("\n") : ""),
-            "\nSarah: leave comments here with any changes. Each one is reviewed and implemented, and a Completed comment is posted on this card when it is done.",
           ].filter(Boolean).join("\n");
           await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
             // the strategy card lives under ITS month's tab (her note Oct 21 2026):
@@ -3637,19 +3633,9 @@ export default async function handler(req, res) {
             const soST = bd2.lists.find((l) => l.month === propST.month && /grid and contributions/i.test(l.name || ""))
               || bd2.lists.find((l) => l.month === propST.month && !/schedule/i.test(l.name || ""))
               || bd2.lists.find((l) => /strategy outline/i.test(l.name || "")) || bd2.lists[0];
-            bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy (from the " + (audST.window || "trailing 30 days") + " audit)", desc: descST, labels: [], members: ["Sarah Memmer"], attachments: [], links: [], comments: [], done: false });
+            bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy (from the " + (audST.window || "trailing 30 days") + " audit)", desc: descST, labels: [], members: [], attachments: [], links: [], comments: [], done: false });
           });
-          // 3) Slack Sarah in Memmer Media #kia-kiabeth
-          try {
-            const mapST = (await kvGet("slack_oauth")) || {};
-            const entST = Object.entries(mapST).find(([, t]) => /memmer/i.test((t && t.team) || ""));
-            if (entST) {
-              const tokST = entST[1].token;
-              const lrST = await (await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200", { headers: { Authorization: "Bearer " + tokST } })).json();
-              const chST = (lrST.channels || []).find((c0) => (c0.name || "").toLowerCase() === "kia-kiabeth");
-              if (chST) await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { Authorization: "Bearer " + tokST, "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ channel: chST.id, unfurl_links: false, text: "Hi Sarah! The " + propST.month + " grid is locked and the month's strategy just published itself from the latest Instagram and TikTok research. You are tagged on the strategy card on the Lavalle Sisters board (Strategy Outline column). Leave any changes as comments on that card: each one gets implemented and answered with a Completed comment when done." }) });
-            }
-          } catch (e3) {}
+          // Slack ping to Sarah retired Nov 19 2026 — she is off this board.
         }
         stST.sig = sigST; stST.firedAt = Date.now();
         firedST = true;
@@ -3670,7 +3656,9 @@ export default async function handler(req, res) {
     // card and answer it with a Completed comment (capped at 3 per pass).
     const doneCm = stST.comments || {};
     let processedCm = 0;
-    const stratCards = bdST.cards.filter((c) => !c._deleted && /\bStrategy\b/i.test(c.name || "") && !/outline/i.test(c.name || "") && (c.members || []).includes("Sarah Memmer"));
+    // Sarah came off this board Nov 19 2026 — no card carries her any more, so
+    // the comment-implementation loop below has nothing to read.
+    const stratCards = [];
     for (const cST of stratCards) {
       for (const cm of (cST.comments || [])) {
         if (processedCm >= 3) break;
@@ -4447,7 +4435,9 @@ export default async function handler(req, res) {
     const setStage = (stage) => {
       tc.themeData = tc.themeData || {};
       tc.themeData.stage = stage;
-      const chip = stage === "sarah" ? "Sarah · ready for review" : stage === "owners" ? "Kiabeth + Kiaredza · ready for review" : null;
+      // Sarah came off this board Nov 19 2026 — her review stage is retired, so
+      // a card that would have gone to her now reads as the owners' review.
+      const chip = (stage === "sarah" || stage === "owners") ? "Kiabeth + Kiaredza · ready for review" : null;
       tc.labels = (tc.labels || []).filter((lb) => !/ready for review/i.test((typeof lb === "string" ? lb : (lb && lb.n)) || ""));
       if (chip) tc.labels = [{ n: chip, c: "#FFFFFF" }, ...tc.labels];
       tc.name = (stage === "approved" ? "Theme — " + label : "Theme — " + label + " (proposed)");
@@ -4555,7 +4545,7 @@ export default async function handler(req, res) {
     } else if (!tc.themeData) {
       tc.desc = "Analytics aren't connected for @lavallesisters yet (or no posts returned), so no performance-based theme could be drawn. Connect Instagram for the Sisters account and this card fills itself in.";
     }
-    if (!(tc.themeData && (tc.themeData.stage === "owners" || tc.themeData.stage === "approved"))) setStage("sarah");
+    if (!(tc.themeData && (tc.themeData.stage === "owners" || tc.themeData.stage === "approved"))) setStage("owners");
     // the IG + Claude passes above are slow — write onto the FRESH blob
     await patchBoardCards(SBOARD.key, [{ id: tc.id, append: tc, apply: (fc) => { fc.name = tc.name; fc.desc = tc.desc; fc.labels = tc.labels; fc.themeData = tc.themeData; } }]);
     await kvSet("sisters_theme_state" + SBOARD.kvSuffix, { at: Date.now(), month: label, feedbackCount: feedback.length });
