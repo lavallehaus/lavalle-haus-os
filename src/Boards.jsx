@@ -1160,6 +1160,12 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // its own photo, so two cycles inside one month don't look like one board.
   // `bgTabs` is {label: url}; the board-level `bg` stays the fallback.
   const bgNow = board ? (((board.bgTabs || {})[activeMonth]) || board.bg || null) : null;
+  // A card that NAMES a tab belongs to that tab only (her ask Nov 20 2026: two
+  // strategy cards showed on one tab because both resolve to "November"). Match
+  // the longest label first so "Nov PT II" wins over "Nov PT I", which is a
+  // prefix of it.
+  const labelsByLen = [...monthStrip].sort((a, b) => b.length - a.length).filter((l) => l.length > 3);
+  const labelOfName = (nm) => { const t = String(nm || "").toLowerCase(); return labelsByLen.find((l) => t.includes(l.toLowerCase())) || null; };
   // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
   // grid 2 = 22-42), not something the month view should show. A month that
   // straddles the boundary used to render both columns side by side — hers,
@@ -1823,6 +1829,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   return out;
                 };
                 const am = String(activeMonthName || activeMonth).toLowerCase();
+                // a card naming a tab is scoped to it and skips the month rule
+                cards = cards.filter((x) => { const lb = labelOfName(x.name); return !lb || lb === activeMonth; });
                 const mine = cards.map((x) => ({ x, st: stem(x.name), sp: spanOf(x.name) }));
                 cards = mine.filter(({ st, sp }) => {
                   if (!sp) return true;                       // no month named — shows on every tab
