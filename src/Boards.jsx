@@ -1156,6 +1156,10 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
     : null;
   // the calendar month behind the active LABEL, for every rule that matches a month written in a card name
   const activeMonthName = activeMonth ? (MONTH_OF_LABEL(activeMonth) || activeMonth) : null;
+  // Per-sub-tab background (her ask Nov 20 2026): each cycle's tab can carry
+  // its own photo, so two cycles inside one month don't look like one board.
+  // `bgTabs` is {label: url}; the board-level `bg` stays the fallback.
+  const bgNow = board ? (((board.bgTabs || {})[activeMonth]) || board.bg || null) : null;
   // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
   // grid 2 = 22-42), not something the month view should show. A month that
   // straddles the boundary used to render both columns side by side — hers,
@@ -1452,8 +1456,8 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           ))}
         </div>
       ) : (
-        <div style={{ padding: 12, margin: "0 -24px", minHeight: "calc(100vh - 235px)", boxSizing: "border-box", overflowX: "hidden", ...boardBgStyle(board.bg) }}>
-          <div style={{ position: "relative", zIndex: 30, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: board.bg ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: board.bg ? "blur(6px)" : "none", WebkitBackdropFilter: board.bg ? "blur(6px)" : "none", borderRadius: 8, padding: board.bg ? "8px 12px" : "0 0 2px" }}>
+        <div style={{ padding: 12, margin: "0 -24px", minHeight: "calc(100vh - 235px)", boxSizing: "border-box", overflowX: "hidden", ...boardBgStyle(bgNow) }}>
+          <div style={{ position: "relative", zIndex: 30, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: bgNow ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: bgNow ? "blur(6px)" : "none", WebkitBackdropFilter: bgNow ? "blur(6px)" : "none", borderRadius: 8, padding: bgNow ? "8px 12px" : "0 0 2px" }}>
             <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0 }}>← All boards</button>
             <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
             <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{(() => {

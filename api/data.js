@@ -2579,6 +2579,27 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Per-sub-tab board background (owner): {board, label, url|null}.
+  // The board has ONE `bg`; a tab needs its own so two cycles in the same
+  // month don't read as one workspace (her ask Nov 20 2026).
+  if (op === "board_bg_tab" && req.method === "POST") {
+    const authBG = await getAuthEarly(req);
+    if (!ownerRole(authBG)) { res.status(403).json({ error: "Owner only." }); return; }
+    const bBG = req.body || {};
+    const rawBG = await kvGet("lavalle_data"); const blobBG = Array.isArray(rawBG) ? rawBG[0] : rawBG;
+    const bdBG = blobBG && blobBG.boards && blobBG.boards[String(bBG.board || "")];
+    if (!bdBG) { res.status(404).json({ error: "No such board." }); return; }
+    const lblBG = String(bBG.label || "").trim().slice(0, 12);
+    if (!lblBG) { res.status(400).json({ error: "label required" }); return; }
+    bdBG.bgTabs = bdBG.bgTabs || {};
+    if (bBG.url === null || bBG.url === "") delete bdBG.bgTabs[lblBG];
+    else bdBG.bgTabs[lblBG] = String(bBG.url).slice(0, 400);
+    bdBG._rev = (bdBG._rev || 0) + 1; bdBG._stamp = Date.now();
+    await kvSet("lavalle_data", blobBG);
+    res.json({ ok: true, bgTabs: bdBG.bgTabs });
+    return;
+  }
+
   if (op === "board_cards_patch" && req.method === "POST") {
     const authBP = await getAuthEarly(req);
     if (!ownerRole(authBP)) { res.status(403).json({ error: "Owner only." }); return; }
