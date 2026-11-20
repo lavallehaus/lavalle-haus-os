@@ -2147,12 +2147,20 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                     <button onClick={() => setCliffOpen(null)} style={{ marginLeft: "auto", border: "none", background: "transparent", color: c.sub, fontSize: 18, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
                   </div>
                   <div style={{ padding: "14px 20px 20px", overflowY: "auto" }}>
-                    {cc.cliff.map((ln, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, padding: "9px 0", borderBottom: i < cc.cliff.length - 1 ? `1px solid ${c.line}` : "none" }}>
-                        <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe, flexShrink: 0, width: 14 }}>{i + 1}</span>
-                        <span style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.5, color: c.ink }}>{ln}</span>
-                      </div>
-                    ))}
+                    {cc.cliff.map((raw, i) => {
+                      // a note is either a plain line or {n: the line, w: why / an example}
+                      const ln = typeof raw === "string" ? raw : (raw && raw.n) || "";
+                      const why = typeof raw === "string" ? "" : (raw && raw.w) || "";
+                      return (
+                        <div key={i} style={{ display: "flex", gap: 10, padding: "11px 0", borderBottom: i < cc.cliff.length - 1 ? `1px solid ${c.line}` : "none" }}>
+                          <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe, flexShrink: 0, width: 14, paddingTop: 2 }}>{i + 1}</span>
+                          <div>
+                            <div style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.5, color: c.ink }}>{ln}</div>
+                            {why && <div style={{ fontFamily: sans, fontSize: 12.5, lineHeight: 1.55, color: c.sub, marginTop: 3 }}>{why}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
