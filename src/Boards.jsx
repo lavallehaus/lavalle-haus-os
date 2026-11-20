@@ -1837,9 +1837,15 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 // a card naming a tab is scoped to it and skips the month rule
                 cards = cards.filter((x) => { const lb = labelOfName(x.name); return !lb || lb === activeMonth; });
                 const mine = cards.map((x) => ({ x, st: stem(x.name), sp: spanOf(x.name) }));
+                // Months the strip actually has a tab for. A card naming a month
+                // with NO tab (last cycle's outline once the tabs moved on) has
+                // nowhere to live, and used to fall through onto every tab —
+                // hers, Nov 20 2026: "still seeing 2 strategies".
+                const tabMonths = new Set(monthStrip.map((m) => String(MONTH_OF_LABEL(m) || m).toLowerCase()));
                 cards = mine.filter(({ st, sp }) => {
                   if (!sp) return true;                       // no month named — shows on every tab
                   if (sp.includes(am)) return true;           // this tab is inside the card's span
+                  if (!sp.some((m) => tabMonths.has(m))) return false;   // names only months with no tab
                   // names another month: step aside only if a sibling in the
                   // same family actually covers this tab, so a lone card never
                   // vanishes
