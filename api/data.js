@@ -4087,7 +4087,13 @@ export default async function handler(req, res) {
       const lsS = async (fid) => (await (await fetch("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + fid + "' in parents and trashed=false") + "&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true", { headers: { Authorization: "Bearer " + gtS2 } })).json()).files || [];
       const mkS = async (name, parent) => { const hit = (await lsS(parent)).find((f) => f.mimeType === "application/vnd.google-apps.folder" && (f.name || "").trim() === name); if (hit) return hit.id; return (await (await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", { method: "POST", headers: { Authorization: "Bearer " + gtS2, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json()).id; };
       const SIS2 = SBOARD.driveRootId;
-      const monthName = (theme.title.split(/[\s+]+/)[0] || "September");
+      // A cycle title can be a tab LABEL ("Nov PT II 2026"), not a month, so the
+      // first word is an abbreviation and filed the PDF under a folder called
+      // "Nov" (Nov 20 2026). Resolve the real month name off the front.
+      const MONTHS_S2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const ABBR_S2 = { jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", sept: "September", oct: "October", nov: "November", dec: "December" };
+      const w0S2 = String(theme.title || "").trim().split(/[\s+]+/)[0] || "";
+      const monthName = MONTHS_S2.find((m) => m.toLowerCase() === w0S2.toLowerCase()) || ABBR_S2[w0S2.toLowerCase().replace(/\.$/, "")] || w0S2 || "September";
       const mF = await mkS(monthName, SIS2); const soF = await mkS("Strategy outline", mF);
       const fname = theme.title + " Strategy Outline.pdf";
       for (const f of await lsS(soF)) if (f.name === fname) await fetch("https://www.googleapis.com/drive/v3/files/" + f.id, { method: "PATCH", headers: { Authorization: "Bearer " + gtS2, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
@@ -4104,10 +4110,17 @@ export default async function handler(req, res) {
     // attach on a FRESH blob — the render above takes ~40s and writing the
     // stale snapshot wiped concurrent human saves (Courtney's edits, Aug 31)
     await patchBoardCards(SBOARD.key, [], (blob9, bd9) => {
-      const moName9 = (theme.title || "").split(/[\s+]+/)[0];
-      const moLists9 = new Set(bd9.lists.filter((l) => (l.month || "").toLowerCase() === moName9.toLowerCase()).map((l) => l.id));
-      const gridCard9 = (nextS2 ? bd9.cards.find((c) => /^grid\b/i.test(c.name || "") && moLists9.has(c.listId)) : null)
-        || bd9.cards.find((c) => /^grid\b/i.test(c.name || ""));
+      // Match the column's tab LABEL against the cycle title, not just the first
+      // word: "Nov PT II 2026" belongs to the column labelled "Nov PT II", and a
+      // plain-prefix test would also hit "Nov PT I", which is its prefix.
+      const ttl9 = String(theme.title || "").trim().toLowerCase();
+      const pfx9 = (a, b) => !!b && (a === b || (a.startsWith(b) && a[b.length] === " "));
+      const moLists9 = new Set(bd9.lists.filter((l) => { const lm = String(l.month || "").trim().toLowerCase(); return pfx9(ttl9, lm) || pfx9(lm, ttl9); }).map((l) => l.id));
+      // On a next-cycle build, attaching to SOME other Grid card is worse than
+      // attaching to none: Nov PT II's PDF landed on a Nov PT I card this way.
+      const gridCard9 = nextS2
+        ? bd9.cards.find((c) => /^grid\b/i.test(c.name || "") && moLists9.has(c.listId))
+        : (bd9.cards.find((c) => /^grid\b/i.test(c.name || "") && moLists9.has(c.listId)) || bd9.cards.find((c) => /^grid\b/i.test(c.name || "")));
       if (gridCard9 && pdfUrl) { gridCard9.attachments = (gridCard9.attachments || []).filter((a) => !/Strategy Outline/i.test(a.name || "")); gridCard9.attachments.push({ id: "a" + Math.random().toString(36).slice(2, 9), name: theme.title + " Strategy Outline (PDF)", url: pdfUrl, type: "application/pdf" }); }
       const soList9 = bd9.lists.find((l) => /strategy outline/i.test(l.name || ""));
       if (!soList9) return;
