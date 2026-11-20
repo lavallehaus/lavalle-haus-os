@@ -2151,12 +2151,24 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                       // a note is either a plain line or {n: the line, w: why / an example}
                       const ln = typeof raw === "string" ? raw : (raw && raw.n) || "";
                       const why = typeof raw === "string" ? "" : (raw && raw.w) || "";
+                      // a note may carry the post it refers to: img = thumbnail, cap = its caption, u = the permalink
+                      const img = typeof raw === "string" ? "" : (raw && raw.img) || "";
+                      const cap = typeof raw === "string" ? "" : (raw && raw.cap) || "";
+                      const pu = typeof raw === "string" ? "" : (raw && raw.u) || "";
                       return (
                         <div key={i} style={{ display: "flex", gap: 10, padding: "11px 0", borderBottom: i < cc.cliff.length - 1 ? `1px solid ${c.line}` : "none" }}>
                           <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe, flexShrink: 0, width: 14, paddingTop: 2 }}>{i + 1}</span>
-                          <div>
-                            <div style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.5, color: c.ink }}>{ln}</div>
-                            {why && <div style={{ fontFamily: sans, fontSize: 12.5, lineHeight: 1.55, color: c.sub, marginTop: 3 }}>{why}</div>}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.45, color: c.ink }}>{ln}</div>
+                            {why && <div style={{ fontFamily: sans, fontSize: 12.5, lineHeight: 1.5, color: c.sub, marginTop: 3 }}>{why}</div>}
+                            {img && (
+                              <div style={{ display: "flex", gap: 9, marginTop: 7, alignItems: "flex-start" }}>
+                                <a href={pu || img} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                                  <img src={img} alt="" style={{ width: 54, height: 68, objectFit: "cover", borderRadius: 4, border: `1px solid ${c.line}`, display: "block" }} />
+                                </a>
+                                {cap && <div style={{ fontFamily: "Georgia, serif", fontSize: 12, lineHeight: 1.45, color: c.sub, fontStyle: "italic" }}>{cap}</div>}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
