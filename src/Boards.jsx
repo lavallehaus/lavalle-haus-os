@@ -1219,6 +1219,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const expandLabel = (l) => { const m = MONTH_OF_LABEL(l); if (!m) return l; return m + String(l).slice(String(l).split(/\s+/)[0].length); };
   const labelForms = (l) => [String(l).toLowerCase(), expandLabel(l).toLowerCase()];
   const labelsByLen = [...monthStrip].sort((a, b) => expandLabel(b).length - expandLabel(a).length).filter((l) => l.length > 3);
+  // a label that is not a month sorts by where its column sits, not by calendar
   const labelOfName = (nm) => { const t = String(nm || "").toLowerCase(); return labelsByLen.find((l) => labelForms(l).some((f) => t.includes(f))) || null; };
   // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
   // grid 2 = 22-42), not something the month view should show. A month that

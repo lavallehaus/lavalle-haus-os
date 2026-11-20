@@ -2560,12 +2560,11 @@ export default async function handler(req, res) {
         // her ask Nov 20 2026: one calendar month, two cycles, two tabs). The
         // client reads the real month back off the front of the label.
         const ABBR_LP = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sept", "sep", "oct", "nov", "dec"];
-        const okLabel = (v) => {
-          const t = String(v).trim();
-          if (t.length > 12) return false;
-          if (MONTHS_LP.some((x) => new RegExp("^" + x + "\\b", "i").test(t))) return true;
-          return ABBR_LP.some((a) => new RegExp("^" + a + "\\b", "i").test(t));
-        };
+        // A label is usually a month, optionally with a part ("Nov PT II"). On a
+        // board that is not organised by month it can be any short name, so the
+        // sub-tab strip works there too (her ask Nov 20 2026: give the Virtual
+        // Wardrobe its own tab on the TikTok Shop board).
+        const okLabel = (v) => { const t = String(v).trim(); return t.length > 0 && t.length <= 18; };
         if (m === null || m === "") delete l.month;                       // "" clears the tag
         else if (okLabel(m)) l.month = String(m).trim();
         else { res.status(400).json({ error: "month must start with a month name (e.g. \"November\" or \"Nov PT II\") or be empty" }); return; }
