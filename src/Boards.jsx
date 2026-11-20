@@ -196,16 +196,17 @@ function CoverCarousel({ images, alt, cover }) {
   const [ar, setAr] = React.useState(null);
   const startRef = React.useRef(null);
   const n = images.length;
-  const go = (d) => setI((p) => (p + d + n) % n);
+  const [dir, setDir] = React.useState(1);
+  usePagePreload(images);
+  const go = (d) => { setDir(d); setI((p) => (p + d + n) % n); };
   const arrow = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 28, height: 28, border: "1px solid rgba(143,134,118,0.5)", borderRadius: 14, background: "rgba(255,255,255,0.92)", color: "#1A1A1A", fontFamily: "Georgia, serif", fontSize: 17, lineHeight: "26px", cursor: "pointer", padding: 0, boxShadow: "0 1px 5px rgba(0,0,0,0.18)" };
   return (
     <div style={{ position: "relative", userSelect: "none", touchAction: "pan-y", aspectRatio: ar || "4/5", background: "#F2EFE9", overflow: "hidden" }}
       onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
       onPointerUp={(e) => { const st = startRef.current; startRef.current = null; if (!st) return; const dx = e.clientX - st.x, dy = e.clientY - st.y; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { e.stopPropagation(); e.preventDefault(); go(dx < 0 ? 1 : -1); } }}
       onClickCapture={(e) => { const st = startRef.current; if (st && Math.abs(e.clientX - st.x) > 40) { e.stopPropagation(); e.preventDefault(); } }}>
-      <img src={images[i].url} alt={alt || ""} draggable={false}
-        onLoad={(e) => { const im = e.currentTarget; if (im.naturalWidth && im.naturalHeight) setAr(im.naturalWidth + " / " + im.naturalHeight); }}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      <img src={images[i].url} alt="" aria-hidden onLoad={(e) => { const im = e.currentTarget; if (im.naturalWidth && im.naturalHeight) setAr(im.naturalWidth + " / " + im.naturalHeight); }} style={{ display: "none" }} />
+      <PageTurn images={images} index={i} dir={dir} alt={alt} style={{ position: "absolute", inset: 0 }} />
       <div style={{ position: "absolute", top: 8, left: 10, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 8, letterSpacing: 1.6, textTransform: "uppercase", color: "#71716C", background: "rgba(255,255,255,0.75)", padding: "2px 6px", borderRadius: 1 }}>{images[i].name || ("" + (i + 1) + " / " + n)}</div>
       <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 6 }}>‹</button>
       <button aria-label="next" onClick={(e) => { e.stopPropagation(); go(1); }} style={{ ...arrow, right: 6 }}>›</button>
@@ -217,6 +218,47 @@ function CoverCarousel({ images, alt, cover }) {
       {full && <PresentOverlay images={images} index={i} setIndex={setI} onClose={() => setFull(false)} alt={alt} />}
     </div>
   );
+}
+
+// Page flip (her ask Nov 20 2026: the outline took too long to change page and
+// "a custom flip like magazine would be nice"). Two halves to that: every page
+// is PRELOADED so the next one is already decoded when she taps, and the turn
+// is a real page turn - the leaving page lifts on its spine and swings away.
+function usePagePreload(images) {
+  React.useEffect(() => {
+    const keep = (images || []).map((a) => { const im = new Image(); im.decoding = "async"; im.src = a.url; return im; });
+    return () => { keep.forEach((im) => { im.src = ""; }); };
+  }, [images]);
+}
+const FLIP_MS = 420;
+function PageTurn({ images, index, dir, style, imgStyle, alt }) {
+  // the page we are leaving, kept mounted for one turn
+  const [prev, setPrev] = React.useState(null);
+  const lastRef = React.useRef(index);
+  React.useEffect(() => {
+    if (lastRef.current === index) return;
+    const from = lastRef.current; lastRef.current = index;
+    setPrev({ i: from, d: dir, k: Date.now() });
+    const t = setTimeout(() => setPrev(null), FLIP_MS);
+    return () => clearTimeout(t);
+  }, [index, dir]);
+  const base = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block", backfaceVisibility: "hidden" };
+  return (
+    <div style={{ position: "relative", perspective: "2000px", ...style }}>
+      <img src={images[index].url} alt={alt || ""} draggable={false} style={{ ...base, ...imgStyle }} />
+      {prev && images[prev.i] && (
+        <img key={prev.k} src={images[prev.i].url} alt="" draggable={false}
+          style={{ ...base, ...imgStyle, zIndex: 2, transformOrigin: prev.d > 0 ? "left center" : "right center",
+                   animation: `lhTurn${prev.d > 0 ? "F" : "B"} ${FLIP_MS}ms cubic-bezier(.33,.0,.2,1) forwards`,
+                   boxShadow: "0 0 40px rgba(0,0,0,0.28)" }} />
+      )}
+    </div>
+  );
+}
+if (typeof document !== "undefined" && !document.getElementById("lh-turn-kf")) {
+  const st = document.createElement("style"); st.id = "lh-turn-kf";
+  st.textContent = "@keyframes lhTurnF{from{transform:rotateY(0deg);opacity:1}to{transform:rotateY(-118deg);opacity:0}}@keyframes lhTurnB{from{transform:rotateY(0deg);opacity:1}to{transform:rotateY(118deg);opacity:0}}";
+  document.head.appendChild(st);
 }
 
 // An editorial cover photo on the tile + ⤢ that presents the card's pages
@@ -241,7 +283,9 @@ function CoverPresent({ cover, images, alt }) {
 // ancestor transform can trap the fixed positioning.
 function PresentOverlay({ images, index, setIndex, onClose, alt }) {
   const n = images.length;
-  const go = React.useCallback((d) => setIndex((p) => (p + d + n) % n), [n, setIndex]);
+  const [dir, setDir] = React.useState(1);
+  usePagePreload(images);
+  const go = React.useCallback((d) => { setDir(d); setIndex((p) => (p + d + n) % n); }, [n, setIndex]);
   const startRef = React.useRef(null);
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); else if (e.key === "ArrowRight") go(1); else if (e.key === "ArrowLeft") go(-1); };
@@ -254,8 +298,10 @@ function PresentOverlay({ images, index, setIndex, onClose, alt }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(24,22,19,0.94)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", touchAction: "pan-y" }}
       onPointerDown={(e) => { startRef.current = { x: e.clientX, y: e.clientY }; }}
       onPointerUp={(e) => { const st = startRef.current; startRef.current = null; if (!st) return; const dx = e.clientX - st.x; if (Math.abs(dx) > 50) { e.stopPropagation(); go(dx < 0 ? 1 : -1); } }}>
-      <img src={images[index].url} alt={alt || ""} draggable={false} onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: "94vw", maxHeight: "92vh", objectFit: "contain", display: "block", boxShadow: "0 8px 60px rgba(0,0,0,0.5)", background: "#F2EFE9" }} />
+      {/* landscape spread: the pages are 16:9, so hold that shape and fill the view */}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, calc(92vh * 16 / 9))", aspectRatio: "16 / 9", boxShadow: "0 8px 60px rgba(0,0,0,0.5)", background: "#F2EFE9" }}>
+        <PageTurn images={images} index={index} dir={dir} alt={alt} style={{ width: "100%", height: "100%" }} imgStyle={{ objectFit: "cover" }} />
+      </div>
       <div style={{ position: "absolute", top: 16, left: 20, fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#C9C2B4" }}>{images[index].name || ((index + 1) + " / " + n)}</div>
       <button aria-label="close" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ position: "absolute", top: 10, right: 14, width: 44, height: 44, border: "none", background: "transparent", color: "#C9C2B4", fontFamily: "Georgia, serif", fontSize: 26, cursor: "pointer", padding: 0 }}>✕</button>
       <button aria-label="previous" onClick={(e) => { e.stopPropagation(); go(-1); }} style={{ ...arrow, left: 14 }}>‹</button>
