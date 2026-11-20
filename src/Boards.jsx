@@ -1164,8 +1164,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // strategy cards showed on one tab because both resolve to "November"). Match
   // the longest label first so "Nov PT II" wins over "Nov PT I", which is a
   // prefix of it.
-  const labelsByLen = [...monthStrip].sort((a, b) => b.length - a.length).filter((l) => l.length > 3);
-  const labelOfName = (nm) => { const t = String(nm || "").toLowerCase(); return labelsByLen.find((l) => t.includes(l.toLowerCase())) || null; };
+  // A label may be abbreviated ("Nov PT II") while the card spells the month out
+  // ("Strategy Outline — November PT II"). Compare on both forms, so the month
+  // rule can still see a November sibling and last month's card steps aside.
+  const expandLabel = (l) => { const m = MONTH_OF_LABEL(l); if (!m) return l; return m + String(l).slice(String(l).split(/\s+/)[0].length); };
+  const labelForms = (l) => [String(l).toLowerCase(), expandLabel(l).toLowerCase()];
+  const labelsByLen = [...monthStrip].sort((a, b) => expandLabel(b).length - expandLabel(a).length).filter((l) => l.length > 3);
+  const labelOfName = (nm) => { const t = String(nm || "").toLowerCase(); return labelsByLen.find((l) => labelForms(l).some((f) => t.includes(f))) || null; };
   // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
   // grid 2 = 22-42), not something the month view should show. A month that
   // straddles the boundary used to render both columns side by side — hers,

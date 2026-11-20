@@ -4040,6 +4040,8 @@ export default async function handler(req, res) {
     // tracked cover, Loft-style in-feed pages with the numbered 3x3 grid crop.
     // Same ops drive the page JPEGs (resvg-wasm) and the PDF (pdf-lib + fontkit).
     const getBuf = async (u) => { if (!u) return null; try { const r = await fetch(/^https?:/.test(u) ? u : APP_ORIGIN + u); if (!r.ok) return null; return Buffer.from(await r.arrayBuffer()); } catch (e) { return null; } };
+    const MONTHS_S2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const ABBR_S2 = { jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", sept: "September", oct: "October", nov: "November", dec: "December" };
     const pageUrls = []; let pageErr = null; let pdfBuf = null;
     {
       const { renderStrategyPages } = await import("../lib/strategy-pages.mjs");
@@ -4090,8 +4092,6 @@ export default async function handler(req, res) {
       // A cycle title can be a tab LABEL ("Nov PT II 2026"), not a month, so the
       // first word is an abbreviation and filed the PDF under a folder called
       // "Nov" (Nov 20 2026). Resolve the real month name off the front.
-      const MONTHS_S2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      const ABBR_S2 = { jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", sept: "September", oct: "October", nov: "November", dec: "December" };
       const w0S2 = String(theme.title || "").trim().split(/[\s+]+/)[0] || "";
       const monthName = MONTHS_S2.find((m) => m.toLowerCase() === w0S2.toLowerCase()) || ABBR_S2[w0S2.toLowerCase().replace(/\.$/, "")] || w0S2 || "September";
       const mF = await mkS(monthName, SIS2); const soF = await mkS("Strategy outline", mF);
@@ -4113,9 +4113,12 @@ export default async function handler(req, res) {
       // Match the column's tab LABEL against the cycle title, not just the first
       // word: "Nov PT II 2026" belongs to the column labelled "Nov PT II", and a
       // plain-prefix test would also hit "Nov PT I", which is its prefix.
-      const ttl9 = String(theme.title || "").trim().toLowerCase();
+      // The column's label may be abbreviated while the title spells the month
+      // out, so expand the leading month on both sides before comparing.
+      const expand9 = (v) => { const w = String(v || "").trim(); const f = w.split(/\s+/)[0] || ""; const full = MONTHS_S2.find((m) => m.toLowerCase() === f.toLowerCase()); if (full) return w; const ab = ABBR_S2[f.toLowerCase().replace(/\.$/, "")]; return ab ? ab + w.slice(f.length) : w; };
+      const ttl9 = expand9(theme.title).toLowerCase();
       const pfx9 = (a, b) => !!b && (a === b || (a.startsWith(b) && a[b.length] === " "));
-      const moLists9 = new Set(bd9.lists.filter((l) => { const lm = String(l.month || "").trim().toLowerCase(); return pfx9(ttl9, lm) || pfx9(lm, ttl9); }).map((l) => l.id));
+      const moLists9 = new Set(bd9.lists.filter((l) => { const lm = expand9(l.month).toLowerCase(); return !!lm && (pfx9(ttl9, lm) || pfx9(lm, ttl9)); }).map((l) => l.id));
       // On a next-cycle build, attaching to SOME other Grid card is worse than
       // attaching to none: Nov PT II's PDF landed on a Nov PT I card this way.
       const gridCard9 = nextS2
