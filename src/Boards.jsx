@@ -718,6 +718,9 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   };
   const tileBg = (b) => (b && b.bg ? boardBgStyle(b.bg) : { background: "linear-gradient(150deg,#EDE9E2,#DDD5C8)" });
   const [bgMenu, setBgMenu] = useState(false);
+  // Cliff notes (her ask Nov 20 2026): a strategy card can carry 4-5 plain lines
+  // a teammate reads at a glance. The button only appears when the card has them.
+  const [cliffOpen, setCliffOpen] = useState(null);
   const [lookbook, setLookbook] = useState(false); // full-screen swipeable month view of a board's looks
   const [shoots, setShoots] = useState(null); // photoshoot dates from the connected calendar ([{month:"YYYY-MM", label, date}])
   const [linking, setLinking] = useState(null); // progress text while Link assets runs
@@ -2027,8 +2030,14 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                               </button>
                             )}
                           </div>
-                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0)) && (
+                          {((card.labels && card.labels.length > 0) || card.due || (card.members && card.members.length > 0) || (card.comments && card.comments.filter((x) => !x.sys).length > 0) || card.assetUrl || card.exampleUrl || firstVideoUrl(card.desc) || (card.checklist && card.checklist.length > 0) || (Array.isArray(card.cliff) && card.cliff.length > 0)) && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 6, paddingLeft: 24 }}>
+                              {Array.isArray(card.cliff) && card.cliff.length > 0 && (
+                                <button onClick={(e) => { e.stopPropagation(); setCliffOpen(cliffOpen === card.id ? null : card.id); }}
+                                  style={{ fontFamily: sans, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: c.taupe, border: `1px solid ${c.line}`, borderRadius: 6, padding: "2px 7px", background: cliffOpen === card.id ? "#EEECE6" : c.bg, cursor: "pointer" }}>
+                                  ≡ Cliff notes
+                                </button>
+                              )}
                               {card.due && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontFamily: sans, fontSize: 9.5, background: card.done ? "#DFE8DF" : new Date(card.due) < new Date() ? "#F3E3E0" : "#EEECE6", color: card.done ? c.green : new Date(card.due) < new Date() ? c.red : c.ink, borderRadius: 4, padding: "2px 7px" }}>
                                   {card.done ? "✓" : "◦"} {new Date(card.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -2124,6 +2133,31 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             )}
           </div>
+          {cliffOpen && (() => {
+            const cc = (board.cards || []).find((x) => x.id === cliffOpen);
+            if (!cc || !Array.isArray(cc.cliff) || !cc.cliff.length) return null;
+            return (
+              <div onClick={() => setCliffOpen(null)}
+                style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(26,26,26,0.28)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                <div onClick={(e) => e.stopPropagation()}
+                  style={{ background: "#FAF9F7", border: `1px solid ${c.line}`, borderRadius: 10, boxShadow: "0 18px 50px rgba(0,0,0,0.25)", width: "min(520px, 100%)", maxHeight: "72vh", display: "flex", flexDirection: "column" }}>
+                  <div style={{ padding: "16px 20px 10px", borderBottom: `1px solid ${c.line}`, display: "flex", alignItems: "baseline", gap: 10 }}>
+                    <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.taupe }}>Cliff notes</div>
+                    <div style={{ fontFamily: sans, fontSize: 11.5, color: c.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cc.name}</div>
+                    <button onClick={() => setCliffOpen(null)} style={{ marginLeft: "auto", border: "none", background: "transparent", color: c.sub, fontSize: 18, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
+                  </div>
+                  <div style={{ padding: "14px 20px 20px", overflowY: "auto" }}>
+                    {cc.cliff.map((ln, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, padding: "9px 0", borderBottom: i < cc.cliff.length - 1 ? `1px solid ${c.line}` : "none" }}>
+                        <span style={{ fontFamily: sans, fontSize: 11, color: c.taupe, flexShrink: 0, width: 14 }}>{i + 1}</span>
+                        <span style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.5, color: c.ink }}>{ln}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {monthStrip.length > 0 && (
             // Sheets-style month tabs, pinned bottom-left (her ask Oct 20 2026)
             // paddingBottom carries the phone's home-indicator inset (viewport-fit=cover

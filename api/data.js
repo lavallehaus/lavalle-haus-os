@@ -2607,7 +2607,7 @@ export default async function handler(req, res) {
     const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
     const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
     if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
-    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "listId", "_deleted", "_removedAt"];
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "listId", "cliff", "_deleted", "_removedAt"];
     let n = 0; const nowBP = Date.now();
     for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
       const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
@@ -3635,14 +3635,18 @@ export default async function handler(req, res) {
           // 2) strategy from the findings
           const nFtc = postsST.filter((c) => (c.labels || []).some((l) => /ftc/i.test(typeof l === "string" ? l : (l && l.n) || ""))).length;
           const nCourt = postsST.filter((c) => (c.labels || []).some((l) => /courtney/i.test(typeof l === "string" ? l : (l && l.n) || ""))).length;
-          let themeST = null, playsST = null;
+          let themeST = null, playsST = null, focusST = null, cliffST = null;
           const keyST = process.env.ANTHROPIC_API_KEY;
           if (keyST) {
             try {
-              const pST = "You are writing next month's social strategy for the Lavalle Sisters page (Instagram + TikTok, two sisters behind The Fold and Lavalle Haus). Channel audit of the trailing month:\nHeadline: " + (audST.headline || "") + "\nFindings:\n" + (audST.findings || []).map((x) => "- " + x).join("\n") + "\nCarry:\n" + (audST.carry || []).map((x) => "- " + x).join("\n") + "\nFormat mix: " + (audST.formatMix || "") + "\n\nThe month's grid is locked: 21 posts, " + nFtc + " face-to-camera reels, " + nCourt + " Courtney fashion reels, the rest b-roll reels.\nReturn ONLY JSON: {\"theme\":\"1-2 sentence month theme, plain punctuation, no em dashes\",\"plays\":[\"5-6 short numbered-ready directives with numbers from the findings\"]}";
+              // Her note Nov 20 2026: the strategy "never clearly outlines what we
+              // should focus on for coming month and actionable steps really.. it
+              // just gives negatives". So: one focus, then concrete actions, and
+              // the evidence LAST. Plus cliff notes a teammate can read at a glance.
+              const pST = "You are writing the coming cycle's social strategy for the Lavalle Sisters page (Instagram + TikTok, two sisters behind The Fold and Lavalle Haus). Channel audit of the trailing month:\nHeadline: " + (audST.headline || "") + "\nFindings:\n" + (audST.findings || []).map((x) => "- " + x).join("\n") + "\nCarry:\n" + (audST.carry || []).map((x) => "- " + x).join("\n") + "\nFormat mix: " + (audST.formatMix || "") + "\n\nThe cycle's grid is locked: 21 posts, " + nFtc + " face-to-camera reels, " + nCourt + " Courtney fashion reels, the rest b-roll reels.\n\nWrite it FORWARD, not as a post-mortem. Name the one thing to focus on and the steps that get there. Do not open with what went wrong; the evidence is the reason for an action, never the point. Every action must be something a person can actually do to one of these 21 posts this cycle, specific enough to act on without asking a question, and must carry the number from the findings that justifies it. Plain punctuation, no em dashes.\n\nReturn ONLY JSON: {\"focus\":\"one sentence, the single thing this cycle is for\",\"theme\":\"1-2 sentences, the creative read of that focus\",\"plays\":[\"5-6 actions, each starting with a verb, each naming its number\"],\"cliff\":[\"4-5 lines, max 12 words each, plain words, what a teammate needs and nothing else\"]}";
               const rST = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": keyST, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: pST }] }) });
               const jST = await rST.json(); const tST = (jST.content || []).map((c) => c.text || "").join("");
-              const mST = tST.match(/\{[\s\S]*\}/); if (mST) { const o = JSON.parse(mST[0]); themeST = o.theme; playsST = o.plays; }
+              const mST = tST.match(/\{[\s\S]*\}/); if (mST) { const o = JSON.parse(mST[0]); themeST = o.theme; playsST = o.plays; focusST = o.focus; cliffST = Array.isArray(o.cliff) ? o.cliff.slice(0, 6).map((x) => String(x).slice(0, 120)) : null; }
             } catch (e2) {}
           }
           if (!themeST) themeST = "Carry what worked: " + ((audST.carry || []).slice(0, 2).join(" ") || "reels first, sister story forward.");
@@ -3650,12 +3654,11 @@ export default async function handler(req, res) {
           // cycle's Strategy Outline — it flips at promotion, not before.
           await kvSet("sisters_strategy_theme_next", { title: monthST, body: themeST, at: Date.now() });
           const descST = [
-            "Built automatically from the " + (audST.window || "trailing 30 day") + " channel audit the moment the " + propST.month + " grid was completed.",
-            "",
-            audST.headline ? "AUDIT HEADLINE\n" + audST.headline : "",
-            (audST.findings || []).length ? "\nWHAT THE DATA SAID\n" + audST.findings.map((x) => "• " + x).join("\n") : "",
-            "\nTHEME\n" + themeST,
-            (playsST || []).length ? "\n" + propST.month.toUpperCase() + " PLAYS\n" + playsST.map((x, i) => (i + 1) + ". " + x).join("\n") : ((audST.carry || []).length ? "\nCARRY\n" + audST.carry.map((x) => "• " + x).join("\n") : ""),
+            focusST ? "FOCUS THIS CYCLE\n" + focusST : "",
+            (playsST || []).length ? "\nDO THIS\n" + playsST.map((x, i) => (i + 1) + ". " + x).join("\n") : ((audST.carry || []).length ? "\nDO THIS\n" + audST.carry.map((x, i) => (i + 1) + ". " + x).join("\n") : ""),
+            "\nTHE READ\n" + themeST,
+            (audST.findings || []).length ? "\nWHY, FROM THE NUMBERS\n" + audST.findings.map((x) => "• " + x).join("\n") : "",
+            "\nBuilt from the " + (audST.window || "trailing 30 day") + " channel audit the moment the " + propST.month + " grid was completed.",
           ].filter(Boolean).join("\n");
           await patchBoardCards("lavalle-sisters", [], (blb, bd2) => {
             // the strategy card lives under ITS month's tab (her note Oct 21 2026):
@@ -3664,7 +3667,7 @@ export default async function handler(req, res) {
             const soST = bd2.lists.find((l) => l.month === propST.month && /grid and contributions/i.test(l.name || ""))
               || bd2.lists.find((l) => l.month === propST.month && !/schedule/i.test(l.name || ""))
               || bd2.lists.find((l) => /strategy outline/i.test(l.name || "")) || bd2.lists[0];
-            bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy (from the " + (audST.window || "trailing 30 days") + " audit)", desc: descST, labels: [], members: [], attachments: [], links: [], comments: [], done: false });
+            bd2.cards.unshift({ id: "c" + Math.random().toString(36).slice(2, 10), listId: soST.id, name: propST.month + " Strategy", desc: descST, cliff: cliffST || null, labels: [], members: [], attachments: [], links: [], comments: [], done: false });
           });
           // Slack ping to Sarah retired Nov 19 2026 — she is off this board.
         }
