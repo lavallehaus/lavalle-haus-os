@@ -4048,8 +4048,11 @@ export default async function handler(req, res) {
       const pickS = (await kvGet("sisters_cover_pick" + SBOARD.kvSuffix)) || null;
       const tilesInRange = rangeS ? tilesS.slice(rangeS[0] - 1 + tileOff, rangeS[1] + tileOff) : tilesS;
       let collage = [], monthGridS = null;
-      if (SBOARD.key === "the-fold") {
-        // the strategy page shows the whole cycle grid at a glance (her rule)
+      {
+        // The strategy page ALWAYS shows the whole cycle grid at a glance (her
+        // rule Oct 5 2026, restated Nov 20 2026 for the Sisters board: "the
+        // second page of pdf should always show the full 21 grid on that page").
+        // This used to be the Fold's only; Sisters got a six-photo collage.
         monthGridS = [];
         const JimpG = (await import("jimp")).default;
         for (const p of postCards) {
@@ -4061,7 +4064,9 @@ export default async function handler(req, res) {
             monthGridS.push({ n: p.n, jpg: await imG.getBufferAsync(JimpG.MIME_JPEG) });
           } catch (eG) {}
         }
-      } else {
+      }
+      if (!monthGridS.length) {                       // no covers yet -> the old collage still fills the page
+        monthGridS = null;
         const collageUrls = (!nextS2 && pickS && pickS.ranked && pickS.ranked.length ? pickS.ranked : tilesInRange.filter((t) => t.tag === "K").map((t) => t.cover)).slice(0, 6);
         collage = (await Promise.all(collageUrls.map(getBuf))).filter(Boolean);
       }
