@@ -4053,17 +4053,24 @@ export default async function handler(req, res) {
         // rule Oct 5 2026, restated Nov 20 2026 for the Sisters board: "the
         // second page of pdf should always show the full 21 grid on that page").
         // This used to be the Fold's only; Sisters got a six-photo collage.
+        // 21 sequential fetch+resize blew the 60s function budget once this
+        // ran for Sisters too (Nov 20 2026). Six at a time keeps it well inside.
         monthGridS = [];
         const JimpG = (await import("jimp")).default;
-        for (const p of postCards) {
-          if (!p.cover) continue;
+        const withCover = postCards.filter((p) => p.cover);
+        const oneG = async (p) => {
           try {
             const bG = await getBuf(p.cover + (String(p.cover).includes("?") ? "&" : "?") + "fit=400");
-            if (!bG) continue;
+            if (!bG) return null;
             const imG = (await JimpG.read(bG)).cover(176, 236); imG.quality(84);
-            monthGridS.push({ n: p.n, jpg: await imG.getBufferAsync(JimpG.MIME_JPEG) });
-          } catch (eG) {}
+            return { n: p.n, jpg: await imG.getBufferAsync(JimpG.MIME_JPEG) };
+          } catch (eG) { return null; }
+        };
+        for (let i = 0; i < withCover.length; i += 6) {
+          const got = await Promise.all(withCover.slice(i, i + 6).map(oneG));
+          for (const g of got) if (g) monthGridS.push(g);
         }
+        monthGridS.sort((a, b) => a.n - b.n);
       }
       if (!monthGridS.length) {                       // no covers yet -> the old collage still fills the page
         monthGridS = null;
