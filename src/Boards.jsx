@@ -1082,7 +1082,29 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const [monthTab, setMonthTab] = useState(() => { try { return monthTabKey ? localStorage.getItem(monthTabKey) : null; } catch { return null; } });
   const pickMonthTab = (m) => { setMonthTab(m); try { if (monthTabKey) localStorage.setItem(monthTabKey, m); } catch {} };
   const MONTH_SEQ = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const boardMonths = board ? MONTH_SEQ.filter((m) => (board.lists || []).some((l) => l.month === m)) : [];
+  // A tab LABEL may be a plain month ("November") or a month plus a part
+  // ("Nov PT I" / "Nov PT II") — her ask Nov 20 2026, when one calendar month
+  // carries two cycles and the second must not land on the first one's tab.
+  // Everything downstream still needs the real month behind the label, so keep
+  // the two separate: `activeMonth` is the LABEL, `activeMonthName` the month.
+  const MONTH_OF_LABEL = (s0) => {
+    const t = String(s0 || "").trim();
+    const full = MONTH_SEQ.find((m) => new RegExp("^" + m + "\\b", "i").test(t));
+    if (full) return full;
+    const ab = /^(jan|feb|mar|apr|may|jun|jul|aug|sept|sep|oct|nov|dec)\b/i.exec(t);
+    return ab ? MONTH_SEQ.find((m) => m.toLowerCase().startsWith(ab[1].toLowerCase().replace(/^sept$/, "sep"))) || null : null;
+  };
+  const boardMonths = board
+    ? (() => {
+        const seen = [];
+        (board.lists || []).forEach((l) => { if (l.month && !seen.includes(l.month)) seen.push(l.month); });
+        return seen.sort((a, b) => {
+          const ia = MONTH_SEQ.indexOf(MONTH_OF_LABEL(a)), ib = MONTH_SEQ.indexOf(MONTH_OF_LABEL(b));
+          if (ia !== ib) return ia - ib;                       // calendar order first
+          return seen.indexOf(a) - seen.indexOf(b);            // then the order the columns sit in
+        });
+      })()
+    : [];
   // DATE-DRIVEN month strip (the Fold, Nov 10 2026). A Sisters cycle posts
   // DAILY, so its 21 posts fit inside one calendar month and a `month` tag on
   // the whole column is honest. The Fold posts Tuesday/Thursday, so one
@@ -1127,7 +1149,13 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   const monthStrip = boardMonths.length ? boardMonths : dateMonths;
   const byDateMonths = !boardMonths.length && dateMonths.length > 0;
   const nowMonthName = MONTH_SEQ[new Date().getMonth()];
-  const activeMonth = monthStrip.length ? (monthStrip.includes(monthTab) ? monthTab : (monthStrip.includes(nowMonthName) ? nowMonthName : monthStrip[0])) : null;
+  const activeMonth = monthStrip.length
+    ? (monthStrip.includes(monthTab)
+        ? monthTab
+        : (monthStrip.includes(nowMonthName) ? nowMonthName : (monthStrip.find((m) => MONTH_OF_LABEL(m) === nowMonthName) || monthStrip[0])))
+    : null;
+  // the calendar month behind the active LABEL, for every rule that matches a month written in a card name
+  const activeMonthName = activeMonth ? (MONTH_OF_LABEL(activeMonth) || activeMonth) : null;
   // On a date-driven board the cycles are a STORAGE split (grid 1 = posts 1-21,
   // grid 2 = 22-42), not something the month view should show. A month that
   // straddles the boundary used to render both columns side by side — hers,
@@ -1766,7 +1794,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                 const postNo = (nm) => Number((/^post\s*(\d+)/i.exec(nm || "") || [])[1] || 0);
                 cards = board.cards
                   .filter((x) => schedListIds.includes(x.listId) && (viewer.owner || /kiaredza/i.test(viewer.name || "") || !/^automations\b/i.test(x.name || "")))
-                  .filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonth; })
+                  .filter((x) => { const mo = monthOfName(x.name); return !mo || mo === activeMonthName; })
                   .sort((a, b) => postNo(a.name) - postNo(b.name)); // a card with no post number (a to-do, a note) sorts to the top
               } else if (activeMonth && !l.month) {
                 // Every OTHER column falls through to the twin rule below, the
@@ -1790,7 +1818,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
                   const out = []; for (let i = 0; i < 12; i++) { const k = (a + i) % 12; out.push(MOS[k]); if (k === b) break; }
                   return out;
                 };
-                const am = activeMonth.toLowerCase();
+                const am = String(activeMonthName || activeMonth).toLowerCase();
                 const mine = cards.map((x) => ({ x, st: stem(x.name), sp: spanOf(x.name) }));
                 cards = mine.filter(({ st, sp }) => {
                   if (!sp) return true;                       // no month named — shows on every tab
