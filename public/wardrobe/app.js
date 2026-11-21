@@ -443,6 +443,98 @@ const SYNC_BM = "javascript:(function(){var ORD=/order/i.test(location.href);var
   "if(!R.length){alert('Nothing to read here \\u2014 open your TikTok Shop orders or your cart, scroll to the bottom so every row has loaded, then click this again.');return}" +
   // Safari blocks a popup opened from a bookmarklet, so fall back to this tab.
   "var u='https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R));var w=null;try{w=window.open(u,'_blank')}catch(e){};if(!w)location.href=u})()";
+// ── Paste route ──────────────────────────────────────────────────────────────
+// Safari refuses to run a javascript: bookmark that is dropped on a page or
+// typed into the address bar, which is where hers landed ("Safari doesn't allow
+// JavaScript from the Smart Search field"). Selecting the whole TikTok page and
+// pasting it here needs none of that: the clipboard carries the markup, so the
+// same reader can run on it inside our own page.
+const KEEP_TAGS = new Set(['div','p','section','article','li','ul','ol','h1','h2','h3','h4','h5','span','b','strong','em','br','main','header','footer','table','tbody','tr','td','th']);
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const out = document.createElement('div');
+  (function walk(src, dst) {
+    for (const n of src.childNodes) {
+      if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
+      if (n.nodeType !== 1) continue;
+      const t = n.tagName.toLowerCase();
+      if (t === 'img') {
+        const u = n.getAttribute('src') || n.getAttribute('data-src') || '';
+        if (!/^https:\/\//.test(u)) continue;
+        const i = document.createElement('img');
+        i.referrerPolicy = 'no-referrer'; i.src = u; i.alt = n.getAttribute('alt') || '';
+        i.style.cssText = 'width:140px;height:auto;display:block';
+        dst.appendChild(i); continue;
+      }
+      // Anything that is not plain structure is dropped, but its text is kept —
+      // this is somebody else's markup and none of it gets to run here.
+      if (!KEEP_TAGS.has(t)) {
+        if (['a','button','label','td','figure','figcaption'].includes(t)) { const e = document.createElement('div'); dst.appendChild(e); walk(n, e); }
+        continue;
+      }
+      const e = document.createElement(t); dst.appendChild(e); walk(n, e);
+    }
+  })(doc.body, out);
+  return out;
+}
+// The same rules the bookmark uses, over a DOM we already hold.
+function readDom(root, ord) {
+  const money = (t) => { const m = String(t).replace(/\s+/g, '').match(/\$\s?([\d,]+\.?\d{0,2})/); return m ? '$' + m[1] : ''; };
+  const lines = (b) => (b.innerText || b.textContent || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const anchorHit = (t) => (ord ? /ordered on|delivered|shipped|arriv|in transit|out for/i.test(t) : t.indexOf('$') > -1);
+  const dateOf = (t) => { const m = t.match(/Ordered on ([A-Za-z]{3,9} ?\d{1,2})/i); return m ? m[1] : ''; };
+  const shopOf = (t) => String(t || '').split('|')[0].replace(/ordered on.*/i, '').replace(/[\s·|]+$/, '').trim();
+  const rows = [], seenName = {}, seenSrc = {};
+  for (const g of root.querySelectorAll('img')) {
+    const src = (g.currentSrc || g.src || '').split('?')[0];
+    if (!/oec-general|\/tos-/.test(src) || /static\/image|tiktok-web-common|-avt-/.test(src) || seenSrc[src]) continue;
+    if (g.naturalWidth && g.naturalWidth < 80) continue;
+    let el = g, box = null;
+    for (let i = 0; i < 10 && el; i++) { el = el.parentElement; const t = el && (el.innerText || el.textContent || ''); if (t && t.length > 20 && anchorHit(t)) { box = el; break; } }
+    if (!box) continue;
+    const txt = lines(box), all = box.innerText || box.textContent || '';
+    let nm = (g.alt || '').trim(), fb = false;
+    if (nm.length < 12) nm = txt.filter((x) => x.length > 18 && x[0] !== '$' && !/sold$|ordered on|delivered|view order|arrived at|^your order|place your|in transit|out for deliv/i.test(x)).sort((a, b) => b.length - a.length)[0] || '';
+    if (!nm && ord) { const d = dateOf(all); nm = (shopOf(txt[0]) || 'TikTok order') + (d ? ' · ordered ' + d : ''); fb = true; }
+    if (!nm) continue;
+    if (fb) seenSrc[src] = 1; else { if (seenName[nm]) continue; seenName[nm] = 1; seenSrc[src] = 1; }
+    rows.push({ key: src, name: nm.slice(0, 160), price: money(all), link: '', image: src, shop: ord ? shopOf(txt[0]).slice(0, 60) : '',
+      ordered: dateOf(all), variant: txt.filter((x) => /^Color|, ?[SMLX]+$/i.test(x))[0] || '', status: ord ? 'owned' : 'cart' });
+  }
+  return rows;
+}
+async function rowsFromPaste(html) {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-10000px;top:0;width:1200px;pointer-events:none';
+  host.appendChild(sanitizeHtml(html));
+  document.body.appendChild(host);
+  try {
+    const imgs = [...host.querySelectorAll('img')].filter((i) => !i.complete);
+    // The photos have to be measured, but one slow CDN must not hold up the rest.
+    await Promise.race([
+      Promise.all(imgs.map((i) => new Promise((r) => { i.onload = i.onerror = r; }))),
+      new Promise((r) => setTimeout(r, 9000)),
+    ]);
+    const all = host.innerText || host.textContent || '';
+    return readDom(host, /ordered on/i.test(all));
+  } finally { host.remove(); }
+}
+async function onPasteSync(e) {
+  e.preventDefault();
+  const out = document.querySelector('[data-pasteout]'); if (!out) return;
+  const html = (e.clipboardData || {}).getData ? e.clipboardData.getData('text/html') : '';
+  e.currentTarget.textContent = 'Click here, then press ⌘V';
+  if (!html) { out.innerHTML = `<p class="warn">That paste had no page in it. On the TikTok tab press ⌘A then ⌘C, come back, click the box and press ⌘V.</p>`; return; }
+  out.innerHTML = `<p class="muted">Reading the page…</p>`;
+  let rows = [];
+  try { rows = await rowsFromPaste(html); }
+  catch (err) { out.innerHTML = `<p class="warn">Couldn't read that: ${esc(err.message)}</p>`; return; }
+  if (!rows.length) { out.innerHTML = `<p class="warn">No pieces in that paste. Scroll the TikTok page all the way down so every row has loaded, then ⌘A ⌘C and paste again.</p>`; return; }
+  state.pasteRows = rows;
+  out.innerHTML = `<p><b>${rows.length} piece${rows.length === 1 ? '' : 's'}</b> found · ${rows[0].status === 'owned' ? 'bought' : 'in cart'}</p>
+    <div class="paste-thumbs">${rows.slice(0, 10).map((r) => `<img src="${esc(r.image)}" alt="">`).join('')}</div>
+    <button class="primary small" data-pastefile>File them to ${esc(personName(ME))}</button>`;
+}
 function openSyncSetup() {
   let el = $('#syncSetup');
   if (!el) { el = document.createElement('div'); el.id = 'syncSetup'; el.className = 'zoom-view sync-help';
@@ -450,16 +542,26 @@ function openSyncSetup() {
     el.onclick = (e) => { if (e.target === el || e.target.closest('[data-close]')) el.hidden = true; }; }
   el.innerHTML = `<div class="sync-card">
     <h3>Sync your own TikTok</h3>
-    <p>It reads the page you are on and files everything to <b>${esc(personName(ME))}</b>. Set it up <b>in the browser your TikTok is signed in to</b> — your orders only show where that session lives, which for Kiabeth is Safari.</p>
+    <p>Everything it reads is filed to <b>${esc(personName(ME))}</b>. Do it in the browser your TikTok is signed in to — your orders only show where that session lives, which for Kiabeth is Safari.</p>
+    <h4>Paste the page <small>works everywhere, nothing to install</small></h4>
     <ol>
-      <li>Show the bookmarks bar there once. <b>Safari:</b> View → Show Favorites Bar. <b>Chrome:</b> ⌘⇧B.</li>
-      <li>Drag this up onto it: <a class="bm" href="${esc(SYNC_BM)}" onclick="return false">🛍 Sync Wardrobe</a></li>
-      <li>In that same browser open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> (or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>), scroll to the bottom so every row has loaded, and click the bookmark.</li>
-      <li>It brings you here. Pick your name and the pieces file themselves.</li>
+      <li>Open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> (or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>) and scroll to the bottom so every row has loaded.</li>
+      <li>Press <b>⌘A</b> then <b>⌘C</b> on that page.</li>
+      <li>Come back here, click this box and press <b>⌘V</b>:</li>
+    </ol>
+    <div class="paste-box" data-pastebox contenteditable="true" spellcheck="false">Click here, then press ⌘V</div>
+    <div class="paste-out" data-pasteout></div>
+    <h4>Or one click, every time <small>a bookmark on the bar</small></h4>
+    <ol>
+      <li>Show the bookmarks bar. <b>Safari:</b> View → Show Favorites Bar. <b>Chrome:</b> ⌘⇧B.</li>
+      <li>Drag this onto <b>the bar itself</b> — dropped on a page or in the address bar Safari refuses to run it: <a class="bm" href="${esc(SYNC_BM)}" onclick="return false">🛍 Sync Wardrobe</a></li>
+      <li>On your TikTok page, <b>click the bookmark on the bar</b>. It brings you here and the pieces file themselves.</li>
     </ol>
     <p class="muted">Orders come in as bought, cart items as in cart. An order row only prints the shop and the date, so those pieces arrive named that way — tap the name in your closet to call it what it is. Kiaredza does the same in whichever browser her TikTok is in, and hers land in her closet. Copy the bookmark to both browsers if you shop in both.</p>
     <div class="sync-btns"><button class="ghost small" data-close>Done</button></div>
   </div>`;
+  const pb = el.querySelector('[data-pastebox]');
+  if (pb) { pb.addEventListener('paste', onPasteSync); pb.addEventListener('focus', () => { if (pb.textContent.trim().startsWith('Click here')) pb.textContent = ''; }); }
   el.hidden = false;
 }
 // The bookmark opens the app in a fresh tab, so the rows usually arrive before
@@ -1937,6 +2039,7 @@ function bind() {
     { const si = e.target.closest('[data-signin]'); if (si) return signIn(si.dataset.signin); }
     { const sc = e.target.closest('[data-source]'); if (sc) { state.source = sc.dataset.source; state.cat = 'all'; return renderCloset(); } }
     if (e.target.closest('[data-syncsetup]')) return openSyncSetup();
+    if (e.target.closest('[data-pastefile]')) { const rs = state.pasteRows || []; state.pasteRows = null; const sv = $('#syncSetup'); if (sv) sv.hidden = true; return applySync(rs); }
     { const sd = e.target.closest('[data-send]'); if (sd) return sendPiece(sd.dataset.send); }
     { const hb = e.target.closest('[data-hand]'); if (hb) return actHandoff(hb.dataset.hand, hb.dataset.do); }
     if (e.target.closest('#meBtn')) return openSignin();
