@@ -2629,6 +2629,48 @@ export default async function handler(req, res) {
     res.json({ products: out });
     return;
   }
+  // Shoot view (her ask Nov 20 2026): in Together, the two sisters' looks sit
+  // side by side per stop of the day, with the location and time from the
+  // itinerary on the LS Photoshoots board. The stops are already named the same
+  // on both sisters' run-of-day columns ("2 · 1:50 · CAMINO REAL"), so the
+  // number keys the pairing.
+  if (op === "wardrobe_itinerary" && req.method === "GET") {
+    const authWI = await getAuthEarly(req);
+    if (!authWI) { res.status(401).json({ error: "Locked." }); return; }
+    const rawWI = await kvGet("lavalle_data"); const blobWI = Array.isArray(rawWI) ? rawWI[0] : rawWI;
+    const bdWI = blobWI && blobWI.boards && blobWI.boards["archives-lavalle-sisters"];
+    if (!bdWI) { res.json({ stops: [] }); return; }
+    const colOf = (l) => (/kiabeth/i.test(l.name || "") ? "k1" : /kiaredza/i.test(l.name || "") ? "k2" : null);
+    const runLists = (bdWI.lists || []).filter((l) => /run of day/i.test(l.name || ""));
+    const stops = new Map();
+    for (const l of runLists) {
+      const who = colOf(l); if (!who) continue;
+      for (const c of (bdWI.cards || [])) {
+        if (c.listId !== l.id || c._deleted) continue;
+        const m = /^\s*(\d+)\s*[·•]\s*([^·•]*?)\s*[·•]\s*(.+)$/.exec(c.name || "");
+        if (!m) continue;                       // a card that is not a numbered stop
+        const n = Number(m[1]);
+        const timeTxt = /\d/.test(m[2]) ? m[2].trim() : "";
+        const place = (timeTxt ? m[3] : (m[2] + " " + m[3])).trim();
+        const st = stops.get(n) || { n, time: timeTxt, place };
+        if (!st.time && timeTxt) st.time = timeTxt;
+        st[who] = { cover: c.cover || null, note: String(c.desc || "").slice(0, 600), card: c.id };
+        stops.set(n, st);
+      }
+    }
+    // the location stills live in the covers-to-capture column
+    const locList = (bdWI.lists || []).find((l) => /covers to capture/i.test(l.name || ""));
+    const locs = locList ? (bdWI.cards || []).filter((c) => c.listId === locList.id && !c._deleted && c.cover)
+      .map((c) => ({ name: c.name, cover: c.cover })) : [];
+    const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const out = [...stops.values()].sort((a, b) => a.n - b.n).map((st) => {
+      const hit = locs.find((L) => norm(L.name).includes(norm(st.place)) || norm(st.place).includes(norm(L.name)));
+      return { ...st, location: hit ? hit.cover : null };
+    });
+    res.json({ board: "archives-lavalle-sisters", stops: out });
+    return;
+  }
+
   // The cart sync wrote image files and a manifest to disk on her Mac. A
   // deployed app has no writable disk, so the rows live in KV and the app
   // reads them back as its cart manifest.
