@@ -112,8 +112,10 @@ button:disabled { opacity: .45; cursor: default; }
 .piece-img img { width: 86%; height: 86%; object-fit: contain; }
 .piece:hover .piece-img { border-color: #d8d1c8; }
 .piece.sel .piece-img { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+/* The X owns the top-right corner now, so the selection tick sits bottom-right.
+   Tapping anywhere on the card still selects it; this is only the indicator. */
 .check {
-  position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%;
+  position: absolute; bottom: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%;
   border: 1px solid var(--line); background: rgba(255,255,255,.9); display: grid; place-items: center;
   font-size: 13px; color: transparent;
 }
@@ -417,11 +419,23 @@ button:disabled { opacity: .45; cursor: default; }
   letter-spacing: .1em; text-transform: none; padding: 1px 9px 2px;
   color: #fff; background: var(--ink); border-color: var(--ink);
 }
-.x-btn {
-  position: absolute; top: 10px; left: 10px; width: 22px; height: 22px; border-radius: 50%; border: 0;
-  background: rgba(120,120,120,.55); color: #fff; font-size: 11px; line-height: 1; display: grid; place-items: center; cursor: pointer; padding: 0;
+.rm-x {
+  position: absolute; top: 9px; right: 9px; z-index: 4;
+  width: 22px; height: 22px; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid rgba(29,27,25,.16); border-radius: 2px;
+  background: rgba(255,255,255,.9); backdrop-filter: blur(4px);
+  color: var(--ink-2); font-size: 11px; line-height: 1;
 }
-.x-btn:hover { background: rgba(80,80,80,.8); }
+.rm-x:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+/* "Not getting this" is a different act from removing, so it is no longer an
+   X — one X per card, and it means remove. */
+.x-btn {
+  position: absolute; top: 9px; left: 9px; height: 22px; padding: 0 7px 0 8px; border-radius: 2px;
+  border: 1px solid rgba(29,27,25,.16); background: rgba(255,255,255,.9); backdrop-filter: blur(4px);
+  color: var(--ink-2); font-size: 9px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase;
+  line-height: 20px; cursor: pointer;
+}
+.x-btn:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
 .toast .link-btn { color: #fff; margin-left: 8px; }
 
 /* AI try-on */
@@ -671,7 +685,7 @@ button:disabled { opacity: .45; cursor: default; }
 .sync-head b { font-family: var(--serif); font-size: 22px; font-weight: 500; }
 .sync-head p { margin: 6px 0 12px; font-size: 13px; color: var(--ink-2); max-width: 64ch; }
 .piece.synced .piece-img img { object-fit: cover; }
-.pill.owner { right: 10px; left: auto; background: rgba(29,27,25,.86); color: #fff; }
+.pill.owner { right: 37px; left: auto; background: rgba(29,27,25,.86); color: #fff; }
 .sync-note { font-size: 11px; color: var(--ink-3); padding: 2px 2px 0; }
 .link-btn.send { margin-top: 2px; }
 .hand-box { background: var(--champagne); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }

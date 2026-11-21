@@ -313,10 +313,11 @@ function pieceCard(it) {
     <div class="piece-img">
       <img src="${it.image}" alt="" loading="lazy" draggable="false">
       <span class="check">✓</span>
+      <button class="rm-x" data-del="${it.id}" title="Remove from your closet" aria-label="Remove from your closet">✕</button>
       ${it.link ? `<button class="copy-link" data-copylink="${it.id}" title="Copy TikTok Shop link">Link</button>` : ''}
       ${it.status === 'coming' ? '<span class="pill">On the way</span>' : ''}
       ${cardTags(it)}
-      ${it.status === 'cart' ? `<button class="x-btn" data-skip="${it.id}" title="Not getting this">✕</button>` : ''}
+      ${it.status === 'cart' ? `<button class="x-btn" data-skip="${it.id}" title="Not getting this">Skip</button>` : ''}
     </div>
     <div class="piece-meta">
       <div class="piece-name ${it.name ? '' : 'untitled'}">${esc(it.name || 'Untitled piece')}</div>
@@ -398,6 +399,26 @@ function handBanner() {
 function isLogoRow(it) {
   return /resize-png:300:300/.test(it.image || '') || / \u00b7 ordered [A-Z]/.test(it.name || '');
 }
+// One piece, one X — her ask Nov 21 2026 ("it should be at top corner like a
+// simple x on item"). The bulk tick mode stays for clearing many at once.
+async function removeOneSynced(id) {
+  const it = sharedOf(id); if (!it) return;
+  if (!confirm(`Remove “${it.name || 'this piece'}” from your closet?\n\nOnly here — nothing on TikTok changes, and a later sync can bring it back.`)) return;
+  try {
+    const r = await api('/api/data?op=wardrobe_pieces_del', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id] }) });
+    const o = await r.json(); if (!r.ok) throw new Error(o.error || 'could not remove');
+    state.rmSel.delete(id); await loadShared(); renderCloset();
+    toast('Removed', 3000);
+  } catch (e) { toast(e.message, 5000); }
+}
+async function removeOneItem(id) {
+  const it = getItem(id); if (!it) return;
+  if (!confirm(`Remove “${it.name || 'this piece'}” from your closet?\n\nThis one is stored on this device, so it can't be undone.`)) return;
+  await DB.del('items', id);
+  state.items = state.items.filter((x) => x.id !== id);
+  state.selected.delete(id); saveUI(); refresh();
+  toast('Removed', 3000);
+}
 async function removePieces() {
   const ids = [...state.rmSel];
   if (!ids.length) return;
@@ -415,7 +436,8 @@ function syncCard(it) {
   const ticked = state.rmMode && state.rmSel && state.rmSel.has(it.id);
   return `<div class="piece synced${state.rmMode ? ' rm-on' : ''}${ticked ? ' rm-picked' : ''}">
     <div class="piece-img"><img src="${esc(it.image)}" alt="" loading="lazy" draggable="false">
-      ${state.rmMode ? `<label class="rm-tick"><input type="checkbox" data-rmpick="${it.id}"${ticked ? ' checked' : ''}></label>` : ''}
+      ${state.rmMode ? `<label class="rm-tick"><input type="checkbox" data-rmpick="${it.id}"${ticked ? ' checked' : ''}></label>`
+        : `<button class="rm-x" data-delsync="${it.id}" title="Remove from your closet" aria-label="Remove from your closet">✕</button>`}
       ${it.status === 'cart' ? '<span class="mark">In cart</span>' : '<span class="mark owned">Purchased</span>'}
       ${state.whose === 'together' ? `<span class="pill owner">${esc(personName(it.owner))}</span>` : ''}
     </div>
@@ -2058,6 +2080,8 @@ function bind() {
     { const lo = e.target.closest('[data-lkowner]'); if (lo) { lockOwner = lo.dataset.lkowner; return syncLockOwner(); } }
     const t = e.target;
     const cl = t.closest('[data-copylink]'); if (cl) { e.stopPropagation(); const it = getItem(cl.dataset.copylink); copyText(it.link); cl.textContent = 'Copied'; setTimeout(() => (cl.textContent = 'Link'), 1500); return; }
+    const dsy = t.closest('[data-delsync]'); if (dsy) { e.stopPropagation(); return removeOneSynced(dsy.dataset.delsync); }
+    const dlo = t.closest('[data-del]'); if (dlo) { e.stopPropagation(); return removeOneItem(dlo.dataset.del); }
     const skip = t.closest('[data-skip]'); if (skip) { e.stopPropagation(); return skipItem(skip.dataset.skip); }
     const unskip = t.closest('[data-unskip]'); if (unskip) { const it = getItem(unskip.dataset.unskip); if (it) { it.skipped = false; DB.put('items', it); renderCloset(); } $('#toast').hidden = true; return; }
     const edit = t.closest('[data-edit]'); if (edit) { e.stopPropagation(); state.queue = []; state.queueTotal = 1; return openEditor(edit.dataset.edit); }
