@@ -89,8 +89,21 @@ const DB = (() => {
       const d = r.result;
       ['items', 'outfits', 'poses', 'drafts'].forEach((s) => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
     };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+    r.onsuccess = () => {
+      const d = r.result;
+      // Step aside when another copy of this page wants a newer version.
+      // Without this, one stale tab holds the database at the old version and
+      // the upgrade never runs: the newer page waits on indexedDB.open for
+      // ever and sits on "Getting your wardrobe ready" with nothing to say.
+      // Version 2 did exactly that wherever a board card still had the old
+      // wardrobe open in an iframe.
+      d.onversionchange = () => { try { d.close(); } catch (e) {} dbp = null; location.reload(); };
+      res(d);
+    };
+    r.onerror = () => { dbp = null; rej(r.error); };
+    r.onblocked = () => dbBlocked();
+    // onblocked does not always fire, so say something either way.
+    setTimeout(() => { if (r.readyState !== 'done') dbBlocked(); }, 7000);
   }));
   const run = async (name, mode, fn) => {
     const d = await open();
@@ -106,6 +119,19 @@ const DB = (() => {
     del: (s, id) => run(s, 'readwrite', (st) => st.delete(id)),
   };
 })();
+
+// The one failure the boot spinner cannot ride out: another copy of the page
+// holding the database open at an older version. Say so, rather than spinning.
+function dbBlocked() {
+  const sheet = document.querySelector('#bootModal .sheet');
+  const modal = document.getElementById('bootModal');
+  if (!sheet || !modal || sheet.dataset.blocked) return;
+  sheet.dataset.blocked = '1'; modal.hidden = false;
+  sheet.innerHTML = `<h2>Close the wardrobe's other tab</h2>
+    <p class="muted">Another tab — or a board card with the wardrobe open inside it — is still running an older version, and that stops this one from starting. Close it, then reload here.</p>
+    <button class="primary" id="dbReload">Reload</button>`;
+  const b = document.getElementById('dbReload'); if (b) b.onclick = () => location.reload();
+}
 
 /* ---------------- image tools ---------------- */
 const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); if (/^https?:/.test(src) && !src.startsWith(location.origin)) i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = src; }); // crossOrigin so outside shop photos (Shopify) can go to the AI
@@ -2463,7 +2489,7 @@ async function pullCloset() {
     j = await r.json();
   } catch (e) { console.warn('pull', e); return null; }
   share.rev = j.rev || 0;
-  const n = { added: 0, filled: 0, outfits: 0, poses: 0, gone: 0 };
+  const n = { added: 0, filled: 0, outfits: 0, poses: 0, gone: 0, cutouts: 0 };
 
   // ── photos of you
   const poseBy = new Map(state.poses.map((p) => [poseKeyOf(p), p]));
@@ -2487,6 +2513,14 @@ async function pullCloset() {
     if (have) { // fill gaps only — never overwrite her crop, her cutout or her notes
       let ch = false;
       for (const f of ITEM_FIELDS) if ((have[f] === undefined || have[f] === '') && rec[f] !== undefined && rec[f] !== '') { have[f] = rec[f]; ch = true; }
+      // One exception, and the most useful one: a cutout the other sister
+      // actually made (so it went to the media store) replaces a picture here
+      // that is still exactly as it was imported. Her work crosses; a cutout
+      // either of them has already done by hand never gets overwritten.
+      if (rec.image && /^\/api\/data\?op=media/.test(rec.image) && have.image && have.image === have.original) {
+        const img = await pullImg(have, 'image', rec.image);
+        if (img && img !== have.image) { have.image = img; ch = true; n.cutouts++; }
+      }
       if (ch) { await rawPut('items', have); n.filled++; }
       continue;
     }
@@ -2523,9 +2557,10 @@ async function pullCloset() {
     n.outfits++;
   }
 
-  if (n.added || n.outfits || n.poses || n.gone) {
+  if (n.added || n.outfits || n.poses || n.gone || n.cutouts) {
     state.selected = new Set([...state.selected].filter(getItem));
-    const bits = [n.outfits && `${n.outfits} outfit${n.outfits === 1 ? '' : 's'}`, n.added && `${n.added} piece${n.added === 1 ? '' : 's'}`, n.poses && `${n.poses} photo${n.poses === 1 ? '' : 's'}`].filter(Boolean);
+    const bits = [n.outfits && `${n.outfits} outfit${n.outfits === 1 ? '' : 's'}`, n.added && `${n.added} piece${n.added === 1 ? '' : 's'}`,
+      n.cutouts && `${n.cutouts} cut out`, n.poses && `${n.poses} photo${n.poses === 1 ? '' : 's'}`].filter(Boolean);
     if (bits.length) toast(`From the shared closet: ${bits.join(' · ')} ✨`, 6000);
   }
   paintShare();
