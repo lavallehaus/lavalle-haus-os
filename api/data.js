@@ -2599,6 +2599,54 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Virtual Wardrobe (Kiaredza's app, embedded Nov 20 2026). It used to run
+  // from a python server on her Mac; these two ops replace it so the app lives
+  // in the OS app instead. The Fold's catalogue cannot be read from the browser
+  // (no CORS), so it is proxied here.
+  if (op === "wardrobe_fold" && req.method === "GET") {
+    const authWF = await getAuthEarly(req);
+    if (!authWF) { res.status(401).json({ error: "Locked." }); return; }
+    const cached = await kvGet("wardrobe_fold_cache");
+    if (cached && Date.now() - (cached.at || 0) < 15 * 60 * 1000 && !req.query.force) { res.json({ products: cached.products, cached: true }); return; }
+    const out = [];
+    try {
+      for (let page = 1; page <= 5; page++) {
+        const r = await fetch("https://www.thefoldlabel.com/products.json?limit=250&page=" + page, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (!r.ok) break;
+        const ps = (await r.json()).products || [];
+        for (const p of ps) {
+          const vs = p.variants && p.variants.length ? p.variants : [{}];
+          out.push({ id: String(p.id), handle: p.handle, title: p.title, type: p.product_type || "",
+            price: vs[0].price || "", was: vs[0].compare_at_price || "",
+            available: vs.some((v) => v.available),
+            sizes: vs.map((v) => v.title).filter((t) => t && t !== "Default Title"),
+            images: (p.images || []).map((i) => i.src).filter(Boolean).slice(0, 4), updated: p.updated_at });
+        }
+        if (ps.length < 250) break;
+      }
+    } catch (e) { res.status(502).json({ error: String(e && e.message).slice(0, 200) }); return; }
+    await kvSet("wardrobe_fold_cache", { at: Date.now(), products: out });
+    res.json({ products: out });
+    return;
+  }
+  // The cart sync wrote image files and a manifest to disk on her Mac. A
+  // deployed app has no writable disk, so the rows live in KV and the app
+  // reads them back as its cart manifest.
+  if (op === "wardrobe_cart" && req.method === "POST") {
+    const authWC = await getAuthEarly(req);
+    if (!authWC) { res.status(401).json({ error: "Locked." }); return; }
+    const rowsWC = Array.isArray((req.body || {}).rows) ? req.body.rows.slice(0, 500) : null;
+    if (!rowsWC) { res.status(400).json({ error: "rows[] required" }); return; }
+    const prevWC = (await kvGet("wardrobe_cart")) || { rows: [] };
+    const byId = new Map((prevWC.rows || []).map((r) => [String(r.id || r.url || ""), r]));
+    let added = 0;
+    for (const r of rowsWC) { const k = String(r.id || r.url || ""); if (!k) continue; if (!byId.has(k)) added++; byId.set(k, r); }
+    const rows = [...byId.values()].slice(-500);
+    await kvSet("wardrobe_cart", { at: Date.now(), rows });
+    res.json({ added, skipped: rowsWC.length - added, total: rows.length });
+    return;
+  }
+
   if (op === "board_cards_patch" && req.method === "POST") {
     const authBP = await getAuthEarly(req);
     if (!ownerRole(authBP)) { res.status(403).json({ error: "Owner only." }); return; }

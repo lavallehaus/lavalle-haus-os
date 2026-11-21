@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual Wardrobe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=82">
+</head>
+<body>
+<div id="vw-app">
+
+  <header class="vw-header">
+    <div class="brand">
+      <span class="brand-mark">W</span>
+      <div>
+        <div class="brand-title">Virtual Wardrobe</div>
+        <div class="brand-sub">TikTok Shop closet · outfits for every video</div>
+      </div>
+    </div>
+    <nav class="vw-nav" id="nav">
+      <button data-view="closet">Closet</button>
+      <button data-view="room">Changing Room</button>
+      <button data-view="planned">Planned Outfits</button>
+    </nav>
+    <div class="header-actions">
+      <button class="me-btn" id="meBtn" title="Switch person"></button>
+      <button class="primary small" id="syncBtn">↻ Refresh</button>
+      <button class="ghost small" id="exportBtn" title="Download a backup of everything">Backup</button>
+      <label class="ghost small file-btn" title="Restore from a backup file">Restore<input type="file" id="importFile" accept="application/json" hidden></label>
+    </div>
+  </header>
+
+  <!-- ============ CLOSET ============ -->
+  <section class="view" id="view-closet">
+    <div class="view-head">
+      <div>
+        <h1>Closet</h1>
+        <p class="lede">Everything you've bought on TikTok Shop, plus what's on the way. Tap pieces to pick them, then head to the changing room.</p>
+      </div>
+      <div class="head-btns">
+      <label class="primary file-btn">
+        + Add pieces
+        <input type="file" id="itemFiles" accept="image/*" multiple hidden>
+      </label></div>
+    </div>
+    <div class="seg whose-tabs" hidden></div>
+    <div class="filters">
+      <div class="chips" id="catTabs"></div>
+      <div class="seg" id="statusSeg">
+        <button data-status="all">All</button>
+        <button data-status="owned">Purchased</button>
+        <button data-status="coming">On the way</button>
+        <button data-status="cart">Favorited for later</button>
+        <button data-status="incart">In cart</button>
+        <button data-status="soldout">Sold out</button>
+      </div>
+      <button id="selectAll" class="select-all">Select all</button>
+    </div>
+    <div id="closetGrid"></div>
+  </section>
+
+  <!-- ============ CHANGING ROOM ============ -->
+  <section class="view" id="view-room">
+    <div class="room-layout">
+      <aside class="rail" id="picksRail">
+        <div class="rail-title">Your picks</div>
+        <div id="picks"></div>
+      </aside>
+
+      <div class="room-main">
+        <div class="editing-banner" id="editingBanner" hidden></div>
+        <div class="room" id="room">
+          <button class="zoom-btn" id="zoomBtn" hidden>⤢ See it big</button>
+          <div class="wall"></div>
+          <div class="floor"></div>
+          <div class="floor-reflect"></div>
+          <div class="window"></div>
+          <div class="sheer"></div>
+          <div class="rod"></div>
+          <div class="curtain left"></div>
+          <div class="curtain right"></div>
+          <div class="spot"></div>
+          <div class="platform">
+            <div class="platform-shadow"></div>
+            <div class="platform-side"></div>
+            <div class="platform-top"></div>
+          </div>
+          <div class="figure" id="figure"></div>
+        </div>
+        <div class="layer-tools" id="layerTools"></div>
+      </div>
+
+      <aside class="rail" id="posesRail">
+        <div class="rail-title">Who's trying on</div>
+        <div class="seg poses-who" id="posesWho"></div>
+        <div id="poses"></div>
+        <div class="rail-title spaced">Outfit</div>
+        <button class="primary block tryon-btn" id="tryonBtn">Try it on (AI)</button>
+        <p class="tryon-msg" id="tryonMsg" hidden></p>
+        <p class="cost-line" id="costLine"></p>
+        <div class="credits-row"><span id="creditsLeft">FASHN credits</span><a class="ghost small btn-link" href="https://app.fashn.ai/api" target="_blank" rel="noopener">+ Buy credits</a></div>
+        <div class="speed-seg" id="speedSeg" title="Credits per piece. Fast is less accurate."><button data-speed="fast">Fast · 1</button><button data-speed="balanced">Good · 2</button><button data-speed="quality">Best · 3</button></div>
+        <div class="speed-seg" id="coatSeg" hidden title="How the coat or jacket is worn"><button data-coat="open">Coat open</button><button data-coat="closed">Coat closed</button></div>
+        <button class="primary block" id="lockBtn">Lock in outfit</button>
+        <button class="ghost block" id="clearRoomBtn">Take everything off</button>
+        <button class="link-btn ai-key" id="aiKeyLink">AI key</button>
+        <p class="hint">Drag pieces to move them. Scroll on a piece (or use the sliders) to resize.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ PLANNED ============ -->
+  <section class="view" id="view-planned">
+    <div class="view-head">
+      <div>
+        <h1>Planned Outfits</h1>
+        <p class="lede">Locked-in looks with where you'll wear them and the TikTok Shop pieces to tag.</p>
+      </div>
+    </div>
+    <div class="seg whose-tabs" hidden></div>
+    <div class="filters"><div class="chips" id="planTabs"></div></div>
+    <div id="plannedList"></div>
+  </section>
+
+  <!-- tray -->
+  <div class="tray" id="tray" hidden></div>
+
+  <!-- ============ ITEM EDITOR ============ -->
+  <div class="modal" id="itemModal" hidden>
+    <div class="sheet wide">
+      <div class="sheet-head">
+        <h2 id="edTitle">Piece details</h2>
+        <span class="muted" id="edQueue"></span>
+      </div>
+      <div class="editor-grid">
+        <div>
+          <div class="crop-wrap" id="cropWrap">
+            <img id="edImg" alt="" draggable="false">
+            <div id="cropBox" hidden></div>
+          </div>
+          <div class="btn-row">
+            <button class="ghost small" id="cropBtn">Crop</button>
+            <button class="primary small" id="applyCropBtn" hidden>Apply crop</button>
+            <button class="ghost small" id="bgBtn" title="Best for product photos on a white or plain background">Remove plain background</button>
+            <button class="ghost small" id="aiBgBtn" title="Uses an in-browser AI model (first run downloads it)">AI cutout</button>
+            <button class="ghost small" id="resetImgBtn">Reset image</button>
+          </div>
+          <p class="hint" id="edImgHint">Tip: crop the screenshot to just the clothing, then remove the background so it sits nicely on you.</p>
+        </div>
+        <div class="form">
+          <label>Name<input id="edName" placeholder="e.g. Black ribbed square-neck top"></label>
+          <label>Category<select id="edCat"></select></label>
+          <div class="label">Status</div>
+          <div class="seg" id="edStatus">
+            <button data-edstatus="owned">In my closet</button>
+            <button data-edstatus="coming">On the way</button>
+            <button data-edstatus="cart">Favorited for later</button>
+          </div>
+          <label>TikTok Shop link
+            <input id="edLink" placeholder="Paste the share link (or the whole share text)">
+          </label>
+          <div class="two">
+            <label>Price<input id="edPrice" placeholder="$"></label>
+            <label>Size<input id="edSize" placeholder="S / M / 6…"></label>
+          </div>
+          <label>Belongs to<select id="edOwner"><option value="kiaredza">Kiaredza</option><option value="kiabeth">Kiabeth</option></select></label>
+          <label>Notes<textarea id="edNotes" rows="2" placeholder="Fit, color, shop name…"></textarea></label>
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button class="danger-link" id="edDelete">Delete piece</button>
+        <div class="spacer"></div>
+        <button class="ghost" id="edCancel">Cancel</button>
+        <button class="primary" id="edSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LOCK-IN ============ -->
+  <div class="modal" id="lockModal" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h2 id="lkTitle">Lock in this outfit</h2></div>
+      <div class="form">
+        <div class="label">Whose outfit</div>
+        <div class="seg" id="lkOwner"></div>
+        <label>Outfit name<input id="lkName" placeholder="e.g. Brunch in the city"></label>
+        <label>Where I'd wear it<input id="lkWhere" placeholder="e.g. Sunday brunch, date night, airport"></label>
+        <div class="label">Plan it for</div>
+        <div class="seg" id="lkPlan">
+          <button data-plan="day">A day of the week</button>
+          <button data-plan="video">A video</button>
+          <button data-plan="none">Just save it</button>
+        </div>
+        <label id="lkDayWrap">Day<select id="lkDay"></select></label>
+        <label id="lkVideoWrap">Video<input id="lkVideo" placeholder="e.g. 5 ways to style a slip skirt"></label>
+        <label>Quick note<textarea id="lkNote" rows="2" placeholder="Anything to remember for filming"></textarea></label>
+        <div class="label">Pieces to tag</div>
+        <div id="lkPieces" class="lk-pieces"></div>
+      </div>
+      <div class="sheet-foot">
+        <div class="spacer"></div>
+        <button class="ghost" id="lkCancel">Cancel</button>
+        <button class="primary" id="lkSave">Lock it in</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ AI KEY ============ -->
+  <div class="modal" id="keyModal" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h2>Turn on AI try-on</h2></div>
+      <div class="form">
+        <p class="muted">Uses FASHN, a try-on service. About 7.5¢ per piece. Takes a minute:</p>
+        <ol class="key-steps">
+          <li>Open <a href="https://app.fashn.ai/api" target="_blank" rel="noopener">app.fashn.ai/api</a> and sign in.</li>
+          <li>Add credits, then tap <b>Create API key</b> and copy it.</li>
+          <li>Tap <b>Paste my copied key</b> below. It stays on this device only.</li>
+        </ol>
+        <label>FASHN key<input id="keyInput" type="password" autocomplete="off" placeholder="Paste your key"></label>
+      </div>
+      <div class="sheet-foot"><div class="spacer"></div>
+        <button class="ghost" id="keyCancel">Cancel</button>
+        <button class="ghost" id="keyPaste">Paste my copied key</button>
+        <button class="primary" id="keySave">Save &amp; try on</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ WHO'S DRESSING ============ -->
+  <div class="modal signin" id="signinModal" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h2>Who's dressing?</h2></div>
+      <p class="muted">Pick your admin login. You'll start on your own closet, photos and outfits — you can still open and change each other's anytime.</p>
+      <div class="signin-people" id="signinPeople"></div>
+    </div>
+  </div>
+
+  <div class="modal boot" id="bootModal" hidden><div class="sheet"><div class="boot-spin"></div><h2>Getting your wardrobe ready</h2><p class="muted">Refreshing TikTok Shop and The Fold…</p></div></div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="app.js?v=82"></script>
+</body>
+</html>
