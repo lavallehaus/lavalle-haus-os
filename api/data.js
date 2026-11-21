@@ -2679,6 +2679,114 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Wardrobe: the shared piece store and handoffs between the two sisters
+  // (her ask Nov 20 2026). Until now every piece lived in one browser's
+  // IndexedDB, so neither sister could see the other's, let alone pass one
+  // over. Pieces live here instead, keyed by owner. Images are kept as URLs,
+  // never bytes — the app must not fill up (KV caps at 256MB).
+  if (op === "wardrobe_pieces" && req.method === "GET") {
+    const authWP = await getAuthEarly(req);
+    if (!authWP) { res.status(401).json({ error: "Locked." }); return; }
+    const stWP = (await kvGet("wardrobe_store")) || { items: [], transfers: [] };
+    res.json({ items: stWP.items || [], transfers: (stWP.transfers || []).filter((t) => t.state === "pending").concat((stWP.transfers || []).filter((t) => t.state !== "pending").slice(-30)) });
+    return;
+  }
+
+  // A sister's own sync: rows read off her TikTok orders (or cart) in her own
+  // signed-in browser, filed to her. `key` is what makes a re-sync idempotent.
+  if (op === "wardrobe_pieces_put" && req.method === "POST") {
+    const authPP = await getAuthEarly(req);
+    if (!authPP) { res.status(401).json({ error: "Locked." }); return; }
+    const bPP = req.body || {};
+    const who = String(bPP.person || "").toLowerCase();
+    if (who !== "kiabeth" && who !== "kiaredza") { res.status(400).json({ error: "person must be kiabeth or kiaredza" }); return; }
+    const rowsPP = Array.isArray(bPP.rows) ? bPP.rows.slice(0, 400) : null;
+    if (!rowsPP) { res.status(400).json({ error: "rows[] required" }); return; }
+    const stPP = (await kvGet("wardrobe_store")) || { items: [], transfers: [] };
+    stPP.items = stPP.items || [];
+    const byKey = new Map(stPP.items.map((i) => [i.key, i]));
+    const clean = (v, n) => String(v == null ? "" : v).slice(0, n);
+    let added = 0, updated = 0;
+    for (const r of rowsPP) {
+      const key = clean(r.key || r.productId || r.link, 200); if (!key) continue;
+      const row = { name: clean(r.name, 200), price: clean(r.price, 24), link: clean(r.link, 500),
+        image: clean(r.image, 800), category: clean(r.category, 32) || "tops",
+        status: r.status === "cart" ? "cart" : r.status === "coming" ? "coming" : "owned",
+        source: clean(bPP.source, 24) || "tiktok", qty: Number(r.qty) || 1, orderedAt: clean(r.orderedAt, 40) };
+      const have = byKey.get(key);
+      if (have) {                            // a re-sync never moves a piece someone has taken over
+        const before = JSON.stringify(have);
+        Object.assign(have, row, { owner: have.owner, key, syncedAt: Date.now() });
+        if (JSON.stringify(have) !== before) updated++;
+      } else {
+        const it = { id: "w" + Math.random().toString(36).slice(2, 10), key, owner: who, ...row, addedBy: who, at: Date.now(), syncedAt: Date.now() };
+        stPP.items.push(it); byKey.set(key, it); added++;
+      }
+    }
+    stPP.items = stPP.items.slice(-1500);
+    await kvSet("wardrobe_store", stPP);
+    res.json({ ok: true, added, updated, total: stPP.items.length });
+    return;
+  }
+
+  // Hand a piece to the other sister. She is not given it — she is asked: a
+  // card lands in the Virtual Wardrobe column of the TikTok Shop board, and
+  // the piece only changes hands when she accepts.
+  if ((op === "wardrobe_handoff" || op === "wardrobe_handoff_act") && req.method === "POST") {
+    const authHO = await getAuthEarly(req);
+    if (!authHO) { res.status(401).json({ error: "Locked." }); return; }
+    const bHO = req.body || {};
+    const stHO = (await kvGet("wardrobe_store")) || { items: [], transfers: [] };
+    stHO.items = stHO.items || []; stHO.transfers = stHO.transfers || [];
+    const rawHO = await kvGet("lavalle_data"); const blobHO = Array.isArray(rawHO) ? rawHO[0] : rawHO;
+    const bdHO = blobHO && blobHO.boards && blobHO.boards["tiktok-shop"];
+    const listHO = bdHO && (bdHO.lists || []).find((l) => /virtual wardrobe/i.test(l.name || ""));
+    const nameOf = (w) => (w === "kiabeth" ? "Kiabeth" : "Kiaredza");
+
+    if (op === "wardrobe_handoff") {
+      const it = stHO.items.find((x) => x.id === String(bHO.itemId || ""));
+      if (!it) { res.status(404).json({ error: "No such piece." }); return; }
+      const to = String(bHO.to || "").toLowerCase();
+      if (to !== "kiabeth" && to !== "kiaredza" || to === it.owner) { res.status(400).json({ error: "Send it to the other sister." }); return; }
+      const from = it.owner;
+      if (stHO.transfers.some((t) => t.itemId === it.id && t.state === "pending")) { res.status(409).json({ error: "Already waiting on her." }); return; }
+      const tr = { id: "t" + Math.random().toString(36).slice(2, 10), itemId: it.id, from, to, at: Date.now(), state: "pending", note: String(bHO.note || "").slice(0, 300) };
+      if (bdHO && listHO) {
+        tr.cardId = "c" + Math.random().toString(36).slice(2, 10);
+        bdHO.cards = bdHO.cards || [];
+        bdHO.cards.unshift({ id: tr.cardId, listId: listHO.id,
+          name: `${nameOf(from)} → ${nameOf(to)} · ${it.name || "a piece"}`,
+          desc: `${nameOf(from)} thinks this one is yours.\n\n${it.name || ""}${it.price ? "\n" + it.price : ""}${it.link ? "\n" + it.link : ""}${tr.note ? "\n\n" + tr.note : ""}\n\nOpen the wardrobe on this tab and take it or pass it back — it stays in ${nameOf(from)}'s closet until you take it.`,
+          cover: it.image || null, labels: [{ n: "Handoff", c: "#8F8676" }], members: [], attachments: [], links: [], done: false, _touched: Date.now() });
+        bdHO._rev = (bdHO._rev || 0) + 1; bdHO._stamp = Date.now();
+        await kvSet("lavalle_data", blobHO);
+      }
+      stHO.transfers.push(tr); stHO.transfers = stHO.transfers.slice(-200);
+      await kvSet("wardrobe_store", stHO);
+      res.json({ ok: true, transfer: tr, carded: !!tr.cardId });
+      return;
+    }
+
+    const tr = stHO.transfers.find((t) => t.id === String(bHO.id || "") && t.state === "pending");
+    if (!tr) { res.status(404).json({ error: "Nothing waiting." }); return; }
+    const act = bHO.action === "accept" ? "accepted" : "declined";
+    tr.state = act; tr.actedAt = Date.now();
+    const it = stHO.items.find((x) => x.id === tr.itemId);
+    if (it && act === "accepted") it.owner = tr.to;
+    if (bdHO && tr.cardId) {
+      const card = (bdHO.cards || []).find((c) => c.id === tr.cardId);
+      if (card) {
+        card.name = `${act === "accepted" ? "✓" : "↩"} ${nameOf(tr.to)} ${act === "accepted" ? "took" : "passed back"} · ${(it && it.name) || "a piece"}`;
+        card.done = true; card._touched = Date.now();
+        bdHO._rev = (bdHO._rev || 0) + 1; bdHO._stamp = Date.now();
+        await kvSet("lavalle_data", blobHO);
+      }
+    }
+    await kvSet("wardrobe_store", stHO);
+    res.json({ ok: true, state: act, item: it || null });
+    return;
+  }
+
   // The cart sync wrote image files and a manifest to disk on her Mac. A
   // deployed app has no writable disk, so the rows live in KV and the app
   // reads them back as its cart manifest.

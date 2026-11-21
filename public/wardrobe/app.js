@@ -262,6 +262,7 @@ const state = {
   view: store.get('vw.view', 'closet'),
   cat: 'all', status: 'all', planFilter: 'all', whose: 'kiaredza', source: 'tiktok',
   togMode: store.get('vw.togMode', 'side'), stops: null, pins: store.get('vw.shootPins', {}),
+  shared: [], hand: [],
   selected: new Set(store.get('vw.selected', [])),
   room: store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null },
   queue: [], queueTotal: 0,
@@ -339,6 +340,153 @@ function renderWhose() {
 }
 const inWhose = (x) => state.whose === 'together' || x.source === 'fold' || ownerOf(x) === state.whose; // The Fold pieces are shared by both
 const isFold = (it) => it.source === 'fold';
+
+/* ---------- the shared closet: both sisters' synced pieces, and handoffs ----------
+Her ask Nov 20 2026: each of us syncs our own TikTok instead of adding
+screenshots, and when a piece turns out to be the other's, hand it over — she
+gets a card on the board and the piece only moves when she takes it. These
+pieces live on the server (op=wardrobe_pieces), keyed by owner, images kept as
+TikTok URLs so the app never fills up. */
+const OTHER = (w) => (w === 'kiabeth' ? 'kiaredza' : 'kiabeth');
+function guessCat(n) {
+  const t = String(n || '');
+  if (/jewel|earring|necklace|bracelet|ring\b|cuff/i.test(t)) return 'accessories';
+  if (/dress(?!er)/i.test(t)) return 'dresses';
+  if (/skirt/i.test(t)) return 'skirts';
+  if (/short\b|shorts/i.test(t)) return 'shorts';
+  if (/pant|jean|trouser|legging|bottom/i.test(t)) return 'bottoms';
+  if (/jacket|coat|blazer|trench|puffer|outer/i.test(t)) return 'outerwear';
+  if (/\bset\b|two-piece|2 piece|matching/i.test(t)) return 'sets';
+  if (/shoe|boot|heel|sandal|sneaker|loafer|flat\b/i.test(t)) return 'shoes';
+  if (/bag|tote|clutch|purse|backpack/i.test(t)) return 'bags';
+  return 'tops';
+}
+async function loadShared() {
+  try {
+    const r = await api('/api/data?op=wardrobe_pieces', { cache: 'no-store' });
+    const j = await r.json(); if (!r.ok) return;
+    state.shared = (j.items || []).map((x) => ({ ...x, shared: true }));
+    state.hand = j.transfers || [];
+  } catch (e) { console.warn('shared closet', e); }
+}
+const myHandoffs = () => (state.hand || []).filter((t) => t.state === 'pending' && t.to === ME);
+const sentHandoffs = () => (state.hand || []).filter((t) => t.state === 'pending' && t.from === ME);
+const sharedOf = (id) => (state.shared || []).find((x) => x.id === id);
+function handBanner() {
+  const mine = myHandoffs(), sent = sentHandoffs();
+  if (!mine.length && !sent.length) return '';
+  const row = (t, incoming) => {
+    const it = sharedOf(t.itemId) || {};
+    return `<div class="hand-row">
+      ${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy">` : '<span class="hand-no"></span>'}
+      <div><b>${esc(it.name || 'A piece')}</b><small>${incoming ? `${esc(personName(t.from))} thinks this one is yours` : `Waiting on ${esc(personName(t.to))}`}${it.price ? ' · ' + esc(it.price) : ''}</small></div>
+      ${incoming ? `<div class="hand-act"><button class="primary small" data-hand="${t.id}" data-do="accept">Take it</button><button class="ghost small" data-hand="${t.id}" data-do="decline">Not mine</button></div>` : ''}
+    </div>`;
+  };
+  return `<section class="hand-box"><h2>Handoffs</h2>${mine.map((t) => row(t, true)).join('')}${sent.map((t) => row(t, false)).join('')}</section>`;
+}
+function syncCard(it) {
+  const mineNow = it.owner === ME;
+  const pend = (state.hand || []).some((t) => t.itemId === it.id && t.state === 'pending');
+  return `<div class="piece synced">
+    <div class="piece-img"><img src="${esc(it.image)}" alt="" loading="lazy" draggable="false">
+      ${it.status === 'cart' ? '<span class="sticker">In cart</span>' : '<span class="sticker green">Bought</span>'}
+      ${state.whose === 'together' ? `<span class="pill owner">${esc(personName(it.owner))}</span>` : ''}
+    </div>
+    <div class="piece-meta"><div class="piece-name">${esc(it.name || 'Untitled piece')}</div>
+      ${it.link ? `<button class="link-btn" data-copy="${esc(it.link)}">Copy link</button>` : ''}</div>
+    ${it.price ? `<span class="price">${esc(it.price)}</span>` : ''}
+    ${pend ? '<div class="sync-note">Waiting on her</div>'
+      : mineNow ? `<button class="link-btn send" data-send="${it.id}">Send to ${esc(personName(OTHER(ME)))} →</button>`
+      : `<div class="sync-note">${esc(personName(it.owner))}'s</div>`}
+  </div>`;
+}
+function renderSynced() {
+  const grid = $('#closetGrid');
+  const mine = (state.shared || []).filter((i) => state.whose === 'together' || i.owner === state.whose);
+  const head = `<div class="sync-head"><div><small>Synced from TikTok Shop</small><b>${mine.length} piece${mine.length === 1 ? '' : 's'}${state.whose === 'together' ? '' : ' · ' + esc(personName(state.whose))}</b></div>
+    <p>Each of you syncs her own TikTok. What you sync lands in your closet; if a piece is really hers, send it over and she takes it from her side.</p>
+    <button class="primary small" data-syncsetup>Sync my TikTok</button></div>`;
+  if (!mine.length) { grid.innerHTML = handBanner() + head + `<div class="empty"><h3>Nothing synced yet</h3><p>Tap “Sync my TikTok” for the one-time setup, then one click on your TikTok cart or orders page brings everything in.</p></div>`; return; }
+  const cats = CATEGORIES.filter((c) => mine.some((i) => i.category === c.id));
+  grid.innerHTML = handBanner() + head + cats.map((c) => {
+    const its = mine.filter((i) => i.category === c.id);
+    return `<section class="cat-section"><h2 class="cat-title">${c.label}<small>${its.length} piece${its.length === 1 ? '' : 's'}</small></h2>
+      <div class="grid">${its.map(syncCard).join('')}</div></section>`;
+  }).join('');
+}
+// One click on her own TikTok page. It has to run there (the shop blocks reads
+// from anywhere else), so it is a bookmark she drags over once.
+const SYNC_BM = "javascript:(function(){var R=[],S={};function M(t){var m=String(t).replace(/\\s+/g,'').match(/\\$\\s?([\\d,]+\\.?\\d{0,2})/);return m?'$'+m[1]:''}" +
+  "Array.prototype.forEach.call(document.querySelectorAll('img'),function(g){var src=(g.currentSrc||g.src||'').split('?')[0];" +
+  "if(!/oec-general|\\/tos-/.test(src)||/static\\/image|tiktok-web-common/.test(src)||g.naturalWidth<80)return;" +
+  "var el=g,box=null;for(var i=0;i<8&&el;i++){el=el.parentElement;if(el&&el.innerText&&el.innerText.length>25&&el.innerText.indexOf('$')>-1){box=el;break}}" +
+  "if(!box)return;var txt=box.innerText.split('\\n').map(function(s){return s.trim()}).filter(Boolean);" +
+  "var nm=txt.filter(function(s){return s.length>18&&s.charAt(0)!=='$'&&!/sold$/i.test(s)}).sort(function(a,b){return b.length-a.length})[0];" +
+  "if(!nm||S[nm])return;S[nm]=1;var a=Array.prototype.map.call(box.querySelectorAll('a[href]'),function(x){return x.href}).filter(function(h){return /pdp|product|\\/view\\//.test(h)})[0]||'';" +
+  "R.push({key:src,name:nm.slice(0,160),price:M(box.innerText),link:a.split('?')[0],image:src,variant:(txt.filter(function(s){return /^Color|, ?[SMLX]+$/i.test(s)})[0]||''),status:/order/i.test(location.href)?'owned':'cart'})});" +
+  "if(!R.length){alert('Nothing to read here — open your TikTok Shop cart or your orders list first.');return}" +
+  "window.open('https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R)),'_blank')})()";
+function openSyncSetup() {
+  let el = $('#syncSetup');
+  if (!el) { el = document.createElement('div'); el.id = 'syncSetup'; el.className = 'zoom-view sync-help';
+    (document.getElementById('vw-app') || document.body).appendChild(el);
+    el.onclick = (e) => { if (e.target === el || e.target.closest('[data-close]')) el.hidden = true; }; }
+  el.innerHTML = `<div class="sync-card">
+    <h3>Sync your own TikTok</h3>
+    <p>It reads the page you are on, in your own signed-in browser, and files everything to <b>${esc(personName(ME))}</b>.</p>
+    <ol>
+      <li>Show your bookmarks bar once (⌘⇧B).</li>
+      <li>Drag this up onto it: <a class="bm" href="${esc(SYNC_BM)}" onclick="return false">🛍 Sync Wardrobe</a></li>
+      <li>Open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>, scroll to the bottom so everything has loaded, and click the bookmark.</li>
+    </ol>
+    <p class="muted">Orders come in as bought, cart items as in cart. Kiaredza does the same on her own machine and her pieces land in her closet.</p>
+    <div class="sync-btns"><button class="ghost small" data-close>Done</button></div>
+  </div>`;
+  el.hidden = false;
+}
+// The bookmark opens the app in a fresh tab, so the rows usually arrive before
+// anyone has picked who they are. Hold them until she signs in — they are filed
+// to whoever that is.
+let SIGNED = false;
+function receiveSync() {
+  const h = location.hash; if (!h.startsWith('#sync=')) return;
+  history.replaceState(null, '', location.pathname);
+  let rows; try { rows = JSON.parse(decodeURIComponent(h.slice(6))); } catch { return toast('Couldn\'t read that sync — click the bookmark again', 5000); }
+  if (!Array.isArray(rows) || !rows.length) return;
+  if (!SIGNED) { state.pendingSync = rows; return toast(`${rows.length} pieces ready — pick who you are first`, 6000); }
+  return applySync(rows);
+}
+async function applySync(rows) {
+  toast(`Filing ${rows.length} piece${rows.length === 1 ? '' : 's'} to ${personName(ME)}…`, 30000);
+  try {
+    const r = await api('/api/data?op=wardrobe_pieces_put', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person: ME, source: 'tiktok', rows: rows.map((x) => ({ ...x, category: guessCat(x.name) })) }) });
+    const o = await r.json(); if (!r.ok) throw new Error(o.error || 'sync failed');
+    await loadShared(); state.source = 'synced'; go('closet');
+    toast(`${o.added} new · ${o.updated} updated in ${personName(ME)}'s closet ✨`, 5000);
+  } catch (e) { toast('Sync didn\'t work: ' + e.message, 6000); }
+}
+async function sendPiece(id) {
+  const it = sharedOf(id); if (!it) return;
+  const to = OTHER(ME);
+  if (!confirm(`Send “${it.name || 'this piece'}” to ${personName(to)}?\n\nIt stays in your closet until she takes it.`)) return;
+  try {
+    const r = await api('/api/data?op=wardrobe_handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId: id, to }) });
+    const o = await r.json(); if (!r.ok) throw new Error(o.error || 'could not send');
+    await loadShared(); refresh();
+    toast(`Sent to ${personName(to)}${o.carded ? ' — a card is waiting on her board' : ''} ✓`, 5000);
+  } catch (e) { toast(e.message, 5000); }
+}
+async function actHandoff(id, action) {
+  try {
+    const r = await api('/api/data?op=wardrobe_handoff_act', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action }) });
+    const o = await r.json(); if (!r.ok) throw new Error(o.error || 'could not do that');
+    await loadShared(); refresh();
+    toast(action === 'accept' ? 'In your closet now ✓' : 'Passed back', 3500);
+  } catch (e) { toast(e.message, 5000); }
+}
+
 function renderCloset() {
   renderWhose();
   const all = state.items.filter((i) => !i.skipped && inWhose(i));
@@ -347,13 +495,18 @@ function renderCloset() {
   const counts = { all: items.length };
   CATEGORIES.forEach((c) => (counts[c.id] = items.filter((i) => i.category === c.id).length));
   const srcBtn = (id, label, n) => `<button class="chip src-chip ${state.source === id && state.cat === 'all' ? 'on' : ''} ${state.source === id ? 'src-on' : ''}" data-source="${id}">${label}<span>${n}</span></button>`;
-  $('#catTabs').innerHTML = srcBtn('tiktok', 'TikTok Shop · All', all.length - foldN) + srcBtn('fold', 'The Fold · All', foldN) + '<span class="chip-sep"></span>'
+  const syncN = (state.shared || []).filter((i) => state.whose === 'together' || i.owner === state.whose).length;
+  $('#catTabs').innerHTML = srcBtn('tiktok', 'TikTok Shop · All', all.length - foldN) + srcBtn('fold', 'The Fold · All', foldN)
+    + srcBtn('synced', 'Synced · ' + (state.whose === 'together' ? 'Both' : 'Mine'), syncN)
+    + (myHandoffs().length ? `<button class="chip hand-chip ${state.source === 'synced' ? 'on' : ''}" data-source="synced">Handoffs<span>${myHandoffs().length}</span></button>` : '')
+    + '<span class="chip-sep"></span>'
     + CATEGORIES.filter((c) => counts[c.id] || state.cat === c.id)
       .map((c) => `<button class="chip ${state.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${c.label}<span>${counts[c.id] || 0}</span></button>`).join('');
   $$('#statusSeg button').forEach((b) => b.classList.toggle('on', b.dataset.status === state.status));
-  $('#statusSeg').hidden = state.source === 'fold';
+  $('#statusSeg').hidden = state.source !== 'tiktok';
 
   const grid = $('#closetGrid');
+  if (state.source === 'synced') { state.visible = []; updSelAll(); return renderSynced(); }
   if (!items.length && state.source === 'fold') { grid.innerHTML = `<div class="empty"><h3>No pieces from The Fold yet</h3><p>Tap ↻ Refresh to pull them in from thefoldlabel.com.</p></div>`; state.visible = []; updSelAll(); return; }
   if (!items.length) {
     grid.innerHTML = `<div class="empty"><h3>Your closet is empty</h3>
@@ -1755,6 +1908,9 @@ function bind() {
   document.addEventListener('click', (e) => {
     { const si = e.target.closest('[data-signin]'); if (si) return signIn(si.dataset.signin); }
     { const sc = e.target.closest('[data-source]'); if (sc) { state.source = sc.dataset.source; state.cat = 'all'; return renderCloset(); } }
+    if (e.target.closest('[data-syncsetup]')) return openSyncSetup();
+    { const sd = e.target.closest('[data-send]'); if (sd) return sendPiece(sd.dataset.send); }
+    { const hb = e.target.closest('[data-hand]'); if (hb) return actHandoff(hb.dataset.hand, hb.dataset.do); }
     if (e.target.closest('#meBtn')) return openSignin();
     { const tm = e.target.closest('[data-togmode]'); if (tm) { state.togMode = tm.dataset.togmode; store.set('vw.togMode', state.togMode); return renderTogether(); } }
     if (e.target.closest('[data-shootretry]')) { state.stops = null; renderShoot(); loadStops(true).then(renderShoot).catch(() => {}); return; }
@@ -2026,9 +2182,10 @@ function signIn(id) {
   if (both) { state.togMode = 'shoot'; store.set('vw.togMode', 'shoot'); state.stops = null; }
   state.selected = new Set([...state.selected].filter(getItem));
   $('#meBtn').innerHTML = `<span class="me-dot">${personName(ME)[0]}</span>${personName(ME)} · Admin`;
-  $('#signinModal').hidden = true;
+  $('#signinModal').hidden = true; SIGNED = true;
   go(['closet', 'room', 'planned'].includes(state.view) ? state.view : 'closet');
   if (both) loadStops(true).then(renderShoot).catch(() => {});
+  if (state.pendingSync) { const rs = state.pendingSync; state.pendingSync = null; applySync(rs); }
 }
 function store_last(id) { try { localStorage.setItem('vw.lastPerson', id); } catch {} }
 function openSignin() {
@@ -2044,6 +2201,8 @@ function openSignin() {
   await Promise.all([syncImports().catch((e) => console.warn(e)), refreshFold(true)]);
   state.items = (await DB.all('items')).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   $('#bootModal').hidden = true;
-  receiveCartSync(); window.addEventListener('hashchange', receiveCartSync);
+  await loadShared();
+  receiveCartSync(); receiveSync();
+  window.addEventListener('hashchange', () => { receiveCartSync(); receiveSync(); });
   openSignin();
 })();
