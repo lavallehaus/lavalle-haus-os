@@ -2328,8 +2328,9 @@ async function syncImports() {
   } catch (err) { console.warn('pose import failed', err); }
 }
 
-/* ---------- who's dressing? (asked every time the wardrobe opens) ---------- */
+/* ---------- who's dressing? (asked once, then remembered) ---------- */
 function signIn(id) {
+  store_choice(id); // remember the actual choice, "both" included
   // "Both" is a third way in (her ask Nov 20 2026): it opens straight on the
   // shoot day, the two of you side by side against the run of day on the LS
   // Photoshoots board, and pulls that board fresh. You are still signed in as
@@ -2352,6 +2353,14 @@ function signIn(id) {
   if (rs) { state.pendingSync = null; applySync(rs); }
 }
 function store_last(id) { try { localStorage.setItem('vw.lastPerson', id); } catch {} }
+function store_choice(id) { try { localStorage.setItem('vw.lastChoice', id); } catch {} }
+// Her ask Nov 21 2026: "when i refresh the page i dont want to have to be
+// clicking kiabeth each time". The picker only appears when there is nothing
+// to resume; the person button in the header reopens it to switch.
+function lastChoice() {
+  let v = ''; try { v = localStorage.getItem('vw.lastChoice') || ''; } catch {}
+  return (v === 'both' || PEOPLE.some((p) => p.id === v)) ? v : '';
+}
 function openSignin() {
   let last = 'kiaredza'; try { last = localStorage.getItem('vw.lastPerson') || last; } catch {}
   $('#signinPeople').innerHTML = PEOPLE.map((p) => `<button class="signin-btn ${p.id === last ? 'last' : ''}" data-signin="${p.id}"><span class="me-dot big">${p.name[0]}</span><b>${p.name}</b><small>Admin</small></button>`).join('')
@@ -2368,5 +2377,6 @@ function openSignin() {
   await loadShared();
   receiveCartSync(); receiveSync();
   window.addEventListener('hashchange', () => { receiveCartSync(); receiveSync(); });
-  openSignin();
+  const resume = lastChoice();
+  if (resume) signIn(resume); else openSignin();
 })();
