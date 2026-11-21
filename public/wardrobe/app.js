@@ -479,11 +479,22 @@ async function applySync(rows) {
   try {
     const r = await api('/api/data?op=wardrobe_pieces_put', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ person: ME, source: 'tiktok', rows: rows.map((x) => ({ ...x, category: guessCat(x.name) })) }) });
+    // The bookmark runs wherever her TikTok is signed in, which may be a browser
+    // that has never opened the app. Nothing is lost: the pieces wait here until
+    // she has entered the house password once in this browser.
+    if (r.status === 401 || r.status === 403) { holdSync(rows); return; }
     const o = await r.json(); if (!r.ok) throw new Error(o.error || 'sync failed');
-    await loadShared(); state.source = 'synced'; go('closet');
+    clearHeld(); await loadShared(); state.source = 'synced'; go('closet');
     toast(`${o.added} new · ${o.updated} updated in ${personName(ME)}'s closet ✨`, 5000);
   } catch (e) { toast('Sync didn\'t work: ' + e.message, 6000); }
 }
+const HELD = 'vw.heldSync';
+function holdSync(rows) {
+  try { localStorage.setItem(HELD, JSON.stringify(rows)); } catch {}
+  toast(`${rows.length} pieces are held. This browser hasn't signed in to the app yet — open lavalle-haus-os.vercel.app here, enter the house password, then come back to this page and they file themselves.`, 20000);
+}
+function clearHeld() { try { localStorage.removeItem(HELD); } catch {} }
+function heldSync() { try { const v = JSON.parse(localStorage.getItem(HELD) || 'null'); return Array.isArray(v) && v.length ? v : null; } catch { return null; } }
 async function sendPiece(id) {
   const it = sharedOf(id); if (!it) return;
   const to = OTHER(ME);
@@ -2202,7 +2213,8 @@ function signIn(id) {
   $('#signinModal').hidden = true; SIGNED = true;
   go(['closet', 'room', 'planned'].includes(state.view) ? state.view : 'closet');
   if (both) loadStops(true).then(renderShoot).catch(() => {});
-  if (state.pendingSync) { const rs = state.pendingSync; state.pendingSync = null; applySync(rs); }
+  const rs = state.pendingSync || heldSync();
+  if (rs) { state.pendingSync = null; applySync(rs); }
 }
 function store_last(id) { try { localStorage.setItem('vw.lastPerson', id); } catch {} }
 function openSignin() {
