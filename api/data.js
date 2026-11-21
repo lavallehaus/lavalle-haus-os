@@ -2658,16 +2658,22 @@ export default async function handler(req, res) {
         stops.set(n, st);
       }
     }
-    // the location stills live in the covers-to-capture column
+    // The location stills live in the covers-to-capture column. Those cards are
+    // named by shot, not by place ("1:50 · C11 · BOOTS ON WARM STONE"), so the
+    // TIME is what ties them to a stop: every shot card that falls between this
+    // stop's time and the next one's was shot at this location.
     const locList = (bdWI.lists || []).find((l) => /covers to capture/i.test(l.name || ""));
-    const locs = locList ? (bdWI.cards || []).filter((c) => c.listId === locList.id && !c._deleted && c.cover)
-      .map((c) => ({ name: c.name, cover: c.cover })) : [];
-    const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    const out = [...stops.values()].sort((a, b) => a.n - b.n).map((st) => {
-      const hit = locs.find((L) => norm(L.name).includes(norm(st.place)) || norm(st.place).includes(norm(L.name)));
-      return { ...st, location: hit ? hit.cover : null };
-    });
-    res.json({ board: "archives-lavalle-sisters", stops: out });
+    const mins = (t) => { const m = /(\d{1,2}):(\d{2})/.exec(String(t || "")); if (!m) return null; let h = Number(m[1]); if (h < 8) h += 12; return h * 60 + Number(m[2]); };
+    const shots = locList ? (bdWI.cards || []).filter((c) => c.listId === locList.id && !c._deleted && c.cover && mins(c.name) !== null)
+      .map((c) => ({ name: c.name, cover: c.cover, t: mins(c.name) })).sort((a, b) => a.t - b.t) : [];
+    const out = [...stops.values()].sort((a, b) => a.n - b.n);
+    for (let k = 0; k < out.length; k++) {
+      const t0 = mins(out[k].time), t1 = k + 1 < out.length ? mins(out[k + 1].time) : null;
+      const win = t0 === null ? [] : shots.filter((sh) => sh.t >= t0 && (t1 === null || sh.t < t1));
+      out[k].location = win.length ? win[0].cover : null;
+      out[k].shots = win.map((sh) => ({ name: sh.name, cover: sh.cover }));
+    }
+        res.json({ board: "archives-lavalle-sisters", stops: out });
     return;
   }
 
