@@ -1842,6 +1842,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
               </div>
             );
           })()}
+          {/* The Virtual Wardrobe tab runs the app itself, not a card that links
+              out to it — her Nov 20 2026 note: "theres nothing embeded when i
+              click on that subtab". Same origin, so its closet data and sign-in
+              behave exactly as they do full screen. The cards stay underneath. */}
+          {/virtual wardrobe/i.test(String(activeMonth || "")) && (
+            <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, overflow: "hidden", marginBottom: 14, background: "#FBFAF8" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${c.line}`, fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#A39B8B" }}>
+                <span>Virtual Wardrobe · running here in the app</span>
+                <a href="/wardrobe/" target="_blank" rel="noopener" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 11, color: c.ink }}>Open full screen ↗</a>
+              </div>
+              <iframe src="/wardrobe/" title="Virtual Wardrobe" style={{ display: "block", width: "100%", height: "min(1100px, calc(100vh - 200px))", minHeight: 560, border: 0, background: "#FBFAF8" }} />
+            </div>
+          )}
           <div style={{ display: "flex", gap: 12, overflowX: "auto", alignItems: "flex-start", paddingBottom: 16, scrollSnapType: "x mandatory", scrollPadding: "0 12px", WebkitOverflowScrolling: "touch" }}>
             {(folderMode ? board.lists.filter((l) => l.id === opsFocus) : monthLists).map((l) => {
               // the Automations card is for the owners' eyes only (her rule Oct 5 2026)
