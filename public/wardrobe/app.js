@@ -429,7 +429,7 @@ async function removeOneSynced(id) {
 }
 async function removeOneItem(id) {
   const it = getItem(id); if (!it) return;
-  if (!confirm(`Remove “${it.name || 'this piece'}” from your closet?\n\nThis one is stored on this device, so it can't be undone.`)) return;
+  if (!confirm(`Remove “${it.name || 'this piece'}” from the wardrobe?\n\nThe closet is shared, so it leaves ${personName(OTHER(ME))}'s too. This can't be undone.`)) return;
   await DB.del('items', id);
   state.items = state.items.filter((x) => x.id !== id);
   state.selected.delete(id); saveUI(); refresh();
@@ -2243,6 +2243,302 @@ async function importBackup(file) {
   } catch (e) { console.error(e); toast('That file could not be read'); }
 }
 
+/* ================= THE SHARED CLOSET =================
+ * Her ask Nov 21 2026: "if you want the two of you genuinely seeing the same
+ * wardrobe". Three things lived only in whichever browser made them —
+ *
+ *   · pieces added by hand or pulled from a TikTok cart sync,
+ *   · every outfit, and
+ *   · the photos of you the outfits are built on.
+ *
+ * The synced store (op=wardrobe_pieces) shares thin rows you can look at but
+ * not wear. Outfits never crossed at all, and the reason is subtle: an outfit
+ * points at its pieces by local IndexedDB id, and ids are generated per
+ * browser, so even a restored backup opened empty on the other side.
+ *
+ * So everything here is keyed by something stable across browsers — importKey
+ * for a TikTok or Fold piece, "l<id>" for one added by hand — and an outfit
+ * stores its layers by that key. Each closet maps them back to its own ids.
+ *
+ * Pictures are never put in the shared record. They go to the media store
+ * (bytes to Drive, a pointer in KV) and the record carries the URL, because
+ * one 140KB cutout per piece would fill the KV cap in a single push and
+ * Upstash fails those writes silently. On the way back in, a picture from our
+ * own origin is read into real bytes exactly as the bundled imports/ manifest
+ * has always been read in: the changing room draws every piece onto a canvas,
+ * and a cross-origin photo would taint it.
+ */
+const SHARE_STORES = new Set(['items', 'outfits', 'poses']);
+// `skipped` is deliberately not here. Hiding a piece from your own closet is
+// yours alone ("Only here — nothing on TikTok changes"); a real delete is what
+// crosses, as a tombstone.
+const ITEM_FIELDS = ['name', 'category', 'status', 'link', 'price', 'priceWas', 'size', 'notes', 'owner',
+  'soldOut', 'stockLeft', 'stockLow', 'inCart', 'outOfCart', 'importKey', 'productId',
+  'tryonNote', 'tryonPic', 'refs', 'imgv', 'source', 'foldImg'];
+const OUTFIT_FIELDS = ['name', 'where', 'note', 'plan', 'owner', 'order', 'skipTotal', 'createdAt', 'updatedAt'];
+const itemKey = (it) => it.importKey || it.productId || ('l' + it.id);
+const poseKeyOf = (p) => p.importKey || ('p' + p.id);
+const outfitKeyOf = (o) => o.shareKey || ('o' + o.id);
+// What the other browser can already load with no upload from us.
+const portable = (u) => typeof u === 'string' && /^(https?:\/\/|imports\/|\/api\/data\?op=media)/.test(u);
+// …and of those, the ones we may read into bytes (same origin, so canvas-safe).
+const ourOwn = (u) => typeof u === 'string' && /^(imports\/|\/api\/data\?op=media)/.test(u);
+const share = { rev: 0, at: store.get('vw.shareAt', 0), busy: false, off: false, tombs: [] };
+// Both browsers ship the same imports/ folder, so a piece that still looks the
+// way it was imported needs no upload at all — its record can just point at the
+// bundled copy. Only work she has actually done to a picture (a crop, a cutout)
+// has to travel, and that is the work worth travelling.
+let BUNDLED = null;
+async function bundledImgs() {
+  if (BUNDLED) return BUNDLED;
+  BUNDLED = {};
+  try {
+    const r = await fetch('imports/manifest.json', { cache: 'force-cache' });
+    if (r.ok) for (const e of await r.json()) { const k = e.key || e.productId; if (k && e.image) BUNDLED[String(k)] = String(e.image); }
+  } catch (e) { console.warn('bundled manifest', e); }
+  return BUNDLED;
+}
+const rowsOf = (kind) => (kind === 'items' ? state.items : kind === 'outfits' ? state.outfits : state.poses);
+const keyerOf = (kind) => (kind === 'items' ? itemKey : kind === 'outfits' ? outfitKeyOf : poseKeyOf);
+
+// Every write to a shared store schedules a share, and a delete leaves a
+// tombstone first — without one the piece simply comes back on the next pull.
+const rawPut = DB.put, rawDel = DB.del;
+DB.put = async (kind, v) => { const r = await rawPut(kind, v); if (SHARE_STORES.has(kind)) schedulePush(); return r; };
+DB.del = async (kind, id) => {
+  if (SHARE_STORES.has(kind)) {
+    const rec = rowsOf(kind).find((x) => x.id === id);
+    if (rec) share.tombs.push({ kind, k: keyerOf(kind)(rec) });
+  }
+  const r = await rawDel(kind, id);
+  if (SHARE_STORES.has(kind)) schedulePush();
+  return r;
+};
+
+let shareTimer = null;
+function schedulePush(ms = 5000) {
+  if (share.off || !SIGNED) return;
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => pushCloset().catch((e) => console.warn('share', e)), ms);
+}
+function shareAgo(t) {
+  if (!t) return '';
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 86400 * 2 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago';
+}
+function paintShare(msg) {
+  const el = $('#shareState'); if (!el) return;
+  el.hidden = false;
+  el.classList.toggle('busy', !!msg && !share.off);
+  el.classList.toggle('paused', share.off);
+  el.textContent = msg || (share.at ? 'Shared · ' + shareAgo(share.at) : 'Shared closet');
+  el.title = share.off ? 'Sharing is paused — tap to try again.'
+    : `Pieces, outfits and photos of you are shared between both closets.${share.at ? ' Last shared ' + new Date(share.at).toLocaleString() + '.' : ''} Tap to sync now.`;
+}
+
+// One picture → a URL the other closet can load. Cached on the record by
+// source length, so a piece is never uploaded twice.
+async function imgRef(rec, field, kind) {
+  const src = rec[field];
+  if (!src) return '';
+  if (portable(src)) return src;
+  if (!/^data:image/.test(src)) return '';
+  const cache = rec._imgRef || (rec._imgRef = {});
+  const tag = field + ':' + src.length;
+  if (cache[tag]) return cache[tag];
+  let small = src;
+  for (const w of [1000, 760, 600]) { small = await downscale(src, w); if (small.length < 900000) break; }
+  const r = await api('/api/data?op=media_put', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: small }) });
+  const o = await r.json().catch(() => ({}));
+  if (!r.ok || !o.url) throw new Error(o.error || 'could not store that picture');
+  // Drive disconnected means mediaStore fell back to base64 in KV. Carrying on
+  // would quietly fill the database, so the whole share stops instead.
+  if (o.drive === false) throw new Error('NO_DRIVE');
+  cache[tag] = o.url;
+  await rawPut(kind, rec);
+  return o.url;
+}
+
+async function buildShared(kind, rec) {
+  const k = keyerOf(kind)(rec);
+  if (!k) return null;
+  const out = { k };
+  const copy = (fields) => { for (const f of fields) if (rec[f] !== undefined && rec[f] !== null && rec[f] !== '') out[f] = rec[f]; };
+  if (kind === 'items') {
+    // The Fold's pieces are not ours to share: refreshFold pulls them live into
+    // both closets from thefoldlabel.com, so a record here would only fight
+    // with it — and an outfit that wears one still resolves, because both
+    // closets hold it under the same fold- key.
+    if (/^fold-/.test(k)) return null;
+    copy(ITEM_FIELDS);
+    const bundled = (await bundledImgs())[String(rec.importKey || rec.productId || '')];
+    const untouched = bundled && rec.image && rec.image === rec.original;
+    out.image = untouched ? bundled : await imgRef(rec, 'image', kind);
+    if (!out.image) return null; // nothing the other closet could show
+    if (!untouched && rec.original && rec.original !== rec.image) out.original = await imgRef(rec, 'original', kind);
+  } else if (kind === 'poses') {
+    copy(['owner', 'createdAt', 'importKey']);
+    out.image = await imgRef(rec, 'image', kind);
+    if (!out.image) return null;
+    for (const f of ['original', 'photo', 'face', 'base']) if (rec[f] && rec[f] !== rec.image) out[f] = await imgRef(rec, f, kind);
+  } else {
+    copy(OUTFIT_FIELDS);
+    out.layers = (rec.layers || []).map((l) => {
+      const it = getItem(l.itemId); if (!it) return null;
+      const c = { ...l, k: itemKey(it) }; delete c.itemId; return c;
+    }).filter(Boolean);
+    if (!out.layers.length) return null;
+    out.keys = [...new Set(out.layers.map((l) => l.k))];
+    const p = state.poses.find((x) => x.id === rec.poseId);
+    if (p) out.poseK = poseKeyOf(p);
+    if (rec.tryon) out.tryon = await imgRef(rec, 'tryon', kind);
+  }
+  return out;
+}
+
+// Push what has changed. Bounded per run and resumable: a record only gets its
+// signature stamped once the server has it, so an interrupted push picks up
+// where it stopped.
+async function pushCloset(opts = {}) {
+  if (!SIGNED || share.busy || share.off) return null;
+  share.busy = true;
+  const budget = opts.all ? 400 : 90;
+  try {
+    const body = { by: ME, items: [], outfits: [], poses: [] };
+    for (const t of share.tombs.splice(0)) body[t.kind].push({ k: t.k, deleted: true });
+    const stamp = [];
+    let n = 0, left = 0;
+    const t0 = Date.now();
+    for (const kind of ['poses', 'items', 'outfits']) { // poses and pieces first: an outfit is keyed off them
+      for (const rec of rowsOf(kind)) {
+        if (n >= budget || Date.now() - t0 > 45000) { left++; continue; }
+        let built = null;
+        try { built = await buildShared(kind, rec); }
+        catch (e) { if (e.message === 'NO_DRIVE') throw e; console.warn('share', kind, e); continue; }
+        if (!built) continue;
+        const sig = JSON.stringify(built);
+        if (rec._sig === sig) continue;
+        body[kind].push(built); stamp.push([kind, rec, sig]); n++;
+        if (n % 10 === 0) paintShare('Sharing ' + n + '…');
+      }
+    }
+    const total = body.items.length + body.outfits.length + body.poses.length;
+    if (!total) { paintShare(); return { n: 0 }; }
+    paintShare('Sharing ' + total + '…');
+    const r = await api('/api/data?op=wardrobe_closet_put', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const o = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(o.error || 'could not share');
+    for (const [kind, rec, sig] of stamp) { rec._sig = sig; await rawPut(kind, rec); }
+    share.rev = o.rev || share.rev; share.at = Date.now(); store.set('vw.shareAt', share.at);
+    paintShare();
+    if (left) setTimeout(() => pushCloset(opts).catch(() => {}), 1200);
+    return o;
+  } catch (e) {
+    if (e.message === 'NO_DRIVE') {
+      share.off = true; paintShare('Sharing paused');
+      toast('Sharing is paused: the app\'s Google Drive connection is down, and keeping pictures without it would fill the database. Reconnect Google in the OS app, then tap the Shared chip.', 14000);
+    } else { paintShare('Sharing failed'); console.warn('push', e); }
+    return null;
+  } finally { share.busy = false; }
+}
+
+// Read a shared picture into bytes when it is ours to read, and remember where
+// it came from so pushing it back never uploads a second copy.
+async function pullImg(rec, field, url) {
+  if (!url) return '';
+  if (!ourOwn(url)) return url; // an outside CDN still displays, it just can't be redrawn
+  try {
+    const bytes = await downscale(await fileToDataURL(await (await fetch(url)).blob()), 1200);
+    (rec._imgRef || (rec._imgRef = {}))[field + ':' + bytes.length] = url;
+    return bytes;
+  } catch (e) { console.warn('pull image', url, e); return url; }
+}
+
+async function pullCloset() {
+  let j;
+  try {
+    const r = await api('/api/data?op=wardrobe_closet', { cache: 'no-store' });
+    if (!r.ok) return null;
+    j = await r.json();
+  } catch (e) { console.warn('pull', e); return null; }
+  share.rev = j.rev || 0;
+  const n = { added: 0, filled: 0, outfits: 0, poses: 0, gone: 0 };
+
+  // ── photos of you
+  const poseBy = new Map(state.poses.map((p) => [poseKeyOf(p), p]));
+  for (const rec of j.poses || []) {
+    const have = poseBy.get(rec.k);
+    if (rec.deleted) { if (have) { await rawDel('poses', have.id); state.poses = state.poses.filter((x) => x.id !== have.id); n.gone++; } continue; }
+    if (have) continue;
+    const p = { id: uid(), owner: rec.owner || 'kiaredza', importKey: rec.importKey || rec.k, createdAt: rec.createdAt || Date.now() };
+    p.image = await pullImg(p, 'image', rec.image);
+    for (const f of ['original', 'photo', 'face', 'base']) if (rec[f]) p[f] = await pullImg(p, f, rec[f]);
+    p.original = p.original || p.image;
+    await rawPut('poses', p); state.poses.push(p); poseBy.set(rec.k, p); n.poses++;
+  }
+
+  // ── pieces. The Fold's are left alone: refreshFold pulls them live into both
+  // closets from thefoldlabel.com, and they'd only fight over the same rows.
+  const itemBy = new Map(state.items.map((i) => [itemKey(i), i]));
+  for (const rec of j.items || []) {
+    const have = itemBy.get(rec.k);
+    if (rec.deleted) { if (have) { await rawDel('items', have.id); state.items = state.items.filter((x) => x.id !== have.id); itemBy.delete(rec.k); n.gone++; } continue; }
+    if (have) { // fill gaps only — never overwrite her crop, her cutout or her notes
+      let ch = false;
+      for (const f of ITEM_FIELDS) if ((have[f] === undefined || have[f] === '') && rec[f] !== undefined && rec[f] !== '') { have[f] = rec[f]; ch = true; }
+      if (ch) { await rawPut('items', have); n.filled++; }
+      continue;
+    }
+    if (/^fold-/.test(rec.k)) continue;
+    const it = { id: uid(), createdAt: rec.createdAt || Date.now() };
+    for (const f of ITEM_FIELDS) if (rec[f] !== undefined) it[f] = rec[f];
+    it.importKey = it.importKey || rec.k;
+    it.category = it.category || 'tops'; it.status = it.status || 'owned'; it.owner = it.owner || 'kiaredza';
+    it.image = await pullImg(it, 'image', rec.image);
+    it.original = rec.original ? await pullImg(it, 'original', rec.original) : it.image;
+    if (!it.image) continue;
+    await rawPut('items', it); state.items.push(it); itemBy.set(rec.k, it); n.added++;
+  }
+
+  // ── outfits, rebuilt against this closet's own ids
+  for (const rec of j.outfits || []) {
+    const have = state.outfits.find((o) => outfitKeyOf(o) === rec.k);
+    if (rec.deleted) { if (have) { await rawDel('outfits', have.id); state.outfits = state.outfits.filter((x) => x.id !== have.id); n.gone++; } continue; }
+    if (have && (have.updatedAt || 0) >= (rec.updatedAt || 0)) continue;
+    const layers = (rec.layers || []).map((l) => {
+      const it = itemBy.get(l.k); if (!it) return null;
+      const c = { ...l, itemId: it.id }; delete c.k; return c;
+    }).filter(Boolean);
+    if (!layers.length) continue; // its pieces aren't here, so it would open empty
+    const o = { id: (have && have.id) || uid(), shareKey: rec.k, layers,
+      itemIds: [...new Set(layers.map((l) => l.itemId))],
+      poseId: (poseBy.get(rec.poseK) || {}).id || null,
+      createdAt: rec.createdAt || Date.now(), updatedAt: rec.updatedAt || Date.now() };
+    for (const f of OUTFIT_FIELDS) if (rec[f] !== undefined) o[f] = rec[f];
+    o.name = o.name || 'Untitled outfit'; o.plan = o.plan || { type: 'none' }; o.owner = o.owner || 'kiaredza';
+    if (rec.tryon) o.tryon = await pullImg(o, 'tryon', rec.tryon);
+    await rawPut('outfits', o);
+    state.outfits = have ? state.outfits.map((x) => (x.id === o.id ? o : x)) : [...state.outfits, o];
+    n.outfits++;
+  }
+
+  if (n.added || n.outfits || n.poses || n.gone) {
+    state.selected = new Set([...state.selected].filter(getItem));
+    const bits = [n.outfits && `${n.outfits} outfit${n.outfits === 1 ? '' : 's'}`, n.added && `${n.added} piece${n.added === 1 ? '' : 's'}`, n.poses && `${n.poses} photo${n.poses === 1 ? '' : 's'}`].filter(Boolean);
+    if (bits.length) toast(`From the shared closet: ${bits.join(' · ')} ✨`, 6000);
+  }
+  paintShare();
+  return n;
+}
+
+async function syncCloset() {
+  share.off = false;
+  paintShare('Syncing…');
+  await pullCloset();
+  refresh();
+  await pushCloset({ all: true });
+}
+
 /* ================= wiring ================= */
 function refresh() { if (state.view === 'closet') renderCloset(); if (state.view === 'room') renderRoom(); if (state.view === 'planned') renderPlanned(); renderTray(); }
 async function loadAll() {
@@ -2376,6 +2672,7 @@ function bind() {
   };
   $('#undoAiBtn').onclick = undoAI;
   $('#syncBtn').onclick = refreshCart;
+  $('#shareState').onclick = () => syncCloset().then(refresh).catch((e) => toast(e.message, 5000));
   showCredits(); setInterval(showCredits, 120000);
   const paintCoat = () => $$('#coatSeg button').forEach((b) => b.classList.toggle('on', b.dataset.coat === store.get('vw.coat', 'open')));
   $$('#coatSeg button').forEach((b) => (b.onclick = () => { store.set('vw.coat', b.dataset.coat); paintCoat(); paintCost(); }));
@@ -2488,6 +2785,7 @@ async function checkStock(quiet) {
 }
 async function refreshCart() {
   const btn = $('#syncBtn'); checkStock(true);
+  syncCloset().then(refresh).catch((e) => console.warn('shared closet', e));
   if (!btn.disabled) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; await refreshFold(false); state.items = await DB.all('items'); refresh(); btn.disabled = false; btn.textContent = '↻ Refresh'; }
   if (document.documentElement.dataset.vwHelper !== '1') { // no Chrome helper: pull in the latest auto-sync
     return syncImports().then(async () => { state.items = await DB.all('items'); refresh(); toast('Up to date with the latest sync ✨ New cart adds come in at 8am, 12pm, 4pm & 8pm', 6000); });
@@ -2715,6 +3013,8 @@ function signIn(id) {
   if (both) loadStops(true).then(renderShoot).catch(() => {});
   const rs = state.pendingSync || heldSync();
   if (rs) { state.pendingSync = null; applySync(rs); }
+  paintShare();
+  schedulePush(3000); // a push needs to know whose pieces these are, so it waits for this
 }
 function store_last(id) { try { localStorage.setItem('vw.lastPerson', id); } catch {} }
 function store_choice(id) { try { localStorage.setItem('vw.lastChoice', id); } catch {} }
@@ -2738,6 +3038,7 @@ function openSignin() {
   await Promise.all([syncImports().catch((e) => console.warn(e)), refreshFold(true)]);
   state.items = (await DB.all('items')).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   await migrateCatsV2();
+  await pullCloset().catch((e) => console.warn('shared closet', e));
   $('#bootModal').hidden = true;
   await loadShared();
   receiveCartSync(); receiveSync();

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=88">
+<link rel="stylesheet" href="styles.css?v=89">
 </head>
 <body>
 <div id="vw-app">
@@ -32,6 +32,10 @@
     </nav>
     <div class="header-actions">
       <button class="me-btn" id="meBtn" title="Switch person"></button>
+      <!-- Shared-closet state. Pieces, outfits and the photos of you now live
+           in one manifest both browsers read and write, so this says plainly
+           whether the two closets agree. Tap it to sync now. -->
+      <button class="share-chip" id="shareState" hidden></button>
       <button class="primary small" id="syncBtn">↻ Refresh</button>
       <button class="ghost small" id="exportBtn" title="Download a backup of everything">Backup</button>
       <label class="ghost small file-btn" title="Restore from a backup file">Restore<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -253,6 +257,6 @@
 
   <div class="toast" id="toast" hidden></div>
 </div>
-<script src="app.js?v=88"></script>
+<script src="app.js?v=89"></script>
 </body>
 </html>

@@ -815,3 +815,16 @@ button:disabled { opacity: .45; cursor: default; }
 
 #posesRail #undoAiBtn { background: #fff !important; color: #1c1b19 !important; border: 2px solid #1c1b19 !important; font-weight: 700; }
 #undoAiBtn[hidden] { display: none !important; }
+
+/* Shared-closet chip — whether the two closets agree, and the way to make
+   them agree now. Quiet by default; only the paused state asks for attention. */
+.share-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 5px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--paper); cursor: pointer;
+  font-family: var(--sans); font-size: 9px; font-weight: 500; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.share-chip::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: #8a9a86; flex: none; }
+.share-chip:hover { border-color: var(--ink); color: var(--ink); }
+.share-chip.busy::before { background: var(--ink-2); animation: sharePulse 1.1s ease-in-out infinite; }
+.share-chip.paused { color: #8a6d60; border-color: rgba(138,109,96,.38); }
+.share-chip.paused::before { background: #8a6d60; }
+@keyframes sharePulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }

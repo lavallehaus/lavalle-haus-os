@@ -1390,8 +1390,13 @@ export default async function handler(req, res) {
     const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(String(b.dataUrl || ""));
     if (!m) { res.status(400).json({ error: "Expected an image data URL." }); return; }
     const id = "m" + randomBytes(10).toString("hex");
-    await mediaStore(id, m[1], Buffer.from(m[2], "base64"));
-    res.json({ ok: true, id, url: "/api/data?op=media&id=" + id });
+    const stMP = await mediaStore(id, m[1], Buffer.from(m[2], "base64"));
+    // `drive` tells the caller WHERE the bytes landed. mediaStore falls back to
+    // inline base64 in KV when Drive is disconnected, which is right for a one
+    // off card cover and wrong for a bulk push — the wardrobe sync uploads a
+    // cutout per piece and would fill the 256MB cap. It watches this flag and
+    // stops rather than carrying on into KV.
+    res.json({ ok: true, id, url: "/api/data?op=media&id=" + id, drive: !!stMP.driveId });
     return;
   }
   // Public like card_media/drive_img — <img> tags can't send the app token.
@@ -2817,6 +2822,82 @@ export default async function handler(req, res) {
     const rows = [...byId.values()].slice(-500);
     await kvSet("wardrobe_cart", { at: Date.now(), rows });
     res.json({ added, skipped: rowsWC.length - added, total: rows.length });
+    return;
+  }
+
+  // ── Wardrobe: the LIVE shared manifest (her ask Nov 21 2026 — "if you want
+  // the two of you genuinely seeing the same wardrobe"). The store above shares
+  // thin synced rows: pieces each sister can SEE in the other's closet but not
+  // wear, and it never carried outfits at all. An outfit points at its pieces
+  // by local IndexedDB id, and those ids are generated per browser, so even a
+  // restored backup opened empty on the other side.
+  //
+  // Here every record is keyed by something stable across browsers — importKey
+  // for a TikTok or Fold piece, "l<id>" for one added by hand — and an outfit
+  // stores its layers by that key too, so the other closet rebuilds it against
+  // its own ids. Last write wins per record; a delete leaves a tombstone so it
+  // propagates instead of the piece coming back on the next pull.
+  //
+  // IMAGES ARE NEVER STORED HERE. A record's image is a URL: the Fold's CDN,
+  // the bundled imports/ copy both browsers already ship with, or the media
+  // store (op=media_put → bytes to Drive, a pointer in KV). One 140KB cutout
+  // per piece would fill the 256MB KV cap in a single push, and Upstash fails
+  // those writes silently — it has bitten this app twice. urlOnly() below is
+  // the belt and braces: anything image-shaped that isn't a URL is dropped.
+  if (op === "wardrobe_closet" && req.method === "GET") {
+    const authWK = await getAuthEarly(req);
+    if (!authWK) { res.status(401).json({ error: "Locked." }); return; }
+    const stWK = (await kvGet("wardrobe_closet")) || {};
+    res.json({ rev: stWK.rev || 0, at: stWK.at || 0,
+      items: Object.values(stWK.items || {}), outfits: Object.values(stWK.outfits || {}), poses: Object.values(stWK.poses || {}) });
+    return;
+  }
+
+  if (op === "wardrobe_closet_put" && req.method === "POST") {
+    const authWJ = await getAuthEarly(req);
+    if (!authWJ) { res.status(401).json({ error: "Locked." }); return; }
+    const bWJ = req.body || {};
+    const whoWJ = String(bWJ.by || "").toLowerCase();
+    if (whoWJ !== "kiabeth" && whoWJ !== "kiaredza") { res.status(400).json({ error: "by must be kiabeth or kiaredza" }); return; }
+    const stWJ = (await kvGet("wardrobe_closet")) || {};
+    const urlOnly = (v) => (typeof v === "string" && v.length < 600 && /^(https?:\/\/|imports\/|\/api\/data\?op=media)/.test(v) ? v : "");
+    const IMG_WJ = /^(image|original|tryon|photo|face|base|preview|foldImg|tryonPic)$/;
+    const savedWJ = { items: 0, outfits: 0, poses: 0 };
+    let droppedWJ = 0;
+    for (const s of ["items", "outfits", "poses"]) {
+      const rows = Array.isArray(bWJ[s]) ? bWJ[s].slice(0, 400) : [];
+      if (!rows.length) continue;
+      stWJ[s] = stWJ[s] || {};
+      for (const r of rows) {
+        const k = String((r && r.k) || "").slice(0, 200);
+        if (!k) continue;
+        const rec = { k };
+        for (const f of Object.keys(r)) {
+          if (f === "k" || f === "at" || f === "by") continue;
+          const v = r[f];
+          if (IMG_WJ.test(f)) { const u = urlOnly(v); if (u) rec[f] = u; else if (v) droppedWJ++; continue; }
+          if (typeof v === "string") { rec[f] = v.slice(0, 1500); continue; }
+          if (v && typeof v === "object") { const j = JSON.stringify(v); if (j.length < 24000 && !/data:image/.test(j)) rec[f] = v; else droppedWJ++; continue; }
+          if (v !== undefined && v !== null) rec[f] = v;
+        }
+        rec.at = Date.now(); rec.by = whoWJ;
+        stWJ[s][k] = rec; savedWJ[s]++;
+      }
+    }
+    // Tombstones age out after 90 days; live records stay.
+    const cutWJ = Date.now() - 90 * 86400000;
+    for (const s of ["items", "outfits", "poses"]) {
+      if (!stWJ[s]) continue;
+      for (const k of Object.keys(stWJ[s])) if (stWJ[s][k].deleted && (stWJ[s][k].at || 0) < cutWJ) delete stWJ[s][k];
+      const ent = Object.entries(stWJ[s]);
+      if (ent.length > 1200) stWJ[s] = Object.fromEntries(ent.sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, 1200));
+    }
+    const sizeWJ = JSON.stringify(stWJ).length;
+    if (sizeWJ > 3000000) { res.status(413).json({ error: "The shared closet is full — something is writing image data into it." }); return; }
+    stWJ.rev = (stWJ.rev || 0) + 1; stWJ.at = Date.now();
+    await kvSet("wardrobe_closet", stWJ);
+    res.json({ ok: true, rev: stWJ.rev, saved: savedWJ, droppedImages: droppedWJ, bytes: sizeWJ,
+      total: { items: Object.keys(stWJ.items || {}).length, outfits: Object.keys(stWJ.outfits || {}).length, poses: Object.keys(stWJ.poses || {}).length } });
     return;
   }
 
