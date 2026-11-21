@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=87">
+<link rel="stylesheet" href="styles.css?v=88">
 </head>
 <body>
 <div id="vw-app">
@@ -78,6 +78,7 @@
       </aside>
 
       <div class="room-main">
+        <div class="drafts-bar" id="draftsBar"></div>
         <div class="editing-banner" id="editingBanner" hidden></div>
         <div class="room" id="room">
           <button class="zoom-btn" id="zoomBtn" hidden>⤢ See it big</button>
@@ -101,18 +102,20 @@
       </div>
 
       <aside class="rail" id="posesRail">
-        <div class="rail-title">Who's trying on</div>
-        <div class="seg poses-who" id="posesWho"></div>
-        <div id="poses"></div>
-        <div class="rail-title spaced">Outfit</div>
+        <div class="rail-title">Outfit</div>
         <button class="primary block tryon-btn" id="tryonBtn">Try it on (AI)</button>
+        <button class="ghost block" id="undoAiBtn" hidden>↶ Undo last AI change</button>
+        <button class="ghost block" id="clearRoomBtn">Take everything off</button>
+        <button class="primary block" id="lockBtn">Lock in outfit</button>
         <p class="tryon-msg" id="tryonMsg" hidden></p>
         <p class="cost-line" id="costLine"></p>
         <div class="credits-row"><span id="creditsLeft">FASHN credits</span><a class="ghost small btn-link" href="https://app.fashn.ai/api" target="_blank" rel="noopener">+ Buy credits</a></div>
         <div class="speed-seg" id="speedSeg" title="Credits per piece. Fast is less accurate."><button data-speed="fast">Fast · 1</button><button data-speed="balanced">Good · 2</button><button data-speed="quality">Best · 3</button></div>
-        <div class="speed-seg" id="coatSeg" hidden title="How the coat or jacket is worn"><button data-coat="open">Coat open</button><button data-coat="closed">Coat closed</button></div>
-        <button class="primary block" id="lockBtn">Lock in outfit</button>
-        <button class="ghost block" id="clearRoomBtn">Take everything off</button>
+        <div class="speed-seg" id="poseLockSeg" title="Keep my pose: tops, pants and dresses only repaint the clothes, so your pose stays exactly the same (1 credit each)"><button data-poselock="1">Keep my pose</button><button data-poselock="0">Free pose</button></div>
+        <div class="speed-seg" id="coatSeg" hidden title="How the cardigan, coat or jacket is worn"><button data-coat="open">Open</button><button data-coat="closed">Closed</button></div>
+        <div class="rail-title spaced">Who's trying on</div>
+        <div class="seg poses-who" id="posesWho"></div>
+        <div id="poses"></div>
         <button class="link-btn ai-key" id="aiKeyLink">AI key</button>
         <p class="hint">Drag pieces to move them. Scroll on a piece (or use the sliders) to resize.</p>
       </aside>
@@ -230,6 +233,7 @@
       </div>
       <div class="sheet-foot"><div class="spacer"></div>
         <button class="ghost" id="keyCancel">Cancel</button>
+        <button class="ghost" id="keyCopy">Copy saved key</button>
         <button class="ghost" id="keyPaste">Paste my copied key</button>
         <button class="primary" id="keySave">Save &amp; try on</button>
       </div>
@@ -249,6 +253,6 @@
 
   <div class="toast" id="toast" hidden></div>
 </div>
-<script src="app.js?v=87"></script>
+<script src="app.js?v=88"></script>
 </body>
 </html>

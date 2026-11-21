@@ -413,6 +413,7 @@ button:disabled { opacity: .45; cursor: default; }
 .mark.cart { color: var(--ink); }
 .mark.cart svg { opacity: .6; margin-top: -1px; }
 .mark.cart .tick { width: 4px; height: 4px; border-radius: 50%; background: var(--ink); margin-left: 1px; }
+.mark.low { color: #8a6d60; border-color: rgba(138,109,96,.38); }
 .mark.out { color: #8a6d60; border-color: rgba(138,109,96,.38); background: rgba(255,255,255,.92); }
 .mark.house {
   font-family: var(--serif); font-size: 12.5px; font-weight: 400;
@@ -719,3 +720,98 @@ button:disabled { opacity: .45; cursor: default; }
 .piece.synced.rm-picked .piece-img img { opacity: .5; }
 .rm-tick { position: absolute; top: 6px; left: 6px; z-index: 3; background: rgba(255,255,255,.92); border-radius: 6px; padding: 3px 4px 1px; line-height: 0; box-shadow: 0 1px 3px rgba(0,0,0,.14); cursor: pointer; }
 .rm-tick input { width: 17px; height: 17px; accent-color: #1A1A1A; cursor: pointer; margin: 0; }
+.sticker.fold { background: var(--ink); color: #fff; }
+
+#clearRoomBtn { margin-bottom: 8px; }
+#lockBtn { margin-bottom: 12px; }
+.sticker.red.sold { font-weight: 800; letter-spacing: .04em; color: #fff; background: #d0212f; border-color: #d0212f; }
+.sticker.red.sold { font-size: 12px; padding: 5px 10px; }
+#view-closet .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1100px) { #view-closet .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 720px) { #view-closet .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* changing room: easy-to-see dark rectangular buttons */
+#posesRail button.block, #posesRail button.ghost, #posesRail button.danger-link {
+  background: #2a2622; color: #fff; border: 1px solid #2a2622; border-radius: 6px;
+  font-weight: 600; text-decoration: none; padding: 10px 12px; width: 100%; box-shadow: none;
+}
+#posesRail button.block:hover, #posesRail button.ghost:hover, #posesRail button.danger-link:hover { background: #000; border-color: #000; }
+#posesRail button.danger-link { background: #8f1d27; border-color: #8f1d27; }
+#posesRail .tryon-btn { background: #2a2622; }
+/* changing room left side: dark rectangular buttons too */
+#picksRail .big-toggle, #picksRail .pick-tabs button {
+  background: #2a2622; color: #fff; border: 2px solid #2a2622; border-radius: 6px; font-weight: 600;
+}
+#picksRail .big-toggle:hover, #picksRail .pick-tabs button:hover { background: #000; border-color: #000; }
+#picksRail .pick-tabs button.on, #picksRail .pick-tabs button.active, #picksRail .pick-tabs button[aria-pressed="true"] {
+  background: #fff; color: #2a2622; border-color: #2a2622;
+}
+#picksRail .pick-tabs button span, #picksRail .pick-tabs button small { color: inherit; opacity: .75; }
+#picksRail .big-toggle { display: none !important; }
+/* several changing rooms (drafts) */
+.drafts-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.drafts-bar .draft, .drafts-bar .draft-new { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; border: 2px solid #2a2622; }
+.drafts-bar .draft { background: #2a2622; color: #fff; }
+.drafts-bar .draft.on { background: #fff; color: #2a2622; }
+.drafts-bar .draft small { font-size: 10px; opacity: .65; }
+.drafts-bar .draft b { font-size: 10px; opacity: .6; padding-left: 2px; }
+.drafts-bar .draft b:hover { opacity: 1; }
+.drafts-bar .draft-new { background: transparent; color: #2a2622; border-style: dashed; }
+.draft-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: draftspin .8s linear infinite; }
+@keyframes draftspin { to { transform: rotate(360deg); } }
+.drafts-bar .draft em { font-style: normal; font-size: 12px; padding: 0 2px; opacity: .7; }
+.drafts-bar .draft em:hover { opacity: 1; }
+.drafts-bar .draft em { font-style: normal; font-size: 12px; padding: 0 2px; opacity: .7; }
+.drafts-bar .draft em:hover { opacity: 1; }
+.drafts-bar .draft-saved { align-self: center; font-size: 11px; color: #6b8f5e; font-weight: 600; margin-left: 4px; }
+/* delete a piece for good (changing room) */
+.pick { position: relative; }
+.pick-forget { position: absolute; top: 8px; right: 8px; z-index: 2; width: 24px; height: 24px; border-radius: 6px; background: #2a2622; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; opacity: .85; }
+.pick-forget:hover { background: #b4232f; opacity: 1; }
+
+.sticker.red.low { font-weight: 800; color: #fff; background: #e8590c; border-color: #e8590c; font-size: 12px; padding: 5px 10px; }
+
+#view-closet .grid .tags { flex-direction: column; align-items: flex-start; gap: 4px; flex-wrap: nowrap; }
+#view-closet .grid .tags .sticker { font-size: 10px; padding: 3px 7px; }
+
+.tag-row { grid-template-columns: auto 34px 1fr auto; }
+.bought-box { display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.bought-box input { width: 18px; height: 18px; accent-color: #1f8a4c; cursor: pointer; margin: 0; }
+.tag-row.bought .t-name { opacity: .55; }
+.tag-row.bought .bought-box span { color: #1f8a4c; font-weight: 700; }
+
+.rep-note { color: #b35c00 !important; font-style: italic; }
+.plan-group-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.plan-group-title .day-buy { font-family: var(--sans, inherit); font-size: 14px; font-weight: 600; color: var(--ink-2, #444); }
+
+.week-buy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; background: #1c1b19; color: #fff; border-radius: 12px; padding: 14px 18px; margin: 0 0 18px; }
+.week-buy span { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; opacity: .8; }
+.week-buy b { font-size: 20px; margin-left: auto; }
+.week-buy small { flex-basis: 100%; font-size: 11.5px; opacity: .7; }
+
+.week-buy { align-items: center; }
+.week-buy .wk-nav { background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 8px; min-width: 30px; height: 30px; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 8px; }
+.week-buy .wk-nav.wk-today { font-size: 12px; }
+.week-buy .wk-nav:hover { background: rgba(255,255,255,.25); }
+
+.look-inc { position: absolute; top: 10px; left: 12px; z-index: 4; display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,.95); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px 6px 7px; cursor: pointer; font-size: 12px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.look-inc input { width: 24px; height: 24px; margin: 0; accent-color: #1c1b19; cursor: pointer; }
+.look .look-grip { left: auto; right: 12px; }
+.look.skipped { opacity: .55; }
+.look.skipped .look-inc { opacity: 1; }
+
+.look-actions .dup-btn { background: #1c1b19; color: #fff; border-color: #1c1b19; }
+
+#undoBar { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 10000; display: flex; align-items: center; gap: 16px; background: #1c1b19; color: #fff; padding: 12px 14px 12px 18px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 14px; }
+#undoBar[hidden] { display: none; }
+#undoBar button { background: #fff; color: #1c1b19; border: 0; border-radius: 8px; padding: 7px 14px; font-weight: 800; cursor: pointer; }
+.draft-trash { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 12.5px; color: var(--ink-2, #444); cursor: pointer; }
+#trashMenu { position: absolute; z-index: 10000; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.15); padding: 12px 14px; min-width: 300px; display: flex; flex-direction: column; gap: 6px; }
+#trashMenu > small { color: var(--ink-3); margin-top: -4px; }
+#trashMenu .tr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); }
+#trashMenu .tr-row small { color: var(--ink-3); }
+#trashMenu button { background: #1c1b19; color: #fff; border: 0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+#tryonBtn.stoppable { background: #8a1c1c !important; border-color: #8a1c1c !important; color: #fff !important; cursor: pointer; }
+
+#posesRail #undoAiBtn { background: #fff !important; color: #1c1b19 !important; border: 2px solid #1c1b19 !important; font-weight: 700; }
+#undoAiBtn[hidden] { display: none !important; }

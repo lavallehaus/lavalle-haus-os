@@ -23,8 +23,8 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 // Where a piece lands on the body when first tried on (center x/y and width, all % of the figure box)
 const PLACEMENT = {
   tops: { x: 50, y: 33, w: 56, z: 4 },
-  sweaters: { x: 50, y: 34, w: 58, z: 4 },
-  cardigans: { x: 50, y: 36, w: 66, z: 5 }, // over a top, under a coat
+  sweaters: { x: 50, y: 34, w: 60, z: 5 },
+  cardigans: { x: 50, y: 37, w: 68, z: 5 }, // over a top, under a coat
 
   bottoms: { x: 50, y: 67, w: 50, z: 2 },
   shorts: { x: 50, y: 56, w: 46, z: 2 },
@@ -57,7 +57,7 @@ const personName = (id) => id === 'together' ? 'Together' : (PEOPLE.find((p) => 
 const ownerOf = (x) => x?.owner || 'kiaredza'; // everything made before profiles belongs to Kiaredza
 let ME = 'kiaredza';
 // each person keeps their own session (picks, what's on, try-on photo); everything else is shared
-const PER_PERSON = new Set(['vw.room', 'vw.selected', 'vw.tryon', 'vw.view', 'vw.inBoots', 'vw.coat', 'vw.whose']);
+const PER_PERSON = new Set(['vw.draftId', 'vw.room', 'vw.selected', 'vw.tryon', 'vw.view', 'vw.inBoots', 'vw.coat', 'vw.whose']);
 const skey = (k) => PER_PERSON.has(k) && ME !== 'kiaredza' ? `${k}@${ME}` : k;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(skey(k)); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -84,10 +84,10 @@ function extractUrl(text) {
 const DB = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('virtual-wardrobe', 1);
+    const r = indexedDB.open('virtual-wardrobe', 2);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['items', 'outfits', 'poses'].forEach((s) => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
+      ['items', 'outfits', 'poses', 'drafts'].forEach((s) => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -108,7 +108,7 @@ const DB = (() => {
 })();
 
 /* ---------------- image tools ---------------- */
-const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); if (/^https?:/.test(src) && !src.startsWith(location.origin)) i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = src; }); // crossOrigin so outside shop photos (Shopify) can go to the AI
 const fileToDataURL = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
 
 async function downscale(src, max = 1400) {
@@ -272,7 +272,7 @@ const state = {
   room: store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null },
   queue: [], queueTotal: 0,
 };
-const saveUI = () => { store.set('vw.view', state.view); store.set('vw.selected', [...state.selected]); store.set('vw.room', state.room); };
+const saveUI = () => { store.set('vw.view', state.view); store.set('vw.selected', [...state.selected]); store.set('vw.room', state.room); if (state.drafts) saveCurDraft(); };
 const getItem = (id) => state.items.find((i) => i.id === id);
 const getLayer = (u) => state.room.layers.find((l) => l.uid === u);
 
@@ -304,12 +304,16 @@ function priceHtml(it) {
 }
 function cardTags(it) {
   const t = [];
+  // Sold out stands alone (her change 3) and low stock is new (her 19); both
+  // arrive as marks here, not the red stickers still on her side.
+  if (it.soldOut && !isPurchased(it)) return '<div class="tags"><span class="mark out">Sold out</span></div>';
   if (it.source === 'fold') t.push('<span class="mark house">The Fold</span>');
   else if (isPurchased(it)) t.push('<span class="mark owned">Purchased</span>');
   else if (inTikTokCart(it)) t.push(`<span class="mark cart" title="${it.inCart ? 'In cart · ticked to check out' : 'In your TikTok cart'}">${CART_SVG}In cart${it.inCart ? '<i class="tick"></i>' : ''}</span>`);
   else if (it.status === 'cart' && it.outOfCart) t.push('<span class="mark">No longer in cart</span>');
   else if (it.status === 'cart') t.push('<span class="mark">Saved</span>');
   if (it.soldOut) t.push('<span class="mark out">Sold out</span>');
+  else if (it.stockLeft && !isPurchased(it)) t.push(`<span class="mark low" title="${esc(it.stockLow || '')}">Only ${it.stockLeft} left</span>`);
   return t.length ? `<div class="tags">${t.join('')}</div>` : '';
 }
 function pieceCard(it) {
@@ -344,6 +348,11 @@ function renderWhose() {
       .map((t) => `<button class="${state.whose === t.id ? 'on' : ''}" data-whose="${t.id}">${t.label}${t.id === ME ? ' <small>(you)</small>' : ''}</button>`).join('');
   });
 }
+// Workout: its own tab in the closet and picks (yoga/gym sets, leggings, sports bras…). The real category stays the same for try-ons.
+const WORKOUT_RX = /\byoga\b|\bgym\b|workout|sports? bra|legging|athletic|activewear|active ?wear|seamless|biker short|tennis|pilates|bra (&|and) legging|running|scrunch/i;
+const isWorkout = (i) => (i.workout ?? WORKOUT_RX.test(`${i.name || ''} ${i.notes || ''}`));
+const catOf = (i) => (isWorkout(i) ? 'workout' : i.category);
+const SHOW_CATS = (() => { const a = [...CATEGORIES]; const k = a.findIndex((c) => c.id === 'sets'); a.splice(k + 1, 0, { id: 'workout', label: 'Workout' }); return a; })();
 const inWhose = (x) => state.whose === 'together' || x.source === 'fold' || ownerOf(x) === state.whose; // The Fold pieces are shared by both
 const isFold = (it) => it.source === 'fold';
 
@@ -654,14 +663,14 @@ function renderCloset() {
   const foldN = all.filter(isFold).length;
   const items = all.filter((i) => (state.source === 'fold') === isFold(i));
   const counts = { all: items.length };
-  CATEGORIES.forEach((c) => (counts[c.id] = items.filter((i) => i.category === c.id).length));
+  SHOW_CATS.forEach((c) => (counts[c.id] = items.filter((i) => catOf(i) === c.id).length));
   const srcBtn = (id, label, n) => `<button class="chip src-chip ${state.source === id && state.cat === 'all' ? 'on' : ''} ${state.source === id ? 'src-on' : ''}" data-source="${id}">${label}<span>${n}</span></button>`;
   const syncN = closetOf(state.whose).length;
   $('#catTabs').innerHTML = srcBtn('tiktok', 'TikTok Shop · All', all.length - foldN) + srcBtn('fold', 'The Fold · All', foldN)
     + srcBtn('synced', 'Synced · ' + (state.whose === 'together' ? 'Both' : 'Mine'), syncN)
     + (myHandoffs().length ? `<button class="chip hand-chip ${state.source === 'synced' ? 'on' : ''}" data-source="synced">Handoffs<span>${myHandoffs().length}</span></button>` : '')
     + '<span class="chip-sep"></span>'
-    + CATEGORIES.filter((c) => counts[c.id] || state.cat === c.id)
+    + SHOW_CATS.filter((c) => counts[c.id] || state.cat === c.id)
       .map((c) => `<button class="chip ${state.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${c.label}<span>${counts[c.id] || 0}</span></button>`).join('');
   $$('#statusSeg button').forEach((b) => b.classList.toggle('on', b.dataset.status === state.status));
   $('#statusSeg').hidden = state.source !== 'tiktok';
@@ -676,13 +685,13 @@ function renderCloset() {
     return;
   }
   const st = state.source === 'fold' ? 'all' : state.status;
-  const list = items.filter((i) => (state.cat === 'all' || i.category === state.cat) && (st === 'all' || (state.status === 'incart' ? inTikTokCart(i) : state.status === 'cart' ? (i.status === 'cart' && !inTikTokCart(i)) : state.status === 'soldout' ? !!i.soldOut : state.status === 'owned' ? isPurchased(i) : i.status === state.status)));
+  const list = items.filter((i) => (state.cat === 'all' || catOf(i) === state.cat) && !(i.soldOut && state.source !== 'fold' && !['soldout', 'owned'].includes(state.status) && !isPurchased(i)) && (st === 'all' || (state.status === 'incart' ? inTikTokCart(i) : state.status === 'cart' ? (i.status === 'cart' && !inTikTokCart(i)) : state.status === 'soldout' ? !!i.soldOut : state.status === 'owned' ? isPurchased(i) : i.status === state.status)));
   state.visible = list.map((i) => i.id);
   updSelAll();
   if (!list.length) { grid.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>No pieces match this filter.</p></div>`; return; }
-  const cats = state.cat === 'all' ? CATEGORIES.filter((c) => list.some((i) => i.category === c.id)) : [CATEGORIES.find((c) => c.id === state.cat)];
+  const cats = state.cat === 'all' ? SHOW_CATS.filter((c) => list.some((i) => catOf(i) === c.id)) : [SHOW_CATS.find((c) => c.id === state.cat)];
   grid.innerHTML = cats.map((c) => {
-    const its = list.filter((i) => i.category === c.id);
+    const its = list.filter((i) => catOf(i) === c.id);
     return `<section class="cat-section"><h2 class="cat-title">${c.label}<small>${its.length} piece${its.length === 1 ? '' : 's'}</small></h2>
       <div class="grid">${its.map(pieceCard).join('')}</div></section>`;
   }).join('');
@@ -837,6 +846,7 @@ function figureHTML(poseId, layers, interactive = false, tryon = null) {
 const layerStyle = (l) => `left:${l.x}%;top:${l.y}%;width:${l.w}%;transform:translate(-50%,-50%) rotate(${l.r}deg) scaleX(${l.flip ? -1 : 1});z-index:${Math.round(l.z)}`;
 
 function renderRoom() {
+  renderDrafts();
   if (state.pickCat === undefined) { state.pickCat = store.get('vw.pickCat', 'all'); state.pickClosed = store.get('vw.pickClosed', {}) || {}; state.bigPicks = store.get('vw.bigPicks', true); }
   const R = state.room;
   state.poseOwner = state.poseOwner || ME;
@@ -848,19 +858,19 @@ function renderRoom() {
   const picks = [...new Set([...state.selected, ...R.layers.map((l) => l.itemId)])].map(getItem).filter(Boolean);
   const pickBtn = (it) => {
     const on = R.layers.some((l) => l.itemId === it.id);
-    return `<button class="pick ${on ? 'on' : ''}" data-pick="${it.id}"><img src="${it.image}" alt="">
+    return `<button class="pick ${on ? 'on' : ''}" data-pick="${it.id}"><span class="pick-forget" data-forget="${it.id}" title="Delete from wardrobe for good">✕</span><img src="${it.image}" alt="">
         <span><b>${esc(it.name || catLabel(it.category))}</b>${priceHtml(it)}<em>${on ? 'Wearing · tap to adjust' : 'Tap to try on'}</em></span></button>`;
   };
-  const pcats = CATEGORIES.filter((c) => picks.some((i) => i.category === c.id));
+  const pcats = SHOW_CATS.filter((c) => picks.some((i) => catOf(i) === c.id));
   if (state.pickCat && !pcats.some((c) => c.id === state.pickCat)) state.pickCat = 'all';
   const pc = state.pickCat || 'all';
   const shown = pc === 'all' ? pcats : pcats.filter((c) => c.id === pc);
   $('.room-layout').classList.toggle('big-picks', !!state.bigPicks);
-  const cs = $('#coatSeg'); if (cs) cs.hidden = !R.layers.some((l) => getItem(l.itemId)?.category === 'outerwear');
+  const cs = $('#coatSeg'); if (cs) cs.hidden = !R.layers.some((l) => ['outerwear', 'cardigans'].includes(getItem(l.itemId)?.category));
   $('#picks').innerHTML = picks.length
-    ? `<div class="pick-total"><div><small>Wearing now</small><b>${money(sumPrice(R.layers.map((l) => getItem(l.itemId)).filter(Boolean)))}</b></div><div><small>All ${picks.length} picks</small><b>${money(sumPrice(picks))}</b></div></div><button class="big-toggle" data-bigpicks>${state.bigPicks ? '− Smaller pictures' : '⤢ Bigger pictures'}</button><div class="pick-tabs"><button data-pickcat="all" class="${pc === 'all' ? 'on' : ''}">All ${picks.length}</button>${pcats.map((c) => `<button data-pickcat="${c.id}" class="${pc === c.id ? 'on' : ''}">${c.label} ${picks.filter((i) => i.category === c.id).length}</button>`).join('')}</div>`
+    ? `<div class="pick-total"><div><small>Wearing now</small><b>${money(sumPrice(R.layers.map((l) => getItem(l.itemId)).filter(Boolean)))}</b></div><div><small>All ${picks.length} picks</small><b>${money(sumPrice(picks))}</b></div></div><button class="big-toggle" data-bigpicks>${state.bigPicks ? '− Smaller pictures' : '⤢ Bigger pictures'}</button><div class="pick-tabs"><button data-pickcat="all" class="${pc === 'all' ? 'on' : ''}">All ${picks.length}</button>${pcats.map((c) => `<button data-pickcat="${c.id}" class="${pc === c.id ? 'on' : ''}">${c.label} ${picks.filter((i) => catOf(i) === c.id).length}</button>`).join('')}</div>`
       + shown.map((c) => {
-        const its = picks.filter((i) => i.category === c.id); const open = pc !== 'all' || !(state.pickClosed || {})[c.id];
+        const its = picks.filter((i) => catOf(i) === c.id); const open = pc !== 'all' || !(state.pickClosed || {})[c.id];
         return `<div class="pick-sec"><button class="pick-head" data-picksec="${c.id}">${c.label}<small>${its.length}</small><i>${open ? '−' : '+'}</i></button>${open ? its.map(pickBtn).join('') : ''}</div>`;
       }).join('')
       + `<button class="ghost small block" data-goto="closet" style="margin-top:8px">+ Pick more from closet</button>`
@@ -943,7 +953,7 @@ function renderFigure() {
   $('#figure').classList.toggle('is-tryon', !!t);
   const zb = $('#zoomBtn'); if (zb) zb.hidden = !t;
   const b = $('#tryonBtn'); if (b && !b.disabled) b.textContent = t ? 'Try it on again (AI)' : 'Try it on (AI)';
-  updateMirrors(); renderLayerTools(); paintCost();
+  updateMirrors(); renderLayerTools(); paintCost(); paintUndo();
   const ti = $('#figure .pose.tryon'); if (ti) { if (ti.complete) paintHighlight(); else ti.onload = paintHighlight; }
 }
 let mirrorRaf = 0;
@@ -975,10 +985,11 @@ function renderLayerTools() {
       <button class="ghost small" data-ltb="back">Send back</button>`}
       <button class="ghost small" data-ltb="remove">Take off</button>
       ${currentTryon() && isOverlay(l) ? '<button class="primary small" data-ltb="shoulder">On shoulder (AI)</button>' : ''}
+      ${l.baked && getItem(l.itemId)?.category === 'bags' ? `<button class="primary small" data-ltb="bagsmaller">Smaller bag (AI)</button><button class="primary small" data-ltb="bagbigger">Bigger bag (AI)</button>${l.preBake ? '<button class="ghost small" data-ltb="bagundo">Back to sticker (free)</button>' : ''}` : ''}
     </div>`;
 }
 // one piece per body spot: a new pair of pants replaces the old pair, a dress replaces top + bottoms
-const SLOT = { tops: 'top', bottoms: 'low', skirts: 'low', shorts: 'low', dresses: 'full', sets: 'full', shoes: 'shoes' };
+const SLOT = { sweaters: 'sweater', cardigans: 'cardi', tops: 'top', bottoms: 'low', skirts: 'low', shorts: 'low', dresses: 'full', sets: 'full', shoes: 'shoes' };
 const clashes = (a, b) => a && b && (a === b || (a === 'full' && (b === 'top' || b === 'low')) || (b === 'full' && (a === 'top' || a === 'low')));
 function dedupeLayers(layers) {
   const keep = [];
@@ -1034,6 +1045,7 @@ function pieceBand(cat) { // [half width, top, bottom] as parts of your height
   if (cat === 'shoes') return [0.1, 0.9, 1.01];
   if (['bottoms', 'skirts', 'shorts'].includes(cat)) return [0.11, 0.45, 0.93];
   if (['dresses', 'sets'].includes(cat)) return [0.15, 0.13, 0.9];
+  if (cat === 'cardigans') return [0.17, 0.12, 0.56];
   if (cat === 'outerwear') return isLongCoat() ? [0.19, 0.12, 0.8] : [0.17, 0.12, 0.56];
   return [0.16, 0.13, 0.52];
 }
@@ -1049,8 +1061,8 @@ function pieceAtTap(e) {
   if (fy > 0.91) return find('shoes') || find('bottoms', 'skirts', 'shorts', 'dresses', 'sets');
   if (fy > 0.47) return find('bottoms', 'skirts', 'shorts', 'dresses', 'sets') || find('shoes');
   // upper body: middle = what's under an open coat, sides = the coat
-  if (centre && store.get('vw.coat', 'open') === 'open') return find('tops', 'dresses', 'sets') || find('outerwear');
-  return find('outerwear') || find('tops', 'dresses', 'sets');
+  if (centre && store.get('vw.coat', 'open') === 'open') return find('tops', 'sweaters', 'dresses', 'sets') || find('cardigans', 'outerwear');
+  return find('outerwear', 'cardigans') || find('sweaters', 'tops', 'dresses', 'sets');
 }
 // remember every finished photo, so taking a piece off can go straight back to a photo you already have (free)
 state.tryonHist = state.tryonHist || {};
@@ -1072,7 +1084,7 @@ function shortName(it) { return (it?.name || catLabel(it?.category) || 'it').spl
 function fashnFree() {
   const pose = state.poses.find((p) => p.id === state.room.poseId); if (!pose || !state.fashnCache) return false;
   const ids = fashnOrder().map((it) => it.id); const mode = store.get('vw.fashnMode', 'balanced');
-  return ids.length > 0 && !!state.fashnCache.get(`${mode}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.join(',')}`);
+  return ids.length > 0 && !!state.fashnCache.get(`${mode}${poseLock() ? 'L' : ''}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.join(',')}`);
 }
 function fashnOrder() {
   const R = state.room; const layers = dedupeLayers(R.layers);
@@ -1182,7 +1194,7 @@ async function saveLock() {
     name: $('#lkName').value.trim() || 'Untitled outfit',
     where: $('#lkWhere').value.trim(),
     note: $('#lkNote').value.trim(),
-    plan: { type: lockPlan, day: lockPlan === 'day' ? $('#lkDay').value : '', video: lockPlan === 'video' ? $('#lkVideo').value.trim() : '' },
+    plan: { type: lockPlan, day: lockPlan === 'day' ? $('#lkDay').value : '', week: lockPlan === 'day' ? (existing?.plan?.week || (state.view === 'planned' ? planWeek() : thisWeek())) : '', video: lockPlan === 'video' ? $('#lkVideo').value.trim() : '' },
     owner: lockOwner,
     poseId: R.poseId,
     layers: clone(R.layers).map((l) => ({ ...l })),
@@ -1302,7 +1314,7 @@ async function pickGeminiModel(key) {
 }
 // Free try-on: OOTDiffusion on Hugging Face. One piece at a time, chained.
 const OOTD = 'https://levihsu-ootdiffusion.hf.space/gradio_api';
-const OOTD_CAT = { tops: 'Upper-body', outerwear: 'Upper-body', bottoms: 'Lower-body', skirts: 'Lower-body', shorts: 'Lower-body', dresses: 'Dress', sets: 'Dress' };
+const OOTD_CAT = { sweaters: 'Upper-body', cardigans: 'Upper-body', tops: 'Upper-body', outerwear: 'Upper-body', bottoms: 'Lower-body', skirts: 'Lower-body', shorts: 'Lower-body', dresses: 'Dress', sets: 'Dress' };
 async function padTo34(src, W = 768, H = 1024) {
   const img = await loadImage(src); const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
@@ -1348,13 +1360,13 @@ async function runFreeTryon() {
 // How many credits the next "Try it on" will cost (pieces already done on this photo are free).
 function tryonCost() {
   const R = state.room; const pose = state.poses.find((p) => p.id === R.poseId); if (!pose) return { need: 0, pieces: 0, per: 2 };
-  const mode = store.get('vw.fashnMode', 'balanced'); const per = { fast: 1, balanced: 2, quality: 3 }[mode] || 2;
+  const mode = aiMode(); const per = { fast: 1, balanced: 2, quality: 3 }[mode] || 2;
   const items = [...new Set(dedupeLayers([...R.layers]).map((l) => l.itemId))].map(getItem).filter((it) => it && !OVERLAY_CATS.has(it.category));
   items.sort((a, b) => (FASHN_ORDER[a.category] ?? 9) - (FASHN_ORDER[b.category] ?? 9));
   { const full = !pantsInBoots() && items.find((it) => it.category === 'bottoms' && !/crop|capri|ankle|short|culotte|7\/8/i.test(it.name || '')); const sh = items.findIndex((it) => it.category === 'shoes'); if (full && sh > 0) items.unshift(...items.splice(sh, 1)); } // full-length pants go on AFTER shoes so they fall over them
   const ids = items.map((it) => it.id); let done = 0;
-  for (let k = ids.length; k > 0; k--) if (state.fashnCache?.get(`${mode}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.slice(0, k).join(',')}`)) { done = k; break; }
-  return { need: (ids.length - done) * per, pieces: ids.length - done, per };
+  for (let k = ids.length; k > 0; k--) if (state.fashnCache?.get(`${mode}${poseLock() ? 'L' : ''}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.slice(0, k).join(',')}`)) { done = k; break; }
+  return { need: items.slice(done).reduce((t, x) => t + (vtonCat(x, items) ? 1 : per), 0), pieces: ids.length - done, per };
 }
 function paintCost() {
   const el = $('#costLine'); if (!el) return; const c = tryonCost();
@@ -1362,7 +1374,7 @@ function paintCost() {
   const left = state.creditsLeft; const short = typeof left === 'number' && left < c.need;
   el.classList.toggle('low', short); if (short) el.innerHTML += ' — not enough credits';
 }
-const FASHN_ORDER = { dresses: 0, sets: 0, bottoms: 1, skirts: 1, shorts: 1, tops: 2, outerwear: 3, shoes: 4, bags: 5, accessories: 6 };
+const FASHN_ORDER = { dresses: 0, sets: 0, bottoms: 1, skirts: 1, shorts: 1, tops: 2, sweaters: 2.5, cardigans: 2.8, outerwear: 3, shoes: 4, bags: 5, accessories: 6 };
 // After several AI passes the face drifts and gets blotchy. Find the face in the original photo,
 // find the same spot in the result (small shift/scale search), and blend the real face back in.
 // scale + shift your original photo so your body sits exactly where it is in the new picture (white background)
@@ -1379,7 +1391,24 @@ async function alignBody(o, r) {
   x.drawImage(o, B.cx - A.cx * s, B.top - A.top * s, o.naturalWidth * s, o.naturalHeight * s);
   return c.toDataURL('image/jpeg', 0.95);
 }
+// Put her whole head (face, tilt, hair) from her own photo onto the AI photo, lined up by body height; fades out over the neck.
+async function headPaste(origSrc, outSrc, { yA = 0.125, yB = 0.165, wf = 1.5 } = {}) {
+  const [o0, r] = await Promise.all([loadImage(origSrc), loadImage(outSrc)]); const W = r.naturalWidth, H = r.naturalHeight;
+  const al = await alignBody(o0, r); if (!al) throw new Error('no body'); const o = await loadImage(al);
+  const cv = (img) => { const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H); return { c, x, d: x.getImageData(0, 0, W, H) }; };
+  const A = cv(o), B = cv(r); const fg = (d, i) => d[i] < 232 || d[i + 1] < 232 || d[i + 2] < 232;
+  let top = -1, bot = -1; for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x += 2) if (fg(A.d.data, (y * W + x) * 4)) n++; if (n > 3) { if (top < 0) top = y; bot = y; } }
+  const bh = bot - top; if (top < 0 || bh < 200) throw new Error('no body'); const xs = []; for (let y = top + Math.round(bh * 0.02); y < top + bh * 0.1; y++) for (let x = 0; x < W; x++) if (fg(A.d.data, (y * W + x) * 4)) xs.push(x); xs.sort((a, b) => a - b);
+  const x0 = xs[Math.floor(xs.length * 0.05)], x1 = xs[Math.floor(xs.length * 0.95)]; const cx = (x0 + x1) / 2, rx = (x1 - x0) / 2 * wf;
+  const ya = top + bh * yA, yb = top + bh * yB, ed = Math.max(6, rx * 0.15); const a = A.d.data, b = B.d.data;
+  for (let y = 0; y < Math.min(H, yb); y++) for (let x = Math.max(0, Math.floor(cx - rx)); x < Math.min(W, cx + rx); x++) {
+    const ax = Math.min(1, (rx - Math.abs(x - cx)) / ed), ay = y <= ya ? 1 : 1 - (y - ya) / (yb - ya), k0 = ax * ay; if (k0 <= 0) continue; const i = (y * W + x) * 4;
+    for (let k = 0; k < 3; k++) b[i + k] = b[i + k] * (1 - k0) + a[i + k] * k0;
+  }
+  B.x.putImageData(B.d, 0, 0); return B.c.toDataURL('image/png');
+}
 async function restoreFace(origSrc, outSrc) {
+  if (!origSrc._aligned) restoreFace.miss = false;
   if (!(await plainBg(origSrc)) || !(await plainBg(outSrc))) return outSrc; // only safe on plain backgrounds
   const [o, r] = await Promise.all([loadImage(origSrc), loadImage(outSrc)]);
   const W = r.naturalWidth, H = r.naturalHeight;
@@ -1404,22 +1433,26 @@ async function restoreFace(origSrc, outSrc) {
   const step = Math.max(2, Math.round(rx / 12));
   let best = { cost: 1e9 };
   const range = Math.round(bh * 0.03);
-  for (const sc of [0.94, 0.97, 1, 1.03, 1.06]) for (let dy = -range; dy <= range; dy += 3) for (let dx = -range; dx <= range; dx += 3) {
+  for (const sc of [0.85, 0.88, 0.91, 0.94, 0.97, 1, 1.03, 1.06, 1.1]) for (let dy = -range; dy <= range; dy += 3) for (let dx = -range; dx <= range; dx += 3) {
     let cost = 0, n = 0;
     for (let v = -ry; v <= ry; v += step) for (let u = -rx; u <= rx; u += step) { cost += Math.abs(g(A.d, cx + u, cy + v) - g(B.d, cx + dx + u * sc, cy + dy + v * sc)); n++; }
     cost /= n; if (cost < best.cost) best = { cost, dx, dy, sc };
   }
-  if (best.cost > 20 || best.sc === 0.94 || best.sc === 1.06 || Math.abs(best.dx) >= range - 3 || Math.abs(best.dy) >= range - 3) return outSrc; // couldn't find the face confidently — leave the AI face alone (a bad paste doubles the face)
+  if (best.cost > 20 || best.sc === 0.85 || best.sc === 1.1 || Math.abs(best.dx) >= range - 3 || Math.abs(best.dy) >= range - 3) {
+    // the AI moved or zoomed her a bit (e.g. a coat over her arm changes her outline): line your photo up with the new one by body height and spot, then look for the face again
+    if (!origSrc._aligned) { const al = await alignBody(o, r); if (al) { const t = new String(al); t._aligned = 1; return restoreFace(t, outSrc); } }
+    restoreFace.miss = best.cost > 20; return outSrc; } // couldn't find the face confidently — leave the AI face alone (a bad paste doubles the face)
   // colour-match the original face to the result's lighting
   let ma = [0, 0, 0], mb = [0, 0, 0], n = 0;
   for (let v = -ry * 0.6; v <= ry * 0.6; v += step) for (let u = -rx * 0.6; u <= rx * 0.6; u += step) {
     const ia = (Math.round(cy + v) * W + Math.round(cx + u)) * 4, ib = (Math.round(cy + best.dy + v * best.sc) * W + Math.round(cx + best.dx + u * best.sc)) * 4;
     for (let k = 0; k < 3; k++) { ma[k] += A.d[ia + k]; mb[k] += B.d[ib + k]; } n++;
   }
-  const shift = ma.map((m, k) => (mb[k] - m) / n);
+  // brightness only (keeps her real skin tone — copying the AI's colour piled on blush with every step), and only a little
+  const lum = ma.reduce((t, m, k) => t + (mb[k] - m) / n, 0) / 3; const shift = [0, 0, 0].map(() => Math.max(-18, Math.min(18, lum)));
   // blend with a soft oval mask
   const out = B.x.getImageData(0, 0, W, H), od = out.data;
-  const ncx = cx + best.dx, ncy = cy + best.dy, nrx = rx * best.sc * 1.05, nry = ry * best.sc * 1.05;
+  const ncx = cx + best.dx, ncy = cy + best.dy, nrx = rx * best.sc * 1.35, nry = ry * best.sc * 1.2;
   for (let y = Math.floor(ncy - nry); y <= Math.ceil(ncy + nry); y++) for (let x = Math.floor(ncx - nrx); x <= Math.ceil(ncx + nrx); x++) {
     if (x < 0 || y < 0 || x >= W || y >= H) continue;
     const e = ((x - ncx) / nrx) ** 2 + ((y - ncy) / nry) ** 2; if (e >= 1) continue;
@@ -1456,9 +1489,20 @@ async function garmentPic(it) {
   let left = 0; imgs.forEach((im, i) => { x.drawImage(im, left, 0, ws[i], H); left += ws[i] + gap; });
   return c.toDataURL('image/jpeg', 0.92);
 }
-async function fashnOne(key, person, garment, prompt) {
+// "Keep my pose": base clothes (top, pants, dress) go on with FASHN's swap model, which only repaints the clothing area — your pose, arms, legs and angle stay exactly the same.
+const poseLock = () => store.get('vw.poseLock', true);
+const aiMode = () => (poseLock() ? 'quality' : store.get('vw.fashnMode', 'balanced')); // Keep my pose: full-model steps (cardigan, shoes, styling) run in Best, which holds the pose much better
+function vtonCat(it, items) {
+  if (!poseLock()) return null; const c = it.category;
+  if (c === 'tops') return 'tops';
+  if (c === 'sweaters') return items.some((x) => x.category === 'tops') ? null : 'tops';
+  if (['bottoms', 'skirts', 'shorts'].includes(c)) return /wide|flare|baggy|palazzo|barrel|bootcut|boot cut|culotte|balloon|bell/i.test(`${it.name} ${it.tryonNote || ''}`) ? null : 'bottoms'; // the swap model keeps the old pant shape, so wide/flared legs go to the full model
+  if (['dresses', 'sets'].includes(c)) return 'one-pieces';
+  return null; // cardigans, jackets, shoes need the full model
+}
+async function fashnOne(key, person, garment, prompt, vton) {
   const H = { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
-  const body = { model_name: 'tryon-max', inputs: { model_image: person, product_image: garment, prompt, resolution: '1k', generation_mode: store.get('vw.fashnMode', 'balanced'), output_format: 'png', return_base64: true } };
+  const body = vton ? { model_name: 'tryon-v1.6', inputs: { model_image: person, garment_image: garment, category: vton, segmentation_free: false, garment_photo_type: 'auto', mode: 'quality', output_format: 'png', return_base64: true } } : { model_name: 'tryon-max', inputs: { model_image: person, product_image: garment, prompt, resolution: '1k', generation_mode: aiMode(), output_format: 'png', return_base64: true } };
   const r = await fetch('https://api.fashn.ai/v1/run', { method: 'POST', headers: H, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) throw new Error('KEY');
@@ -1482,7 +1526,7 @@ async function runFashnTryon() {
   if (!key) return openKeyModal();
   const pose = state.poses.find((p) => p.id === R.poseId);
   if (!pose) return toast('Add a photo of you first', 2600);
-  R.layers = dedupeLayers(R.layers); R.layers.forEach((l) => { l.baked = false; }); renderRoom();
+  const snap0 = snapRoom(R); R.layers = dedupeLayers(R.layers); R.layers.forEach((l) => { l.baked = false; }); renderRoom();
   const all = [...new Set(R.layers.map((l) => l.itemId))].map(getItem).filter(Boolean);
   const items = all.filter((it) => !OVERLAY_CATS.has(it.category)); const skipped = [];
   if (!items.length) return toast('Tap a piece to try on first', 3000);
@@ -1490,14 +1534,19 @@ async function runFashnTryon() {
   items.sort((a, b) => zOf(a) - zOf(b)); // front/back you set decides what goes on top
   items.sort((a, b) => (FASHN_ORDER[a.category] ?? 9) - (FASHN_ORDER[b.category] ?? 9)); // dress/bottoms first, then tops, jacket, shoes, bag
   { const full = !pantsInBoots() && items.find((it) => it.category === 'bottoms' && !/crop|capri|ankle|short|culotte|7\/8/i.test(it.name || '')); const sh = items.findIndex((it) => it.category === 'shoes'); if (full && sh > 0) items.unshift(...items.splice(sh, 1)); } // full-length pants go on AFTER shoes so they fall over them
-  const btn = $('#tryonBtn'); btn.disabled = true; $('#room').classList.add('busy'); tryonMsg('');
-  const mode = store.get('vw.fashnMode', 'balanced'); const per = { fast: 1, balanced: 2, quality: 3 }[mode] || 2;
+  if (state.busyRooms.has(R)) return; state.busyRooms.add(R); const btn = { set textContent(t) { R._prog = t; if (state.room === R) $('#tryonBtn').textContent = `■ Stop · ${(t.match(/\d+\/\d+/) || [t.replace('…', '')])[0]}`; } };
+  // Tap the button again while it's working to stop (the piece already sent to FASHN may still use its credit).
+  let stopRes; const hid = (k, v) => Object.defineProperty(R, k, { value: v, enumerable: false, configurable: true, writable: true }); // hidden so the draft can still be saved
+  hid('_stopP', new Promise((r) => (stopRes = r))); hid('_stopNow', () => { hid('_stop', true); stopRes(); });
+  const STOP = { quiet: 1, stopped: 1 }; const halt = () => { if (R._stop) throw STOP; };
+  const run1 = (...a) => Promise.race([fashnOne(...a), R._stopP.then(() => { throw STOP; })]); btn.textContent = 'Dressing you…'; syncBusy(); if (state.room === R) tryonMsg(''); const inb = pantsInBoots(), coat = store.get('vw.coat', 'open');
+  const mode = aiMode(); const per = { fast: 1, balanced: 2, quality: 3 }[mode] || 2; const ck = mode + (poseLock() ? 'L' : '');
   try {
     // reuse pieces already put on this photo (same order) - only new pieces cost a run
     state.fashnCache = state.fashnCache || new Map();
     const ids = items.map((it) => it.id); let start = 0; let person = null;
-    for (let k = ids.length; k > 0; k--) { const hit = state.fashnCache.get(`${mode}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.slice(0, k).join(',')}`); if (hit) { person = hit; start = k; break; } }
-    const need = (items.length - start) * per;
+    for (let k = ids.length; k > 0; k--) { const hit = state.fashnCache.get(`${ck}${coat}|v6${inb ? 'ib' : ''}|${pose.id}|${ids.slice(0, k).join(',')}`); if (hit) { person = hit; start = k; break; } }
+    const need = items.slice(start).reduce((t, x) => t + (vtonCat(x, items) ? 1 : per), 0);
     if (need) {
       btn.textContent = 'Checking credits…';
       const cr = await fetch('https://api.fashn.ai/v1/credits', { headers: { Authorization: `Bearer ${key}` } }).then((r) => (r.status === 401 ? { bad: 1 } : r.json())).catch(() => null);
@@ -1507,33 +1556,40 @@ async function runFashnTryon() {
     }
     const basePhoto = await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true);
     if (!person) person = basePhoto;
-    for (let i = start; i < items.length; i++) { const it = items[i];
+    for (let i = start; i < items.length; i++) { const it = items[i]; halt();
       btn.textContent = items.length > 1 ? `Dressing you… ${i + 1}/${items.length}` : 'Dressing you…';
-      const garment = await garmentPic(it);
-      const coatHow = it.category === 'outerwear' ? (store.get('vw.coat', 'open') === 'open' ? ' Worn OPEN — unzipped and unbuttoned, hanging loose and open at the front so the outfit underneath clearly shows.' : ' Worn fully zipped and buttoned up.') : '';
-      const fullLen = it.category === 'bottoms' && !pantsInBoots() && !/crop|capri|ankle|short|culotte|7\/8/i.test(it.name || '');
+      const vt = vtonCat(it, items);
+      const garment = vt ? await toDataJpeg(garmentPics(it)[0], 1296, '#ffffff') : await garmentPic(it);
+      const coatHow = it.category === 'cardigans' ? (coat === 'open' ? ' A cardigan worn OPEN over the top she already has on — the top underneath stays visible at the front; keep the top underneath exactly the same.' : ' A cardigan worn CLOSED — buttoned or wrapped shut at the front over the top she has on.') : it.category === 'outerwear' ? (coat === 'open' ? ' Worn OPEN — unzipped and unbuttoned, hanging loose and open at the front so the outfit underneath clearly shows.' : ' Worn fully zipped and buttoned up.') : '';
+      const fullLen = it.category === 'bottoms' && !inb && !/crop|capri|ankle|short|culotte|7\/8/i.test(it.name || '');
       const len = fullLen ? ' FULL-LENGTH pants: the legs go all the way down to her feet and the hems fall over the tops of her shoes or boots, slightly stacking. NOT cropped, NOT ankle length — ignore the length of the pants she is wearing in the input photo.' : '';
-      const fit = it.category === 'shoes' && pantsInBoots() && /boot/i.test(it.name || '') ? ' ' + STYLES.inboots.how : it.category === 'outerwear' ? ' The jacket fits naturally over what she is wearing, real shoulders and sleeves, natural drape and folds.' : it.category === 'tops' ? ' Fits her naturally with real drape, sleeves and hem sitting realistically on her body.' : '';
+      const fit = it.category === 'shoes' && inb && /boot/i.test(it.name || '') ? ' ' + STYLES.inboots.how : it.category === 'outerwear' ? ' The jacket fits naturally over what she is wearing, real shoulders and sleeves, natural drape and folds.' : ['tops', 'sweaters'].includes(it.category) ? ' Fits her naturally with real drape, sleeves and hem sitting realistically on her body.' : '';
       const prompt = `${it.name || catLabel(it.category)}.${it.tryonNote ? ' ' + it.tryonNote : ''}${coatHow}${fit}${len} ${multiNote(it)}Copy the garment's exact shape from the product photo — same fit, length, neckline, sleeve shape and waist (cinched, fitted or oversized exactly as shown); do not make it looser.${noBelly()} Her feet and shoes are natural full adult size, not tiny or pointed. Keep her face, skin, hair, body shape, proportions and pose exactly the same as the input photo — do not redraw or retouch the face. Plain white background.`;
       let out;
-      try { out = await fashnOne(key, person, garment, prompt); }
-      catch (e) { if (e.message === 'KEY' || /credits/.test(e.message)) throw e; out = await fashnOne(key, person, garment, prompt); } // one automatic retry
+      try { out = await run1(key, person, garment, prompt, vt); }
+      catch (e) { if (e === STOP || e.message === 'KEY' || /credits/.test(e.message)) throw e; halt(); out = await run1(key, person, garment, prompt, vt); } // one automatic retry
       person = out.startsWith('data:') ? out : `data:image/png;base64,${out}`;
-      state.fashnCache.set(`${mode}${store.get('vw.coat', 'open')}|v6${pantsInBoots() ? 'ib' : ''}|${pose.id}|${ids.slice(0, i + 1).join(',')}`, person);
+      state.fashnCache.set(`${ck}${coat}|v6${inb ? 'ib' : ''}|${pose.id}|${ids.slice(0, i + 1).join(',')}`, person);
     }
-    try { btn.textContent = 'Fixing your face…'; person = await restoreFace(basePhoto, person); } catch (e) { console.warn('face restore skipped', e); }
-    state.lastRaw = person;
+    halt(); let notMe = false; try { btn.textContent = 'Fixing your face…'; person = await restoreFace(basePhoto, person); notMe = !!restoreFace.miss; } catch (e) { console.warn('face restore skipped', e); }
+    halt(); state.rawBySig = state.rawBySig || {}; state.rawBySig[tryonSig(R)] = person;
     const cut = await keepSubject(await tryonCut(person));
     const image = await downscale(cut, 1400);
     state.tryonRaw = await downscale(person, 1800);
-    state.tryon = { sig: tryonSig(), image }; store.set('vw.tryon', state.tryon); rememberTryon();
+    pushUndo(R, snap0); const res = { sig: tryonSig(R), image }; state.tryonHist[res.sig] = image; const dd = state.drafts?.find((d) => d.room === R); if (dd) { dd.tryon = res; DB.put('drafts', dd); } if (state.room === R) { state.tryon = res; store.set('vw.tryon', res); }
     R.active = null;
+    if (notMe) for (let k = 1; k <= ids.length; k++) state.fashnCache.delete(`${ck}${coat}|v6${inb ? 'ib' : ''}|${pose.id}|${ids.slice(0, k).join(',')}`); // so a redo really redoes it
+    const notMeMsg = 'Heads up: the AI changed your face on this one. Tap "Try it on again (AI)" to redo it.';
+    if (state.room !== R) { toast(notMe ? `${dd?.name || 'Your other draft'}: ${notMeMsg}` : `${dd?.name || 'Your other draft'} is ready ✨ — tap it up top to see`, 7000); throw { quiet: 1 }; }
+    if (notMe) { toast(notMeMsg, 7000); tryonMsg(notMeMsg); throw { quiet: 1 }; }
     toast(skipped.length ? `Here you go ✨ (${skipped.map((s) => catLabel(s.category).toLowerCase()).join(', ')} can't be tried on yet)` : 'Here you go ✨', 3800);
   } catch (e) {
+    if (e && e.stopped) { if (snap0) R.layers.forEach((l) => { const o = snap0.layers.find((x) => x.uid === l.uid); if (o) l.baked = o.baked; }); saveUI(); toast('Stopped ✋ — your photo stays as it was', 3000); if (state.room === R) tryonMsg(''); return; }
+    if (e && e.quiet) return;
     console.warn(e);
     if (e.message === 'KEY') { store.set('vw.fashnKey', ''); toast('That FASHN key didn\'t work — paste a new one', 4200); openKeyModal(); }
     else { toast(e.message || 'Try-on failed', 6000); tryonMsg(e.message || 'Try-on failed — tap to try again.'); }
-  } finally { btn.disabled = false; $('#room').classList.remove('busy'); renderFigure(); showCredits(); }
+  } finally { state.busyRooms.delete(R); delete R._prog; delete R._stop; delete R._stopP; delete R._stopNow; syncBusy(); if (state.room === R) renderFigure(); showCredits(); }
 }
 // Styling you can change on the AI photo (each is one AI step on the current photo).
 function wearingBoots() { return state.room.layers.some((x) => { const it = getItem(x.itemId); return it?.category === 'shoes' && /boot/i.test(it.name || ''); }); }
@@ -1544,69 +1600,138 @@ function pantsInBoots() {
 }
 const STYLES = {
   tuck: { label: 'Tuck top in', piece: 'top', how: 'The top is neatly TUCKED INTO the waistband of the bottoms, waistband visible.' },
+  halftuck: { label: 'Half tuck (one side)', piece: 'top', how: 'FRONT HALF-TUCK: only ONE side of the front of the top is tucked into the waistband (the side on her right hip), the other side hangs loose and untucked over the pants — a casual, relaxed French tuck with soft natural fabric folds.' },
   untuck: { label: 'Top over pants', piece: 'top', how: 'The top is worn UNTUCKED, hanging loose over the waistband of the bottoms.' },
   inboots: { label: 'Pants in boots', piece: 'shoes', how: 'These boots are pulled on OVER her pants: the pant legs are tucked INSIDE the boot shafts. From the boot tops down, ONLY the boots show — the full boot shaft is visible up to its top edge, with no pant fabric over, around or covering the boots. The pants only show above the boots.' },
+  cardiback: { label: 'Untie & push cardigan back', piece: 'cardi', how: 'The cardigan is UNTIED — any belt or ties are undone and hang loose and straight down at her sides, not knotted or wrapped around her waist. The open cardigan is pushed BACK a little: it sits further back on her shoulders and the front panels fall back and away to the sides, framing her body instead of hanging forward. The top underneath shows more at the front. Natural relaxed fabric drape and folds, sleeves stay on her arms.' },
+  coatarm: { label: 'Coat folded over arm', piece: 'coat', how: 'She is NOT wearing this coat — she has taken it off and carries it FOLDED OVER ONE FOREARM, like carrying a purse: her arm is bent at the elbow at waist height, and the coat is folded in half lengthwise and draped over the forearm, hanging down in front of her hip in soft folds, with the coat fabric, colour and texture exactly like the product photo. Her outfit underneath (top, sleeves, shoulders) shows fully, with no coat on her shoulders or back.' },
   overshoes: { label: 'Pants over shoes', piece: 'low', how: 'FULL-LENGTH pants: the pant legs go all the way down and fall OVER the shoes / boots, covering the boot shafts, hems resting on the tops of the feet.' },
 };
 function styleBtns(l) {
-  const cat = getItem(l.itemId)?.category; const per = { fast: 1, balanced: 2, quality: 3 }[store.get('vw.fashnMode', 'balanced')] || 2;
+  const cat = getItem(l.itemId)?.category; const per = { fast: 1, balanced: 2, quality: 3 }[aiMode()] || 2;
   const has = (...c) => state.room.layers.some((x) => c.includes(getItem(x.itemId)?.category));
   const keys = [];
-  if ((cat === 'tops' || cat === 'bottoms' || cat === 'skirts' || cat === 'shorts') && has('tops') && has('bottoms', 'skirts', 'shorts')) keys.push('tuck', 'untuck');
+  if ((cat === 'tops' || cat === 'sweaters' || cat === 'bottoms' || cat === 'skirts' || cat === 'shorts') && has('tops', 'sweaters') && has('bottoms', 'skirts', 'shorts')) keys.push('tuck', 'halftuck', 'untuck');
+  if (cat === 'cardigans' || ((cat === 'tops' || cat === 'sweaters') && has('cardigans'))) keys.push('cardiback');
+  if (cat === 'outerwear' || cat === 'cardigans') keys.push('coatarm');
   if ((cat === 'shoes' || cat === 'bottoms') && has('bottoms') && state.room.layers.some((x) => getItem(x.itemId)?.category === 'shoes' && /boot/i.test(getItem(x.itemId)?.name || ''))) keys.push('inboots', 'overshoes');
   if (!keys.length) return '<span class="lt-empty">This piece is part of the AI photo.</span>';
   return keys.map((k) => `<button class="ghost small" data-ltb="style" data-style="${k}">${STYLES[k].label} · ${per} cr</button>`).join('');
 }
 async function restyleAI(key) {
-  const S = STYLES[key]; const apiKey = store.get('vw.fashnKey', ''); if (!apiKey) return openKeyModal();
-  const pose = state.poses.find((p) => p.id === state.room.poseId); const t = currentTryon(); if (!S || !pose || !t) return;
-  const pick = (...c) => state.room.layers.map((x) => getItem(x.itemId)).find((it) => it && c.includes(it.category));
-  const it = S.piece === 'top' ? pick('tops') : S.piece === 'shoes' ? state.room.layers.map((x) => getItem(x.itemId)).find((i) => i?.category === 'shoes' && /boot/i.test(i.name || '')) : pick('bottoms'); if (!it) return;
+  const R = state.room; const S = STYLES[key]; const apiKey = store.get('vw.fashnKey', ''); if (!apiKey) return openKeyModal();
+  const pose = state.poses.find((p) => p.id === R.poseId); const t = currentTryon(); if (!S || !pose || !t) return; const snapR = snapRoom(R);
+  const pick = (...c) => R.layers.map((x) => getItem(x.itemId)).find((it) => it && c.includes(it.category));
+  const it = S.piece === 'coat' ? pick('outerwear', 'cardigans') : S.piece === 'cardi' ? pick('cardigans') : S.piece === 'top' ? pick('tops', 'sweaters') : S.piece === 'shoes' ? R.layers.map((x) => getItem(x.itemId)).find((i) => i?.category === 'shoes' && /boot/i.test(i.name || '')) : pick('bottoms'); if (!it) return;
   if (key === 'inboots') store.set('vw.inBoots', true); if (key === 'overshoes') store.set('vw.inBoots', false);
-  const btn = $('#tryonBtn'); btn.disabled = true; btn.textContent = 'Restyling…'; $('#room').classList.add('busy');
+  if (state.busyRooms.has(R)) return toast('This draft is still working — switch to another draft meanwhile', 2600);
+  const sig = tryonSig(R), nb = noBelly(); state.rawBySig = state.rawBySig || {};
+  state.busyRooms.add(R); R._prog = 'Restyling…'; syncBusy();
   try {
-    const person = state.lastRaw || await toDataJpeg(t, 1296, '#ffffff');
+    const person = state.rawBySig[sig] || await toDataJpeg(t, 1296, '#ffffff');
     const garment = await garmentPic(it);
-    const prompt = `${it.name || catLabel(it.category)}.${it.tryonNote ? ' ' + it.tryonNote : ''} ${multiNote(it)}${S.how}${noBelly()} Keep everything else in the outfit exactly the same. Keep her face, skin, hair, body shape, proportions and pose exactly the same — do not redraw the face. Plain white background.`;
+    const prompt = `${it.name || catLabel(it.category)}.${it.tryonNote ? ' ' + it.tryonNote : ''} ${multiNote(it)}${S.how}${S.piece === 'coat' ? ' Underneath she wears: ' + R.layers.map((x) => getItem(x.itemId)).filter((x) => x && x !== it && !['bags', 'accessories'].includes(x.category)).map((x) => x.name).join('; ') + '. These stay EXACTLY as in the input photo — same sleeve length (long sleeves stay long, down to the wrists), neckline, length and fit.' : ''}${nb} Keep everything else in the outfit exactly the same. Keep her face, skin, hair, body shape, proportions, ${S.piece === 'coat' ? 'other arm, leg positions and stance' : 'arm and leg positions and pose'} exactly the same as the input photo — same camera angle, do not redraw the face. Plain white background.`;
     let out;
     try { out = await fashnOne(apiKey, person, garment, prompt); } catch (e) { if (e.message === 'KEY' || /credits/.test(e.message)) throw e; out = await fashnOne(apiKey, person, garment, prompt); }
-    let img = out.startsWith('data:') ? out : `data:image/png;base64,${out}`;
-    try { img = await restoreFace(await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true), img); } catch {}
-    state.lastRaw = img;
-    const image = await downscale(await keepSubject(await tryonCut(img)), 1400);
-    state.tryonRaw = await downscale(img, 1800);
-    state.tryon = { sig: tryonSig(), image }; store.set('vw.tryon', state.tryon); rememberTryon();
-    toast('Done ✨', 2200);
+    let img = out.startsWith('data:') ? out : `data:image/png;base64,${out}`; const raw = img;
+    const orig0 = await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true);
+    if (S.piece === 'coat') { try { img = await headPaste(orig0, img); restoreFace.miss = false; } catch (e) { console.warn('head paste', e); try { img = await restoreFace(orig0, img); } catch {} } } // her own head, tilt and hair from her photo (the AI straightens the head when the arm moves)
+    else try { img = await restoreFace(orig0, img); } catch {}
+    const dd = state.drafts?.find((d) => d.room === R); const where = dd && state.room !== R ? `${dd.name}: ` : '';
+    const faceMiss = restoreFace.miss && img === raw;
+    const image = await downscale(await keepSubject(await tryonCut(img)), 1400); state.lastPaid = { image, at: Date.now() };
+    const apply = async () => { pushUndo(R, snapR); const res = { sig, image }; state.tryonHist[sig] = image; if (dd) { dd.tryon = res; DB.put('drafts', dd); } if (state.room === R) { state.tryonRaw = await downscale(img, 1800); state.tryon = res; store.set('vw.tryon', res); renderFigure(); } };
+    if (faceMiss) { undoBar(`${where}Your face may look a little different on this one, so I kept your photo.`, () => { apply(); toast('Using the new one ✓ (Undo is under Try it on)', 2600); }, 30000, 'Use new one anyway'); return; }
+    state.rawBySig[sig] = img;
+    if (snapR?.tryon?.image && await poseMoved(snapR.tryon.image, image, S.piece === 'coat' ? 0.68 : S.piece === 'cardi' ? 0.75 : 0.8)) { undoBar(`${where}The AI may have moved your pose, so I kept your photo.`, () => { apply(); toast('Using the new one ✓ (Undo is under Try it on)', 2600); }, 20000, 'Use new one anyway'); return; }
+    pushUndo(R, snapR); const res = { sig, image }; state.tryonHist[sig] = image; if (dd) { dd.tryon = res; DB.put('drafts', dd); }
+    if (state.room === R) { state.tryonRaw = await downscale(img, 1800); state.tryon = res; store.set('vw.tryon', res); }
+    toast(where ? `${where}${S.label} done ✨` : 'Done ✨', 3000);
   } catch (e) {
     console.warn(e);
     if (e.message === 'KEY') { store.set('vw.fashnKey', ''); openKeyModal(); } else toast(e.message || 'Could not restyle', 5000);
-  } finally { btn.disabled = false; $('#room').classList.remove('busy'); renderFigure(); showCredits(); }
+  } finally { state.busyRooms.delete(R); delete R._prog; syncBusy(); if (state.room === R) renderFigure(); showCredits(); }
 }
 // No belly showing — unless she's wearing an actual crop top.
 function noBelly() {
-  const tops = state.room.layers.map((x) => getItem(x.itemId)).filter((it) => it && ['tops', 'outerwear', 'dresses', 'sets'].includes(it.category));
+  const tops = state.room.layers.map((x) => getItem(x.itemId)).filter((it) => it && ['tops', 'sweaters', 'cardigans', 'outerwear', 'dresses', 'sets'].includes(it.category));
   if (tops.some((it) => /crop|bralette|bra top|tube top|bandeau/i.test(`${it.name || ''} ${it.tryonNote || ''}`))) return ' This is a crop top: show the midriff exactly as the product photo does.';
   return ' NO belly, stomach or midriff skin may show anywhere — every top must reach down to the waistband of the bottoms and overlap it (a cropped top just meets the waistband, no gap).';
 }
-async function wearBagAI(l) {
+// Undo for AI steps: before a new AI photo replaces the old one, the old photo + outfit is kept in the draft (last 5), free to go back to.
+const draftOf = (R) => state.drafts?.find((d) => d.room === R);
+function snapRoom(R) { const dd = draftOf(R); const t = dd?.tryon || (state.room === R ? state.tryon : null); return t ? { tryon: { ...t }, layers: clone(R.layers) } : null; }
+function pushUndo(R, snap) { const dd = draftOf(R); if (!dd || !snap) return; dd.undo = [snap, ...(dd.undo || [])].slice(0, 5); DB.put('drafts', dd); paintUndo(); }
+function paintUndo() { const b = $('#undoAiBtn'); if (b) { const n = curDraft()?.undo?.length || 0; b.hidden = !n; b.textContent = `↶ Undo last AI change${n > 1 ? ` (${n})` : ''}`; } }
+function undoAI() {
+  const R = state.room, dd = draftOf(R); const u = dd?.undo?.shift(); if (!u) return;
+  if (state.busyRooms.has(R)) { dd.undo.unshift(u); return toast('Wait till this draft is done', 2400); }
+  R.layers = clone(u.layers); state.tryon = u.tryon; state.tryonHist[u.tryon.sig] = u.tryon.image; dd.tryon = u.tryon; store.set('vw.tryon', state.tryon);
+  DB.put('drafts', dd); R.active = null; renderRoom(); paintUndo(); toast('Back to your last photo ✓', 2200);
+}
+// Pose guard: compare only her head (top 14%) and lower legs/feet (bottom 32%) before vs after an AI step, scaled by her height and centred on her legs.
+// Bags, cardigans and tucks change the middle of the picture, so that part is ignored. Below ~0.8 overlap = the AI moved her.
+async function poseMask(src) {
+  const img = await loadImage(src); const W0 = img.naturalWidth, H0 = img.naturalHeight; const c = document.createElement('canvas'); c.width = W0; c.height = H0; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, W0, H0).data; const on = (i, y) => { const k = (y * W0 + i) * 4; return d[k + 3] > 40 && d[k] + d[k + 1] + d[k + 2] < 735; };
+  let top = H0, bot = 0; for (let y = 0; y < H0; y += 2) for (let i = 0; i < W0; i += 3) if (on(i, y)) { if (y < top) top = y; if (y > bot) bot = y; }
+  const h = bot - top; let sx = 0, n = 0; for (let y = Math.round(top + h * 0.6); y < bot; y += 3) for (let i = 0; i < W0; i += 3) if (on(i, y)) { sx += i; n++; }
+  const cx = n ? sx / n : W0 / 2; const G = 100, m = new Uint8Array(G * G);
+  for (let gy = 0; gy < G; gy++) { const y = Math.round(top + gy / G * h); for (let gx = 0; gx < G; gx++) { const i = Math.round(cx + (gx / G - 0.5) * h * 0.6); m[gy * G + gx] = i >= 0 && i < W0 && on(i, y) ? 1 : 0; } }
+  return m;
+}
+async function poseMoved(oldSrc, newSrc, min = 0.8) {
+  try { const p = await poseMask(oldSrc), q = await poseMask(newSrc); let I = 0, U = 0;
+    for (let gy = 0; gy < 100; gy++) { if (gy >= 14 && gy < 68) continue; for (let gx = 0; gx < 100; gx++) { const k = gy * 100 + gx; I += p[k] & q[k]; U += p[k] | q[k]; } }
+    const v = I / U; console.log('pose overlap', v.toFixed(3)); return v < min; } catch { return false; }
+}
+// How big the bag sticker is next to her waist on screen, so the AI keeps the size you set (1 = as wide as her waist).
+async function bagRatio(l) {
+  try {
+    const st = $(`#figure .layer[data-uid="${l.uid}"]`), ph = $('#figure .pose.tryon'); if (!st || !ph) return null;
+    const sw = st.getBoundingClientRect().width, pr = ph.getBoundingClientRect();
+    const img = await loadImage(ph.src); const W = 300, H = Math.round(img.naturalHeight * W / img.naturalWidth);
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
+    const row = x.getImageData(0, Math.round(H * 0.47), W, 1).data; let a = -1, b = -1;
+    for (let i = 0; i < W; i++) { const al = row[i * 4 + 3], lum = row[i * 4] + row[i * 4 + 1] + row[i * 4 + 2]; if (al > 40 && lum < 735) { if (a < 0) a = i; b = i; } }
+    if (a < 0 || b - a < 10) return null;
+    const scale = Math.min(pr.width / img.naturalWidth, pr.height / img.naturalHeight) * img.naturalWidth / W; // object-fit: contain
+    return Math.max(0.3, Math.min(2, sw / ((b - a) * scale)));
+  } catch { return null; }
+}
+function bagUndo(l) {
+  if (!l.preBake) return; state.tryon = l.preBake; store.set('vw.tryon', state.tryon); state.tryonHist[l.preBake.sig] = l.preBake.image;
+  l.baked = false; delete l.preBake; state.room.active = l.uid; saveUI(); renderFigure(); toast('Bag is a sticker again — resize it, then tap On shoulder (AI)', 3200);
+}
+async function wearBagAI(l, ratioIn) {
   const key = store.get('vw.fashnKey', ''); if (!key) return openKeyModal();
   const it = getItem(l.itemId); const pose = state.poses.find((p) => p.id === state.room.poseId);
+  if (l.baked && l.preBake) { l.baked = false; state.tryon = l.preBake; state.tryonHist[l.preBake.sig] = l.preBake.image; } // redo from the photo without the bag
   const t = currentTryon(); if (!it || !pose || !t) return;
-  const btn = $('#tryonBtn'); btn.disabled = true; btn.textContent = 'Putting the bag on…'; $('#room').classList.add('busy');
+  const snap0 = snapRoom(state.room); const resize = l.baked && !l.preBake; // bag already in the photo (from before undo existed): fix its size on that photo
+  const ratio = ratioIn || (await bagRatio(l)) || 0.8; l.bagRatio = ratio; const pre = resize ? null : state.tryon && { ...state.tryon };
+  if (state.busyRooms.has(state.room)) return toast('This changing room is still working…', 2400); const btn = $('#tryonBtn'); btn.disabled = true; btn.textContent = 'Putting the bag on…'; $('#room').classList.add('busy');
   try {
-    const person = state.lastRaw || await toDataJpeg(t, 1296, '#ffffff');
+    const person = (state.rawBySig || {})[tryonSig()] || await toDataJpeg(t, 1296, '#ffffff');
     const garment = await toDataJpeg(it.tryonPic || it.image, 1296, '#ffffff');
-    const prompt = `${it.name || 'Handbag'}. She carries this bag on her shoulder: the strap goes over her shoulder and the bag sits tucked in against her side, under her arm, with her arm resting naturally over the front of it. Realistic size and shadows. Keep her outfit, face, skin, hair, body shape, proportions and pose exactly the same — do not redraw the face. Plain white background.`;
+    const sz = ratio < 0.95 ? `about ${Math.round(ratio * 100)}% as wide as her waist — NARROWER than her waist` : ratio <= 1.1 ? 'about as wide as her waist' : `about ${ratio.toFixed(1)} times as wide as her waist`;
+    const prompt = `${it.name || 'Handbag'}. She carries this bag on her shoulder: the strap goes over her shoulder and the bag sits tucked in against her side, under her arm, with her arm resting naturally over the front of it. SIZE: real-life scale relative to her body — the bag is ${sz}; do NOT make it bigger than that, ignore how big it looks in the product photo.${resize ? ' She is ALREADY carrying this bag in the photo but it is the wrong size — redraw that same bag at the size above, everything else unchanged.' : ''} Realistic shadows. Keep her outfit, face, skin, hair, body shape, proportions and pose exactly the same — do not redraw the face. Plain white background.`;
     let out;
     try { out = await fashnOne(key, person, garment, prompt); } catch (e) { if (e.message === 'KEY' || /credits/.test(e.message)) throw e; out = await fashnOne(key, person, garment, prompt); }
     let img = out.startsWith('data:') ? out : `data:image/png;base64,${out}`;
     try { img = await restoreFace(await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true), img); } catch {}
     state.lastRaw = img;
     const image = await downscale(await keepSubject(await tryonCut(img)), 1400);
+    const before = (pre || snap0?.tryon)?.image;
+    if (before && await poseMoved(before, image, 0.8)) {
+      if (pre) { state.tryon = pre; state.tryonHist[pre.sig] = pre.image; l.baked = false; } else if (snap0) { state.tryon = snap0.tryon; } saveUI(); renderFigure();
+      undoBar('The AI may have moved your pose, so I kept your photo (bag is a sticker).', () => { pushUndo(state.room, snap0); l.baked = true; if (pre) l.preBake = pre; state.tryon = { sig: tryonSig(), image }; store.set('vw.tryon', state.tryon); rememberTryon(); saveUI(); renderFigure(); }, 20000, 'Use new one anyway');
+      return;
+    }
     state.tryonRaw = await downscale(img, 1800);
-    l.baked = true; l.behind = false; state.room.active = null; saveUI();
+    pushUndo(state.room, snap0); l.baked = true; if (pre) l.preBake = pre; l.behind = false; state.room.active = l.uid; saveUI();
     state.tryon = { sig: tryonSig(), image }; store.set('vw.tryon', state.tryon); rememberTryon();
-    toast('Bag on ✨', 2500);
+    toast('Bag on ✨ — too big? Tap the bag: Smaller bag or Back to sticker', 4500);
   } catch (e) {
     console.warn(e);
     if (e.message === 'KEY') { store.set('vw.fashnKey', ''); openKeyModal(); } else toast(e.message || 'Could not put the bag on', 5000);
@@ -1622,7 +1747,7 @@ async function runTryon() {
   if (!pose) return toast('Add a photo of you first', 2600);
   const items = [...new Set(R.layers.map((l) => l.itemId))].map(getItem).filter(Boolean);
   if (!items.length) return toast('Tap the pieces you want to try on first', 2600);
-  const btn = $('#tryonBtn'); btn.disabled = true; btn.textContent = 'Dressing you…'; $('#room').classList.add('busy');
+  if (state.busyRooms.has(state.room)) return toast('This changing room is still working…', 2400); const btn = $('#tryonBtn'); btn.disabled = true; btn.textContent = 'Dressing you…'; $('#room').classList.add('busy');
   try {
     const model = await pickGeminiModel(key);
     const stage = await buildStage(pose.image);
@@ -1669,8 +1794,11 @@ Strict rules:
 /* ================= PLANNED ================= */
 const planLabel = (o) => o.plan?.type === 'day' ? o.plan.day : o.plan?.type === 'video' ? `Video${o.plan.video ? ' · ' + o.plan.video : ''}` : 'Saved look';
 function lookCard(o) {
-  const pieces = o.itemIds.map(getItem).filter(Boolean);
-  return `<article class="look" data-outfit="${o.id}">
+  const pieces = uniqItems(o.itemIds.map(getItem).filter(Boolean));
+  const first = state.firstSeen || new Map(); const rep = (it) => first.has(it.id) && first.get(it.id).id !== o.id; // same piece already counted in an earlier outfit
+  const buy = pieces.filter((it) => !isPurchased(it) && !rep(it));
+  return `<article class="look${o.skipTotal ? ' skipped' : ''}" data-outfit="${o.id}">
+    <label class="look-inc" title="Count this outfit in the cart total"><input type="checkbox" data-inc="${o.id}" ${o.skipTotal ? '' : 'checked'}><span>${o.skipTotal ? 'Not in total' : 'In total'}</span></label>
     <div class="look-grip" draggable="true" title="Drag to move">⠿</div>
     <div class="look-stage" title="Tap to ask the AI for a tweak · drag the bag to move it"><div class="mini-platform"></div><div class="figure">${figureHTML(o.poseId, o.layers, false, o.tryon)}</div>
       ${state.tweaking === o.id ? '<div class="tweak-busy"><span>Making your tweak…</span></div>' : ''}
@@ -1682,16 +1810,18 @@ function lookCard(o) {
       <p class="note ed" contenteditable="plaintext-only" data-edit-outfit="note" data-ph="Add a note">${esc(o.note || '')}</p>
       <div class="tagged">
         <div class="tagged-label">Tag in TikTok Shop · ${pieces.length} piece${pieces.length === 1 ? '' : 's'}</div>
-        ${pieces.map((it) => `<div class="tag-row"><img src="${it.image}" alt="">
-          <div class="t-name"><span class="ed" contenteditable="plaintext-only" data-edit-item="name" data-item="${it.id}" data-ph="Name">${esc(it.name || catLabel(it.category))}</span><small>${esc(catLabel(it.category))} · <span class="ed" contenteditable="plaintext-only" data-edit-item="price" data-item="${it.id}" data-ph="add price">${esc(it.price || '')}</span>${it.status === 'coming' ? ' · on the way' : ''}</small></div>
+        ${pieces.map((it) => `<div class="tag-row${isPurchased(it) ? ' bought' : ''}"><label class="bought-box" title="Already bought"><input type="checkbox" data-bought="${it.id}" ${isPurchased(it) ? 'checked' : ''}><span>Bought</span></label><img src="${it.image}" alt="">
+          <div class="t-name"><span class="ed" contenteditable="plaintext-only" data-edit-item="name" data-item="${it.id}" data-ph="Name">${esc(it.name || catLabel(it.category))}</span><small>${esc(catLabel(it.category))} · <span class="ed" contenteditable="plaintext-only" data-edit-item="price" data-item="${it.id}" data-ph="add price">${esc(it.price || '')}</span>${it.status === 'coming' ? ' · on the way' : ''}</small>${rep(it) && !isPurchased(it) ? `<small class="rep-note">Same as in ${esc(first.get(it.id).name || 'an earlier outfit')} · counted once</small>` : ''}</div>
           <div class="t-act">${it.link ? `<a class="link-btn" href="${esc(it.link)}" target="_blank" rel="noopener">Open</a><button class="link-btn" data-copy="${esc(it.link)}">Copy link</button>` : `<button class="link-btn" data-edit="${it.id}">Add link</button>`}</div>
         </div>`).join('')}
-        <div class="look-total"><span>Outfit total</span><b>${money(sumPrice(pieces))}</b></div>
+        <div class="look-total"><span>Still to buy (${buy.length})</span><b>${money(sumPrice(buy))}</b></div>
+        <div class="look-total-note">Outfit total ${money(sumPrice(pieces))}</div>
         ${pieces.some((it) => !priceNum(it)) ? `<div class="look-total-note">Not counted (no price yet): ${pieces.filter((it) => !priceNum(it)).map((it) => esc(it.name || catLabel(it.category))).join(', ')}</div>` : ''}
       </div>
       <div class="look-actions">
         <button class="ghost small" data-act="copyall">Copy all links</button>
         <button class="ghost small" data-act="download">Download image</button>
+        <button class="small dup-btn" data-act="dup">Duplicate &amp; edit</button>
         <button class="ghost small" data-act="edit">Edit in changing room</button>
         <button class="danger-link small" data-act="delete">Delete</button>
       </div>
@@ -1780,10 +1910,29 @@ function renderShoot() {
       </section>`;
     }).join('');
 }
+// Planned outfits: tick "Bought" next to a piece you already bought — unticked pieces are the ones still to buy.
+document.addEventListener('change', async (e) => {
+  const ic = e.target.closest?.('input[data-inc]');
+  if (ic) { const o = state.outfits.find((x) => x.id === ic.dataset.inc); if (!o) return; o.skipTotal = !ic.checked; await DB.put('outfits', o); toast(ic.checked ? 'Counted in the cart total' : 'Left out of the cart total', 1600); return renderPlanned(); }
+  const cb = e.target.closest?.('input[data-bought]'); if (!cb) return;
+  const it = getItem(cb.dataset.bought); if (!it) return;
+  if (cb.checked) { if (!isPurchased(it)) { it.prevStatus = it.status; it.boughtAt = Date.now(); } it.status = 'owned'; }
+  else { it.status = it.prevStatus && !['owned', 'coming'].includes(it.prevStatus) ? it.prevStatus : 'cart'; delete it.prevStatus; delete it.boughtAt; }
+  state.items = await DB.all('items');
+  await DB.put('items', it); toast(cb.checked ? 'Marked bought ✓' : 'Back on the to-buy list', 1600); renderPlanned();
+});
+// Weeks: each day-planned outfit belongs to a week (its Monday). Flip back to see past weeks; bought pieces stay bought for good.
+const weekOf = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+const thisWeek = () => weekOf(Date.now());
+const planWeek = () => state.planWeek || (state.planWeek = thisWeek());
+const outfitWeek = (o) => o.plan?.week || weekOf(o.createdAt || Date.now());
+const shiftWeek = (w, n) => { const d = new Date(w + 'T12:00:00'); d.setDate(d.getDate() + 7 * n); return weekOf(d); };
+const weekLabel = (w) => { const a = new Date(w + 'T12:00:00'), b = new Date(a); b.setDate(b.getDate() + 6); const f = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${w === thisWeek() ? 'This week' : w === shiftWeek(thisWeek(), -1) ? 'Last week' : w === shiftWeek(thisWeek(), 1) ? 'Next week' : 'Week of'} · ${f(a)} – ${f(b)}`; };
 function renderPlanned() {
   renderWhose();
   if (state.whose === 'together') return renderTogether();
-  const mine = state.outfits.filter((o) => ownerOf(o) === state.whose);
+  const mine = state.outfits.filter((o) => ownerOf(o) === state.whose && (o.plan?.type !== 'day' || outfitWeek(o) === planWeek()));
   const groups = [
     ...DAYS.map((d) => ({ id: d, label: d, match: (o) => o.plan?.type === 'day' && o.plan.day === d })),
     { id: 'video', label: 'Videos', match: (o) => o.plan?.type === 'video' },
@@ -1795,29 +1944,39 @@ function renderPlanned() {
     return `<button class="chip ${state.planFilter === t.id ? 'on' : ''}" data-plan-filter="${t.id}">${t.label}<span>${n}</span></button>`;
   }).join('');
   const list = $('#plannedList'); wirePlanDrag();
-  if (!mine.length) {
+  if (!mine.length && !state.outfits.some((o) => ownerOf(o) === state.whose)) {
     list.innerHTML = `<div class="empty"><h3>No ${state.whose === 'together' ? 'outfits together' : personName(state.whose) + "'s outfits"} yet</h3><p>Pick pieces in your closet, try them on in the changing room, then tap "Lock in outfit".</p><button class="primary" data-goto="closet">Start in the closet</button></div>`;
     return;
   }
   const shown = groups.filter((g) => state.planFilter === 'all' || g.id === state.planFilter)
     .map((g) => ({ g, os: mine.filter(g.match).sort(lookOrder) }))
     .filter((x) => x.os.length || state.planFilter === 'all');
-  const allPieces = uniqItems(shown.flatMap(({ os }) => os.flatMap((o) => o.itemIds.map(getItem))));
-  const slots = shown.reduce((n, { os }) => n + os.reduce((m, o) => m + new Set(o.itemIds).size, 0), 0);
+  // Cart total = every outfit with its top-left box ticked (any week, videos, saved looks); untick an outfit you won't check out.
+  const inc = (o) => !o.skipTotal;
+  const incOs = state.outfits.filter((o) => ownerOf(o) === state.whose && inc(o));
+  const allPieces = uniqItems(incOs.flatMap((o) => o.itemIds.map(getItem)));
+  state.firstSeen = new Map(); for (const { os } of shown) for (const o of os) if (inc(o)) for (const id of o.itemIds) if (!state.firstSeen.has(id)) state.firstSeen.set(id, o);
+  const weekOs = shown.filter(({ g }) => DAYS.includes(g.id)).flatMap(({ os }) => os).filter(inc);
+  const weekU = uniqItems(weekOs.flatMap((o) => o.itemIds.map(getItem))).filter((it) => it && !isPurchased(it));
+  const firstDay = shown.find(({ g }) => DAYS.includes(g.id))?.g.id; const noDays = !firstDay && (state.planFilter === 'all' || DAYS.includes(state.planFilter));
+  const wk = planWeek(); const boughtWk = state.items.filter((it) => isPurchased(it) && it.boughtAt && weekOf(it.boughtAt) === wk);
+  const weekBar = `<div class="week-buy"><button class="wk-nav" data-week="-1" title="Previous week">‹</button><span>${weekLabel(wk)} · ${weekOs.length} outfit${weekOs.length === 1 ? '' : 's'}</span><button class="wk-nav" data-week="1" title="Next week">›</button>${wk !== thisWeek() ? '<button class="wk-nav wk-today" data-week="0">This week</button>' : ''}<b>${weekU.length} to buy · ${money(sumPrice(weekU))}</b><small>Same piece on different days counted once.${boughtWk.length ? ` Bought this week: ${boughtWk.length} piece${boughtWk.length === 1 ? '' : 's'} · ${money(sumPrice(boughtWk))}.` : ''} Pieces bought in earlier weeks stay ticked.</small></div>`;
+  const slots = incOs.reduce((m, o) => m + new Set(o.itemIds).size, 0);
   const toBuy = allPieces.filter((it) => !isPurchased(it)); const noPrice = toBuy.filter((it) => !priceNum(it));
-  const summary = shown.some(({ os }) => os.length) ? `<div class="checkout-sum">
-    <div><small>Real checkout total · ${toBuy.length} piece${toBuy.length === 1 ? '' : 's'} to buy</small><b>${money(sumPrice(toBuy))}</b></div>
+  const nAll = state.outfits.filter((o) => ownerOf(o) === state.whose).length;
+  const summary = nAll ? `<div class="checkout-sum">
+    <div><small>Cart total · ${incOs.length} of ${nAll} outfit${nAll === 1 ? '' : 's'} ticked · ${toBuy.length} piece${toBuy.length === 1 ? '' : 's'} to buy</small><b>${money(sumPrice(toBuy))}</b></div>
     <div><small>All pieces in these outfits</small><b>${allPieces.length}</b></div>
-    <p>${slots > allPieces.length ? `Repeats counted once (${slots - allPieces.length} repeat${slots - allPieces.length === 1 ? '' : 's'} across outfits). ` : ''}Pieces you already own or ordered aren't included.${noPrice.length ? ` No price yet: ${noPrice.map((it) => esc(it.name || catLabel(it.category))).join(', ')}.` : ''} Drag outfits to move them.</p>
+    <p>${slots > allPieces.length ? `Repeats counted once (${slots - allPieces.length} repeat${slots - allPieces.length === 1 ? '' : 's'} across outfits). ` : ''}Pieces you already own or ordered aren't included. Untick the box at the top left of an outfit to leave it out.${noPrice.length ? ` No price yet: ${noPrice.map((it) => esc(it.name || catLabel(it.category))).join(', ')}.` : ''} Drag outfits to move them.</p>
   </div>` : '';
   list.innerHTML = shown.length
-    ? summary + shown.map(({ g, os }) => `<section class="plan-group${os.length ? '' : ' drop-only'}" data-group="${g.id}"><h2 class="plan-group-title">${g.label}</h2><div class="looks">${os.map(lookCard).join('')}${os.length ? '' : '<div class="look-drop">Drop here</div>'}</div></section>`).join('')
+    ? summary + (noDays ? weekBar : '') + shown.map(({ g, os }) => `${g.id === firstDay ? weekBar : ''}<section class="plan-group${os.length ? '' : ' drop-only'}" data-group="${g.id}"><h2 class="plan-group-title">${g.label}</h2><div class="looks">${os.map(lookCard).join('')}${os.length ? '' : '<div class="look-drop">Drop here</div>'}</div></section>`).join('')
     : `<div class="empty"><h3>Nothing planned here</h3><p>No outfits for this filter yet.</p></div>`;
 }
 const lookOrder = (a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
 // Drag a look to a new spot (or onto another day / Videos / Saved looks) — the order is saved.
 function planForGroup(o, gid) {
-  if (DAYS.includes(gid)) return { ...(o.plan || {}), type: 'day', day: gid };
+  if (DAYS.includes(gid)) return { ...(o.plan || {}), type: 'day', day: gid, week: planWeek() };
   if (gid === 'video') return { ...(o.plan || {}), type: 'video' };
   return { ...(o.plan || {}), type: 'none' };
 }
@@ -1847,7 +2006,7 @@ async function saveInlineEdit(el) {
 }
 /* ---------- tap an outfit photo: ask the AI for a tweak ---------- */
 const TWEAK_PIECES = [
-  ['outerwear', /jacket|coat|blazer|puffer|parka|trench|vest/i], ['dresses', /dress/i], ['sets', /\bset\b|jumpsuit|romper/i],
+  ['cardigans', /cardigan|cardi\b|shawl/i], ['sweaters', /sweater|sweatshirt|pullover|jumper/i], ['outerwear', /jacket|coat|blazer|puffer|parka|trench|vest/i], ['dresses', /dress/i], ['sets', /\bset\b|jumpsuit|romper/i],
   ['skirts', /skirt/i], ['shorts', /shorts/i], ['bottoms', /pant|legging|jean|trouser|jogger/i],
   ['shoes', /boot|shoe|heel|sneaker|loafer|flat|sandal/i], ['tops', /shirt|top|sweater|blouse|tee|cardigan|knit|hoodie|tank|cami|bodysuit|waist|stomach|back|sleeve|hem|neck|tight|loose|fit|hourglass/i],
 ];
@@ -1861,7 +2020,7 @@ function tweakPiece(o, text) {
 }
 function openTweak(o, stage) {
   closeTweak();
-  const mode = store.get('vw.fashnMode', 'balanced'); const cost = { fast: 1, balanced: 2, quality: 3 }[mode] || 2;
+  const mode = aiMode(); const cost = { fast: 1, balanced: 2, quality: 3 }[mode] || 2;
   const b = document.createElement('div'); b.className = 'tweak-bubble'; b.dataset.outfit = o.id;
   b.innerHTML = `<div class="tw-head"><b>Tweak this look</b><button class="tw-x" data-tweakclose aria-label="Close">✕</button></div>
     <textarea rows="3" placeholder="e.g. Cinch the plaid shirt in at the back a little so it shapes my waist — more hourglass, not skin-tight"></textarea>
@@ -1882,7 +2041,8 @@ async function runTweak(o, text) {
     let out;
     try { out = await fashnOne(apiKey, person, garment, prompt); } catch (e) { if (e.message === 'KEY' || /credits/.test(e.message)) throw e; out = await fashnOne(apiKey, person, garment, prompt); }
     let img = out.startsWith('data:') ? out : `data:image/png;base64,${out}`;
-    if (pose) { try { img = await restoreFace(await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true), img); } catch {} }
+    if (pose) { restoreFace.miss = false; try { img = await restoreFace(await toDataJpeg(pose.base ? await trimToBody(pose.image) : (await plainBg(pose.image)) ? await legFix(await trimToBody(pose.image)) : pose.image, 1296, '#ffffff', true), img); } catch {} }
+    if (restoreFace.miss) toast('Your face may look a little different on this one — tap Undo tweak if you don\'t like it', 5000);
     const image = await downscale(await keepSubject(await tryonCut(img)), 1400);
     o.tryonPrev = o.tryon; o.tryon = image; o.tweaks = [...(o.tweaks || []), { text, at: Date.now() }]; o.updatedAt = Date.now();
     await DB.put('outfits', o); toast('Tweak done ✨ — tap Undo tweak if you liked it better before', 3800);
@@ -1949,6 +2109,14 @@ async function outfitAction(act, id) {
     copyText(withLinks.map((p) => `${p.name || catLabel(p.category)}: ${p.link}`).join('\n'));
   }
   if (act === 'download') downloadLook(o);
+  if (act === 'dup') { // copy this look into a fresh draft; locking it in saves a NEW outfit, the original stays as is
+    const R = { poseId: o.poseId, layers: clone(o.layers), active: null, editingId: null };
+    const sig = tryonSig(R); const tr = o.tryon ? { sig, image: o.tryon } : null; if (tr) state.tryonHist[sig] = o.tryon;
+    const d = { id: uid(), owner: ME, name: `Copy of ${(o.name || 'outfit').slice(0, 20)}`, order: Date.now(), room: R, tryon: tr };
+    state.drafts.push(d); await DB.put('drafts', d);
+    const op = state.poses.find((p) => p.id === o.poseId); if (op) state.poseOwner = ownerOf(op);
+    go('room'); switchDraft(d.id); toast(`${d.name} is open — change it, then Lock in to save it as a new outfit`, 3200);
+  }
   if (act === 'edit') {
     state.room = { poseId: o.poseId, layers: clone(o.layers), active: null, editingId: o.id };
     const op = state.poses.find((p) => p.id === o.poseId); if (op) state.poseOwner = ownerOf(op);
@@ -2146,6 +2314,7 @@ function bind() {
     const pcat = t.closest('[data-pickcat]'); if (pcat) { state.pickCat = pcat.dataset.pickcat; store.set('vw.pickCat', state.pickCat); return renderRoom(); }
     if (t.closest('[data-bigpicks]')) { state.bigPicks = !state.bigPicks; store.set('vw.bigPicks', state.bigPicks); return renderRoom(); }
     const psec = t.closest('[data-picksec]'); if (psec) { const id = psec.dataset.picksec; if ((state.pickCat || 'all') !== 'all') { state.pickCat = 'all'; } else { state.pickClosed = state.pickClosed || {}; state.pickClosed[id] = !state.pickClosed[id]; store.set('vw.pickClosed', state.pickClosed); } return renderRoom(); }
+    const fg = t.closest('[data-forget]'); if (fg) { e.stopPropagation(); return deleteForever(fg.dataset.forget); }
     const pick = t.closest('[data-pick]'); if (pick) return toggleTryOn(pick.dataset.pick);
     const pose = t.closest('[data-pose]'); if (pose) { state.room.poseId = pose.dataset.pose; return renderRoom(); }
     const pa = t.closest('[data-poseact]'); if (pa) return poseAction(pa.dataset.poseact);
@@ -2159,10 +2328,14 @@ function bind() {
       if (ltb.dataset.ltb === 'front') { l.z = Math.max(...zs) + 1; l.behind = false; }
       if (ltb.dataset.ltb === 'back') { l.z = Math.min(...zs) - 1; if (currentTryon()) { l.behind = true; toast('Tucked behind you', 1800); } }
       if (ltb.dataset.ltb === 'shoulder') return wearBagAI(l);
+      if (ltb.dataset.ltb === 'bagsmaller') return wearBagAI(l, Math.max(0.3, (l.bagRatio || 0.8) * 0.7));
+      if (ltb.dataset.ltb === 'bagbigger') return wearBagAI(l, Math.min(2, (l.bagRatio || 0.8) * 1.3));
+      if (ltb.dataset.ltb === 'bagundo') return bagUndo(l);
       if (ltb.dataset.style) return restyleAI(ltb.dataset.style);
       if (ltb.dataset.ltb === 'remove') return takeOff(l);
       saveUI(); return renderFigure();
     }
+    const wn = t.closest('[data-week]'); if (wn) { const n = +wn.dataset.week; state.planWeek = n ? shiftWeek(planWeek(), n) : thisWeek(); return renderPlanned(); }
     const pf = t.closest('[data-plan-filter]'); if (pf) { state.planFilter = pf.dataset.planFilter; return renderPlanned(); }
     const cp = t.closest('[data-copy]'); if (cp) return copyText(cp.dataset.copy);
     const act = t.closest('[data-act]'); if (act) return outfitAction(act.dataset.act, act.closest('[data-outfit]').dataset.outfit);
@@ -2196,7 +2369,12 @@ function bind() {
   // room + lock
   bindFigure();
   $('#lockBtn').onclick = openLock;
-  $('#tryonBtn').onclick = runTryon;
+  $('#tryonBtn').onclick = () => {
+    const R = state.room;
+    if (state.busyRooms.has(R)) { if (R._stopNow) { R._stopNow(); $('#tryonBtn').textContent = 'Stopping…'; } else toast('This step can\'t be stopped — it\'ll finish in a moment', 2600); return; }
+    runTryon();
+  };
+  $('#undoAiBtn').onclick = undoAI;
   $('#syncBtn').onclick = refreshCart;
   showCredits(); setInterval(showCredits, 120000);
   const paintCoat = () => $$('#coatSeg button').forEach((b) => b.classList.toggle('on', b.dataset.coat === store.get('vw.coat', 'open')));
@@ -2205,8 +2383,11 @@ function bind() {
   $('#zoomBtn').onclick = openZoom;
   const paintSpeed = () => $$('#speedSeg button').forEach((b) => b.classList.toggle('on', b.dataset.speed === store.get('vw.fashnMode', 'balanced')));
   $$('#speedSeg button').forEach((b) => (b.onclick = () => { store.set('vw.fashnMode', b.dataset.speed); paintSpeed(); paintCost(); }));
+  const paintLock = () => $$('#poseLockSeg button').forEach((b) => b.classList.toggle('on', (b.dataset.poselock === '1') === poseLock()));
+  $$('#poseLockSeg button').forEach((b) => (b.onclick = () => { store.set('vw.poseLock', b.dataset.poselock === '1'); paintLock(); paintCost(); toast(poseLock() ? 'Keep my pose: tops, pants & dresses won\'t move you' : 'Free pose: the AI may re-pose you', 2600); })); paintLock();
   paintSpeed();
   $('#aiKeyLink').onclick = openKeyModal;
+  $('#keyCopy').onclick = async () => { const k = store.get('vw.fashnKey', ''); if (!k) return toast('No key saved on this device', 3200); try { await navigator.clipboard.writeText(k); toast('Key copied, now paste it in the email', 3200); } catch { toast('Couldn\'t copy, click the page and try again', 3200); } };
   $('#keyPaste').onclick = async () => { try { const t = (await navigator.clipboard.readText()).trim(); if (!t) return toast('Nothing copied yet — copy the key first', 3200); $('#keyInput').value = t; $('#keySave').click(); } catch { toast('Allow clipboard access, or paste into the box', 3200); } };
   $('#keyCancel').onclick = () => ($('#keyModal').hidden = true);
   $('#keySave').onclick = () => { const k = $('#keyInput').value.trim(); if (store.get('vw.tryonEngine', 'fashn') === 'fashn') store.set('vw.fashnKey', k); else { store.set('vw.geminiKey', k); store.set('vw.geminiModel', null); } $('#keyModal').hidden = true; $('#keyInput').value = ''; if (k) { toast('Key saved'); runTryon(); } };
@@ -2247,6 +2428,8 @@ function foldCategory(p) {
   if (/skirt/i.test(t)) return 'skirts';
   if (/short/i.test(t)) return 'shorts';
   if (/pant|jean|trouser|bottom/i.test(t)) return 'bottoms';
+  if (/cardigan|shawl|shrug/i.test(t)) return 'cardigans';
+  if (/sweater|sweatshirt|pullover|jumper/i.test(t)) return 'sweaters';
   if (/jacket|coat|blazer|outer/i.test(t)) return 'outerwear';
   if (/set\b/i.test(t)) return 'sets';
   if (/shoe|boot|heel|sandal/i.test(t)) return 'shoes';
@@ -2259,7 +2442,7 @@ async function syncFold() {
   let added = 0, updated = 0; const seen = new Set();
   const pic = async (u) => downscale(await fileToDataURL(await (await fetch(foldImg(u))).blob()), 1200);
   await Promise.all(j.products.map(async (p) => {
-    const key = `fold-${p.id}`; seen.add(key); const have = state.items.find((i) => i.importKey === key);
+    const key = `fold-${p.id}`; seen.add(key); if ((store.get('vw.removedKeys', []) || []).includes(key)) return; const have = state.items.find((i) => i.importKey === key);
     const price = p.price ? `$${p.price}` : ''; const was = p.was && p.was !== p.price ? `$${p.was}` : '';
     const link = `https://www.thefoldlabel.com/products/${p.handle}`;
     if (have) {
@@ -2286,8 +2469,25 @@ async function refreshFold(quiet) {
   try { const o = await withTimeout(syncFold(), 15000); if (!quiet) toast(`The Fold: ${o.total} pieces${o.added ? ` · ${o.added} new` : ''}${o.updated ? ` · ${o.updated} updated` : ''} ✨`, 3500); return o; }
   catch (e) { console.warn(e); if (!quiet) toast('Couldn\'t reach thefoldlabel.com — try again', 4000); return null; }
 }
+// Check every TikTok piece's own product page for sold out + price (works even after it's moved out of the cart)
+// Her changes 4 + 19 read each TikTok product page for sold-out and low stock.
+// That lives in serve.py, which this app does not run — scraping ~200 product
+// pages does not fit a serverless request either. The code is merged and ready;
+// STOCK_API just has nowhere to point yet, so it stands down quietly instead of
+// 404ing on every open. Set it when the op exists.
+const STOCK_API = '';
+async function checkStock(quiet) {
+  if (!STOCK_API) return;
+  try {
+    const r = await fetch(STOCK_API, { method: 'POST' }); const out = await r.json(); if (!r.ok) throw new Error(out.error || 'stock check failed');
+    await syncImports(); state.items = await DB.all('items'); refresh();
+    const low = out.low || [];
+    if (low.length) alert('Running low:\n\n' + low.map((x) => `• ${x.name} — only ${x.left} left (${x.sizes})`).join('\n'));
+    if (out.soldOut.length) toast(`${out.soldOut.length} sold out → moved to Sold out`, 5000); else if (!quiet && !low.length) toast('Stock checked ✓', 2000);
+  } catch (e) { console.warn(e); if (!quiet) toast('Couldn\'t check stock: ' + e.message, 4000); }
+}
 async function refreshCart() {
-  const btn = $('#syncBtn');
+  const btn = $('#syncBtn'); checkStock(true);
   if (!btn.disabled) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; await refreshFold(false); state.items = await DB.all('items'); refresh(); btn.disabled = false; btn.textContent = '↻ Refresh'; }
   if (document.documentElement.dataset.vwHelper !== '1') { // no Chrome helper: pull in the latest auto-sync
     return syncImports().then(async () => { state.items = await DB.all('items'); refresh(); toast('Up to date with the latest sync ✨ New cart adds come in at 8am, 12pm, 4pm & 8pm', 6000); });
@@ -2333,8 +2533,10 @@ async function syncImports() {
     const id = (it.link || '').match(/tiktok\.com\/view\/product\/(\d{15,})/)?.[1];
     if (id) { it.link = `https://shop.tiktok.com/us/pdp/${id}`; await DB.put('items', it); }
   }
+  const gone = new Set(store.get('vw.removedKeys', []));
   for (const e of list) {
     const key = e.key || e.productId;
+    if (e.removed || gone.has(key)) continue;
     const have = state.items.find((i) => (i.importKey || i.productId) === key);
     if (have && e.imgv && have.imgv !== e.imgv) {
       try { const img = await downscale(await fileToDataURL(await (await fetch(e.image)).blob()), 1200); have.image = img; have.original = img; have.imgv = e.imgv; await DB.put('items', have); } catch (err) { console.warn(err); }
@@ -2343,7 +2545,7 @@ async function syncImports() {
     if (have && JSON.stringify(e.refs || []) !== JSON.stringify(have.refs || [])) { have.refs = e.refs || []; await DB.put('items', have); }
     if (have && (e.tryonNote || '') !== (have.tryonNote || '') && e.tryonNote) { have.tryonNote = e.tryonNote; await DB.put('items', have); }
     if (have && !!have.inCart !== !!e.inCart) { have.inCart = !!e.inCart; await DB.put('items', have); }
-    if (have && !!have.soldOut !== !!e.soldOut) { have.soldOut = !!e.soldOut; await DB.put('items', have); }
+    if (have && (!!have.soldOut !== !!e.soldOut || (have.stockLeft || null) !== (e.stockLeft || null) || (have.stockLow || null) !== (e.stockLow || null))) { have.soldOut = !!e.soldOut; have.stockLeft = e.stockLeft || null; have.stockLow = e.stockLow || null; await DB.put('items', have); }
     if (have && !!have.outOfCart !== !!e.outOfCart) { have.outOfCart = !!e.outOfCart; await DB.put('items', have); }
     if (have && ((e.price || '') !== (have.price || '') || (e.priceWas || '') !== (have.priceWas || '')) && e.price) { have.price = e.price; have.priceWas = e.priceWas || ''; await DB.put('items', have); }
     if (have && e.link && have.link !== e.link) { have.link = e.link; await DB.put('items', have); }
@@ -2351,7 +2553,7 @@ async function syncImports() {
     try {
       const blob = await (await fetch(e.image)).blob();
       const image = await downscale(await fileToDataURL(blob), 1200);
-      const it = { id: uid(), importKey: key, tryonPic: e.tryonPic || '', refs: e.refs || [], tryonNote: e.tryonNote || '', inCart: !!e.inCart, soldOut: !!e.soldOut, productId: e.productId, name: e.name, category: e.category, status: e.status || 'owned',
+      const it = { id: uid(), importKey: key, tryonPic: e.tryonPic || '', refs: e.refs || [], tryonNote: e.tryonNote || '', inCart: !!e.inCart, soldOut: !!e.soldOut, stockLeft: e.stockLeft || null, stockLow: e.stockLow || null, productId: e.productId, name: e.name, category: e.category, status: e.status || 'owned',
         link: e.link, price: e.price || '', priceWas: e.priceWas || '', size: '', notes: '', image, original: image, createdAt: Date.now() + n };
       await DB.put('items', it); state.items.push(it); n++;
     } catch (err) { console.warn('import failed', e, err); }
@@ -2370,6 +2572,125 @@ async function syncImports() {
   } catch (err) { console.warn('pose import failed', err); }
 }
 
+
+
+// one-time: split sweaters + cardigans out of Tops (and cardigans out of Outerwear)
+function splitTopsCat(it) {
+  const n = `${it.name || ''}`;
+  if (it.category === 'tops' || it.category === 'outerwear') { if (/cardigan|cardi\b|shawl|shrug|bolero/i.test(n) && !/hoodie|zip-up/i.test(n)) return 'cardigans'; }
+  if (it.category === 'tops' && /sweater|sweatshirt|pullover|jumper/i.test(n)) return 'sweaters';
+  return null;
+}
+async function migrateCatsV2() {
+  if (store.get('vw.catsV2', false)) return; let n = 0;
+  for (const it of state.items) { const c = splitTopsCat(it); if (c && c !== it.category) { it.category = c; await DB.put('items', it); n++; } }
+  store.set('vw.catsV2', true); if (n) console.log('moved', n, 'pieces into Sweaters / Cardigans');
+}
+
+/* ---------- delete a piece from the wardrobe for good (won't come back on refresh) ---------- */
+async function deleteForever(id) {
+  const it = getItem(id); if (!it) return;
+  if (!confirm(`Delete "${it.name || 'this piece'}" from your wardrobe for good?\n\nIt won't come back when you refresh. Locked outfits that used it will just be missing this piece.`)) return;
+  const key = it.importKey || it.productId;
+  if (key) { const g = new Set(store.get('vw.removedKeys', [])); g.add(key); store.set('vw.removedKeys', [...g]); }
+  // vw.removedKeys already stops syncImports bringing it back in this browser.
+  // Marking the shared manifest is the serve.py half and has no op here yet, so
+  // a delete is per-browser for now.
+  if (STOCK_API && key && !String(key).startsWith('fold-')) { try { await fetch('/api/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, productId: it.productId || '' }) }); } catch (e) { console.warn(e); } }
+  state.room.layers = state.room.layers.filter((l) => l.itemId !== id);
+  for (const d of state.drafts || []) if (d.room) { d.room.layers = (d.room.layers || []).filter((l) => l.itemId !== id); DB.put('drafts', d); }
+  state.selected.delete(id); await DB.del('items', id); state.items = state.items.filter((x) => x.id !== id);
+  saveUI(); refresh(); toast(`Deleted ${shortName(it)} for good ✓`, 2600);
+}
+/* ---------- several changing rooms at once (drafts) ---------- */
+state.busyRooms = new Set();
+const curDraft = () => state.drafts?.find((d) => d.id === state.draftId);
+async function loadDrafts() {
+  const all = (await DB.all('drafts').catch(() => [])).filter((d) => (d.owner || 'kiaredza') === ME).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const WEEK = 7 * 864e5; for (const d of all) if (d.deletedAt && Date.now() - d.deletedAt > WEEK) DB.del('drafts', d.id); // deleted drafts are kept for a week
+  state.trash = all.filter((d) => d.deletedAt && Date.now() - d.deletedAt <= WEEK).sort((a, b) => b.deletedAt - a.deletedAt);
+  const mine = all.filter((d) => !d.deletedAt);
+  if (!mine.length) { const d = { id: uid(), owner: ME, name: 'Draft 1', order: 1, room: state.room, tryon: state.tryon }; mine.push(d); await DB.put('drafts', d); }
+  for (const d of mine) if (/^Room \d+$/.test(d.name)) { d.name = d.name.replace('Room', 'Draft'); DB.put('drafts', d); }
+  const cur = mine.find((d) => d.id === store.get('vw.draftId', null)) || mine[0];
+  cur.room = state.room; cur.tryon = state.tryon; // the last-used room is the freshest copy
+  state.drafts = mine; state.draftId = cur.id; store.set('vw.draftId', cur.id);
+  for (const d of mine) if (d.tryon?.sig) state.tryonHist[d.tryon.sig] = d.tryon.image;
+}
+function saveCurDraft() { const d = curDraft(); if (!d) return; d.room = state.room; d.tryon = state.tryon; clearTimeout(saveCurDraft._t); saveCurDraft._t = setTimeout(async () => { await DB.put('drafts', d); const el = $('#draftSaved'); if (el) { el.textContent = 'Saving…'; setTimeout(() => (el.textContent = 'All changes saved ✓'), 250); } }, 300); }
+function switchDraft(id) {
+  const cur = curDraft(); if (cur) { cur.room = state.room; cur.tryon = state.tryon; DB.put('drafts', cur); }
+  const d = state.drafts.find((x) => x.id === id); if (!d) return;
+  state.draftId = id; store.set('vw.draftId', id);
+  state.room = d.room || { poseId: cur?.room?.poseId || null, layers: [], active: null, editingId: null }; d.room = state.room;
+  state.tryon = d.tryon || null; store.set('vw.room', state.room); store.set('vw.tryon', state.tryon);
+  renderRoom(); syncBusy();
+}
+function newDraft() {
+  const n = Math.max(0, ...state.drafts.map((d) => +(String(d.name).match(/^Draft (\d+)$/)?.[1] || 0))) + 1;
+  const d = { id: uid(), owner: ME, name: `Draft ${Math.max(n, state.drafts.length + 1)}`, order: Date.now(), room: { poseId: state.room.poseId, layers: [], active: null, editingId: null }, tryon: null };
+  state.drafts.push(d); DB.put('drafts', d); switchDraft(d.id); toast(`${d.name} is open — pick pieces on the left`, 2600);
+}
+function deleteDraft(id) {
+  const d = state.drafts.find((x) => x.id === id); if (!d || state.drafts.length < 2) return;
+  if (state.busyRooms.has(d.room)) return toast('That room is still dressing you — wait till it\'s done', 3000);
+  if (!confirm(`Are you sure you want to delete "${d.name}"?\n\nYou can undo it, and it stays in "Deleted drafts" for 7 days.`)) return;
+  if (id === state.draftId) switchDraft(state.drafts.find((x) => x.id !== id).id);
+  state.drafts = state.drafts.filter((x) => x.id !== id); d.deletedAt = Date.now(); DB.put('drafts', d);
+  state.trash = [d, ...(state.trash || []).filter((x) => x.id !== id)]; renderDrafts(); undoBar(`Deleted "${d.name}"`, () => restoreDraft(id));
+}
+function restoreDraft(id) {
+  const d = (state.trash || []).find((x) => x.id === id); if (!d) return;
+  delete d.deletedAt; state.trash = state.trash.filter((x) => x.id !== id); state.drafts.push(d); DB.put('drafts', d);
+  switchDraft(d.id); toast(`"${d.name}" is back ✓`, 2000);
+}
+function undoBar(msg, undo, ms = 10000, label = 'Undo') {
+  let b = $('#undoBar'); if (!b) { b = document.createElement('div'); b.id = 'undoBar'; document.body.appendChild(b); }
+  b.innerHTML = `<span>${esc(msg)}</span><button>${esc(label)}</button>`; b.hidden = false;
+  b.querySelector('button').onclick = () => { b.hidden = true; clearTimeout(undoBar._t); undo(); };
+  clearTimeout(undoBar._t); undoBar._t = setTimeout(() => (b.hidden = true), ms);
+}
+function trashMenu(anchor) {
+  document.getElementById('trashMenu')?.remove(); const t = state.trash || []; if (!t.length) return;
+  const ago = (ms) => { const h = Math.round((Date.now() - ms) / 36e5); return h < 1 ? 'just now' : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`; };
+  const m = document.createElement('div'); m.id = 'trashMenu';
+  m.innerHTML = `<b>Deleted drafts</b><small>Kept for 7 days</small>` + t.map((d) => `<div class="tr-row"><span>${esc(d.name)} <small>· ${(d.room?.layers || []).length} pieces · ${ago(d.deletedAt)}</small></span><button data-restore="${d.id}">Restore</button></div>`).join('');
+  const r = anchor.getBoundingClientRect(); m.style.top = `${r.bottom + window.scrollY + 6}px`; m.style.left = `${r.left + window.scrollX}px`;
+  document.body.appendChild(m);
+  m.onclick = (e) => { const x = e.target.closest('[data-restore]'); if (x) { m.remove(); restoreDraft(x.dataset.restore); } };
+  setTimeout(() => document.addEventListener('click', function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', off); } }), 0);
+}
+function renameDraft(id) {
+  const d = state.drafts.find((x) => x.id === id); if (!d) return;
+  const name = prompt('Name this draft', d.name); if (!name || !name.trim()) return;
+  d.name = name.trim().slice(0, 30); DB.put('drafts', d); renderDrafts();
+}
+function renderDrafts() {
+  const el = $('#draftsBar'); if (!el || !state.drafts) return;
+  const many = state.drafts.length > 1;
+  el.innerHTML = state.drafts.map((d) => { const busy = state.busyRooms.has(d.room) || (d.id === state.draftId && state.busyRooms.has(state.room));
+    const n = (d.room?.layers || []).filter((l) => getItem(l.itemId)).length;
+    return `<button class="draft ${d.id === state.draftId ? 'on' : ''}" data-draft="${d.id}" title="Tap to open · double-tap to rename">${busy ? '<i class="draft-spin"></i>' : ''}<span>${esc(d.name)}</span><small>${n}</small>${d.id === state.draftId ? `<em data-draftname="${d.id}" title="Rename">✎</em>` : ''}${many ? `<b data-draftdel="${d.id}" title="Delete this draft">✕</b>` : ''}</button>`; }).join('')
+    + '<button class="draft-new" data-draftnew>+ New draft</button>' + ((state.trash || []).length ? `<button class="draft-trash" data-drafttrash>Deleted (${state.trash.length})</button>` : '') + '<span class="draft-saved" id="draftSaved">All changes saved ✓</span>';
+}
+function syncBusy() {
+  const b = $('#tryonBtn'); if (!b) return; const busy = state.busyRooms.has(state.room);
+  b.disabled = false; b.classList.toggle('stoppable', busy); $('#room')?.classList.toggle('busy', busy);
+  b.textContent = busy ? (state.room._stopNow ? `■ Stop · ${((state.room._prog || '').match(/\d+\/\d+/) || [(state.room._prog || 'Dressing you').replace('…', '')])[0]}` : (state.room._prog || 'Dressing you…')) : (currentTryon() ? 'Try it on again (AI)' : 'Try it on (AI)');
+  renderDrafts();
+}
+function wireDrafts() {
+  const el = $('#draftsBar'); if (!el || el._w) return; el._w = 1;
+  el.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-draftdel]'); if (del) { e.stopPropagation(); return deleteDraft(del.dataset.draftdel); }
+    const nm = e.target.closest('[data-draftname]'); if (nm) { e.stopPropagation(); return renameDraft(nm.dataset.draftname); }
+    if (e.target.closest('[data-draftnew]')) return newDraft();
+    const tr = e.target.closest('[data-drafttrash]'); if (tr) { e.stopPropagation(); return trashMenu(tr); }
+    const b = e.target.closest('[data-draft]'); if (b && b.dataset.draft !== state.draftId) switchDraft(b.dataset.draft);
+  });
+  el.addEventListener('dblclick', (e) => { const b = e.target.closest('[data-draft]'); if (b) renameDraft(b.dataset.draft); });
+}
+/* ---------- who's dressing? (asked every time the wardrobe opens) ---------- */
 /* ---------- who's dressing? (asked once, then remembered) ---------- */
 function signIn(id) {
   store_choice(id); // remember the actual choice, "both" included
@@ -2383,7 +2704,8 @@ function signIn(id) {
   state.view = both ? 'planned' : store.get('vw.view', 'closet');
   state.selected = new Set(store.get('vw.selected', []));
   state.room = store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null };
-  state.tryon = store.get('vw.tryon', null); state.tryonHist = {}; state.poseOwner = ME;
+  state.tryon = store.get('vw.tryon', null); state.tryonHist = {}; state.poseOwner = ME; state.drafts = null;
+  loadDrafts().then(() => { if (state.view === 'room') renderRoom(); });
   state.whose = both ? 'together' : ME; // on your own things unless you asked for both
   if (both) { state.togMode = 'shoot'; store.set('vw.togMode', 'shoot'); state.stops = null; }
   state.selected = new Set([...state.selected].filter(getItem));
@@ -2410,15 +2732,17 @@ function openSignin() {
   $('#signinModal').hidden = false;
 }
 (async function init() {
-  bind();
+  bind(); wireDrafts();
   $('#bootModal').hidden = false;
   await loadAll();
   await Promise.all([syncImports().catch((e) => console.warn(e)), refreshFold(true)]);
   state.items = (await DB.all('items')).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  await migrateCatsV2();
   $('#bootModal').hidden = true;
   await loadShared();
   receiveCartSync(); receiveSync();
   window.addEventListener('hashchange', () => { receiveCartSync(); receiveSync(); });
   const resume = lastChoice();
   if (resume) signIn(resume); else openSignin();
+  checkStock(true);
 })();
