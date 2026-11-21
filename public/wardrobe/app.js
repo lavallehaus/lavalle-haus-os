@@ -36,6 +36,9 @@ const AI_CUTOUT_URL = 'https://esm.sh/@imgly/background-removal@1.4.5';
 const SILHOUETTE = `<svg class="pose silhouette" viewBox="0 0 300 500" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg"><g fill="#ebe6df"><circle cx="150" cy="50" r="29"/><rect x="140" y="74" width="20" height="24" rx="8"/><path d="M100 106 Q150 90 200 106 L212 190 Q204 226 195 250 L203 300 L97 300 L105 250 Q96 226 88 190 Z"/><path d="M88 110 Q73 118 69 148 L59 250 Q57 263 65 265 Q73 265 75 252 L93 160 Z"/><path d="M212 110 Q227 118 231 148 L241 250 Q243 263 235 265 Q227 265 225 252 L207 160 Z"/><path d="M98 296 L147 296 L141 482 Q139 494 128 494 Q118 494 118 482 Z"/><path d="M153 296 L202 296 L182 482 Q180 494 171 494 Q160 494 159 482 Z"/></g></svg>`;
 
 /* ---------------- tiny helpers ---------------- */
+// Embedded in the OS app: /api/data is locked, and the house sign-in token sits
+// in this origin's localStorage, so every call to it carries that token.
+const api = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.headers || {}), 'x-app-token': (() => { try { return localStorage.getItem('lh_token') || ''; } catch { return ''; } })() } });
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-5);
@@ -258,6 +261,7 @@ const state = {
   items: [], outfits: [], poses: [],
   view: store.get('vw.view', 'closet'),
   cat: 'all', status: 'all', planFilter: 'all', whose: 'kiaredza', source: 'tiktok',
+  togMode: store.get('vw.togMode', 'side'), stops: null, pins: store.get('vw.shootPins', {}),
   selected: new Set(store.get('vw.selected', [])),
   room: store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null },
   queue: [], queueTotal: 0,
@@ -1380,8 +1384,90 @@ function lookCard(o) {
     </div>
   </article>`;
 }
+/* ------------- Together: the two of you side by side, and the shoot day -------------
+Her ask (Nov 20 2026): each sister works in her own closet, and Together puts the
+two of them next to each other — for a shoot, outfit beside outfit under the stop's
+own location photo. The stops come from the LS Photoshoots board, where both
+sisters' run-of-day columns already name the same stops ("2 · 1:50 · CAMINO REAL"),
+so the number pairs them. The location photos are the real covers off that board,
+not stand-ins. */
+const SIS_COL = { kiabeth: 'k1', kiaredza: 'k2' };
+function miniLook(o) {
+  const pieces = o.itemIds.map(getItem).filter(Boolean);
+  const toBuy = pieces.filter((it) => !isPurchased(it));
+  return `<article class="mini-look" data-mini="${o.id}">
+    <div class="mini-stage"><div class="mini-platform"></div><div class="figure">${figureHTML(o.poseId, o.layers, false, o.tryon)}</div></div>
+    <div class="mini-info"><div class="eyebrow">${esc(planLabel(o))}</div>
+      <h4>${esc(o.name || 'Untitled look')}</h4>
+      ${o.where ? `<p>${esc(o.where)}</p>` : ''}
+      <small>${pieces.length} piece${pieces.length === 1 ? '' : 's'}${toBuy.length ? ' · ' + money(sumPrice(toBuy)) + ' to buy' : ' · all owned'}</small></div>
+  </article>`;
+}
+function renderTogether() {
+  const mode = state.togMode === 'shoot' ? 'shoot' : 'side';
+  $('#planTabs').innerHTML = [['side', 'Side by side'], ['shoot', 'Shoot day']]
+    .map(([id, l]) => `<button class="chip ${mode === id ? 'on' : ''}" data-togmode="${id}">${l}</button>`).join('');
+  if (mode === 'shoot') return renderShoot();
+  const list = $('#plannedList');
+  const pair = state.outfits.filter((o) => ownerOf(o) === 'together').sort(lookOrder);
+  list.innerHTML = `<div class="tog-grid">${PEOPLE.map((p) => {
+    const os = state.outfits.filter((o) => ownerOf(o) === p.id).sort(lookOrder);
+    return `<section class="tog-col"><h2>${esc(p.name)}'s${p.id === ME ? ' <small>(you)</small>' : ''}<span>${os.length}</span></h2>
+      ${os.length ? os.map(miniLook).join('') : '<div class="tog-empty">No looks locked in yet</div>'}</section>`;
+  }).join('')}</div>${pair.length ? `<section class="plan-group"><h2 class="plan-group-title">Planned as a pair</h2><div class="looks">${pair.map(lookCard).join('')}</div></section>` : ''}`;
+  wireLookBags(list);
+}
+async function loadStops(force) {
+  if (state.stops && !force) return state.stops;
+  const r = await api('/api/data?op=wardrobe_itinerary', { cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Could not read the shoot board');
+  state.stops = j.stops || [];
+  return state.stops;
+}
+const pinKey = (n, who) => `${n}|${who}`;
+function pinnedLook(n, who) { const id = state.pins[pinKey(n, who)]; return id && state.outfits.find((o) => o.id === id); }
+function noteLines(txt) {
+  return String(txt || '').split(/\n+/).map((l) => l.trim()).filter((l) => l && /[📍⭐👗🕐]/.test(l)).slice(0, 4);
+}
+function renderShoot() {
+  const list = $('#plannedList');
+  if (!state.stops) {
+    list.innerHTML = '<div class="empty"><h3>Reading the shoot board…</h3><p>Stops, times and locations come from LS Photoshoots.</p></div>';
+    loadStops().then(renderShoot).catch((e) => {
+      list.innerHTML = `<div class="empty"><h3>Couldn't read the shoot board</h3><p>${esc(e.message)}</p><button class="primary" data-shootretry>Try again</button></div>`;
+    });
+    return;
+  }
+  if (!state.stops.length) {
+    list.innerHTML = '<div class="empty"><h3>No shoot day on the board yet</h3><p>Add numbered stops to a "run of day" column on LS Photoshoots and they show up here.</p><button class="primary" data-shootretry>Check again</button></div>';
+    return;
+  }
+  const optsFor = (who) => state.outfits.filter((o) => ownerOf(o) === who).sort(lookOrder);
+  list.innerHTML = `<div class="shoot-head"><div><small>From the board</small><b>LS Photoshoots · run of day</b></div>
+      <p>${state.stops.length} stops. Each sister's look for that stop sits beside the other's, under the location. Pin one of your own locked-in looks to a stop to plan against it.</p>
+      <button class="ghost small" data-shootretry>Refresh from the board</button></div>` +
+    state.stops.map((st) => {
+      const cell = (who) => {
+        const col = st[SIS_COL[who]]; const pin = pinnedLook(st.n, who); const os = optsFor(who);
+        return `<div class="shoot-cell"><div class="shoot-who">${esc(personName(who))}${who === ME ? ' <small>(you)</small>' : ''}</div>
+          ${col && col.cover ? `<img class="shoot-look" src="${esc(col.cover)}" alt="${esc(personName(who))} at ${esc(st.place)}" loading="lazy">`
+            : '<div class="shoot-look none">No look on the board for this stop</div>'}
+          ${col ? `<ul class="shoot-note">${noteLines(col.note).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+          <label class="shoot-pin"><span>Pin a closet look</span>
+            <select data-pin="${st.n}|${who}"><option value="">None</option>${os.map((o) => `<option value="${o.id}"${pin && pin.id === o.id ? ' selected' : ''}>${esc(o.name || planLabel(o))}</option>`).join('')}</select></label>
+          ${pin ? miniLook(pin) : ''}</div>`;
+      };
+      return `<section class="shoot-stop">
+        <header class="shoot-loc">${st.location ? `<img src="${esc(st.location)}" alt="${esc(st.place)}" loading="lazy">` : ''}
+          <div><span class="shoot-n">${st.n}</span><b>${esc(st.place)}</b>${st.time ? `<small>${esc(st.time)}</small>` : ''}</div></header>
+        <div class="shoot-pair">${cell('kiabeth')}${cell('kiaredza')}</div>
+      </section>`;
+    }).join('');
+}
 function renderPlanned() {
   renderWhose();
+  if (state.whose === 'together') return renderTogether();
   const mine = state.outfits.filter((o) => ownerOf(o) === state.whose);
   const groups = [
     ...DAYS.map((d) => ({ id: d, label: d, match: (o) => o.plan?.type === 'day' && o.plan.day === d })),
@@ -1659,11 +1745,18 @@ function bind() {
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-upload-items]')) { addItemFiles([...e.target.files]); e.target.value = ''; }
     if (e.target.id === 'poseFiles') { addPoseFiles([...e.target.files]); e.target.value = ''; }
+    if (e.target.matches('[data-pin]')) {
+      const [n, who] = e.target.dataset.pin.split('|');
+      if (e.target.value) state.pins[pinKey(n, who)] = e.target.value; else delete state.pins[pinKey(n, who)];
+      store.set('vw.shootPins', state.pins); renderShoot();
+    }
   });
   document.addEventListener('click', (e) => {
     { const si = e.target.closest('[data-signin]'); if (si) return signIn(si.dataset.signin); }
     { const sc = e.target.closest('[data-source]'); if (sc) { state.source = sc.dataset.source; state.cat = 'all'; return renderCloset(); } }
     if (e.target.closest('#meBtn')) return openSignin();
+    { const tm = e.target.closest('[data-togmode]'); if (tm) { state.togMode = tm.dataset.togmode; store.set('vw.togMode', state.togMode); return renderTogether(); } }
+    if (e.target.closest('[data-shootretry]')) { state.stops = null; renderShoot(); loadStops(true).then(renderShoot).catch(() => {}); return; }
     { const w = e.target.closest('[data-whose]'); if (w) { state.whose = w.dataset.whose; store.set('vw.whose', state.whose); state.planFilter = 'all'; return refresh(); } }
     { const po = e.target.closest('[data-poseowner]'); if (po) { state.poseOwner = po.dataset.poseowner; return renderRoom(); } }
     { const lo = e.target.closest('[data-lkowner]'); if (lo) { lockOwner = lo.dataset.lkowner; return syncLockOwner(); } }
@@ -1776,7 +1869,7 @@ async function receiveCartSync() {
 async function applyCartRows(rows) {
   toast(`Syncing ${rows.length} cart items…`, 60000);
   try {
-    const r = await fetch('/api/data?op=wardrobe_cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) });
+    const r = await api('/api/data?op=wardrobe_cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) });
     const out = await r.json(); if (!r.ok) throw new Error(out.error || 'sync failed');
     await syncImports(); state.items = await DB.all('items'); refresh();
     const bits = [out.added.length ? `Added ${out.added.length} new` : 'Nothing new to add', 'prices updated'];
@@ -1800,7 +1893,7 @@ function foldCategory(p) {
 }
 const foldImg = (u, w = 1200) => u + (u.includes('?') ? '&' : '?') + 'width=' + w;
 async function syncFold() {
-  const r = await fetch('/api/data?op=wardrobe_fold', { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.products) throw new Error(j.error || 'The Fold site didn\'t answer');
+  const r = await api('/api/data?op=wardrobe_fold', { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.products) throw new Error(j.error || 'The Fold site didn\'t answer');
   let added = 0, updated = 0; const seen = new Set();
   const pic = async (u) => downscale(await fileToDataURL(await (await fetch(foldImg(u))).blob()), 1200);
   await Promise.all(j.products.map(async (p) => {

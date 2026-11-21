@@ -574,3 +574,63 @@ button:disabled { opacity: .45; cursor: default; }
 .boot-spin { width: 34px; height: 34px; margin: 4px auto 0; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--ink); animation: vwspin .8s linear infinite; }
 @keyframes vwspin { to { transform: rotate(360deg); } }
 .sticker.fold { background: var(--ink); color: #fff; }
+
+/* ---------- Together: side by side, and the shoot day ---------- */
+.tog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.tog-col { min-width: 0; }
+.tog-col > h2 {
+  display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px;
+  font-family: var(--serif); font-size: 24px; font-weight: 500; letter-spacing: .01em;
+  padding-bottom: 8px; border-bottom: 1px solid var(--line);
+}
+.tog-col > h2 small { font-family: var(--sans); font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.tog-col > h2 span { margin-left: auto; font-family: var(--sans); font-size: 12px; color: var(--ink-3); }
+.tog-empty { padding: 28px 16px; text-align: center; color: var(--ink-3); font-size: 13px; border: 1px dashed var(--line); border-radius: var(--radius); background: var(--paper); }
+
+.mini-look { display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: start;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
+.mini-stage { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 3 / 4;
+  background: radial-gradient(ellipse at 50% 30%, #fff, #f7f5f1); }
+.mini-stage .mini-platform { position: absolute; left: 50%; bottom: 6%; width: 78%; aspect-ratio: 4.6/1; transform: translateX(-50%);
+  border-radius: 50%; background: radial-gradient(ellipse, rgba(0,0,0,.07), transparent 70%); }
+.mini-stage .figure { height: 86%; bottom: 9%; touch-action: auto; }
+.mini-info { min-width: 0; }
+.mini-info h4 { margin: 2px 0 4px; font-family: var(--serif); font-size: 18px; font-weight: 500; }
+.mini-info p { margin: 0 0 4px; font-size: 12px; color: var(--ink-2); }
+.mini-info small { font-size: 11px; color: var(--ink-3); }
+
+.shoot-head { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 18px; }
+.shoot-head small { display: block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.shoot-head b { font-family: var(--serif); font-size: 22px; font-weight: 500; }
+.shoot-head p { margin: 6px 0 10px; font-size: 13px; color: var(--ink-2); max-width: 62ch; }
+
+.shoot-stop { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+.shoot-loc { position: relative; min-height: 132px; display: flex; align-items: flex-end; }
+.shoot-loc img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shoot-loc > div { position: relative; z-index: 1; width: 100%; display: flex; align-items: baseline; gap: 12px;
+  padding: 44px 18px 14px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.62)); }
+.shoot-loc:not(:has(img)) > div { color: var(--ink); background: var(--soft); padding-top: 14px; }
+.shoot-n { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid currentColor; font-size: 12px; flex: none; }
+.shoot-loc b { font-family: var(--serif); font-size: 24px; font-weight: 500; letter-spacing: .01em; }
+.shoot-loc small { margin-left: auto; font-size: 12px; opacity: .85; }
+
+.shoot-pair { display: grid; grid-template-columns: 1fr 1fr; }
+.shoot-cell { padding: 14px 16px 16px; min-width: 0; }
+.shoot-cell + .shoot-cell { border-left: 1px solid var(--line); }
+.shoot-who { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+.shoot-who small { letter-spacing: 0; text-transform: none; }
+.shoot-look { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; background: var(--soft); display: block; }
+.shoot-look.none { display: grid; place-items: center; text-align: center; padding: 16px; font-size: 12px; color: var(--ink-3);
+  border: 1px dashed var(--line); background: var(--bg); }
+.shoot-note { list-style: none; margin: 10px 0 0; padding: 0; }
+.shoot-note li { font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.shoot-pin { display: block; margin: 12px 0 10px; }
+.shoot-pin span { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+.shoot-pin select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); font-size: 13px; }
+.shoot-cell .mini-look { grid-template-columns: 72px 1fr; }
+
+@media (max-width: 760px) {
+  .tog-grid, .shoot-pair { grid-template-columns: 1fr; }
+  .shoot-cell + .shoot-cell { border-left: 0; border-top: 1px solid var(--line); }
+}
