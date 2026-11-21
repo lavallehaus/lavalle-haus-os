@@ -417,15 +417,30 @@ function renderSynced() {
 }
 // One click on her own TikTok page. It has to run there (the shop blocks reads
 // from anywhere else), so it is a bookmark she drags over once.
-const SYNC_BM = "javascript:(function(){var R=[],S={};function M(t){var m=String(t).replace(/\\s+/g,'').match(/\\$\\s?([\\d,]+\\.?\\d{0,2})/);return m?'$'+m[1]:''}" +
+const SYNC_BM = "javascript:(function(){var ORD=/order/i.test(location.href);var R=[],SN={},SS={};" +
+  "function M(t){var m=String(t).replace(/\\s+/g,'').match(/\\$\\s?([\\d,]+\\.?\\d{0,2})/);return m?'$'+m[1]:''}" +
+  "function L(b){return b.innerText.split('\\n').map(function(s){return s.trim()}).filter(Boolean)}" +
+  // The cart prints a price on every row; the orders list prints none, only the
+  // shop, the order date and a delivery line. So each page needs its own anchor.
+  "function OK(t){return ORD?/ordered on|delivered|shipped|arriv|in transit|out for/i.test(t):t.indexOf('$')>-1}" +
+  "function D(t){var m=t.match(/Ordered on ([A-Za-z]{3,9} ?\\d{1,2})/i);return m?m[1]:''}" +
+  // The order card's first line reads "Pacsun | Ordered on Nov 4" as one line.
+  "function SH(t){return String(t||'').split('|')[0].replace(/ordered on.*/i,'').replace(/[\\s\\u00b7|]+$/,'').trim()}" +
   "Array.prototype.forEach.call(document.querySelectorAll('img'),function(g){var src=(g.currentSrc||g.src||'').split('?')[0];" +
-  "if(!/oec-general|\\/tos-/.test(src)||/static\\/image|tiktok-web-common/.test(src)||g.naturalWidth<80)return;" +
-  "var el=g,box=null;for(var i=0;i<8&&el;i++){el=el.parentElement;if(el&&el.innerText&&el.innerText.length>25&&el.innerText.indexOf('$')>-1){box=el;break}}" +
-  "if(!box)return;var txt=box.innerText.split('\\n').map(function(s){return s.trim()}).filter(Boolean);" +
-  "var nm=txt.filter(function(s){return s.length>18&&s.charAt(0)!=='$'&&!/sold$/i.test(s)}).sort(function(a,b){return b.length-a.length})[0];" +
-  "if(!nm||S[nm])return;S[nm]=1;var a=Array.prototype.map.call(box.querySelectorAll('a[href]'),function(x){return x.href}).filter(function(h){return /pdp|product|\\/view\\//.test(h)})[0]||'';" +
-  "R.push({key:src,name:nm.slice(0,160),price:M(box.innerText),link:a.split('?')[0],image:src,variant:(txt.filter(function(s){return /^Color|, ?[SMLX]+$/i.test(s)})[0]||''),status:/order/i.test(location.href)?'owned':'cart'})});" +
-  "if(!R.length){alert('Nothing to read here — open your TikTok Shop cart or your orders list first.');return}" +
+  "if(!/oec-general|\\/tos-/.test(src)||/static\\/image|tiktok-web-common|-avt-/.test(src)||g.naturalWidth<80||SS[src])return;" +
+  "var el=g,box=null;for(var i=0;i<10&&el;i++){el=el.parentElement;if(el&&el.innerText&&el.innerText.length>20&&OK(el.innerText)){box=el;break}}" +
+  "if(!box)return;var txt=L(box);var nm=(g.alt||'').trim();" +
+  "if(nm.length<12){nm=txt.filter(function(s){return s.length>18&&s.charAt(0)!=='$'&&!/sold$|ordered on|delivered|view order|arrived at|^your order|place your|in transit|out for deliv/i.test(s)}).sort(function(a,b){return b.length-a.length})[0]||''}" +
+  // An order row often carries no product title at all, so fall back to the shop
+  // and the date she bought it. She can rename it in the closet.
+  "var fb=false;if(!nm&&ORD){var d=D(box.innerText);nm=(SH(txt[0])||'TikTok order')+(d?' \\u00b7 ordered '+d:'');fb=true}" +
+  // A real product title appears once per piece, so repeats are the same thing
+  // photographed twice. A fallback name repeats across a shop's whole order, so
+  // those are told apart by their photo instead.
+  "if(!nm)return;if(fb){SS[src]=1}else{if(SN[nm])return;SN[nm]=1;SS[src]=1}" +
+  "var a=Array.prototype.map.call(box.querySelectorAll('a[href]'),function(x){return x.href}).filter(function(h){return /pdp|product|\\/view\\//.test(h)})[0]||'';" +
+  "R.push({key:src,name:nm.slice(0,160),price:M(box.innerText),link:a.split('?')[0],image:src,shop:ORD?SH(txt[0]).slice(0,60):'',ordered:D(box.innerText),variant:(txt.filter(function(s){return /^Color|, ?[SMLX]+$/i.test(s)})[0]||''),status:ORD?'owned':'cart'})});" +
+  "if(!R.length){alert('Nothing to read here \\u2014 open your TikTok Shop orders or your cart, scroll to the bottom so every row has loaded, then click this again.');return}" +
   // Safari blocks a popup opened from a bookmarklet, so fall back to this tab.
   "var u='https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R));var w=null;try{w=window.open(u,'_blank')}catch(e){};if(!w)location.href=u})()";
 function openSyncSetup() {
@@ -442,7 +457,7 @@ function openSyncSetup() {
       <li>In that same browser open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> (or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>), scroll to the bottom so every row has loaded, and click the bookmark.</li>
       <li>It brings you here. Pick your name and the pieces file themselves.</li>
     </ol>
-    <p class="muted">Orders come in as bought, cart items as in cart. Kiaredza does the same in whichever browser her TikTok is in, and hers land in her closet. Copy the bookmark to both browsers if you shop in both.</p>
+    <p class="muted">Orders come in as bought, cart items as in cart. An order row only prints the shop and the date, so those pieces arrive named that way — tap the name in your closet to call it what it is. Kiaredza does the same in whichever browser her TikTok is in, and hers land in her closet. Copy the bookmark to both browsers if you shop in both.</p>
     <div class="sync-btns"><button class="ghost small" data-close>Done</button></div>
   </div>`;
   el.hidden = false;
