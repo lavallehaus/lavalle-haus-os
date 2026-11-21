@@ -2729,6 +2729,21 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Remove synced pieces (a bad read, or something she has given away).
+  if (op === "wardrobe_pieces_del" && req.method === "POST") {
+    const authPD = await getAuthEarly(req);
+    if (!authPD) { res.status(401).json({ error: "Locked." }); return; }
+    const ids = new Set((Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(String));
+    if (!ids.size) { res.status(400).json({ error: "ids[] required" }); return; }
+    const stPD = (await kvGet("wardrobe_store")) || { items: [], transfers: [] };
+    const before = (stPD.items || []).length;
+    stPD.items = (stPD.items || []).filter((i) => !ids.has(i.id));
+    stPD.transfers = (stPD.transfers || []).filter((t) => !ids.has(t.itemId));
+    await kvSet("wardrobe_store", stPD);
+    res.json({ ok: true, removed: before - stPD.items.length });
+    return;
+  }
+
   // Hand a piece to the other sister. She is not given it — she is asked: a
   // card lands in the Virtual Wardrobe column of the TikTok Shop board, and
   // the piece only changes hands when she accepts.
