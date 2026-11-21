@@ -262,7 +262,7 @@ const state = {
   view: store.get('vw.view', 'closet'),
   cat: 'all', status: 'all', planFilter: 'all', whose: 'kiaredza', source: 'tiktok',
   togMode: store.get('vw.togMode', 'side'), stops: null, pins: store.get('vw.shootPins', {}),
-  shared: [], hand: [],
+  shared: [], hand: [], rmMode: false, rmSel: new Set(),
   selected: new Set(store.get('vw.selected', [])),
   room: store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null },
   queue: [], queueTotal: 0,
@@ -385,11 +385,30 @@ function handBanner() {
   };
   return `<section class="hand-box"><h2>Handoffs</h2>${mine.map((t) => row(t, true)).join('')}${sent.map((t) => row(t, false)).join('')}</section>`;
 }
+// The shop's own logo rides along on every order card. On this page it is
+// always the 300x300 png rendition, and before Nov 21 it was filed under the
+// shop's name — this is what those rows look like.
+function isLogoRow(it) {
+  return /resize-png:300:300/.test(it.image || '') || / \u00b7 ordered [A-Z]/.test(it.name || '');
+}
+async function removePieces() {
+  const ids = [...state.rmSel];
+  if (!ids.length) return;
+  if (!confirm(`Remove ${ids.length} piece${ids.length === 1 ? '' : 's'} from the synced closet?\n\nOnly here — nothing on TikTok changes, and a later sync can bring them back.`)) return;
+  try {
+    const r = await api('/api/data?op=wardrobe_pieces_del', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+    const o = await r.json(); if (!r.ok) throw new Error(o.error || 'could not remove');
+    state.rmSel.clear(); await loadShared(); renderCloset();
+    toast(`${o.removed} removed`, 4000);
+  } catch (e) { toast(e.message, 5000); }
+}
 function syncCard(it) {
   const mineNow = it.owner === ME;
   const pend = (state.hand || []).some((t) => t.itemId === it.id && t.state === 'pending');
-  return `<div class="piece synced">
+  const ticked = state.rmMode && state.rmSel && state.rmSel.has(it.id);
+  return `<div class="piece synced${state.rmMode ? ' rm-on' : ''}${ticked ? ' rm-picked' : ''}">
     <div class="piece-img"><img src="${esc(it.image)}" alt="" loading="lazy" draggable="false">
+      ${state.rmMode ? `<label class="rm-tick"><input type="checkbox" data-rmpick="${it.id}"${ticked ? ' checked' : ''}></label>` : ''}
       ${it.status === 'cart' ? '<span class="sticker">In cart</span>' : '<span class="sticker green">Bought</span>'}
       ${state.whose === 'together' ? `<span class="pill owner">${esc(personName(it.owner))}</span>` : ''}
     </div>
@@ -404,9 +423,15 @@ function syncCard(it) {
 function renderSynced() {
   const grid = $('#closetGrid');
   const mine = (state.shared || []).filter((i) => state.whose === 'together' || i.owner === state.whose);
+  const logos = mine.filter(isLogoRow).map((i) => i.id);
   const head = `<div class="sync-head"><div><small>Synced from TikTok Shop</small><b>${mine.length} piece${mine.length === 1 ? '' : 's'}${state.whose === 'together' ? '' : ' · ' + esc(personName(state.whose))}</b></div>
     <p>Each of you syncs her own TikTok. What you sync lands in your closet; if a piece is really hers, send it over and she takes it from her side.</p>
-    <button class="primary small" data-syncsetup>Sync my TikTok</button></div>`;
+    <div class="sync-acts">
+      <button class="primary small" data-syncsetup>Sync my TikTok</button>
+      ${mine.length ? `<button class="ghost small" data-rmmode>${state.rmMode ? 'Done' : 'Remove pieces'}</button>` : ''}
+      ${state.rmMode ? `${logos.length ? `<button class="ghost small" data-rmlogos>Tick the ${logos.length} brand logo${logos.length === 1 ? '' : 's'}</button>` : ''}
+        ${state.rmSel.size ? `<button class="ghost small" data-rmnone>Clear ticks</button><button class="primary small" data-rmgo>Remove ${state.rmSel.size}</button>` : ''}` : ''}
+    </div></div>`;
   if (!mine.length) { grid.innerHTML = handBanner() + head + `<div class="empty"><h3>Nothing synced yet</h3><p>Tap “Sync my TikTok” for the one-time setup, then one click on your TikTok cart or orders page brings everything in.</p></div>`; return; }
   const cats = CATEGORIES.filter((c) => mine.some((i) => i.category === c.id));
   grid.innerHTML = handBanner() + head + cats.map((c) => {
@@ -415,34 +440,6 @@ function renderSynced() {
       <div class="grid">${its.map(syncCard).join('')}</div></section>`;
   }).join('');
 }
-// One click on her own TikTok page. It has to run there (the shop blocks reads
-// from anywhere else), so it is a bookmark she drags over once.
-const SYNC_BM = "javascript:(function(){var ORD=/order/i.test(location.href);var R=[],SN={},SS={};" +
-  "function M(t){var m=String(t).replace(/\\s+/g,'').match(/\\$\\s?([\\d,]+\\.?\\d{0,2})/);return m?'$'+m[1]:''}" +
-  "function L(b){return b.innerText.split('\\n').map(function(s){return s.trim()}).filter(Boolean)}" +
-  // The cart prints a price on every row; the orders list prints none, only the
-  // shop, the order date and a delivery line. So each page needs its own anchor.
-  "function OK(t){return ORD?/ordered on|delivered|shipped|arriv|in transit|out for/i.test(t):t.indexOf('$')>-1}" +
-  "function D(t){var m=t.match(/Ordered on ([A-Za-z]{3,9} ?\\d{1,2})/i);return m?m[1]:''}" +
-  // The order card's first line reads "Pacsun | Ordered on Nov 4" as one line.
-  "function SH(t){return String(t||'').split('|')[0].replace(/ordered on.*/i,'').replace(/[\\s\\u00b7|]+$/,'').trim()}" +
-  "Array.prototype.forEach.call(document.querySelectorAll('img'),function(g){var src=(g.currentSrc||g.src||'').split('?')[0];" +
-  "if(!/oec-general|\\/tos-/.test(src)||/static\\/image|tiktok-web-common|-avt-/.test(src)||g.naturalWidth<80||SS[src])return;" +
-  "var el=g,box=null;for(var i=0;i<10&&el;i++){el=el.parentElement;if(el&&el.innerText&&el.innerText.length>20&&OK(el.innerText)){box=el;break}}" +
-  "if(!box)return;var txt=L(box);var nm=(g.alt||'').trim();" +
-  "if(nm.length<12){nm=txt.filter(function(s){return s.length>18&&s.charAt(0)!=='$'&&!/sold$|ordered on|delivered|view order|arrived at|^your order|place your|in transit|out for deliv/i.test(s)}).sort(function(a,b){return b.length-a.length})[0]||''}" +
-  // An order row often carries no product title at all, so fall back to the shop
-  // and the date she bought it. She can rename it in the closet.
-  "var fb=false;if(!nm&&ORD){var d=D(box.innerText);nm=(SH(txt[0])||'TikTok order')+(d?' \\u00b7 ordered '+d:'');fb=true}" +
-  // A real product title appears once per piece, so repeats are the same thing
-  // photographed twice. A fallback name repeats across a shop's whole order, so
-  // those are told apart by their photo instead.
-  "if(!nm)return;if(fb){SS[src]=1}else{if(SN[nm])return;SN[nm]=1;SS[src]=1}" +
-  "var a=Array.prototype.map.call(box.querySelectorAll('a[href]'),function(x){return x.href}).filter(function(h){return /pdp|product|\\/view\\//.test(h)})[0]||'';" +
-  "R.push({key:src,name:nm.slice(0,160),price:M(box.innerText),link:a.split('?')[0],image:src,shop:ORD?SH(txt[0]).slice(0,60):'',ordered:D(box.innerText),variant:(txt.filter(function(s){return /^Color|, ?[SMLX]+$/i.test(s)})[0]||''),status:ORD?'owned':'cart'})});" +
-  "if(!R.length){alert('Nothing to read here \\u2014 open your TikTok Shop orders or your cart, scroll to the bottom so every row has loaded, then click this again.');return}" +
-  // Safari blocks a popup opened from a bookmarklet, so fall back to this tab.
-  "var u='https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R));var w=null;try{w=window.open(u,'_blank')}catch(e){};if(!w)location.href=u})()";
 // ── Paste route ──────────────────────────────────────────────────────────────
 // Safari refuses to run a javascript: bookmark that is dropped on a page or
 // typed into the address bar, which is where hers landed ("Safari doesn't allow
@@ -484,6 +481,8 @@ function readDom(root, ord) {
   const anchorHit = (t) => (ord ? /ordered on|delivered|shipped|arriv|in transit|out for/i.test(t) : t.indexOf('$') > -1);
   const dateOf = (t) => { const m = t.match(/Ordered on ([A-Za-z]{3,9} ?\d{1,2})/i); return m ? m[1] : ''; };
   const shopOf = (t) => String(t || '').split('|')[0].replace(/ordered on.*/i, '').replace(/[\s·|]+$/, '').trim();
+  // An alt that is one long unbroken run of characters is encoded data, not a name.
+  const junk = (t) => { const v = String(t || '').trim(); return v.length > 40 && !/\s/.test(v); };
   const rows = [], seenName = {}, seenSrc = {};
   for (const g of root.querySelectorAll('img')) {
     const src = (g.currentSrc || g.src || '').split('?')[0];
@@ -493,11 +492,13 @@ function readDom(root, ord) {
     for (let i = 0; i < 10 && el; i++) { el = el.parentElement; const t = el && (el.innerText || el.textContent || ''); if (t && t.length > 20 && anchorHit(t)) { box = el; break; } }
     if (!box) continue;
     const txt = lines(box), all = box.innerText || box.textContent || '';
-    let nm = (g.alt || '').trim(), fb = false;
-    if (nm.length < 12) nm = txt.filter((x) => x.length > 18 && x[0] !== '$' && !/sold$|ordered on|delivered|view order|arrived at|^your order|place your|in transit|out for deliv/i.test(x)).sort((a, b) => b.length - a.length)[0] || '';
-    if (!nm && ord) { const d = dateOf(all); nm = (shopOf(txt[0]) || 'TikTok order') + (d ? ' · ordered ' + d : ''); fb = true; }
-    if (!nm) continue;
-    if (fb) seenSrc[src] = 1; else { if (seenName[nm]) continue; seenName[nm] = 1; seenSrc[src] = 1; }
+    let nm = junk(g.alt) ? '' : (g.alt || '').trim();
+    if (nm.length < 12) nm = txt.filter((x) => x.length > 18 && x[0] !== '$' && !junk(x) && !/sold$|ordered on|delivered|view order|arrived at|^your order|place your|in transit|out for deliv/i.test(x)).sort((a, b) => b.length - a.length)[0] || '';
+    // Every order card also carries the shop's little logo, and it has no
+    // product title anywhere near it. Having no name is what marks it as not a
+    // piece — naming it after the shop is what filled her closet with covers.
+    if (!nm || seenName[nm]) continue;
+    seenName[nm] = 1; seenSrc[src] = 1;
     rows.push({ key: src, name: nm.slice(0, 160), price: money(all), link: '', image: src, shop: ord ? shopOf(txt[0]).slice(0, 60) : '',
       ordered: dateOf(all), variant: txt.filter((x) => /^Color|, ?[SMLX]+$/i.test(x))[0] || '', status: ord ? 'owned' : 'cart' });
   }
@@ -543,7 +544,7 @@ function openSyncSetup() {
   el.innerHTML = `<div class="sync-card">
     <h3>Sync your own TikTok</h3>
     <p>Everything it reads is filed to <b>${esc(personName(ME))}</b>. Do it in the browser your TikTok is signed in to — your orders only show where that session lives, which for Kiabeth is Safari.</p>
-    <h4>Paste the page <small>works everywhere, nothing to install</small></h4>
+    <h4>Paste the page</h4>
     <ol>
       <li>Open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> (or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>) and scroll to the bottom so every row has loaded.</li>
       <li>Press <b>⌘A</b> then <b>⌘C</b> on that page.</li>
@@ -551,13 +552,7 @@ function openSyncSetup() {
     </ol>
     <div class="paste-box" data-pastebox contenteditable="true" spellcheck="false">Click here, then press ⌘V</div>
     <div class="paste-out" data-pasteout></div>
-    <h4>Or one click, every time <small>a bookmark on the bar</small></h4>
-    <ol>
-      <li>Show the bookmarks bar. <b>Safari:</b> View → Show Favorites Bar. <b>Chrome:</b> ⌘⇧B.</li>
-      <li>Drag this onto <b>the bar itself</b> — dropped on a page or in the address bar Safari refuses to run it: <a class="bm" href="${esc(SYNC_BM)}" onclick="return false">🛍 Sync Wardrobe</a></li>
-      <li>On your TikTok page, <b>click the bookmark on the bar</b>. It brings you here and the pieces file themselves.</li>
-    </ol>
-    <p class="muted">Orders come in as bought, cart items as in cart. An order row only prints the shop and the date, so those pieces arrive named that way — tap the name in your closet to call it what it is. Kiaredza does the same in whichever browser her TikTok is in, and hers land in her closet. Copy the bookmark to both browsers if you shop in both.</p>
+    <p class="muted">Orders come in as bought, cart items as in cart. Kiaredza does the same in whichever browser her TikTok is signed in to, and hers land in her closet.</p>
     <div class="sync-btns"><button class="ghost small" data-close>Done</button></div>
   </div>`;
   const pb = el.querySelector('[data-pastebox]');
@@ -2038,6 +2033,12 @@ function bind() {
   document.addEventListener('click', (e) => {
     { const si = e.target.closest('[data-signin]'); if (si) return signIn(si.dataset.signin); }
     { const sc = e.target.closest('[data-source]'); if (sc) { state.source = sc.dataset.source; state.cat = 'all'; return renderCloset(); } }
+    { const pk = e.target.closest('[data-rmpick]'); if (pk) { const id = pk.dataset.rmpick;
+      if (state.rmSel.has(id)) state.rmSel.delete(id); else state.rmSel.add(id); return renderCloset(); } }
+    if (e.target.closest('[data-rmmode]')) { state.rmMode = !state.rmMode; if (!state.rmMode) state.rmSel.clear(); return renderCloset(); }
+    if (e.target.closest('[data-rmlogos]')) { (state.shared || []).filter((i) => i.owner === ME && isLogoRow(i)).forEach((i) => state.rmSel.add(i.id)); return renderCloset(); }
+    if (e.target.closest('[data-rmnone]')) { state.rmSel.clear(); return renderCloset(); }
+    if (e.target.closest('[data-rmgo]')) return removePieces();
     if (e.target.closest('[data-syncsetup]')) return openSyncSetup();
     if (e.target.closest('[data-pastefile]')) { const rs = state.pasteRows || []; state.pasteRows = null; const sv = $('#syncSetup'); if (sv) sv.hidden = true; return applySync(rs); }
     { const sd = e.target.closest('[data-send]'); if (sd) return sendPiece(sd.dataset.send); }
