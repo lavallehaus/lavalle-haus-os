@@ -1209,6 +1209,19 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
   // its own photo, so two cycles inside one month don't look like one board.
   // `bgTabs` is {label: url}; the board-level `bg` stays the fallback.
   const bgNow = board ? (((board.bgTabs || {})[activeMonth]) || board.bg || null) : null;
+  // How far the posting is planned, not a card count (her ask Oct 5 2026).
+  // Lives up here now because the sticky board bar shows it.
+  const boardSpan = React.useMemo(() => {
+    if (!board) return "";
+    const MO_H = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+    const ds = (board.cards || []).filter((cd) => !cd._deleted)
+      .map((cd) => /^Post\s*\d+\s+(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(cd.name || ""))
+      .filter(Boolean)
+      .map((m) => { const mo = MO_H[m[1].toLowerCase()]; return mo == null ? null : { t: (mo >= 6 ? mo : mo + 12) * 40 + Number(m[2]), lb: m[1].slice(0, 3) + " " + Number(m[2]) }; })
+      .filter(Boolean).sort((a, b) => a.t - b.t);
+    if (ds.length > 1) return "planned " + ds[0].lb + " \u2013 " + ds[ds.length - 1].lb;
+    return (board.cards || []).length + " cards";
+  }, [board]);
   // A card that NAMES a tab belongs to that tab only (her ask Nov 20 2026: two
   // strategy cards showed on one tab because both resolve to "November"). Match
   // the longest label first so "Nov PT II" wins over "Nov PT I", which is a
@@ -1517,19 +1530,31 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
           ))}
         </div>
       ) : (
+        <>
+        {/* BOARD BAR — the way back, always on screen.
+            A board is taller than the window, so a header that scrolls away
+            leaves you stranded: the only fixed thing left up top was the main
+            tab row, which has no "all boards" in it (her ask Nov 21 2026 —
+            "think like a website with main nav bar"). This pins under the main
+            nav instead, and carries a switcher so you can cross to another
+            board without going home first.
+            It MUST stay a sibling of the board box, never a child: that box is
+            overflow-x hidden, which makes it a scroll container, and sticky
+            inside it would pin to the box and silently never reach the
+            viewport. Verified pinned at top: 42 against the live app. */}
+        <div style={{ position: "sticky", top: 42, zIndex: 35, margin: "0 -24px", padding: "8px 24px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", rowGap: 6, background: "rgba(250,249,247,0.96)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", borderBottom: `1px solid ${c.line}`, borderTop: `1px solid ${c.line}` }}>
+          <button onClick={() => setOpen(null)} title="Back to every board"
+            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0, flexShrink: 0 }}>← All boards</button>
+          <span style={{ width: 1, height: 15, background: c.line, flexShrink: 0 }} />
+          <div style={{ fontFamily: sans, fontSize: 15, fontWeight: 300, color: c.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{board.name}</div>
+          <div style={{ fontFamily: sans, fontSize: 10, color: c.sub, flexShrink: 0 }}>{boardSpan}</div>
+          <select value={open} onChange={(e) => openBoard(e.target.value)} title="Jump to another board"
+            style={{ marginLeft: "auto", flexShrink: 0, maxWidth: 210, background: "#FFFFFF", border: `1px solid ${c.line}`, borderRadius: 1, fontFamily: sans, fontSize: 9.5, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, padding: "5px 8px", cursor: "pointer" }}>
+            {Object.keys(boards).filter((k) => !k.startsWith("_") && boards[k] && boards[k].lists && canSee(boards[k])).map((k) => <option key={k} value={k} style={{ color: "#1A1A1A", textTransform: "none" }}>{boards[k].name}</option>)}
+          </select>
+        </div>
         <div style={{ padding: 12, margin: "0 -24px", minHeight: "calc(100vh - 235px)", boxSizing: "border-box", overflowX: "hidden", ...boardBgStyle(bgNow) }}>
           <div style={{ position: "relative", zIndex: 30, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", background: bgNow ? "rgba(255,255,255,0.85)" : "transparent", backdropFilter: bgNow ? "blur(6px)" : "none", WebkitBackdropFilter: bgNow ? "blur(6px)" : "none", borderRadius: 8, padding: bgNow ? "8px 12px" : "0 0 2px" }}>
-            <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: sans, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: c.taupe, padding: 0 }}>← All boards</button>
-            <div style={{ fontFamily: sans, fontSize: 20, fontWeight: 300, color: c.ink }}>{board.name}</div>
-            <div style={{ fontFamily: sans, fontSize: 10, color: c.sub }}>{(() => {
-              // her ask Oct 5 2026: show how far the posting is planned, not a card count
-              const MO_H = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
-              const ds = (board.cards || []).filter((cd) => !cd._deleted).map((cd) => /^Post\s*\d+\s+(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+([A-Za-z]+)\s+(\d+)/i.exec(cd.name || "")).filter(Boolean)
-                .map((m) => { const mo = MO_H[m[1].toLowerCase()]; return mo == null ? null : { t: (mo >= 6 ? mo : mo + 12) * 40 + Number(m[2]), lb: m[1].slice(0, 3) + " " + Number(m[2]) }; })
-                .filter(Boolean).sort((a, b) => a.t - b.t);
-              if (ds.length > 1) return "planned " + ds[0].lb + " – " + ds[ds.length - 1].lb;
-              return board.cards.length + " cards";
-            })()}</div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", position: "relative", flexWrap: "wrap", justifyContent: "flex-end", rowGap: 6, minWidth: 0 }}>
               {(() => {
                 const members = board.access && board.access.length ? team.filter((t) => board.access.includes(t.name)) : team;
@@ -2279,6 +2304,7 @@ export default function Boards({ data, onSave, team = [], viewer = { name: "", e
             </div>
           )}
         </div>
+        </>
       )}
 
       {editing && (
