@@ -7,6 +7,8 @@
 /* ---------------- config ---------------- */
 const CATEGORIES = [
   { id: 'tops', label: 'Tops' },
+  { id: 'sweaters', label: 'Sweaters' },
+  { id: 'cardigans', label: 'Cardigans' },
   { id: 'bottoms', label: 'Pants & Jeans' },
   { id: 'skirts', label: 'Skirts' },
   { id: 'shorts', label: 'Shorts' },
@@ -21,6 +23,9 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 // Where a piece lands on the body when first tried on (center x/y and width, all % of the figure box)
 const PLACEMENT = {
   tops: { x: 50, y: 33, w: 56, z: 4 },
+  sweaters: { x: 50, y: 34, w: 58, z: 4 },
+  cardigans: { x: 50, y: 36, w: 66, z: 5 }, // over a top, under a coat
+
   bottoms: { x: 50, y: 67, w: 50, z: 2 },
   shorts: { x: 50, y: 56, w: 46, z: 2 },
   skirts: { x: 50, y: 60, w: 54, z: 2 },
@@ -356,6 +361,8 @@ function guessCat(n) {
   if (/skirt/i.test(t)) return 'skirts';
   if (/short\b|shorts/i.test(t)) return 'shorts';
   if (/pant|jean|trouser|legging|bottom/i.test(t)) return 'bottoms';
+  if (/cardigan/i.test(t)) return 'cardigans';
+  if (/sweater|knit|jumper|pullover/i.test(t)) return 'sweaters';
   if (/jacket|coat|blazer|trench|puffer|outer/i.test(t)) return 'outerwear';
   if (/\bset\b|two-piece|2 piece|matching/i.test(t)) return 'sets';
   if (/shoe|boot|heel|sandal|sneaker|loafer|flat\b/i.test(t)) return 'shoes';
@@ -2024,12 +2031,47 @@ async function exportBackup() {
   a.download = `wardrobe-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+// Restoring used to be a blind put-by-id, which is fine for your own backup and
+// wrong for the other sister's: the same TikTok product exists in both closets
+// under different local ids, so her 198 pieces would have landed on top of the
+// 166 already here as duplicates. We now match on importKey, keep the copy that
+// is already here, and rewrite her outfits to point at it — otherwise the
+// outfits reference ids that no longer exist and open empty.
 async function importBackup(file) {
   try {
     const data = JSON.parse(await file.text());
-    let n = 0;
-    for (const s of ['items', 'outfits', 'poses']) for (const v of data[s] || []) { if (!v.id) continue; await DB.put(s, v); n++; }
-    await loadAll(); refresh(); toast(`Restored ${n} things`);
+    const keyOf = (x) => x.importKey || x.productId || '';
+    const haveItem = {}, havePose = {};
+    for (const it of await DB.all('items')) { const k = keyOf(it); if (k) haveItem[k] = it.id; }
+    for (const po of await DB.all('poses')) { if (po.importKey) havePose[po.importKey] = po.id; }
+
+    const idMap = {}; // her id -> the id this closet already uses
+    let added = 0, merged = 0;
+    for (const v of data.items || []) {
+      if (!v.id) continue;
+      const k = keyOf(v), mine = k && haveItem[k];
+      if (mine) { if (mine !== v.id) idMap[v.id] = mine; merged++; continue; }
+      await DB.put('items', v); if (k) haveItem[k] = v.id; added++;
+    }
+    let poses = 0;
+    for (const v of data.poses || []) {
+      if (!v.id) continue;
+      const mine = v.importKey && havePose[v.importKey];
+      if (mine) { if (mine !== v.id) idMap[v.id] = mine; continue; }
+      await DB.put('poses', v); if (v.importKey) havePose[v.importKey] = v.id; poses++;
+    }
+    const map = (id) => (id && idMap[id]) || id;
+    let outfits = 0;
+    for (const v of data.outfits || []) {
+      if (!v.id) continue;
+      const o = { ...v };
+      if (o.itemIds) o.itemIds = o.itemIds.map(map);
+      if (o.layers) o.layers = o.layers.map((l) => ({ ...l, itemId: map(l.itemId) }));
+      if (o.poseId) o.poseId = map(o.poseId);
+      await DB.put('outfits', o); outfits++;
+    }
+    await loadAll(); refresh();
+    toast(`Restored ${outfits} outfit${outfits === 1 ? '' : 's'} · ${added} new piece${added === 1 ? '' : 's'} · ${poses} photo${poses === 1 ? '' : 's'}${merged ? ` · ${merged} already here` : ''}`, 8000);
   } catch (e) { console.error(e); toast('That file could not be read'); }
 }
 
