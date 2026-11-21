@@ -638,3 +638,9 @@ button:disabled { opacity: .45; cursor: default; }
 .shoot-strip figure { margin: 0; flex: none; width: 92px; }
 .shoot-strip img { width: 92px; height: 115px; object-fit: cover; border-radius: 8px; display: block; background: var(--soft); }
 .shoot-strip figcaption { font-size: 9.5px; line-height: 1.3; color: var(--ink-3); margin-top: 4px; }
+.signin-btn.both { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 14px; padding: 16px 12px; background: var(--soft); }
+.signin-btn.both b { font-size: 22px; }
+.signin-btn.both small { letter-spacing: .08em; text-transform: none; font-size: 11.5px; }
+.me-dot.big.pair { position: relative; }
+.me-dot.big.pair i { position: absolute; right: -11px; bottom: -2px; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font-style: normal; font-size: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--ink); }

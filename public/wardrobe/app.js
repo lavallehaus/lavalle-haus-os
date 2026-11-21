@@ -2011,20 +2011,30 @@ async function syncImports() {
 
 /* ---------- who's dressing? (asked every time the wardrobe opens) ---------- */
 function signIn(id) {
+  // "Both" is a third way in (her ask Nov 20 2026): it opens straight on the
+  // shoot day, the two of you side by side against the run of day on the LS
+  // Photoshoots board, and pulls that board fresh. You are still signed in as
+  // yourself underneath, so anything you edit is still yours.
+  const both = id === 'both';
+  if (both) { let l = 'kiabeth'; try { l = localStorage.getItem('vw.lastPerson') || l; } catch {} id = l; }
   ME = id; store_last(id);
-  state.view = store.get('vw.view', 'closet'); state.selected = new Set(store.get('vw.selected', []));
+  state.view = both ? 'planned' : store.get('vw.view', 'closet');
+  state.selected = new Set(store.get('vw.selected', []));
   state.room = store.get('vw.room', null) || { poseId: null, layers: [], active: null, editingId: null };
   state.tryon = store.get('vw.tryon', null); state.tryonHist = {}; state.poseOwner = ME;
-  state.whose = ME; // always start on your own things
+  state.whose = both ? 'together' : ME; // on your own things unless you asked for both
+  if (both) { state.togMode = 'shoot'; store.set('vw.togMode', 'shoot'); state.stops = null; }
   state.selected = new Set([...state.selected].filter(getItem));
   $('#meBtn').innerHTML = `<span class="me-dot">${personName(ME)[0]}</span>${personName(ME)} · Admin`;
   $('#signinModal').hidden = true;
   go(['closet', 'room', 'planned'].includes(state.view) ? state.view : 'closet');
+  if (both) loadStops(true).then(renderShoot).catch(() => {});
 }
 function store_last(id) { try { localStorage.setItem('vw.lastPerson', id); } catch {} }
 function openSignin() {
   let last = 'kiaredza'; try { last = localStorage.getItem('vw.lastPerson') || last; } catch {}
-  $('#signinPeople').innerHTML = PEOPLE.map((p) => `<button class="signin-btn ${p.id === last ? 'last' : ''}" data-signin="${p.id}"><span class="me-dot big">${p.name[0]}</span><b>${p.name}</b><small>Admin</small></button>`).join('');
+  $('#signinPeople').innerHTML = PEOPLE.map((p) => `<button class="signin-btn ${p.id === last ? 'last' : ''}" data-signin="${p.id}"><span class="me-dot big">${p.name[0]}</span><b>${p.name}</b><small>Admin</small></button>`).join('')
+    + `<button class="signin-btn both" data-signin="both"><span class="me-dot big pair">K<i>K</i></span><b>Both</b><small>Shoot day · synced to LS Photoshoots</small></button>`;
   $('#signinModal').hidden = false;
 }
 (async function init() {
