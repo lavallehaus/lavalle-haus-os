@@ -2405,7 +2405,8 @@ async function pushCloset(opts = {}) {
   const budget = opts.all ? 400 : 90;
   try {
     const body = { by: ME, items: [], outfits: [], poses: [] };
-    for (const t of share.tombs.splice(0)) body[t.kind].push({ k: t.k, deleted: true });
+    const tombs = share.tombs.splice(0); // put back if this push fails, or the delete never crosses
+    for (const t of tombs) body[t.kind].push({ k: t.k, deleted: true });
     const stamp = [];
     let n = 0, left = 0;
     const t0 = Date.now();
@@ -2423,11 +2424,11 @@ async function pushCloset(opts = {}) {
       }
     }
     const total = body.items.length + body.outfits.length + body.poses.length;
-    if (!total) { paintShare(); return { n: 0 }; }
+    if (!total) { paintShare(); return { n: 0, rev: share.rev }; }
     paintShare('Sharing ' + total + '…');
     const r = await api('/api/data?op=wardrobe_closet_put', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const o = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(o.error || 'could not share');
+    if (!r.ok) { share.tombs.unshift(...tombs); throw new Error(o.error || 'could not share'); }
     for (const [kind, rec, sig] of stamp) { rec._sig = sig; await rawPut(kind, rec); }
     share.rev = o.rev || share.rev; share.at = Date.now(); store.set('vw.shareAt', share.at);
     paintShare();
