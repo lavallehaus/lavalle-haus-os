@@ -372,6 +372,13 @@ async function loadShared() {
 const myHandoffs = () => (state.hand || []).filter((t) => t.state === 'pending' && t.to === ME);
 const sentHandoffs = () => (state.hand || []).filter((t) => t.state === 'pending' && t.from === ME);
 const sharedOf = (id) => (state.shared || []).find((x) => x.id === id);
+// Once you've sent a piece it leaves your closet immediately and waits in
+// Handoffs ("why is that garment still showing in my closet? it should go
+// away" — Nov 21 2026). Nothing is lost: if she passes it back the handoff
+// closes and the piece reappears here.
+const sentIds = () => new Set(sentHandoffs().map((t) => t.itemId));
+const closetOf = (whose) => { const gone = sentIds();
+  return (state.shared || []).filter((i) => (whose === 'together' || i.owner === whose) && !gone.has(i.id)); };
 function handBanner() {
   const mine = myHandoffs(), sent = sentHandoffs();
   if (!mine.length && !sent.length) return '';
@@ -379,7 +386,7 @@ function handBanner() {
     const it = sharedOf(t.itemId) || {};
     return `<div class="hand-row">
       ${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy">` : '<span class="hand-no"></span>'}
-      <div><b>${esc(it.name || 'A piece')}</b><small>${incoming ? `${esc(personName(t.from))} thinks this one is yours` : `Waiting on ${esc(personName(t.to))}`}${it.price ? ' · ' + esc(it.price) : ''}</small></div>
+      <div><b>${esc(it.name || 'A piece')}</b><small>${incoming ? `${esc(personName(t.from))} thinks this one is yours` : `Out of your closet · waiting on ${esc(personName(t.to))}`}${it.price ? ' · ' + esc(it.price) : ''}</small></div>
       ${incoming ? `<div class="hand-act"><button class="primary small" data-hand="${t.id}" data-do="accept">Take it</button><button class="ghost small" data-hand="${t.id}" data-do="decline">Not mine</button></div>` : ''}
     </div>`;
   };
@@ -422,7 +429,7 @@ function syncCard(it) {
 }
 function renderSynced() {
   const grid = $('#closetGrid');
-  const mine = (state.shared || []).filter((i) => state.whose === 'together' || i.owner === state.whose);
+  const mine = closetOf(state.whose);
   const logos = mine.filter(isLogoRow).map((i) => i.id);
   const head = `<div class="sync-head"><div><small>Synced from TikTok Shop</small><b>${mine.length} piece${mine.length === 1 ? '' : 's'}${state.whose === 'together' ? '' : ' · ' + esc(personName(state.whose))}</b></div>
     <p>Each of you syncs her own TikTok. What you sync lands in your closet; if a piece is really hers, send it over and she takes it from her side.</p>
@@ -595,7 +602,7 @@ function heldSync() { try { const v = JSON.parse(localStorage.getItem(HELD) || '
 async function sendPiece(id) {
   const it = sharedOf(id); if (!it) return;
   const to = OTHER(ME);
-  if (!confirm(`Send “${it.name || 'this piece'}” to ${personName(to)}?\n\nIt stays in your closet until she takes it.`)) return;
+  if (!confirm(`Send “${it.name || 'this piece'}” to ${personName(to)}?\n\nIt leaves your closet now and waits under Handoffs. If she passes it back it returns to you.`)) return;
   try {
     const r = await api('/api/data?op=wardrobe_handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId: id, to }) });
     const o = await r.json(); if (!r.ok) throw new Error(o.error || 'could not send');
@@ -620,7 +627,7 @@ function renderCloset() {
   const counts = { all: items.length };
   CATEGORIES.forEach((c) => (counts[c.id] = items.filter((i) => i.category === c.id).length));
   const srcBtn = (id, label, n) => `<button class="chip src-chip ${state.source === id && state.cat === 'all' ? 'on' : ''} ${state.source === id ? 'src-on' : ''}" data-source="${id}">${label}<span>${n}</span></button>`;
-  const syncN = (state.shared || []).filter((i) => state.whose === 'together' || i.owner === state.whose).length;
+  const syncN = closetOf(state.whose).length;
   $('#catTabs').innerHTML = srcBtn('tiktok', 'TikTok Shop · All', all.length - foldN) + srcBtn('fold', 'The Fold · All', foldN)
     + srcBtn('synced', 'Synced · ' + (state.whose === 'together' ? 'Both' : 'Mine'), syncN)
     + (myHandoffs().length ? `<button class="chip hand-chip ${state.source === 'synced' ? 'on' : ''}" data-source="synced">Handoffs<span>${myHandoffs().length}</span></button>` : '')

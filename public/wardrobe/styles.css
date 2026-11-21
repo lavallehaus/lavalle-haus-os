@@ -33,6 +33,13 @@ body { margin: 0; background: #fbfaf8; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
+.to-os {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 5px; border: 1px solid var(--line); border-radius: 2px;
+  font-size: 9px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink-2); text-decoration: none; background: var(--paper); white-space: nowrap;
+}
+.to-os:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark {
   width: 36px; height: 36px; border-radius: 50%;
@@ -369,6 +376,8 @@ button:disabled { opacity: .45; cursor: default; }
   .vw-nav button { flex: 1; padding: 8px 6px; font-size: 12px; }
   .header-actions { margin-left: auto; }
   .brand-sub { display: none; }
+  .to-os span { display: none; }
+  .to-os { padding: 6px 9px 5px; }
   .view { padding: 18px 16px 110px; }
   .view-head { flex-direction: column; align-items: flex-start; }
   .view-head h1 { font-size: 36px; }
