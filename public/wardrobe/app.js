@@ -426,7 +426,8 @@ const SYNC_BM = "javascript:(function(){var R=[],S={};function M(t){var m=String
   "if(!nm||S[nm])return;S[nm]=1;var a=Array.prototype.map.call(box.querySelectorAll('a[href]'),function(x){return x.href}).filter(function(h){return /pdp|product|\\/view\\//.test(h)})[0]||'';" +
   "R.push({key:src,name:nm.slice(0,160),price:M(box.innerText),link:a.split('?')[0],image:src,variant:(txt.filter(function(s){return /^Color|, ?[SMLX]+$/i.test(s)})[0]||''),status:/order/i.test(location.href)?'owned':'cart'})});" +
   "if(!R.length){alert('Nothing to read here — open your TikTok Shop cart or your orders list first.');return}" +
-  "window.open('https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R)),'_blank')})()";
+  // Safari blocks a popup opened from a bookmarklet, so fall back to this tab.
+  "var u='https://lavalle-haus-os.vercel.app/wardrobe/#sync='+encodeURIComponent(JSON.stringify(R));var w=null;try{w=window.open(u,'_blank')}catch(e){};if(!w)location.href=u})()";
 function openSyncSetup() {
   let el = $('#syncSetup');
   if (!el) { el = document.createElement('div'); el.id = 'syncSetup'; el.className = 'zoom-view sync-help';
@@ -434,13 +435,14 @@ function openSyncSetup() {
     el.onclick = (e) => { if (e.target === el || e.target.closest('[data-close]')) el.hidden = true; }; }
   el.innerHTML = `<div class="sync-card">
     <h3>Sync your own TikTok</h3>
-    <p>It reads the page you are on, in your own signed-in browser, and files everything to <b>${esc(personName(ME))}</b>.</p>
+    <p>It reads the page you are on and files everything to <b>${esc(personName(ME))}</b>. Set it up <b>in the browser your TikTok is signed in to</b> — your orders only show where that session lives, which for Kiabeth is Safari.</p>
     <ol>
-      <li>Show your bookmarks bar once (⌘⇧B).</li>
+      <li>Show the bookmarks bar there once. <b>Safari:</b> View → Show Favorites Bar. <b>Chrome:</b> ⌘⇧B.</li>
       <li>Drag this up onto it: <a class="bm" href="${esc(SYNC_BM)}" onclick="return false">🛍 Sync Wardrobe</a></li>
-      <li>Open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>, scroll to the bottom so everything has loaded, and click the bookmark.</li>
+      <li>In that same browser open your <a href="https://shop.tiktok.com/web/order_list" target="_blank" rel="noopener">TikTok orders</a> (or your <a href="https://shop.tiktok.com/web/cart" target="_blank" rel="noopener">cart</a>), scroll to the bottom so every row has loaded, and click the bookmark.</li>
+      <li>It brings you here. Pick your name and the pieces file themselves.</li>
     </ol>
-    <p class="muted">Orders come in as bought, cart items as in cart. Kiaredza does the same on her own machine and her pieces land in her closet.</p>
+    <p class="muted">Orders come in as bought, cart items as in cart. Kiaredza does the same in whichever browser her TikTok is in, and hers land in her closet. Copy the bookmark to both browsers if you shop in both.</p>
     <div class="sync-btns"><button class="ghost small" data-close>Done</button></div>
   </div>`;
   el.hidden = false;
