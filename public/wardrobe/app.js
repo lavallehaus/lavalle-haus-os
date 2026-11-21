@@ -1461,6 +1461,7 @@ function renderShoot() {
       return `<section class="shoot-stop">
         <header class="shoot-loc">${st.location ? `<img src="${esc(st.location)}" alt="${esc(st.place)}" loading="lazy">` : ''}
           <div><span class="shoot-n">${st.n}</span><b>${esc(st.place)}</b>${st.time ? `<small>${esc(st.time)}</small>` : ''}</div></header>
+        ${(st.shots || []).length > 1 ? `<div class="shoot-strip">${st.shots.map((sh) => `<figure><img src="${esc(sh.cover)}" alt="" loading="lazy"><figcaption>${esc(String(sh.name).replace(/^\s*\d{1,2}:\d{2}\s*[·•]\s*/, ''))}</figcaption></figure>`).join('')}</div>` : ''}
         <div class="shoot-pair">${cell('kiabeth')}${cell('kiaredza')}</div>
       </section>`;
     }).join('');
