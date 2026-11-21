@@ -2667,9 +2667,11 @@ export default async function handler(req, res) {
     const shots = locList ? (bdWI.cards || []).filter((c) => c.listId === locList.id && !c._deleted && c.cover && mins(c.name) !== null)
       .map((c) => ({ name: c.name, cover: c.cover, t: mins(c.name) })).sort((a, b) => a.t - b.t) : [];
     const out = [...stops.values()].sort((a, b) => a.n - b.n);
+    let cursor = 0;                          // the shots run in the same order as the stops
     for (let k = 0; k < out.length; k++) {
-      const t0 = mins(out[k].time), t1 = k + 1 < out.length ? mins(out[k + 1].time) : null;
-      const win = t0 === null ? [] : shots.filter((sh) => sh.t >= t0 && (t1 === null || sh.t < t1));
+      let t1 = null;                         // the next stop that states a time closes this window
+      for (let j = k + 1; j < out.length && t1 === null; j++) t1 = mins(out[j].time);
+      const win = []; while (cursor < shots.length && (t1 === null || shots[cursor].t < t1)) win.push(shots[cursor++]);
       out[k].location = win.length ? win[0].cover : null;
       out[k].shots = win.map((sh) => ({ name: sh.name, cover: sh.cover }));
     }
