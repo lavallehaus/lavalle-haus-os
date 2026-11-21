@@ -284,7 +284,7 @@ function go(view) {
 }
 
 /* ================= CLOSET ================= */
-const CART_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2"/></svg>`;
+const CART_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.5" cy="20" r="1.1"/><circle cx="18" cy="20" r="1.1"/><path d="M2.5 3.5h2.6l2.5 12a1.3 1.3 0 0 0 1.3 1h8.4a1.3 1.3 0 0 0 1.3-1L20.5 8H6"/></svg>`;
 const inTikTokCart = (it) => it.status === 'cart' && !it.outOfCart && (it.inCart || /^(cart|sync)/.test(it.importKey || ''));
 const isPurchased = (it) => it.status === 'owned' || it.status === 'coming';
 const priceNum = (it) => { const m = String(it.price || '').replace(/,/g, '').match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : 0; };
@@ -299,12 +299,12 @@ function priceHtml(it) {
 }
 function cardTags(it) {
   const t = [];
-  if (it.source === 'fold') t.push('<span class="sticker fold">The Fold</span>');
-  else if (isPurchased(it)) t.push('<span class="sticker green">Purchased</span>');
-  else if (inTikTokCart(it)) t.push(`<span class="incart" title="${it.inCart ? 'In cart · ticked to check out' : 'In your TikTok cart'}">${CART_SVG}In cart${it.inCart ? '<b>✓</b>' : ''}</span>`);
-  else if (it.status === 'cart' && it.outOfCart) t.push('<span class="sticker">Not in cart anymore</span>');
-  else if (it.status === 'cart') t.push('<span class="sticker">Favorited for later</span>');
-  if (it.soldOut) t.push('<span class="sticker red">Sold out</span>');
+  if (it.source === 'fold') t.push('<span class="mark house">The Fold</span>');
+  else if (isPurchased(it)) t.push('<span class="mark owned">Purchased</span>');
+  else if (inTikTokCart(it)) t.push(`<span class="mark cart" title="${it.inCart ? 'In cart · ticked to check out' : 'In your TikTok cart'}">${CART_SVG}In cart${it.inCart ? '<i class="tick"></i>' : ''}</span>`);
+  else if (it.status === 'cart' && it.outOfCart) t.push('<span class="mark">No longer in cart</span>');
+  else if (it.status === 'cart') t.push('<span class="mark">Saved</span>');
+  if (it.soldOut) t.push('<span class="mark out">Sold out</span>');
   return t.length ? `<div class="tags">${t.join('')}</div>` : '';
 }
 function pieceCard(it) {
@@ -313,7 +313,7 @@ function pieceCard(it) {
     <div class="piece-img">
       <img src="${it.image}" alt="" loading="lazy" draggable="false">
       <span class="check">✓</span>
-      ${it.link ? `<button class="copy-link" data-copylink="${it.id}" title="Copy TikTok Shop link">🔗 Link</button>` : ''}
+      ${it.link ? `<button class="copy-link" data-copylink="${it.id}" title="Copy TikTok Shop link">Link</button>` : ''}
       ${it.status === 'coming' ? '<span class="pill">On the way</span>' : ''}
       ${cardTags(it)}
       ${it.status === 'cart' ? `<button class="x-btn" data-skip="${it.id}" title="Not getting this">✕</button>` : ''}
@@ -409,7 +409,7 @@ function syncCard(it) {
   return `<div class="piece synced${state.rmMode ? ' rm-on' : ''}${ticked ? ' rm-picked' : ''}">
     <div class="piece-img"><img src="${esc(it.image)}" alt="" loading="lazy" draggable="false">
       ${state.rmMode ? `<label class="rm-tick"><input type="checkbox" data-rmpick="${it.id}"${ticked ? ' checked' : ''}></label>` : ''}
-      ${it.status === 'cart' ? '<span class="sticker">In cart</span>' : '<span class="sticker green">Bought</span>'}
+      ${it.status === 'cart' ? '<span class="mark">In cart</span>' : '<span class="mark owned">Purchased</span>'}
       ${state.whose === 'together' ? `<span class="pill owner">${esc(personName(it.owner))}</span>` : ''}
     </div>
     <div class="piece-meta"><div class="piece-name">${esc(it.name || 'Untitled piece')}</div>
@@ -2050,7 +2050,7 @@ function bind() {
     { const po = e.target.closest('[data-poseowner]'); if (po) { state.poseOwner = po.dataset.poseowner; return renderRoom(); } }
     { const lo = e.target.closest('[data-lkowner]'); if (lo) { lockOwner = lo.dataset.lkowner; return syncLockOwner(); } }
     const t = e.target;
-    const cl = t.closest('[data-copylink]'); if (cl) { e.stopPropagation(); const it = getItem(cl.dataset.copylink); copyText(it.link); cl.textContent = '✓ Copied'; setTimeout(() => (cl.textContent = '🔗 Link'), 1500); return; }
+    const cl = t.closest('[data-copylink]'); if (cl) { e.stopPropagation(); const it = getItem(cl.dataset.copylink); copyText(it.link); cl.textContent = 'Copied'; setTimeout(() => (cl.textContent = 'Link'), 1500); return; }
     const skip = t.closest('[data-skip]'); if (skip) { e.stopPropagation(); return skipItem(skip.dataset.skip); }
     const unskip = t.closest('[data-unskip]'); if (unskip) { const it = getItem(unskip.dataset.unskip); if (it) { it.skipped = false; DB.put('items', it); renderCloset(); } $('#toast').hidden = true; return; }
     const edit = t.closest('[data-edit]'); if (edit) { e.stopPropagation(); state.queue = []; state.queueTotal = 1; return openEditor(edit.dataset.edit); }
