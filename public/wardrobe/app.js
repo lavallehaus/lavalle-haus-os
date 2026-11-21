@@ -2496,7 +2496,13 @@ async function pullCloset() {
   for (const rec of j.poses || []) {
     const have = poseBy.get(rec.k);
     if (rec.deleted) { if (have) { await rawDel('poses', have.id); state.poses = state.poses.filter((x) => x.id !== have.id); n.gone++; } continue; }
-    if (have) continue;
+    if (have) { // same rule as the pieces: a cut-out photo beats an untouched one
+      if (rec.image && /^\/api\/data\?op=media/.test(rec.image) && have.image && have.image === have.original) {
+        const img = await pullImg(have, 'image', rec.image);
+        if (img && img !== have.image) { have.image = img; await rawPut('poses', have); n.cutouts++; }
+      }
+      continue;
+    }
     const p = { id: uid(), owner: rec.owner || 'kiaredza', importKey: rec.importKey || rec.k, createdAt: rec.createdAt || Date.now() };
     p.image = await pullImg(p, 'image', rec.image);
     for (const f of ['original', 'photo', 'face', 'base']) if (rec[f]) p[f] = await pullImg(p, f, rec[f]);
