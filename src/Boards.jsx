@@ -2412,6 +2412,104 @@ function LookbookView({ board, shoots, onClose }) {
 const arrowBtn = (side) => ({ position: "absolute", [side]: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(237,233,226,0.3)", color: "#EDE9E2", width: 44, height: 44, borderRadius: "50%", fontSize: 22, cursor: "pointer", lineHeight: 1 });
 const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) return k; return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }); };
 
+// ── Hashtag picker (her ask Nov 21 2026) ───────────────────────────────────
+// Sits under the Caption box, because that's where the hashtags live now (her
+// rule Sep 26: caption + tags are written together, no separate box). Pick a
+// niche, tap the tags you want, and they go into the caption text itself — so
+// nothing new has to be stored and every publish path keeps working unchanged.
+// Tap a tag that's already in the caption to take it back out.
+// The niches come straight off the board's "Hashtags" card, which she curates;
+// "Top performers" and "Courtney recent" are the two lines the app maintains.
+// Not shown on Courtney's cards: her captions are her own words (house rule).
+function HashtagPicker({ boardKey, desc, setDesc }) {
+  const [open, setOpen] = useState(false);
+  const [bank, setBank] = useState(null);
+  const [pick, setPick] = useState("");
+  useEffect(() => {
+    if (!open || bank) return;
+    fetch("/api/data?op=hashtag_bank" + (boardKey === "lavalle-sisters" ? "" : "&board=" + encodeURIComponent(boardKey)))
+      .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status); return d; })
+      .then(setBank)
+      .catch((e) => setBank({ error: String(e.message || e) }));
+  }, [open]); // eslint-disable-line
+  // app-maintained lines first, then her own niches in the order she wrote them
+  const groups = useMemo(() => {
+    const g = (bank && bank.groups) || [];
+    return [...g].sort((a, b) => (b.auto ? 1 : 0) - (a.auto ? 1 : 0));
+  }, [bank]);
+  useEffect(() => { if (!pick && groups.length) setPick(groups[0].niche); }, [groups.length]); // eslint-disable-line
+  const group = groups.find((g) => g.niche === pick) || groups[0] || null;
+  const used = useMemo(() => new Set((String(desc || "").match(/#[A-Za-z0-9_]+/g) || []).map((t) => t.toLowerCase())), [desc]);
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const toggle = (t) => {
+    if (used.has(t.toLowerCase())) {
+      setDesc(String(desc).replace(new RegExp("[ \\t]*" + esc(t) + "(?![A-Za-z0-9_])", "gi"), "")
+        .replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trimEnd());
+      return;
+    }
+    const base = String(desc || "").trimEnd();
+    setDesc(!base ? t : base + (/#[A-Za-z0-9_]+$/.test(base) ? " " : "\n\n") + t);
+  };
+  const nudge = used.size >= 4;
+  const chip = (on) => ({
+    border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : c.bg, color: on ? "#fff" : c.ink,
+    borderRadius: 1, padding: "5px 9px", fontFamily: sans, fontSize: 11.5, cursor: "pointer", lineHeight: 1.2,
+  });
+  const num = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={() => setOpen(!open)}
+          style={{ border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "5px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
+          {open ? "Close hashtags" : "+ Hashtags"}
+        </button>
+        <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: nudge ? "#9b5e5e" : c.sub }}>
+          {used.size === 0 ? "none in the caption yet" : used.size + (used.size === 1 ? " in the caption" : " in the caption") + (nudge ? " — two is plenty" : "")}
+        </span>
+      </div>
+      {open && (
+        <div style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: 12, marginTop: 8, background: c.card }}>
+          {!bank && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>Reading the bank…</div>}
+          {bank && bank.error && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: "#9b5e5e" }}>Couldn't read the bank: {bank.error}</div>}
+          {bank && !bank.error && !groups.length && (
+            <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>
+              No Hashtags card on this board yet. Add a card called "Hashtags" and write your niches on it, one per line, like "Fashion: #slowfashion #naturalfibers".
+            </div>
+          )}
+          {group && (<>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <select value={pick} onChange={(e) => setPick(e.target.value)}
+                style={{ background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, maxWidth: "100%" }}>
+                {groups.map((g) => <option key={g.niche} value={g.niche}>{g.niche}{g.auto ? " · auto" : ""} ({g.tags.length})</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {group.tags.map((x) => {
+                const t = typeof x === "string" ? x : x.t;
+                const on = used.has(t.toLowerCase());
+                const stat = typeof x === "object" && x.reach ? num(x.reach) + " reach" + (x.saves ? ", " + x.saves + " saved" : "") : null;
+                return (
+                  <button key={t} onClick={() => toggle(t)} title={stat ? "Best post with this tag: " + stat : "Tap to add to the caption"} style={chip(on)}>
+                    {t}{stat && <span style={{ opacity: 0.6, fontSize: 10, marginLeft: 5 }}>{stat}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {group.note && (
+              <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 10, lineHeight: 1.5 }}>{group.note}</div>
+            )}
+            {group.auto && /top performers/i.test(group.niche) && (
+              <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 10, lineHeight: 1.5 }}>
+                These were on posts that beat this account's own median reach. One post is one data point, so read it as "worth another go", not proof.
+              </div>
+            )}
+          </>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag, tagBank, onTagBank, onClose, onSave, onPatch, onDelete, onComment, onDuplicate }) {
   // click the board (backdrop) or press ESC to leave the card — the × is not the only way out
   React.useEffect(() => {
@@ -3317,6 +3415,13 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             Caption + 2 hashtags all go in this box together — everything here posts as one.
           </div>
         )}
+        {/* Her ask Nov 21 2026: pick the niche, tap the tags, they land in the
+            caption above. Never on Courtney's cards — those words are hers.
+            Not on The Fold either: hashtags are retired on that account. */}
+        {!opsMode && boardKey !== "the-fold"
+          && (/^post\s*\d+/i.test(name || "") || !!card.ftcRow)
+          && !(labels || []).some((L) => (((typeof L === "string" ? L : L && L.n) || "")).toLowerCase() === "courtney")
+          && <HashtagPicker boardKey={boardKey} desc={desc} setDesc={setDesc} />}
         <NotesLinks text={desc} />
         {!opsMode && (<>
 

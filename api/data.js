@@ -128,6 +128,48 @@ const isLowResPreview = (u) => typeof u === "string" && u.includes("/boards-medi
 // IG caption = caption + hashtags (her rule Sep 7: hashtags go to Instagram
 // too, no longer TikTok-only)
 function igCaption(card) { const d = (card.desc || "").trim(), t = (card.tags || "").trim(); return t ? (d ? d + "\n\n" + t : t) : d; }
+// ── The hashtag bank, read as niches (her ask Nov 21 2026) ──────────────────
+// The "Hashtags" card on each brand board IS the bank — she curates it by
+// hand and always has. This reads its text as GROUPS so the card sheet can
+// offer "pick your niche, then pick your tags" instead of a wall of words.
+// Convention, which is just how she already writes it: a line ending in a
+// colon names a niche, the #tags under it (or after it on the same line)
+// belong to that niche, and any prose in between is kept as the group's note.
+// A niche ending in "(auto)" is written by the app, not by her. Markdown
+// escapes (\#) survive a round trip through the card editor, so they're
+// unescaped first.
+function hashBankParse(desc) {
+  const groups = [];
+  let cur = null;
+  const flush = () => { if (cur && cur.tags.length) groups.push(cur); cur = null; };
+  const open = (niche) => {
+    const auto = /\(auto\)\s*$/i.test(niche);
+    cur = { niche: niche.replace(/\s*\(auto\)\s*$/i, "").trim() || "General", auto, note: "", tags: [] };
+  };
+  const eat = (text) => {
+    if (!cur) open("General");
+    for (const t of (String(text).match(/#[A-Za-z0-9_]+/g) || [])) {
+      const lo = t.toLowerCase();
+      if (!cur.tags.some((x) => x.toLowerCase() === lo)) cur.tags.push(t);
+    }
+    const prose = String(text).replace(/#[A-Za-z0-9_]+/g, "").replace(/^\^+/, "").replace(/\s+/g, " ").trim();
+    if (prose.length > 12) cur.note = (cur.note ? cur.note + " " : "") + prose;
+  };
+  for (const raw of String(desc || "").split(/\n/)) {
+    const line = raw.replace(/\\#/g, "#").trim();
+    if (!line) continue;
+    const head = /^([A-Za-z][^:#\n]{0,44}):\s*(.*)$/.exec(line);
+    // "https:" and friends are not niche headings
+    if (head && !/^https?$/i.test(head[1]) && !/^\/\//.test(head[2])) {
+      flush(); open(head[1]);
+      if (head[2]) eat(head[2]);
+      continue;
+    }
+    eat(line);
+  }
+  flush();
+  return groups;
+}
 function cardCoverUrl(card, bKey, fit = "igfeed") {
   // assetUrl is deliberately NOT consulted: on a [reel] card it points at the
   // .mov, and handing Instagram a video as a photo fails the post.
@@ -2200,7 +2242,8 @@ export default async function handler(req, res) {
     ["Caption approval", "When you tick “Approve caption + hashtags” on a card", "An APPROVED tag shows on the card face. When all of OUR 1–42 are approved, the Strategy Outline PDF builds itself (see above).", ["lavalle-sisters"]],
     ["Cadence card", "Every 15 min (writes only when the schedule actually changes)", "The \"Cadence \u2014 who posts, how many, which days\" card under Strategy Outline re-reads every dated card on the board and reports, per month, the post count, Courtney's share, Kiabeth's share and the weekday spread. Standing rule on the card: Tuesday and Thursday are Courtney's, Friday is Kiabeth's (she cuts, Courtney posts), and the Tuesdays and Thursdays past Courtney's six a month stay dark. Because it is read off the cards it follows every re-date on its own.", ["the-fold"]],
     ["Channel audit (auto)", "Every 15 min; refreshes every 3 days", "The Audit card under Strategy Outline re-reads @thefoldlabel's trailing 30 days (Instagram now, TikTok as soon as that account is connected) and writes short findings plus what to carry into next month. Next month's theme and captions are drawn from it.", ["the-fold"]],
-    ["Hashtag bank self-update + Live chip", "Every 15 min", "Any new hashtag typed onto a post card joins the Hashtags card's FROM CARDS line (the brand name never joins it), and a checked-off post carries the Live chip on its own — unchecking takes it back off.", ["the-fold"]],
+    ["Hashtag bank — earned, not collected", "Daily", "Reads the last 60 days on Instagram and works out this account's own median reach. A hashtag only joins the Hashtags card when it was on a post that beat that median (or saved unusually well), and the number it earned shows beside it in the card sheet's hashtag picker. Brand names never join. Nothing is promoted off fewer than 6 measured posts, so a quiet window adds nothing rather than noise. Courtney's last 10 posts also keep a COURTNEY RECENT line up to date, read-only.", ["lavalle-sisters"]],
+    ["Live chip + format tag", "Every 15 min", "A checked-off post carries the Live chip on its own, and unchecking takes it back off. A [reel] or [carousel] marker typed into a title moves to where format belongs, the tag.", ["lavalle-sisters"]],
     ["Theme, captions + Strategy Outline (per cycle)", "Every 15 min, one step per tick", "Each cycle (October = Posts 5-21, November = Posts 22-42, and so on) gets its own theme (1-2 sentences from the live site's products, the audit and current quiet-luxury direction), 1-2 sentence captions with 2 bank hashtags per post (hand-written captions are never overwritten), and its own Strategy Outline card + PDF, which rebuilds whenever the theme, a caption or the audit changes. The outline builds once the cycle's grid is complete; both cycles' outlines sit in Strategy Outline, the live month on top.", ["the-fold"]],
     ["Save arrangement", "When you hit Save in the grid editor", "The grid IS the sequence: tile 1 is Post 1 … tile 42 is Post 42 (grid 1 = Schedule 1-21, grid 2 = Schedule 22-42). Swapping two tiles swaps their cards too — caption, hashtags, approval and Courtney concept travel with the photo; a tray photo dropped in keeps the slot's caption. Dates re-flow from the slot (each of our posts advances a day, Courtney's share the day before it). The montage, the Grid card and the Strategy Outline follow."],
   ];
@@ -4027,10 +4070,145 @@ export default async function handler(req, res) {
     res.json({ ok: true, fired: firedST, adopted: adoptedST, month: monthST, commentsProcessed: processedCm });
     return;
   }
-  // ── Hashtag bank self-update (her rule, Oct 5 2026) ───────────────────────
-  // Any hashtag Courtney (or anyone) types onto a post card that the Hashtags
-  // card doesn't know yet is appended to a FROM CARDS line on the bank, so the
-  // bank is always the full vocabulary. Never the brand name.
+  // ── The bank, served to the card sheet (her ask Nov 21 2026) ──────────────
+  // The card sheet's hashtag picker reads this: niche groups parsed off the
+  // board's own "Hashtags" card, with the measured numbers attached to any tag
+  // we have them for. Nothing here writes — she curates the card.
+  if (op === "hashtag_bank" && req.method === "GET") {
+    const authHB = await getAuthEarly(req);
+    if (!authHB) { res.status(401).json({ error: "Locked." }); return; }
+    const rawHB = await kvGet("lavalle_data"); const blobHB = Array.isArray(rawHB) ? rawHB[0] : rawHB;
+    const bdHB = blobHB && blobHB.boards && blobHB.boards[SBOARD.key];
+    const cardHB = bdHB && (bdHB.cards || []).find((c) => c && !c._deleted && /^hashtags\b/i.test((c.name || "").trim()));
+    if (!cardHB) { res.json({ board: SBOARD.key, groups: [], cardId: null }); return; }
+    const statsHB = (await kvGet("sisters_hashtag_stats" + SBOARD.kvSuffix)) || {};
+    const groupsHB = hashBankParse(cardHB.desc).map((g) => ({
+      ...g,
+      tags: g.tags.map((t) => { const s = statsHB[t.toLowerCase()]; return s ? { t, reach: s.reach || null, saves: s.saves || null } : { t }; }),
+    }));
+    res.json({ board: SBOARD.key, cardId: cardHB.id, groups: groupsHB, measuredAt: (statsHB._at || null) });
+    return;
+  }
+  // ── Performance screen → the bank (her rule Nov 21 2026) ──────────────────
+  // Supersedes the old blanket absorption, which put EVERY tag we ever typed
+  // into the bank. Now a tag only earns its place: it has to have been on a
+  // post that beat this account's own median. One post is one data point, so
+  // this never claims the tag caused the reach — it just stops us re-using the
+  // tags that rode along on our quiet posts. Needs 6 measured posts before it
+  // promotes anything, so a thin window promotes nothing instead of noise.
+  // Also keeps a rolling line of what Courtney has used lately, read off her
+  // own post cards (her captions are her words — this only reads them).
+  if (op === "sisters_hashtag_perf" && req.method === "POST") {
+    const okKeyHP = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
+    const authHP = okKeyHP ? null : await getAuthEarly(req);
+    if (!okKeyHP && !ownerRole(authHP)) { res.status(403).json({ error: "Owner or key only." }); return; }
+    const forceHP = !!(req.body || {}).force;
+    const stHP = (await kvGet("sisters_hashtag_perf_state" + SBOARD.kvSuffix)) || {};
+    if (!forceHP && Date.now() - (stHP.at || 0) < 86400000) { res.json({ ok: true, skipped: true, nextIn: Math.round((86400000 - (Date.now() - stHP.at)) / 3600000) + "h" }); return; }
+    const sinceHP = Date.now() - 60 * 86400000;
+    const baseHP = "https://graph.instagram.com/v23.0";
+    const postsHP = []; let noteHP = null, sawHP = false;
+    for (const t of Object.values(igAccounts(await kvGet("instagram_oauth")))) {
+      if (!SBOARD.igMatch.test(t.username || "")) continue;
+      sawHP = true;
+      try {
+        const media = await (await fetch(`${baseHP}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink&limit=40&access_token=${encodeURIComponent(t.access_token)}`)).json();
+        if (media.error) { noteHP = "Instagram for @" + (t.username || "this account") + " needs reconnecting: " + String(media.error.message || media.error.type || "token error").slice(0, 110); continue; }
+        for (const m of (media.data || [])) {
+          if (m.timestamp && Date.parse(m.timestamp) < sinceHP) continue;
+          const tagsHP = (String(m.caption || "").match(/#[A-Za-z0-9_]+/g) || []);
+          if (!tagsHP.length) continue; // a post with no tags tells us nothing about tags
+          let saved = null, reach = null, views = null;
+          const insHP = async (metrics) => {
+            const d = await (await fetch(`${baseHP}/${m.id}/insights?metric=${metrics.join(",")}&access_token=${encodeURIComponent(t.access_token)}`)).json();
+            if (d.error) throw new Error(d.error.message || "insights");
+            const o = {}; (d.data || []).forEach((x) => { o[x.name] = x.values && x.values[0] ? x.values[0].value : null; });
+            return o;
+          };
+          try {
+            let o = null;
+            try { o = await insHP(["saved", "reach", "views"]); } catch (e1) { o = await insHP(["saved", "reach"]); } // older accounts have no unified views
+            saved = o.saved ?? null; reach = o.reach ?? null; views = o.views ?? null;
+          } catch (e0) {}
+          postsHP.push({ tags: tagsHP, saved: saved || 0, pull: reach != null ? reach : views, likes: m.like_count || 0, url: m.permalink || null, at: m.timestamp || null });
+        }
+      } catch (eHP) { noteHP = noteHP || "Instagram read failed — will retry."; }
+    }
+    if (!sawHP) noteHP = "No Instagram account matching this board is connected yet (Settings → Instagram).";
+    const measuredHP = postsHP.filter((p) => p.pull != null);
+    const medHP = (arr) => { if (!arr.length) return 0; const s = [...arr].sort((a, b) => a - b); const i = Math.floor(s.length / 2); return s.length % 2 ? s[i] : (s[i - 1] + s[i]) / 2; };
+    const medPull = medHP(measuredHP.map((p) => p.pull));
+    const medSaves = medHP(measuredHP.map((p) => p.saved));
+    const enoughHP = measuredHP.length >= 6 && medPull > 0;
+    const winnersHP = enoughHP ? measuredHP.filter((p) => p.pull >= 2 * medPull || p.saved >= Math.max(3, 3 * medSaves)) : [];
+    // the numbers behind each promoted tag, best post wins (shown in the picker)
+    const statsHP = (await kvGet("sisters_hashtag_stats" + SBOARD.kvSuffix)) || {};
+    for (const p of winnersHP) for (const tg of p.tags) {
+      const lo = tg.toLowerCase();
+      if (/thefold|lavallehaus|lavallesisters|refillery/i.test(lo)) continue; // a brand name is not a discovery tag
+      const prev = statsHP[lo];
+      if (!prev || (p.pull || 0) > (prev.reach || 0)) statsHP[lo] = { tag: tg, reach: p.pull || 0, saves: p.saved || 0, url: p.url, at: p.at };
+    }
+    statsHP._at = Date.now();
+    await kvSet("sisters_hashtag_stats" + SBOARD.kvSuffix, statsHP);
+    // write the two auto lines onto the bank card
+    const rawHP2 = await kvGet("lavalle_data"); const blobHP2 = Array.isArray(rawHP2) ? rawHP2[0] : rawHP2;
+    const bdHP = blobHP2 && blobHP2.boards && blobHP2.boards[SBOARD.key];
+    const cardHP = bdHP && (bdHP.cards || []).find((c) => c && !c._deleted && /^hashtags\b/i.test((c.name || "").trim()));
+    if (!cardHP) { await kvSet("sisters_hashtag_perf_state" + SBOARD.kvSuffix, { at: Date.now(), note: "no hashtags card" }); res.json({ ok: false, error: "no hashtags card on " + SBOARD.key }); return; }
+    const groupsHP = hashBankParse(cardHP.desc);
+    const knownHP = new Set(groupsHP.filter((g) => !/^top performers$/i.test(g.niche)).flatMap((g) => g.tags).map((x) => x.toLowerCase()));
+    const topLine = (groupsHP.find((g) => /^top performers$/i.test(g.niche)) || { tags: [] }).tags;
+    const freshHP = [];
+    for (const p of winnersHP.sort((a, b) => (b.pull || 0) - (a.pull || 0))) for (const tg of p.tags) {
+      const lo = tg.toLowerCase();
+      if (/thefold|lavallehaus|lavallesisters|refillery/i.test(lo)) continue;
+      if (knownHP.has(lo) || topLine.some((x) => x.toLowerCase() === lo) || freshHP.some((x) => x.toLowerCase() === lo)) continue;
+      freshHP.push(tg);
+    }
+    const topTags = [...freshHP, ...topLine].slice(0, 24); // newest earners first, bank capped
+    // Courtney's recent tags: read off her own post cards, newest first, replaced
+    // every run so the line is "lately", not a growing pile. Read-only — her
+    // captions are hers (house rule).
+    const recentCT = [];
+    if (SBOARD.hasCourtney) {
+      const isCHP = (c) => (c.labels || []).some((lb) => ((typeof lb === "string" ? lb : lb && lb.n) || "").toLowerCase() === "courtney");
+      const numHP = (c) => { const m = /^post\s*(\d+)/i.exec(c.name || ""); return m ? Number(m[1]) : 0; };
+      const herCards = (bdHP.cards || []).filter((c) => c && !c._deleted && /^post\s*\d+/i.test(c.name || "") && isCHP(c))
+        .sort((a, b) => (Date.parse(b.due || 0) || 0) - (Date.parse(a.due || 0) || 0) || numHP(b) - numHP(a))
+        .slice(0, 10);
+      for (const c of herCards) for (const tg of (String((c.desc || "") + " " + (c.tags || "")).match(/#[A-Za-z0-9_]+/g) || [])) {
+        if (recentCT.length >= 14) break;
+        if (!recentCT.some((x) => x.toLowerCase() === tg.toLowerCase())) recentCT.push(tg);
+      }
+    }
+    const setLineHP = (desc, labelHP, tags) => {
+      const body = labelHP + ": " + tags.join(" ");
+      const rx = new RegExp("^" + labelHP.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":[^\\n]*$", "mi");
+      if (!tags.length) return rx.test(desc) ? desc.replace(rx, "").replace(/\n{3,}/g, "\n\n") : desc;
+      return rx.test(desc) ? desc.replace(rx, body) : desc.replace(/\s*$/, "") + "\n\n" + body;
+    };
+    let descHP = cardHP.desc || "";
+    descHP = setLineHP(descHP, "TOP PERFORMERS (auto)", topTags);
+    if (SBOARD.hasCourtney) descHP = setLineHP(descHP, "COURTNEY RECENT (auto)", recentCT);
+    if (descHP !== (cardHP.desc || "")) await patchBoardCards(SBOARD.key, [{ id: cardHP.id, apply: (fc) => { fc.desc = descHP; } }]);
+    await kvSet("sisters_hashtag_perf_state" + SBOARD.kvSuffix, { at: Date.now(), promoted: freshHP, measured: measuredHP.length, medPull, note: noteHP });
+    res.json({
+      ok: true, board: SBOARD.key, read: postsHP.length, measured: measuredHP.length,
+      medianReach: medPull, medianSaves: medSaves, winners: winnersHP.length,
+      promoted: freshHP, bank: topTags.length, courtneyRecent: recentCT, note: noteHP,
+      enough: enoughHP || "fewer than 6 measured posts with tags — nothing promoted",
+    });
+    return;
+  }
+  // ── Post housekeeping: Live chip + format tag (her rule, Oct 5 2026) ──────
+  // The blanket hashtag absorption that used to live here is RETIRED (her
+  // call Nov 21 2026): "I'd rather not do it that way now that we have a fair
+  // amount stored." Tags now reach the bank only by earning it, through
+  // sisters_hashtag_perf above. Two reasons it had stopped working anyway:
+  // it read card.tags, and that field has been merged into the caption since
+  // Sep 26; and the pinger only ever ran it for The Fold, where hashtags are
+  // retired outright.
   if (op === "sisters_hashtags_sync" && req.method === "POST") {
     const okKeyHS = process.env.PUBLISH_KEY && req.headers["x-publish-key"] === process.env.PUBLISH_KEY;
     const authHS = okKeyHS ? null : await getAuthEarly(req);
@@ -4038,18 +4216,7 @@ export default async function handler(req, res) {
     const rawHS = await kvGet("lavalle_data"); const blobHS = Array.isArray(rawHS) ? rawHS[0] : rawHS;
     const bdHS = blobHS && blobHS.boards && blobHS.boards[SBOARD.key];
     if (!bdHS) { res.json({ ok: false }); return; }
-    const bankHS = bdHS.cards.find((c) => !c._deleted && /^hashtags/i.test(c.name || ""));
-    if (!bankHS) { res.json({ ok: false, error: "no hashtags card" }); return; }
-    const known = new Set((String(bankHS.desc || "").match(/#[\w]+/g) || []).map((t) => t.toLowerCase()));
     const schedHS = bdHS.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
-    const fresh = [];
-    for (const c of bdHS.cards.filter((c) => !c._deleted && schedHS.includes(c.listId))) {
-      for (const t of (String(c.tags || "").match(/#[\w]+/g) || [])) {
-        const lo = t.toLowerCase();
-        if (known.has(lo) || /fold|lavalle/i.test(lo)) continue; // never the brand name
-        known.add(lo); fresh.push(t);
-      }
-    }
     // Live tag follows the checkbox (her rule, Oct 5 2026): a checked post
     // carries the Live chip on its own; unchecking takes it back off.
     let liveFlips = 0;
@@ -4068,16 +4235,7 @@ export default async function handler(req, res) {
       }
     }
     if (liveFlips) await kvSet("lavalle_data", blobHS);
-    if (fresh.length) {
-      const lineRx = /\nFROM CARDS \(auto\):.*$/;
-      const m = lineRx.exec(bankHS.desc || "");
-      const cur = m ? m[0].replace("\nFROM CARDS (auto):", "").trim() : "";
-      const line = "\nFROM CARDS (auto): " + (cur ? cur + " " : "") + fresh.join(" ");
-      bankHS.desc = m ? bankHS.desc.replace(lineRx, line) : (bankHS.desc || "") + "\n" + line;
-      bankHS._touched = Date.now();
-      await kvSet("lavalle_data", blobHS);
-    }
-    res.json({ ok: true, added: fresh });
+    res.json({ ok: true, liveFlips, bankFeed: "sisters_hashtag_perf" });
     return;
   }
   // ── Outlook calendar → Comms meetings (her ask Oct 5 2026) ────────────────
