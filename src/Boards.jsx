@@ -2456,6 +2456,9 @@ function HashtagPicker({ boardKey, desc, setDesc }) {
     borderRadius: 1, padding: "5px 9px", fontFamily: sans, fontSize: 11.5, cursor: "pointer", lineHeight: 1.2,
   });
   const num = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  // the app writes its two lines in caps so they stand out ON the card; in the
+  // dropdown that reads as shouting
+  const nice = (g) => (g.auto ? g.niche.charAt(0) + g.niche.slice(1).toLowerCase() + " · auto" : g.niche);
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2480,7 +2483,7 @@ function HashtagPicker({ boardKey, desc, setDesc }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               <select value={pick} onChange={(e) => setPick(e.target.value)}
                 style={{ background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, maxWidth: "100%" }}>
-                {groups.map((g) => <option key={g.niche} value={g.niche}>{g.niche}{g.auto ? " · auto" : ""} ({g.tags.length})</option>)}
+                {groups.map((g) => <option key={g.niche} value={g.niche}>{nice(g)} ({g.tags.length})</option>)}
               </select>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
