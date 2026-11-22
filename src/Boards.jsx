@@ -2421,6 +2421,122 @@ const monthLabel = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k); if (!m) retur
 // The niches come straight off the board's "Hashtags" card, which she curates;
 // "Top performers" and "Courtney recent" are the two lines the app maintains.
 // Not shown on Courtney's cards: her captions are her own words (house rule).
+// ── The Hashtags card itself, read as dropdowns (her ask Nov 21 2026) ────────
+// Opening the bank card used to mean scrolling a wall of words. Same niche
+// convention as the picker (a line ending in a colon names a niche), parsed
+// from the live text so it follows whatever she types, with the earned numbers
+// fetched from the bank op. Tap a tag to copy it; the text box below stays the
+// place to edit, so nothing here can quietly rewrite her bank.
+function bankGroupsFrom(desc) {
+  const groups = [];
+  let cur = null;
+  const flush = () => { if (cur) groups.push(cur); cur = null; };
+  const lines = String(desc || "").split(/\n/);
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/\\#/g, "#").trim();
+    if (!line) return;
+    const head = /^([A-Za-z][^:#\n]{0,44}):\s*(.*)$/.exec(line);
+    if (head && !/^https?$/i.test(head[1]) && !/^\/\//.test(head[2])) {
+      flush();
+      const auto = /\(auto\)\s*$/i.test(head[1]);
+      cur = { niche: head[1].replace(/\s*\(auto\)\s*$/i, "").trim() || "General", auto, note: "", tags: [], head: i, last: i, explicit: true };
+      if (!head[2]) return;
+    }
+    if (!cur) cur = { niche: "General", auto: false, note: "", tags: [], head: i, last: i, explicit: false };
+    cur.last = i;
+    const body = head && cur.head === i ? head[2] : line;
+    for (const t of (String(body).match(/#[A-Za-z0-9_]+/g) || [])) {
+      if (!cur.tags.some((x) => x.toLowerCase() === t.toLowerCase())) cur.tags.push(t);
+    }
+    const prose = String(body).replace(/#[A-Za-z0-9_]+/g, "").replace(/^\^+/, "").replace(/\s+/g, " ").trim();
+    if (prose.length > 12) cur.note = (cur.note ? cur.note + " " : "") + prose;
+  });
+  flush();
+  // a named niche with nothing in it yet is worth showing; loose prose is not
+  return groups.filter((g) => g.tags.length || g.explicit);
+}
+
+function HashtagBankView({ boardKey, desc, setDesc }) {
+  const [pick, setPick] = useState("");
+  const [stats, setStats] = useState(null);
+  const [copied, setCopied] = useState("");
+  const [add, setAdd] = useState("");
+  useEffect(() => {
+    fetch("/api/data?op=hashtag_bank" + (boardKey === "lavalle-sisters" ? "" : "&board=" + encodeURIComponent(boardKey)))
+      .then((r) => r.json())
+      .then((d) => {
+        const m = {};
+        for (const g of (d && d.groups) || []) for (const x of g.tags || []) {
+          if (x && typeof x === "object" && x.reach) m[String(x.t).toLowerCase()] = x;
+        }
+        setStats(m);
+      })
+      .catch(() => setStats({}));
+  }, [boardKey]);
+  const groups = useMemo(() => bankGroupsFrom(desc), [desc]);
+  useEffect(() => { if (groups.length && !groups.some((g) => g.niche === pick)) setPick(groups[0].niche); }, [groups.length]); // eslint-disable-line
+  const group = groups.find((g) => g.niche === pick) || groups[0] || null;
+  const total = groups.reduce((n, g) => n + g.tags.length, 0);
+  const num = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  const nice = (g) => (g.auto ? g.niche.charAt(0) + g.niche.slice(1).toLowerCase() + " · auto" : g.niche);
+  const copy = (t) => {
+    try { navigator.clipboard.writeText(t); } catch (e) { /* clipboard blocked — the chip still shows the tag */ }
+    setCopied(t); setTimeout(() => setCopied(""), 1200);
+  };
+  // adding goes into the selected niche's own lines, so her order is kept
+  const addTag = () => {
+    const t = "#" + String(add).replace(/[^A-Za-z0-9_]/g, "");
+    if (t.length < 3 || !group) return;
+    if (new RegExp("(^|[^A-Za-z0-9_])" + t + "(?![A-Za-z0-9_])", "i").test(desc)) { setAdd(""); return; }
+    const lines = String(desc || "").split(/\n/);
+    lines[group.last] = (lines[group.last] || "").replace(/\s+$/, "") + " " + t;
+    setDesc(lines.join("\n"));
+    setAdd("");
+  };
+  if (!groups.length) return null;
+  return (
+    <div style={{ border: `1px solid ${c.line}`, borderRadius: 1, padding: 12, marginBottom: 12, background: c.card }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <select value={pick} onChange={(e) => setPick(e.target.value)}
+          style={{ background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "7px 10px", fontFamily: sans, fontSize: 12, color: c.ink, maxWidth: "100%" }}>
+          {groups.map((g) => <option key={g.niche} value={g.niche}>{nice(g)} ({g.tags.length})</option>)}
+        </select>
+        <span style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub }}>
+          {total} in the bank across {groups.length} {groups.length === 1 ? "niche" : "niches"}
+        </span>
+      </div>
+      {group && !group.tags.length && (
+        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11.5, color: c.sub }}>Nothing banked under this one yet.</div>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {group && group.tags.map((t) => {
+          const s = stats && stats[t.toLowerCase()];
+          const on = copied === t;
+          return (
+            <button key={t} onClick={() => copy(t)} title={s ? "Best post with this tag: " + num(s.reach) + " reach" + (s.saves ? ", " + s.saves + " saved" : "") : "Tap to copy"}
+              style={{ border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : c.bg, color: on ? "#fff" : c.ink, borderRadius: 1, padding: "5px 9px", fontFamily: sans, fontSize: 11.5, cursor: "pointer", lineHeight: 1.2 }}>
+              {on ? "copied" : t}{!on && s && <span style={{ opacity: 0.6, fontSize: 10, marginLeft: 5 }}>{num(s.reach)} reach{s.saves ? ", " + s.saves + " saved" : ""}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {group && group.note && (
+        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 10, lineHeight: 1.5 }}>{group.note}</div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
+        <input value={add} onChange={(e) => setAdd(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+          placeholder={"Add a tag to " + (group ? group.niche.toLowerCase() : "this niche")}
+          style={{ flex: 1, minWidth: 0, background: c.bg, border: `1px solid ${c.line}`, borderRadius: 1, padding: "6px 9px", fontFamily: sans, fontSize: 11.5, color: c.ink }} />
+        <button onClick={addTag} disabled={String(add).replace(/[^A-Za-z0-9_]/g, "").length < 2}
+          style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
+      </div>
+      <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 8, lineHeight: 1.5 }}>
+        Niches come from the text below: any line that starts with a name and a colon. Edit or reorder there and this follows.
+      </div>
+    </div>
+  );
+}
+
 function HashtagPicker({ boardKey, desc, setDesc }) {
   const [open, setOpen] = useState(false);
   const [bank, setBank] = useState(null);
@@ -2527,6 +2643,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // Internal ops board (LH Operations): cards are data entry — status, notes,
   // owner, dates, photos — with every posting/Instagram feature switched off.
   const opsMode = boardKey === "rh-operations";
+  // the hashtag bank card: its text IS the bank, so it reads as dropdowns
+  const isBank = !opsMode && /^hashtags\b/i.test(String(name || "").trim());
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
   const [approved, setApproved] = useState(!!card.approved);
@@ -3403,7 +3521,8 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         <input style={input} placeholder="Text that appears ON the video — never posted as caption" value={hook} onChange={(e) => setHook(e.target.value)} />
         </>)}
         {!opsMode && <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>Stays on the card as a filming note. Only the caption below goes live.</div>}
-        <div style={label}>{opsMode ? "Notes" : "Caption"}</div>
+        {isBank && <HashtagBankView boardKey={boardKey} desc={desc} setDesc={setDesc} />}
+        <div style={label}>{opsMode ? "Notes" : isBank ? "The bank, as text" : "Caption"}</div>
         <textarea style={{ ...input, resize: "vertical" }} rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
         {descRecovered && (card.desc || "") !== desc && (
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 4 }}>
@@ -3413,7 +3532,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {/* Her rule Sep 26 (all brand boards): NO separate hashtags box — the
             caption + the post's 2 hashtags are written together here and post
             as one. Legacy card.tags still get appended at publish if present. */}
-        {!opsMode && (
+        {!opsMode && !isBank && (
           <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -6, marginBottom: 10 }}>
             Caption + 2 hashtags all go in this box together — everything here posts as one.
           </div>
