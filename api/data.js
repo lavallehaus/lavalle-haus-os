@@ -138,6 +138,16 @@ function igCaption(card) { const d = (card.desc || "").trim(), t = (card.tags ||
 // A niche ending in "(auto)" is written by the app, not by her. Markdown
 // escapes (\#) survive a round trip through the card editor, so they're
 // unescaped first.
+// Every column that carries a "Hashtags" card carries the same bank: the live
+// cycle's column ("Schedule 1-21") and any proposal column copied from it. The
+// live one answers first, and the auto lines are written to all of them, so a
+// cycle rotation can't hand her a stale copy.
+function hashBankCards(bd) {
+  const cards = ((bd && bd.cards) || []).filter((c) => c && !c._deleted && /^hashtags\b/i.test((c.name || "").trim()));
+  const liveId = (((bd && bd.lists) || []).find((l) => /^schedule 1-21$/i.test(String(l.name || "").trim())) || {}).id;
+  return cards.sort((x, y) => (y.listId === liveId ? 1 : 0) - (x.listId === liveId ? 1 : 0));
+}
+
 function hashBankParse(desc) {
   const groups = [];
   let cur = null;
@@ -4079,7 +4089,7 @@ export default async function handler(req, res) {
     if (!authHB) { res.status(401).json({ error: "Locked." }); return; }
     const rawHB = await kvGet("lavalle_data"); const blobHB = Array.isArray(rawHB) ? rawHB[0] : rawHB;
     const bdHB = blobHB && blobHB.boards && blobHB.boards[SBOARD.key];
-    const cardHB = bdHB && (bdHB.cards || []).find((c) => c && !c._deleted && /^hashtags\b/i.test((c.name || "").trim()));
+    const cardHB = hashBankCards(bdHB)[0];
     if (!cardHB) { res.json({ board: SBOARD.key, groups: [], cardId: null }); return; }
     const statsHB = (await kvGet("sisters_hashtag_stats" + SBOARD.kvSuffix)) || {};
     const groupsHB = hashBankParse(cardHB.desc).map((g) => ({
@@ -4154,7 +4164,8 @@ export default async function handler(req, res) {
     // write the two auto lines onto the bank card
     const rawHP2 = await kvGet("lavalle_data"); const blobHP2 = Array.isArray(rawHP2) ? rawHP2[0] : rawHP2;
     const bdHP = blobHP2 && blobHP2.boards && blobHP2.boards[SBOARD.key];
-    const cardHP = bdHP && (bdHP.cards || []).find((c) => c && !c._deleted && /^hashtags\b/i.test((c.name || "").trim()));
+    const cardsHP = hashBankCards(bdHP);
+    const cardHP = cardsHP[0];
     if (!cardHP) { await kvSet("sisters_hashtag_perf_state" + SBOARD.kvSuffix, { at: Date.now(), note: "no hashtags card" }); res.json({ ok: false, error: "no hashtags card on " + SBOARD.key }); return; }
     const groupsHP = hashBankParse(cardHP.desc);
     const knownHP = new Set(groupsHP.filter((g) => !/^top performers$/i.test(g.niche)).flatMap((g) => g.tags).map((x) => x.toLowerCase()));
@@ -4188,10 +4199,15 @@ export default async function handler(req, res) {
       if (!tags.length) return rx.test(desc) ? desc.replace(rx, "").replace(/\n{3,}/g, "\n\n") : desc;
       return rx.test(desc) ? desc.replace(rx, body) : desc.replace(/\s*$/, "") + "\n\n" + body;
     };
-    let descHP = cardHP.desc || "";
-    descHP = setLineHP(descHP, "TOP PERFORMERS (auto)", topTags);
-    if (SBOARD.hasCourtney) descHP = setLineHP(descHP, "COURTNEY RECENT (auto)", recentCT);
-    if (descHP !== (cardHP.desc || "")) await patchBoardCards(SBOARD.key, [{ id: cardHP.id, apply: (fc) => { fc.desc = descHP; } }]);
+    // same two lines onto every copy of the bank card, each on its own text
+    const patchesHP = [];
+    for (const cHP of cardsHP) {
+      let dd = cHP.desc || "";
+      dd = setLineHP(dd, "TOP PERFORMERS (auto)", topTags);
+      if (SBOARD.hasCourtney) dd = setLineHP(dd, "COURTNEY RECENT (auto)", recentCT);
+      if (dd !== (cHP.desc || "")) patchesHP.push({ id: cHP.id, apply: ((t) => (fc) => { fc.desc = t; })(dd) });
+    }
+    if (patchesHP.length) await patchBoardCards(SBOARD.key, patchesHP);
     await kvSet("sisters_hashtag_perf_state" + SBOARD.kvSuffix, { at: Date.now(), promoted: freshHP, measured: measuredHP.length, medPull, note: noteHP });
     res.json({
       ok: true, board: SBOARD.key, read: postsHP.length, measured: measuredHP.length,
