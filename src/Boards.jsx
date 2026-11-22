@@ -2530,9 +2530,6 @@ function HashtagBankView({ boardKey, desc, setDesc }) {
         <button onClick={addTag} disabled={String(add).replace(/[^A-Za-z0-9_]/g, "").length < 2}
           style={{ border: `1px solid ${c.line}`, background: "transparent", borderRadius: 1, padding: "6px 10px", fontFamily: sans, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>Add</button>
       </div>
-      <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 8, lineHeight: 1.5 }}>
-        Niches come from the text below: any line that starts with a name and a colon. Edit or reorder there and this follows.
-      </div>
     </div>
   );
 }
@@ -2642,6 +2639,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   const [name, setName] = useState(card.name);
   // Internal ops board (LH Operations): cards are data entry — status, notes,
   // owner, dates, photos — with every posting/Instagram feature switched off.
+  const [bankRaw, setBankRaw] = useState(false); // the bank card's raw text, tucked away (her ask Nov 21 2026)
   const opsMode = boardKey === "rh-operations";
   const [hook, setHook] = useState(card.hook || "");
   const [tags, setTags] = useState(card.tags || "");
@@ -2899,12 +2897,17 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {!/#[A-Za-z0-9_]/.test(desc || "") && (
           <div style={{ fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 1.65, color: c.ink, whiteSpace: "pre-wrap" }}>{desc || "Nothing here yet."}</div>
         )}
-        <div style={label}>The bank, as text</div>
-        <textarea style={{ ...input, resize: "vertical" }} rows={10} value={desc} onChange={(e) => setDesc(e.target.value)}
-          onBlur={() => { if ((card.desc || "") !== desc) onPatch && onPatch({ desc }); }} />
-        <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6, lineHeight: 1.5 }}>
-          Edits here save when you click away.
-        </div>
+        <button onClick={() => setBankRaw(!bankRaw)}
+          style={{ background: "none", border: "none", padding: 0, marginTop: 14, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 11, color: c.sub, cursor: "pointer" }}>
+          {bankRaw ? "Hide the text" : "Edit as text"}
+        </button>
+        {bankRaw && (<>
+          <textarea style={{ ...input, resize: "vertical", marginTop: 6 }} rows={10} value={desc} onChange={(e) => setDesc(e.target.value)}
+            onBlur={() => { if ((card.desc || "") !== desc) onPatch && onPatch({ desc }); }} />
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: 6, lineHeight: 1.5 }}>
+            A line that starts with a name and a colon is a niche. Edits save when you click away.
+          </div>
+        </>)}
         <button onClick={onClose}
           style={{ display: "block", width: "100%", marginTop: 24, background: "transparent", border: `1px solid ${c.line}`, borderRadius: 1, padding: "12px 0", fontFamily: sans, fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: c.sub, cursor: "pointer" }}>
           Close
