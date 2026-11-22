@@ -5268,7 +5268,9 @@ export default async function handler(req, res) {
         const rowUrlS = `https://docs.google.com/spreadsheets/d/${FTC_SHEET_ID}/edit` + (/^\d+$/.test(gid) ? `#gid=${gid}&range=A${r + 1}` : "");
         await patchBoardCards("lavalle-sisters", [{ id: cardS.id, apply: (fc) => {
           Object.assign(fc, patchS);
-          if (Object.keys(beatsS).length) fc.draft = { ...(fc.draft || {}), ...beatsS };
+          // a row in Sarah's sheet means this one is a script, so the card's
+          // FTC switch flips itself on and the beat sheet shows (her rule Nov 21)
+          if (Object.keys(beatsS).length) { fc.draft = { ...(fc.draft || {}), ...beatsS }; fc.ftc = true; }
           fc.ftcRow = rowUrlS; // shown inside the Pre-production dropdown, next to the rough draft it came from
         } }]);
       }

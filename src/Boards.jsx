@@ -2691,6 +2691,12 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
   // once the server copy catches up, the draft has done its job
   useEffect(() => { if (draftKey && (card.desc || "") === desc) { try { localStorage.removeItem(draftKey); } catch (e) {} } }, [card.desc]);
   const [exampleUrl, setExampleUrl] = useState(card.exampleUrl || firstVideoUrl(card.desc) || "");
+  // Her rule Nov 21 2026: the beat sheet is only for an FTC — a post where one
+  // of us talks to camera off a script. A b-roll or a carousel needs nothing
+  // but the example video (Courtney's from her 12, or one found for us when we
+  // are tagged). Old cards infer it: a script row or a started draft means FTC.
+  const [ftc, setFtc] = useState(typeof card.ftc === "boolean" ? card.ftc : (!!card.ftcRow || !!(card.draft && Object.keys(card.draft).length)));
+  const [exEdit, setExEdit] = useState(false);
   // Sarah's sheet comments come back as a PROPOSAL, never as a replacement —
   // the live words stay put until they're accepted here.
   const [ftcProp, setFtcProp] = useState(card.ftcProposal || null);
@@ -2832,7 +2838,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
     if (autoSkip.current) { autoSkip.current = false; return; }
     const t = setTimeout(() => {
       if (!name.trim()) return;
-      const patch = { fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
+      const patch = { fmt: fmt || null, ftc, name: name.trim(), hook: hook.trim() || null, approved, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, desc, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels, members, cover, links, checklist, attachments, outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest };
       // A reel mid-flight (converting/processing) is owned by the server — its pub
       // advances faster than the board's local copy, so saving the whole board here
       // would clobber it back to "scheduled," kill the progress bar, and stall the
@@ -2843,7 +2849,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
       onPatch(patch);
     }, 600);
     return () => clearTimeout(t);
-  }, [name, hook, tags, draft, draftNotes, attachments, desc, exampleUrl, coverUrl, assetUrlState, carouselUrl, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
+  }, [name, hook, tags, ftc, draft, draftNotes, attachments, desc, exampleUrl, coverUrl, assetUrlState, carouselUrl, due, launchMonth, labels, members, cover, done, links, checklist, pub, outreachEmail, emailBody, refExamples, dest]);
   // While a post is converting/processing, poll the server so the OPEN card
   // reflects progress and flips to Posted (green check) on its own.
   useEffect(() => {
@@ -3433,22 +3439,41 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {!opsMode && (<>
         <button onClick={() => setPrePro(!prePro)}
           style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", border: `1px solid ${c.line}`, background: prePro ? c.bg : "transparent", borderRadius: 2, padding: "10px 12px", fontFamily: sans, fontSize: 9.5, letterSpacing: 2, textTransform: "uppercase", color: c.ink, cursor: "pointer", marginBottom: 10 }}>
-          <span style={{ fontSize: 10 }}>{prePro ? "▾" : "▸"}</span> Pre-production — example video + rough draft
+          <span style={{ fontSize: 10 }}>{prePro ? "▾" : "▸"}</span> Pre-production — example video{ftc ? " + rough draft" : ""}
           {(exampleUrl.trim() || Object.keys(draft).length > 0) && (
             <span style={{ marginLeft: "auto", color: c.sub, textTransform: "none", letterSpacing: 0, fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5 }}>
-              {exampleUrl.trim() && Object.keys(draft).length ? "video + draft" : exampleUrl.trim() ? "video linked" : "draft started"}
+              {exampleUrl.trim() && ftc && Object.keys(draft).length ? "video + draft" : exampleUrl.trim() ? "video linked" : ftc ? "draft started" : ""}
             </span>
           )}
         </button>
         {prePro && (<>
-        <div style={label}>Example video</div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input style={{ ...input, flex: 1 }} placeholder="https://www.tiktok.com/…" value={exampleUrl} onChange={(e) => setExampleUrl(e.target.value)} />
-          {exampleUrl.trim() && (
-            <a href={exampleUrl.trim()} target="_blank" rel="noopener noreferrer"
-              style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>▷ Open</a>
-          )}
+        <div style={label}>What this one is</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {[["Example video only", false], ["FTC — one of us to camera", true]].map(([t, v]) => (
+            <button key={t} onClick={() => setFtc(v)}
+              style={{ flex: 1, border: `1px solid ${ftc === v ? c.ink : c.line}`, background: ftc === v ? c.ink : "transparent", color: ftc === v ? c.bg : c.sub, borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{t}</button>
+          ))}
         </div>
+        {!ftc && Object.keys(draft).length > 0 && (
+          <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 10.5, color: c.sub, marginTop: -4, marginBottom: 10 }}>
+            A rough draft is saved on this card. It stays put — switch to FTC to see it again.
+          </div>
+        )}
+        <div style={label}>Example video</div>
+        {!exampleUrl.trim() && !exEdit ? (
+          <button onClick={() => setExEdit(true)}
+            style={{ width: "100%", border: `1px dashed ${c.line}`, background: "transparent", borderRadius: 1, padding: "10px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.sub, cursor: "pointer", marginBottom: 10 }}>
+            + Attach example video
+          </button>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <input autoFocus={exEdit} style={{ ...input, flex: 1 }} placeholder="https://www.tiktok.com/…" value={exampleUrl} onChange={(e) => setExampleUrl(e.target.value)} />
+            {exampleUrl.trim() && (
+              <a href={exampleUrl.trim()} target="_blank" rel="noopener noreferrer"
+                style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${c.line}`, borderRadius: 1, padding: "0 14px", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: c.ink, textDecoration: "none", background: c.bg }}>▷ Open</a>
+            )}
+          </div>
+        )}
         {/* The script this draft came from — Sarah's sheet row, one click away
             from the beats it feeds, which is where she asked for it. */}
         {card.ftcRow && (
@@ -3460,6 +3485,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
         {/* Rough draft — the beat sheet Kiabeth writes off the example video so
             the copy editor can see the intent before writing the real caption.
             Each beat carries its own comment thread, Google-Docs style. */}
+        {ftc && (<>
         <div style={label}>Rough draft</div>
         <div style={{ border: `1px solid ${c.line}`, borderRadius: 2, padding: 10, marginBottom: 10, background: c.bg }}>
           {draftBeats.map((beat) => {
@@ -3519,6 +3545,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
             </button>
           </div>
         </div>
+        </>)}
         </>)}
         </>)}
         {!opsMode && (<>
@@ -3885,7 +3912,7 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           // shouldn't vanish just because Add wasn't pressed before Save.
           const finalLabels = labelName.trim() ? [...labels, { n: labelName.trim(), c: labelColor }] : labels;
           const finalLinks = linkUrl.trim() ? [...links, { n: linkName.trim() || linkUrl.trim(), u: linkUrl.trim() }] : links;
-          onSave({ fmt: fmt || null, name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
+          onSave({ fmt: fmt || null, ftc, name: name.trim(), hook: hook.trim() || null, tags: tags.trim() || null, draft: Object.keys(draft).length ? draft : null, draftNotes: Object.keys(draftNotes).length ? draftNotes : null, exampleUrl: exampleUrl.trim() || null, coverUrl: coverUrl.trim() || null, assetUrl: assetUrlState.trim() || null, carouselUrl: carouselUrl.trim() || null, pub: pub || null, checklist: checkInput.trim() ? [...checklist, { id: uid(), t: checkInput.trim(), done: false }] : checklist, desc, due: due ? due + "T12:00:00.000Z" : null, launchMonth: launchMonth || null, labels: finalLabels, listId, members, cover, done, links: finalLinks, attachments, comments: card.comments || [], outreachEmail: outreachEmail.trim() || null, emailBody: emailBody === UGC_EMAIL_BODY ? null : emailBody, refExamples: refExamples.map((s) => s.trim()).filter(Boolean).length ? refExamples.map((s) => s.trim()).filter(Boolean) : null, dest }, destBoard);
         }}
           style={{ display: "block", width: "100%", marginTop: 20, padding: "12px 0", background: c.ink, color: c.bg, border: "none", borderRadius: 1, fontFamily: sans, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", cursor: "pointer" }}>
           {isNew ? "Add card" : destBoard !== boardKey ? "Save & move board" : "Done — changes save automatically"}
