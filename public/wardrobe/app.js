@@ -1520,8 +1520,12 @@ const poseLock = () => store.get('vw.poseLock', true);
 const aiMode = () => (poseLock() ? 'quality' : store.get('vw.fashnMode', 'balanced')); // Keep my pose: full-model steps (cardigan, shoes, styling) run in Best, which holds the pose much better
 function vtonCat(it, items) {
   if (!poseLock()) return null; const c = it.category;
-  if (c === 'tops') return 'tops';
-  if (c === 'sweaters') return items.some((x) => x.category === 'tops') ? null : 'tops';
+  // Kiaredza's find Nov 22 2026: the swap model keeps the old top's crew neck,
+  // so anything with a neckline of its own has to go to the full model or the
+  // shape is simply wrong on the result.
+  const neck = /boat|bateau|off.?shoulder|off the shoulder|one.?shoulder|square.?neck|scoop|v.?neck|deep.?v\b|low.?neck|deep.?neck|cowl|halter|sweetheart|wide.?neck|slash.?neck|bardot|strapless|tube/i.test(`${it.name} ${it.tryonNote || ''}`);
+  if (c === 'tops') return neck ? null : 'tops';
+  if (c === 'sweaters') return neck || items.some((x) => x.category === 'tops') ? null : 'tops';
   if (['bottoms', 'skirts', 'shorts'].includes(c)) return /wide|flare|baggy|palazzo|barrel|bootcut|boot cut|culotte|balloon|bell/i.test(`${it.name} ${it.tryonNote || ''}`) ? null : 'bottoms'; // the swap model keeps the old pant shape, so wide/flared legs go to the full model
   if (['dresses', 'sets'].includes(c)) return 'one-pieces';
   return null; // cardigans, jackets, shoes need the full model
