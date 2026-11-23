@@ -3084,7 +3084,6 @@ function openSignin() {
   await Promise.all([syncImports().catch((e) => console.warn(e)), refreshFold(true)]);
   state.items = (await DB.all('items')).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   await migrateCatsV2();
-  await pullCloset().catch((e) => console.warn('shared closet', e));
   $('#bootModal').hidden = true;
   await loadShared();
   receiveCartSync(); receiveSync();
@@ -3092,4 +3091,11 @@ function openSignin() {
   const resume = lastChoice();
   if (resume) signIn(resume); else openSignin();
   checkStock(true);
+  // The shared closet is pulled after the door opens, not before it. Every
+  // photo in it comes down one at a time through op=media, which streams
+  // slowly — one of Kiaredza's try-ons took 215 seconds — so waiting on
+  // eleven of them held the "Getting your wardrobe ready" card up for minutes
+  // after her restore. The closet opens on what is already here and her work
+  // lands behind it, which is what the "From the shared closet" toast is for.
+  pullCloset().then((n) => { if (n) refresh(); }).catch((e) => console.warn('shared closet', e));
 })();
