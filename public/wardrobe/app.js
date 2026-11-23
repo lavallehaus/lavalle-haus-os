@@ -2485,7 +2485,17 @@ async function pullImg(rec, field, url) {
   } catch (e) { console.warn('pull image', url, e); return url; }
 }
 
-async function pullCloset() {
+// Single-flight. Two pulls at once each look for an outfit by its shareKey,
+// both miss, and both append — eight outfits become sixteen. That was only
+// reachable by accident before; now that boot pulls in the background it is
+// one tap of Refresh away, so a pull already in the air is the pull you get.
+let pullingCloset = null;
+function pullCloset() {
+  if (pullingCloset) return pullingCloset;
+  pullingCloset = pullClosetOnce().finally(() => { pullingCloset = null; });
+  return pullingCloset;
+}
+async function pullClosetOnce() {
   let j;
   try {
     const r = await api('/api/data?op=wardrobe_closet', { cache: 'no-store' });
