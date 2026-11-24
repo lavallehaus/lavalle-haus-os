@@ -1490,7 +1490,7 @@ function SegTabs({ id, segments }) {
   const [bvTab, setBvTab] = useState(() => { try { return localStorage.getItem("lh_brand_view") || "all"; } catch { return "all"; } });
   useEffect(() => { const h = (e) => setBvTab(e.detail || "all"); window.addEventListener("lh-brand-view", h); return () => window.removeEventListener("lh-brand-view", h); }, []);
   const brandTabLbl = { "the-fold": "The Fold Board", "lavalle-sisters": "Sisters Board", "lavalle-haus": "Lavalle Haus Board" }[bvTab];
-  useEffect(() => { try { localStorage.setItem("lh_seg_" + id, seg); } catch {} }, [id, seg]);
+  useEffect(() => { try { localStorage.setItem("lh_seg_" + id, seg); } catch {} window.dispatchEvent(new CustomEvent("lh-seg-active", { detail: { id, seg } })); }, [id, seg]);
   // Global search deep-links into a segment via this event (works when the
   // group is already mounted; fresh mounts pick the target up from localStorage).
   useEffect(() => {
@@ -2642,8 +2642,20 @@ const CONNECTION_DEFS = {
 function PageAccessChips({ tab }) {
   const [users, setUsers] = useState(null);
   useEffect(() => { fetch("/api/data?op=users").then((r) => (r.ok ? r.json() : null)).then((d) => d && setUsers((d.users || []).filter((u) => !u.revoked))).catch(() => {}); }, []);
+  // The chips follow the SECTION, not just the tab (her note Nov 23 2026:
+  // "Sarah's tag shouldn't be here" — on Grids, a section Sarah is blocked
+  // from). SegTabs announces its active section; a person whose denySegs
+  // holds "<tab>:<section>" does not see it, so they get no chip there.
+  const readSeg = () => { try { return localStorage.getItem("lh_seg_" + tab) || ""; } catch { return ""; } };
+  const [seg, setSeg] = useState(readSeg);
+  useEffect(() => {
+    setSeg(readSeg());
+    const h = (e) => { if (e.detail && e.detail.id === tab) setSeg(e.detail.seg || ""); };
+    window.addEventListener("lh-seg-active", h);
+    return () => window.removeEventListener("lh-seg-active", h);
+  }, [tab]);
   if (!users) return null;
-  const who = users.filter((u) => !/^owner/i.test(u.role || "") && (u.pages && u.pages.length ? u.pages : (LENS_ROLE_DEFAULT[u.role] || LENS_ROLE_DEFAULT["Viewer"])).includes(tab));
+  const who = users.filter((u) => !/^owner/i.test(u.role || "") && (u.pages && u.pages.length ? u.pages : (LENS_ROLE_DEFAULT[u.role] || LENS_ROLE_DEFAULT["Viewer"])).includes(tab) && !(seg && Array.isArray(u.denySegs) && u.denySegs.includes(tab + ":" + seg)));
   if (!who.length) return null;
   return (
     <span title={"Sees this page: " + who.map((u) => u.name).join(", ")} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", marginLeft: 8 }}>
