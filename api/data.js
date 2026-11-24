@@ -2230,6 +2230,12 @@ export default async function handler(req, res) {
       key: "lavalle-sisters", label: "LAVALLE SISTERS", themeLabelBrand: "@lavallesisters — The Fold + Lavalle Haus, run by two sisters",
       kvSuffix: "", qs: "", igMatch: /sister/i, driveRootId: "1L6Y0HBNlFmFGt5tWDtsJUL-7jGeGQ8JU",
       monthDefaultKv: "sisters_working_month", hasCourtney: true,
+      // Nov 23 2026 (her ask): the Grid card showed a fixed 10-21 window, so
+      // November opened on Post 10 when Courtney had actually stopped posting
+      // at Post 4. A cycle no longer lines up with 1-9 / 10-21 - November runs
+      // 4-21 after the renumber - so each window is a calendar month here too,
+      // the same rule The Fold already uses.
+      monthWindows: true,
     };
   })();
   // ── Automations card (plain-English registry) ────────────────────────────
