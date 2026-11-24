@@ -5996,6 +5996,7 @@ export default async function handler(req, res) {
       const undated = []; let bestN = 0, bestT = Infinity;
       const MO_W = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
       for (const c of (bdP ? bdP.cards : [])) {
+        if (c._deleted) continue; // a removed post must not keep its month window (and month card) alive
         if (!schedP.includes(c.listId)) continue;
         let n = Number((/^post\s*(\d+)/i.exec(c.name || "") || [])[1] || 0);
         if (!n) continue;
