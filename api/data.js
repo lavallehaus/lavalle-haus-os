@@ -6092,7 +6092,16 @@ export default async function handler(req, res) {
           // image on every tab. Each month now gets its own card, named for the
           // month so the tab strip can place it.
           const autoRxG = /^grid\b.*\(auto\)\s*$/i;
-          const spareG = bdC.cards.filter((c) => !c._deleted && c.listId === todo.id && autoRxG.test(c.name || ""));
+          // Nov 23 2026 (her: "somehow the december grid is in november grid and
+          // contributions column and it shouldn't be"). Every month's card used to
+          // be filed in `todo` - the FIRST list matching /grid/ - so on a board with
+          // one Grid and Contributions column PER month tab, December's grid landed
+          // in November's column. Each card now lives in the grid list tagged with
+          // its own month; a board with a single grid list is unchanged.
+          const gridListsG = bdC.lists.filter((l) => /grid/i.test(l.name || ""));
+          const gridIdsG = new Set(gridListsG.map((l) => l.id));
+          const listForG = (mo) => gridListsG.find((l) => String(l.month || "").trim().toLowerCase() === String(mo || "").trim().toLowerCase()) || todo;
+          const spareG = bdC.cards.filter((c) => !c._deleted && gridIdsG.has(c.listId) && autoRxG.test(c.name || ""));
           const wantNames = views.filter((v) => v.url && v.month).map((v) => "Grid – " + v.month + " (auto)");
           let changedM = false;
           views.forEach((v, wi) => {
@@ -6102,7 +6111,9 @@ export default async function handler(req, res) {
             // reuse a stale auto card (the old numbered-window one) before making a new one
             if (!cG) cG = spareG.find((c) => !wantNames.includes((c.name || "").trim()));
             if (cG) spareG.splice(spareG.indexOf(cG), 1);
-            else { cG = { id: "c" + Math.random().toString(36).slice(2, 10), listId: todo.id, labels: [], members: [], attachments: [], links: [], done: false, desc: "", name: nmG }; bdC.cards.push(cG); }
+            else { cG = { id: "c" + Math.random().toString(36).slice(2, 10), listId: listForG(v.month).id, labels: [], members: [], attachments: [], links: [], done: false, desc: "", name: nmG }; bdC.cards.push(cG); }
+            const tgtG = listForG(v.month);
+            if (cG.listId !== tgtG.id) { cG.listId = tgtG.id; cG._touched = Date.now(); changedM = true; }
             const attG = [{ id: "a" + Math.random().toString(36).slice(2, 9), name: v.label, url: v.url, type: "image/jpeg" }];
             const descG = "Auto-updating grid for " + v.month + " – Posts " + WINDOWS[wi][0] + "–" + WINDOWS[wi][1] + ", as the feed will read. Numbers = post order. White dot = Courtney's post.";
             if ((cG.name || "").trim() !== nmG || cG.cover !== v.url || cG.desc !== descG || JSON.stringify((cG.attachments || []).map((x) => x.url)) !== JSON.stringify([v.url])) {
