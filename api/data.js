@@ -2967,7 +2967,7 @@ export default async function handler(req, res) {
     const rawBP = await kvGet("lavalle_data"); const blobBP = Array.isArray(rawBP) ? rawBP[0] : rawBP;
     const bdBP = blobBP && blobBP.boards && blobBP.boards[String(bBP.board || "")];
     if (!bdBP) { res.status(404).json({ error: "No such board." }); return; }
-    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "listId", "cliff", "_deleted", "_removedAt"];
+    const FIELDS_BP = ["name", "desc", "labels", "members", "cover", "coverUrl", "due", "links", "tags", "attachments", "done", "assetUrl", "carouselUrl", "fmt", "listId", "cliff", "_deleted", "_removedAt"];
     let n = 0; const nowBP = Date.now();
     for (const P of (Array.isArray(bBP.patches) ? bBP.patches : [])) {
       const c = (bdBP.cards || []).find((x) => x.id === P.cardId); if (!c || !P.patch) continue;
@@ -4922,11 +4922,15 @@ export default async function handler(req, res) {
     if (bdF) {
       const schedF = bdF.lists.filter((l) => /^schedule\s*(1\s*[-\u2013]\s*21|22\s*[-\u2013]\s*42)\s*$/i.test((l.name || "").trim())).map((l) => l.id);
       const isLegacy = (nm) => /^(IG|TT)\s*\u00b7/i.test(nm) || /^(static|carousel)\b/i.test(nm) || /^Reel \((FTC|BRoll)\)$/i.test(nm);
+      // A format Courtney picked ON THE CARD outranks the vision read. Without
+      // this the sweep re-tagged her Carousel as a Reel within 15 minutes, which
+      // is why she reported (Nov 23 2026) that she could not add one at all.
+      const pickedFmt = (c) => (c && c.fmt === "Carousel") ? "Carousel" : null;
       for (const c of bdF.cards) {
         if (!schedF.includes(c.listId)) continue;
         const m = /^Post (\d+)\b/.exec(c.name || ""); if (!m) continue;
-        const f = formats[parseInt(m[1], 10)]; if (!f) continue;
-        const add = [{ n: f, c: f === "Reel (FTC)" ? "#C9BFAF" : "#D9CFC1" }];
+        const f = pickedFmt(c) || formats[parseInt(m[1], 10)]; if (!f) continue;
+        const add = [{ n: f, c: f === "Carousel" ? "#CFC6D9" : f === "Reel (FTC)" ? "#C9BFAF" : "#D9CFC1" }];
         const keep = (c.labels || []).filter((lb) => { const nm = (typeof lb === "string" ? lb : (lb && lb.n)) || ""; return !isLegacy(nm); });
         const court = keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() === "courtney");
         const rest = keep.filter((lb) => ((typeof lb === "string" ? lb : lb.n) || "").toLowerCase() !== "courtney");

@@ -3591,12 +3591,24 @@ function CardSheet({ card, boardKey, boardsIndex, isNew, memberPool, me, autoTag
           <>
             <div style={label}>Format — Courtney's pick · same on IG and TikTok</div>
             <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {["Reel", "Carousel"].map((F) => { const curF = fmt || (((labels.find((L) => /^IG ·/.test((L && L.n) || "")) || {}).n || "").includes("Carousel") ? "Carousel" : "Reel"); const on = curF === F; return (
+              {["Reel", "Carousel"].map((F) => {
+                // One chip, same on both channels — the IG · / TT · split was
+                // retired Oct 2026. Her pick is stored on the card (card.fmt) so
+                // the nightly format sweep leaves it alone (her ask Nov 24 2026:
+                // Courtney's Carousel kept reverting to a Reel).
+                const nameOf = (L) => ((typeof L === "string" ? L : (L && L.n)) || "").trim();
+                const curF = fmt === "Carousel" ? "Carousel" : fmt === "Reel" ? "Reel" : (labels || []).some((L) => /carousel/i.test(nameOf(L))) ? "Carousel" : "Reel";
+                const on = curF === F; return (
                 <button key={F} onClick={() => {
                   setFmt(F);
-                  // rewrite the platform chips in place — neutral colors are locked
-                  // to the platform (ivory = IG, slate = TT) and never editable.
-                  setLabels((cur) => { const keep = cur.filter((L) => !/^(IG|TT)\s*·/i.test((typeof L === "string" ? L : (L && L.n)) || "")); return [...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() === "courtney"), { n: "IG · " + F, c: "#E9E6DF" }, { n: "TT · " + F, c: "#C6CCCF" }, ...keep.filter((L) => ((typeof L === "string" ? L : L.n) || "").toLowerCase() !== "courtney")]; });
+                  setLabels((cur) => {
+                    // drop every format chip — legacy (IG · / TT · / Static) and current
+                    const keep = cur.filter((L) => { const n0 = nameOf(L); return !/^(IG|TT)\s*·/i.test(n0) && !/^carousel$/i.test(n0) && !/^static$/i.test(n0) && !/^reel$/i.test(n0) && !/^Reel \((FTC|BRoll)\)$/i.test(n0); });
+                    if (F !== "Carousel") return keep; // a reel takes its Reel (FTC/BRoll) tag back from the sweep
+                    const court = keep.filter((L) => nameOf(L).toLowerCase() === "courtney");
+                    const rest = keep.filter((L) => nameOf(L).toLowerCase() !== "courtney");
+                    return [...court, { n: "Carousel", c: "#CFC6D9" }, ...rest];
+                  });
                 }}
                   style={{ flex: 1, border: `1px solid ${on ? c.ink : c.line}`, background: on ? c.ink : "transparent", color: on ? c.bg : c.sub, borderRadius: 1, padding: "9px 0", fontFamily: sans, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer" }}>{F}</button>
               ); })}
