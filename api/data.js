@@ -2590,7 +2590,9 @@ export default async function handler(req, res) {
     const lLP = bdLP && (bdLP.lists || []).find((l) => l.id === bLP.listId);
     if (!lLP) { res.status(404).json({ error: "No such list." }); return; }
     if (bLP.remove) {
-      if ((bdLP.cards || []).some((c) => c.listId === lLP.id)) { res.status(400).json({ error: "List not empty." }); return; }
+      // tombstoned cards (_deleted) are already gone from the board's face, so
+      // they must not keep an empty column alive (her ask Nov 24 2026).
+      if ((bdLP.cards || []).some((c) => c.listId === lLP.id && !c._deleted)) { res.status(400).json({ error: "List not empty." }); return; }
       bdLP.lists = bdLP.lists.filter((l) => l.id !== lLP.id);
     } else if (bLP.patch) {
       if (bLP.patch.name) lLP.name = String(bLP.patch.name).slice(0, 80);
